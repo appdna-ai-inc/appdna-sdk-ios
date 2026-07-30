@@ -32,7 +32,7 @@ AppDNA gives you a single drop-in SDK for the growth surfaces every subscription
 In Xcode: **File → Add Package Dependencies…** and enter:
 
 ```
-https://github.com/appdna-ai/appdna-sdk-ios.git
+https://github.com/appdna-ai-inc/appdna-sdk-ios.git
 ```
 
 Set the dependency rule to **Up to Next Major Version** starting from `1.0.63`.
@@ -41,7 +41,7 @@ Or add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/appdna-ai/appdna-sdk-ios.git", from: "1.0.63")
+    .package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.63")
 ]
 ```
 

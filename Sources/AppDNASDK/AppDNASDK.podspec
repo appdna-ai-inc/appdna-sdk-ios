@@ -9,7 +9,7 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   s.homepage         = 'https://appdna.ai'
   s.license          = { :type => 'Proprietary', :file => 'LICENSE' }
   s.author           = { 'AppDNA' => 'hello@appdna.ai' }
-  s.source           = { :git => 'https://github.com/appdna-ai/appdna-sdk-ios.git', :tag => "v#{s.version}" }
+  s.source           = { :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => "v#{s.version}" }
   s.source_files     = 'Sources/AppDNASDK/**/*.swift'
   s.resource_bundles = { 'AppDNASDK' => ['Sources/AppDNASDK/PrivacyInfo.xcprivacy'] }
   s.platform         = :ios, '16.0'

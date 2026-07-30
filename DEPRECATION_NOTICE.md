@@ -36,7 +36,7 @@ Until each platform's first proprietary release ships, the corresponding final M
 ## How to migrate
 
 1. Update your dependency to v1.0.60 (or later) of the iOS SDK:
-   - **Swift Package Manager**: `.package(url: "https://github.com/appdna-ai/appdna-sdk-ios.git", from: "1.0.60")`
+   - **Swift Package Manager**: `.package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.60")`
    - **CocoaPods**: `pod 'AppDNASDK', '~> 1.0.60'`
 2. Review the migration guide at https://docs.appdna.ai/migrations/v1-0-to-v1-1.
 3. Test in staging.
