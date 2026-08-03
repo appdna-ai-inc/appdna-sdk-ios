@@ -1393,11 +1393,14 @@ struct FormInputToggleBlock: View {
             }
             .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isOn)
             .contentShape(Rectangle())
-            .onTapGesture {
-                isOn.toggle()
-                inputValues[fieldId] = isOn
-            }
+            .onTapGesture { isOn.toggle() }
             .accessibilityRepresentation { Toggle(label, isOn: $isOn) }
+        }
+        // Persist on ANY change to isOn — covers the visual tap AND the VoiceOver
+        // accessibilityRepresentation Toggle (which flips $isOn without firing the
+        // tap gesture). Persisting only in onTapGesture dropped a11y toggles.
+        .onChange(of: isOn) { newValue in
+            inputValues[fieldId] = newValue
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? Bool { isOn = saved }
