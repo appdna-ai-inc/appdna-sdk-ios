@@ -2057,6 +2057,9 @@ struct StarBackgroundBlockView: View {
         let color = Color(hex: block.particle_color ?? block.active_color ?? block.text_color ?? "#FFFFFF")
         // SPEC-419 pass-15 #27 — secondary_color tints 1/3 of particles (matches editor + preview)
         let secondaryColor = block.secondary_color.map { Color(hex: $0) } ?? color
+        // Mrozu QA (2026-08-03): particle_type was decoded but the Canvas always drew a
+        // circle, so stars/sparkles/snow all looked identical. Render the actual shape.
+        let particleType = block.particle_type ?? "dots"
         let opacity = block.particle_opacity ?? block.block_style?.opacity ?? 0.8
         let particleCount: Int = {
             switch block.density {
@@ -2092,7 +2095,7 @@ struct StarBackgroundBlockView: View {
                     context.opacity = particle.opacity * opacity
                     // SPEC-419 pass-15 #27 — every 3rd particle uses secondary_color
                     context.fill(
-                        Path(ellipseIn: rect),
+                        Self.particlePath(for: particleType, in: rect),
                         with: .color(i % 3 == 0 ? secondaryColor : color)
                     )
                 }
@@ -2135,6 +2138,35 @@ struct StarBackgroundBlockView: View {
                 particles[i].x = CGFloat.random(in: 0...UIScreen.main.bounds.width)
             }
         }
+    }
+
+    // Mrozu QA (2026-08-03): render the configured particle_type. `dots`/`bokeh`
+    // stay round; `stars`/`sparkles`/`snow` draw an N-point star polygon so the
+    // shape selector is no longer a no-op. Parity with Android drawParticle().
+    static func particlePath(for type: String, in rect: CGRect) -> Path {
+        switch type {
+        case "stars":    return starPath(points: 5, innerRatio: 0.42, in: rect)
+        case "sparkles": return starPath(points: 4, innerRatio: 0.30, in: rect)
+        case "snow":     return starPath(points: 6, innerRatio: 0.50, in: rect)
+        default:         return Path(ellipseIn: rect) // dots, bokeh
+        }
+    }
+
+    private static func starPath(points: Int, innerRatio: CGFloat, in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outer = min(rect.width, rect.height) / 2
+        let inner = outer * innerRatio
+        let step = CGFloat.pi / CGFloat(points)
+        var angle = -CGFloat.pi / 2 // start pointing up
+        for i in 0..<(points * 2) {
+            let r = (i % 2 == 0) ? outer : inner
+            let pt = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+            i == 0 ? path.move(to: pt) : path.addLine(to: pt)
+            angle += step
+        }
+        path.closeSubpath()
+        return path
     }
 }
 
