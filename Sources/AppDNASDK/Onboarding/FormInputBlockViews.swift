@@ -10,9 +10,13 @@ struct FormFieldLabelView: View {
     var body: some View {
         if let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
             let required = block.field_required ?? false
+            // SPEC — honor authored label_font_size (field_style first, then
+            // top-level), default .subheadline (~15pt). Parity with Android
+            // FormFieldLabel (field_style?.label_font_size ?: 15sp). Was hardcoded.
+            let labelSize = block.field_style?.label_font_size ?? block.label_font_size
             HStack(spacing: 2) {
                 Text(label)
-                    .font(.subheadline.weight(.medium))
+                    .font(labelSize.map { Font.system(size: CGFloat($0), weight: .medium) } ?? .subheadline.weight(.medium))
                     .foregroundColor(Color(hex: block.field_style?.label_color ?? "#374151"))
                 if required {
                     Text("*")
@@ -82,6 +86,10 @@ struct FormInputTextBlock: View {
     let keyboardType: UIKeyboardType
 
     @State private var text: String = ""
+    // SPEC — focus tracking so focused_background_color can swap the field fill
+    // while editing (parity with Android isFocused). UIKitTextField already
+    // drives this binding from textFieldDidBegin/EndEditing.
+    @State private var isFocused: Bool = false
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -94,6 +102,10 @@ struct FormInputTextBlock: View {
         // font_size (default 14), mirroring preview precedence. Was no font set +
         // a fixed inner height of 24 that clipped larger fonts.
         let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
+        // SPEC — focused_background_color swaps the field fill while editing;
+        // falls back to background_color when unset. Parity with Android.
+        let baseBg = Color(hex: block.field_style?.background_color ?? "transparent")
+        let focusedBg = block.field_style?.focused_background_color.map { Color(hex: $0) } ?? baseBg
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -106,13 +118,14 @@ struct FormInputTextBlock: View {
                 returnKeyType: .done,
                 font: UIFont.systemFont(ofSize: inputFontSize),
                 textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
-                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) }
+                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) },
+                isFocused: $isFocused
             )
             .frame(height: max(24, inputFontSize + 6))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .frame(minHeight: fieldHeight(block), alignment: .center)
-            .background(Color(hex: block.field_style?.background_color ?? "transparent"))
+            .background(isFocused ? focusedBg : baseBg)
             .cornerRadius(cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -1308,7 +1321,14 @@ struct FormInputSliderBlock: View {
         let maxVal = max(rawMax, minVal + stepVal)
         let showValue = (block.field_config?["show_value"]?.value as? Bool) ?? true
         let unitStr = block.unit ?? ""
-        let trackCol = Color(hex: block.field_style?.track_color ?? block.track_color ?? "#E5E7EB")
+        // NOTE: `track_color` (the inactive/max track) is intentionally NOT
+        // applied here. The native SwiftUI `Slider` exposes no per-instance
+        // max-track API — `.tint` colors only the active/min track + thumb.
+        // Honoring track_color needs a custom draggable slider, which would
+        // re-open the value-binding / step-snapping / min-max edge cases this
+        // native control already handles (see the SPEC-419 fixes below). Tracked
+        // for a dedicated custom-slider pass rather than risking regressions in a
+        // render-fix batch.
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
 
         VStack(alignment: .leading, spacing: 6) {

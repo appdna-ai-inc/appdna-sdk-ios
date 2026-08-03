@@ -309,6 +309,9 @@ struct ContentBlockRendererView: View {
             .foregroundColor(styleColor)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
+            // SPEC — honor max_lines on heading/text (only rich_text did before);
+            // nil → no limit (unchanged). Parity with Android maxLines.
+            .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: frameAlignment)
     }
@@ -348,6 +351,9 @@ struct ContentBlockRendererView: View {
             .foregroundColor(styleColor)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
+            // SPEC — honor max_lines on heading/text (only rich_text did before);
+            // nil → no limit (unchanged). Parity with Android maxLines.
+            .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: frameAlignment)
     }

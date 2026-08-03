@@ -1474,7 +1474,16 @@ struct DateWheelPickerBlockView: View {
             let formatter = ISO8601DateFormatter()
             if let date = formatter.date(from: saved) {
                 selectedDate = date
+                return
             }
+        }
+        // No prior answer — seed the wheel from the authored `default_date_value`
+        // (relative like "-18y" or ISO "2000-01-01") instead of always landing
+        // on today. Clamp into the valid range so a default outside min/max
+        // can't open on an invalid day. Parity with Android's default handling.
+        if let seeded = Self.parseDate(block.default_date_value) {
+            let range = dateRange
+            selectedDate = min(max(seeded, range.lowerBound), range.upperBound)
         }
     }
 
@@ -1734,6 +1743,12 @@ struct WheelPickerBlockView: View {
 
         let isHorizontal = block.wheel_orientation == "horizontal" || block.orientation == "horizontal"
 
+        // SPEC — honor wheel_height / visible_items as the drum height (was the
+        // system default). ~34pt per visible row; nil → natural sizing (unchanged).
+        // Parity with Android's drumHeightDp.
+        let wheelHeightPt: CGFloat? = block.wheel_height.map { CGFloat($0) }
+            ?? block.visible_items.map { CGFloat(max(1, min(9, $0))) * 34 }
+
         VStack(spacing: 8) {
             if let label = block.rating_label ?? block.text {
                 Text(label)
@@ -1759,6 +1774,7 @@ struct WheelPickerBlockView: View {
                 }
                 .pickerStyle(.wheel)
                 .frame(maxWidth: .infinity)
+                .frame(height: wheelHeightPt)  // nil → natural (unchanged); set → authored drum height
                 .tint(highlightCol)
             }
         }
@@ -1792,8 +1808,10 @@ struct WheelPickerBlockView: View {
                 persistValue(values: values)
                 // Horizontal-only haptic tick. Vertical Picker(.wheel) emits
                 // its own haptic natively; doubling would feel off.
+                // `haptic_on_scroll == false` suppresses the tick entirely
+                // (author opt-out); nil/true keep the default native feel.
                 let isHorizontal = block.wheel_orientation == "horizontal" || block.orientation == "horizontal"
-                if isHorizontal {
+                if isHorizontal && block.haptic_on_scroll != false {
                     selectionHaptic.selectionChanged()
                     selectionHaptic.prepare()
                 }
