@@ -1354,18 +1354,30 @@ struct FormInputToggleBlock: View {
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let onColor = Color(hex: block.field_style?.toggle_on_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA (2026-08-03): toggle_off_color + thumb_color were decoded but the native
+        // SwiftUI Toggle only exposes `.tint` (the on-track). Use a custom capsule toggle so all
+        // three colors apply, with `.accessibilityRepresentation` preserving the native Switch a11y.
+        // Parity with Android SwitchDefaults.colors(checked/unchecked track+thumb).
+        let offColor = Color(hex: block.field_style?.toggle_off_color ?? "#E5E5EA")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
         let label = block.field_label ?? block.toggle_label ?? ""
 
         HStack {
             Text(label)
                 .font(.subheadline)
             Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .tint(onColor)
-                .onChange(of: isOn) { newValue in
-                    inputValues[fieldId] = newValue
-                }
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule().fill(isOn ? onColor : offColor).frame(width: 51, height: 31)
+                Circle().fill(thumbColor).frame(width: 27, height: 27).padding(2)
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+            }
+            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isOn)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                isOn.toggle()
+                inputValues[fieldId] = isOn
+            }
+            .accessibilityRepresentation { Toggle(label, isOn: $isOn) }
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? Bool { isOn = saved }
