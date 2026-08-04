@@ -1133,6 +1133,13 @@ struct ContentBlockRendererView: View {
         // sits directly under email+password input blocks.
         let placement = block.email_login_placement ?? "with_providers"
         let emailSpacer = CGFloat(block.email_cta_spacing_below ?? 16)
+        let textAlign = block.button_text_align ?? "center"
+        // Social-Login styling v2 — divider color + placement.
+        let dividerColor: Color = {
+            if let hex = block.divider_color, !hex.isEmpty { return Color(hex: hex) }
+            return Color.gray.opacity(0.3)
+        }()
+        let dividerPosition = block.divider_position ?? "bottom"
         let (topGroup, bottomGroup): ([SocialProviderConfig], [SocialProviderConfig]) = {
             if placement == "below_inputs", let emailIdx = providerList.firstIndex(where: { ($0.type ?? "") == "email" }) {
                 var rest = providerList
@@ -1142,9 +1149,24 @@ struct ContentBlockRendererView: View {
             return (providerList, [])
         }()
 
+        // Optional divider between social login and other options. Placement is
+        // controlled by divider_position ("top" | "bottom").
+        let divider = Group {
+            if block.show_divider == true {
+                HStack(spacing: 12) {
+                    Rectangle().fill(dividerColor).frame(height: 1)
+                    Text(loc?("block.\(block.id).divider", block.divider_text ?? "or") ?? block.divider_text ?? "or")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Rectangle().fill(dividerColor).frame(height: 1)
+                }
+            }
+        }
+
         return VStack(spacing: btnSpacing) {
+            if dividerPosition == "top" { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius)
+                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1152,26 +1174,16 @@ struct ContentBlockRendererView: View {
                 Color.clear.frame(height: max(0, emailSpacer - btnSpacing))
             }
             ForEach(Array(bottomGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius)
+                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
             }
-
-            // Optional divider between social login and other options
-            if block.show_divider == true {
-                HStack(spacing: 12) {
-                    Rectangle().fill(Color.gray.opacity(0.3)).frame(height: 1)
-                    Text(loc?("block.\(block.id).divider", block.divider_text ?? "or") ?? block.divider_text ?? "or")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Rectangle().fill(Color.gray.opacity(0.3)).frame(height: 1)
-                }
-            }
+            if dividerPosition != "top" { divider }
         }
     }
 
     /// One social-login button with per-provider color/radius overrides applied.
     /// SPEC-089e amendment — any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
-    private func socialLoginButton(_ provider: SocialProviderConfig, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat) -> some View {
+    private func socialLoginButton(_ provider: SocialProviderConfig, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center") -> some View {
         let providerType = provider.type ?? ""
         let radius = CGFloat(provider.corner_radius ?? Double(blockRadius))
         let bgColor: Color = {
@@ -1196,16 +1208,25 @@ struct ContentBlockRendererView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                // SPEC-419 — no glyph for the email provider (parity with Android): the
-                // envelope rendered awkwardly on the brand-tinted "Continue with Email"
-                // button and its reserved spacing offset the label. Plain centered CTA.
-                if providerType != "email" {
+                // Social-Login styling v2 — a custom icon_url overrides the built-in
+                // provider glyph (email still suppresses its glyph unless a URL is set).
+                if let iconURL = provider.icon_url, !iconURL.isEmpty, let url = URL(string: iconURL) {
+                    BundledAsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fit).frame(width: 20, height: 20)
+                    } placeholder: {
+                        EmptyView()
+                    }
+                } else if providerType != "email" {
+                    // SPEC-419 — no glyph for the email provider (parity with Android): the
+                    // envelope rendered awkwardly on the brand-tinted "Continue with Email"
+                    // button and its reserved spacing offset the label. Plain centered CTA.
                     socialLoginIcon(providerType, iconStyle: provider.icon_style)
                 }
                 Text(provider.label ?? socialLoginDefaultLabel(providerType))
                     .font(.body.weight(.semibold))
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, textAlign == "leading" ? 16 : 0)
+            .frame(maxWidth: .infinity, alignment: textAlign == "leading" ? .leading : .center)
             .frame(height: btnHeight)
             .foregroundColor(textColor)
             .background(bgColor)

@@ -858,6 +858,10 @@ public struct SocialProviderConfig: Codable {
     public let border_color: String?
     public let border_width: Double?
     public let corner_radius: Double?
+    // Social-Login styling v2 — per-provider custom icon override. When set to a
+    // non-empty URL the SDK renders the remote image instead of the built-in
+    // provider glyph. nil → keep the brand glyph.
+    public let icon_url: String?
 }
 
 /// A single item for the `animated_loading` checklist OR for the
@@ -1020,6 +1024,12 @@ public struct ContentBlock: Codable, Identifiable {
     public let spacing: Double?
     public let show_divider: Bool?
     public let divider_text: String?
+    // Social-Login styling v2 — divider placement ("top" | "bottom", default
+    // "bottom") and in-button text alignment ("leading" | "center", default
+    // "center"). divider_color (declared above with the divider block) tints the
+    // "or" separator rules.
+    public let divider_position: String?
+    public let button_text_align: String?
     // SPEC-089e amendment — email CTA placement + spacer
     public let email_login_placement: String?   // "with_providers" | "below_inputs"
     public let email_cta_spacing_below: Double? // px spacer after email button
@@ -1260,6 +1270,8 @@ public struct ContentBlock: Codable, Identifiable {
         case dot_size, dot_spacing, active_dot_width, alignment
         case providers, button_style, button_height, spacing
         case show_divider, divider_text
+        // Social-Login styling v2
+        case divider_position, button_text_align
         // SPEC-089e amendment — email button placement + spacer
         case email_login_placement, email_cta_spacing_below
         case timer_variant, duration_seconds
@@ -1384,6 +1396,8 @@ public struct ContentBlock: Codable, Identifiable {
         self.spacing = try c.decodeIfPresent(Double.self, forKey: .spacing)
         self.show_divider = try c.decodeIfPresent(Bool.self, forKey: .show_divider)
         self.divider_text = try c.decodeIfPresent(String.self, forKey: .divider_text)
+        self.divider_position = try c.decodeIfPresent(String.self, forKey: .divider_position)
+        self.button_text_align = try c.decodeIfPresent(String.self, forKey: .button_text_align)
         self.email_login_placement = try c.decodeIfPresent(String.self, forKey: .email_login_placement)
         self.email_cta_spacing_below = try c.decodeIfPresent(Double.self, forKey: .email_cta_spacing_below)
         self.timer_variant = try c.decodeIfPresent(String.self, forKey: .timer_variant)
