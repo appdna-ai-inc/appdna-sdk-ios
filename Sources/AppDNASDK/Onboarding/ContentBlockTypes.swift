@@ -33,6 +33,9 @@ public enum ContentBlockType: String, Codable {
     case settings_footer
     case memory_match
     case calendar_month
+    // Mrozu (Duolingo s20/s22) — CTA-style button that plays an audio clip
+    // (mp3/wav/aac) from `audio_url` on tap; reuses all button styling fields.
+    case sound_button
     // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement: a tappable checkbox + a
     // rich label with [terms](url)/[privacy](url) links, persisting a Bool to inputValues; its
     // `field_required` gates the CTA via RequiredFieldGate.
@@ -940,6 +943,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let bg_color: String?
     public let text_color: String?
     public let button_corner_radius: Double?
+    // sound_button — remote audio clip (mp3/wav/aac) played on tap. `autoplay`
+    // (declared below with the video fields) plays it when the block appears.
+    public let audio_url: String?
     // Spacer
     public let spacer_height: Double?
     // List
@@ -1271,6 +1277,7 @@ public struct ContentBlock: Codable, Identifiable {
         case id, type, text, style, level
         case image_url, alt, corner_radius, height, image_fit, image_frame
         case variant, action, action_value, bg_color, text_color, button_corner_radius
+        case audio_url
         case spacer_height, items, list_style
         case divider_color, divider_thickness, divider_margin_y
         case badge_text, badge_bg_color, badge_text_color, badge_corner_radius
@@ -1357,6 +1364,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.bg_color = try c.decodeIfPresent(String.self, forKey: .bg_color)
         self.text_color = try c.decodeIfPresent(String.self, forKey: .text_color)
         self.button_corner_radius = try c.decodeIfPresent(Double.self, forKey: .button_corner_radius)
+        self.audio_url = try c.decodeIfPresent(String.self, forKey: .audio_url)
         self.spacer_height = try c.decodeIfPresent(Double.self, forKey: .spacer_height)
         self.items = try c.decodeIfPresent([String].self, forKey: .items)
         self.list_style = try c.decodeIfPresent(String.self, forKey: .list_style)

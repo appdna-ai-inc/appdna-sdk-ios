@@ -198,6 +198,8 @@ struct ContentBlockRendererView: View {
         case .memory_match: return AnyView(MemoryMatchBlockView(block: block, onInteract: onInteract))
         case .calendar_month: return AnyView(CalendarMonthBlockView(block: block, inputValues: $inputValues, onInteract: onInteract))
         case .button: return AnyView(buttonBlock(block))
+        // Mrozu (Duolingo s20/s22) — CTA-style button that plays `audio_url` on tap.
+        case .sound_button: return AnyView(soundButtonBlock(block))
         case .spacer: return AnyView(Spacer().frame(height: CGFloat(block.spacer_height ?? 24))) // SPEC-419 pass-14 #11 — unset default 24 to match editor+preview (was 16)
         case .list: return AnyView(listBlock(block))
         case .divider: return AnyView(dividerBlock(block))
@@ -641,7 +643,7 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Button (with outline variant — SPEC-089d §3.18)
 
-    private func buttonBlock(_ block: ContentBlock) -> some View {
+    private func buttonBlock(_ block: ContentBlock, onTapOverride: (() -> Void)? = nil) -> some View {
         let btnVariant = block.variant ?? "primary"
         let radius = CGFloat(block.button_corner_radius ?? 12)
         // Mrozu QA (2026-08-04) — Flo consent CTA: `cta_enabled_bg_color` / `cta_disabled_bg_color` drive the
@@ -661,7 +663,11 @@ struct ContentBlockRendererView: View {
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
 
         return Button {
-            onAction(block.action ?? "next", block.action_value)
+            if let onTapOverride {
+                onTapOverride()
+            } else {
+                onAction(block.action ?? "next", block.action_value)
+            }
         } label: {
             HStack(spacing: 8) {
                 // Gap 6: icon_emoji
@@ -694,6 +700,23 @@ struct ContentBlockRendererView: View {
             )
         }
         .applyPressedStyle(block.pressed_style)
+    }
+
+    // MARK: - Sound Button (Mrozu Duolingo s20/s22)
+
+    /// A CTA-style button that plays an uploaded/remote audio clip (mp3/wav/aac)
+    /// from `block.audio_url` on tap — reuses ALL button styling fields via
+    /// `buttonBlock`. When `block.autoplay == true`, the clip plays as the block
+    /// appears. Playback is routed through the shared `AudioPlayer` helper.
+    private func soundButtonBlock(_ block: ContentBlock) -> some View {
+        buttonBlock(block, onTapOverride: {
+            AudioPlayer.shared.play(urlString: block.audio_url)
+        })
+        .onAppear {
+            if block.autoplay == true {
+                AudioPlayer.shared.play(urlString: block.audio_url)
+            }
+        }
     }
 
     /// Gap 5: Button background — gradient or solid color.
