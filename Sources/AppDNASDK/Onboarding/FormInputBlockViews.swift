@@ -297,9 +297,10 @@ struct FormInputDateBlock: View {
             guard isTimeComponent, let tf = block.time_format?.lowercased() else { return nil }
             return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
         }()
-        let timeFont: Font? = isTimeComponent
-            ? block.time_text_size.map { Font.system(size: CGFloat($0)) }
-            : nil
+        // Non-optional so the compact display text never falls back to SwiftUI's
+        // ~17pt body when time_text_size is unset. Mirrors Android's 14.sp default
+        // (time components honor time_text_size ?? 14; non-time components use 14).
+        let displayFont: Font = Font.system(size: CGFloat(isTimeComponent ? (block.time_text_size ?? 14) : 14))
         // Per-variant bg — both controls already exist in the console editor.
         let wheelBgHex = block.field_config?["wheel_bg_color"]?.value as? String
         let calendarBgHex = block.field_config?["calendar_bg_color"]?.value as? String
@@ -416,7 +417,7 @@ struct FormInputDateBlock: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(fmt.string(from: selectedDate))
-                                .font(timeFont)
+                                .font(displayFont)
                                 .foregroundColor(fgColor)
                             Spacer()
                             Image(systemName: chevron)
