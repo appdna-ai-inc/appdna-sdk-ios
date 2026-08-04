@@ -382,7 +382,16 @@ struct ContentBlockRendererView: View {
         let totalW = max(zones.reduce(0) { $0 + $1.0 }, 0.0001)
         let children = block.children ?? block.stack_children ?? []
         let arrangement = (block.field_config?["content_arrangement"]?.value as? String) ?? "space_between"
-        let height = CGFloat(block.height ?? 480)
+        // EPIC-4b v2 — background_extent (% of screen height, 1–100) lets the section fill the screen
+        // or reach a configured % from the top. When absent, fall back to the fixed height (parity with
+        // Android SectionBackgroundBlock + the console preview). Screen-relative height mirrors the
+        // `UIScreen.main.bounds.height * fraction` pattern already used in ContentBlockTypes.swift.
+        let extentPct: Double? = (block.field_config?["background_extent"]?.value as? Double)
+            ?? (block.field_config?["background_extent"]?.value as? Int).map(Double.init)
+        let height: CGFloat = {
+            if let pct = extentPct { return UIScreen.main.bounds.height * CGFloat(min(max(pct, 1), 100)) / 100 }
+            return CGFloat(block.height ?? 480)
+        }()
         ZStack {
             // Background: vertical weighted color zones.
             GeometryReader { geo in
