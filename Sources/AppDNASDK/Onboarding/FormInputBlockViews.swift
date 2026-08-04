@@ -1264,13 +1264,13 @@ struct FormInputSelectBlock: View {
                                         }
                                         // Label + subtitle
                                         Text(option.label ?? "")
-                                            .font(.subheadline)
+                                            .font(.system(size: CGFloat(option.title_font_size ?? 14)))
                                             .foregroundColor(isSelected ? optSelectedText : textCol)
                                             .multilineTextAlignment(cellTextAlign)
                                             .fixedSize(horizontal: false, vertical: true)
                                         if let sub = option.subtitle, !sub.isEmpty {
                                             Text(sub)
-                                                .font(.caption)
+                                                .font(.system(size: CGFloat(option.subtitle_font_size ?? 12)))
                                                 // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha).
                                                 .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? textCol.opacity(0.65))
                                                 .multilineTextAlignment(cellTextAlign)

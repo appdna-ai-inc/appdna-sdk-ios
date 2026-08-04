@@ -717,6 +717,12 @@ struct ContentBlockRendererView: View {
                 AudioPlayer.shared.play(urlString: block.audio_url)
             }
         }
+        // Stop playback + release the AVAudioSession when the block leaves the
+        // hierarchy (step change / dismiss); otherwise autoplayed audio keeps
+        // playing after the user navigates away.
+        .onDisappear {
+            AudioPlayer.shared.stop()
+        }
     }
 
     /// Gap 5: Button background — gradient or solid color.
@@ -1565,6 +1571,10 @@ struct ContentBlockRendererView: View {
         let content = block.markdown_content ?? block.text ?? ""
         let isLegal = block.rich_text_variant == "legal"
         let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mirror Android + preview: rich_text resolves its font/color/decorations/
+        // alignment from base_style, falling back to `style` when base_style is nil,
+        // so a style-only rich_text block renders identically across platforms.
+        let rtStyle = block.base_style ?? block.style
 
         // SPEC-205 adjacent fix: honor `base_style.alignment` for rich_text.
         // Previously both `.multilineTextAlignment` and the outer frame alignment
@@ -1573,7 +1583,7 @@ struct ContentBlockRendererView: View {
         // visible inside `child_row` where the frame fills the cell and the
         // left-alignment overrode the authored value. Now: authored alignment
         // wins; legal keeps its center default when author didn't set one.
-        let authored = block.base_style?.alignment
+        let authored = rtStyle?.alignment
         let textAlign: TextAlignment = {
             switch authored {
             case "center": return .center
@@ -1598,17 +1608,17 @@ struct ContentBlockRendererView: View {
             // baked a font onto the Text that silently dropped base_style.font_family
             // / font_size / font_weight on iOS.
             let styleFont = FontResolver.font(
-                family: block.base_style?.font_family,
-                size: block.base_style?.font_size ?? (isLegal ? 12 : 17),
-                weight: block.base_style?.font_weight
+                family: rtStyle?.font_family,
+                size: rtStyle?.font_size ?? (isLegal ? 12 : 17),
+                weight: rtStyle?.font_weight
             )
             if #available(iOS 15.0, *) {
-                let textCol: Color? = block.base_style?.color.map { Color(hex: $0) }
+                let textCol: Color? = rtStyle?.color.map { Color(hex: $0) }
                 let attributed = parseMarkdownToAttributedString(content, linkColor: linkCol, textColor: textCol)
                 Text(attributed)
                     .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyleDecorations(block.base_style)
+                    .applyTextStyleDecorations(rtStyle)
                     // SPEC-419 pass-15 #23 — honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
                     // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
@@ -1620,7 +1630,7 @@ struct ContentBlockRendererView: View {
                 Text(stripMarkdown(content))
                     .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyleDecorations(block.base_style)
+                    .applyTextStyleDecorations(rtStyle)
                     .lineLimit(block.max_lines)
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
