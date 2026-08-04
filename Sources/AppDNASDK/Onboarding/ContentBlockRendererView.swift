@@ -1719,8 +1719,11 @@ struct ContentBlockRendererView: View {
         let totalSegs = min(max(block.total_segments ?? totalSteps, 0), 50)
         let filledSegs: Int = {
             if let explicit = block.filled_segments { return explicit }
-            if block.progress_value != nil { return block.filled_segments ?? 1 }
-            // Auto-bind: current step index + 1 (1-based fill)
+            // Auto-bind: current step index + 1 (1-based fill). Note: when only
+            // progress_value is set (continuous fill), the label still tracks the
+            // step index — matching Android + the console preview. (Previously a
+            // `progress_value != nil` branch here forced this to 1, freezing the
+            // label at "Step 1".)
             return currentStepIndex + 1
         }()
         // Progress/Loading v2 — clamp to the console slider max (24) so an
