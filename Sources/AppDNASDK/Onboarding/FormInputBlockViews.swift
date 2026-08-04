@@ -869,7 +869,8 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — leading label at the START of the row
                         if let lt = option.leading_text, !lt.isEmpty {
                             Text(lt)
-                                .font(optFont(optSubtitleSize, .semibold))
+                                // Parity with Android + console preview which render the leading label at 14pt.
+                                .font(optFont(14, .semibold))
                                 .foregroundColor(optTitleColor)
                                 .accessibilityIdentifier("option.\(oi).leading_text")
                         }

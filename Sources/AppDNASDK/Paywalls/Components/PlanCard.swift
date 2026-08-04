@@ -342,9 +342,29 @@ struct PlanCard: View {
             return AnyShape(RoundedRectangle(cornerRadius: 2))
         case "rounded":
             return AnyShape(RoundedRectangle(cornerRadius: 6))
+        case "ribbon":
+            // Notched-ribbon: rectangle with a triangular notch cut into the trailing
+            // edge, matching the console preview polygon (0,0 → 100,0 → 92,50 → 100,100 → 0,100).
+            return AnyShape(RibbonBadgeShape())
         default: // capsule
             return AnyShape(Capsule())
         }
+    }
+}
+
+/// Notched-ribbon badge shape — a rectangle whose trailing edge caves inward to a
+/// point at mid-height, producing top/bottom pennant tails. Kept visually equivalent
+/// to the console PaywallPreview clipPath and the Android GenericShape counterpart.
+private struct RibbonBadgeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.92, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }
 

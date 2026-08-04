@@ -58,7 +58,10 @@ struct HeaderSection: View {
                 } else {
                     Text(loc?("section-header.subtitle", subtitle) ?? subtitle)
                         .font(.body)
-                        .foregroundColor(Color.white.opacity(0.6))
+                        // Shared cross-platform default: muted grey that reads on both light and
+                        // dark backgrounds (Android uses the same #6B7280). Was white@0.6 which
+                        // vanished on light paywalls.
+                        .foregroundColor(Color(hex: "#6B7280"))
                         .multilineTextAlignment(.center)
                 }
             }
