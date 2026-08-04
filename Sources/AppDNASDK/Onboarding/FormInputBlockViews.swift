@@ -1305,6 +1305,8 @@ struct FormInputSliderBlock: View {
     @Binding var inputValues: [String: Any]
 
     @State private var value: Double = 50
+    // Per-step selection haptic (parity with the native Slider / Android's tick).
+    @State private var sliderHaptic = UISelectionFeedbackGenerator()
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -1367,9 +1369,18 @@ struct FormInputSliderBlock: View {
                         .onChanged { g in
                             let f = Double(max(0, min(1, g.location.x / w)))
                             let raw = minVal + f * (maxVal - minVal)
-                            let snapped = (raw / stepVal).rounded() * stepVal
+                            // MIN-anchored snapping (reachable = min + k·step) — matches
+                            // the native iOS Slider(step:) + Android Slider(steps:), which
+                            // both anchor at minVal, not at 0.
+                            let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
                             let clamped = max(minVal, min(maxVal, snapped))
-                            if clamped != value { value = clamped; inputValues[fieldId] = clamped }
+                            if clamped != value {
+                                value = clamped
+                                // inputValues is written by .onChange(of: value) below —
+                                // the single sink that also catches the a11y proxy.
+                                sliderHaptic.selectionChanged()   // per-step tick (parity)
+                                sliderHaptic.prepare()
+                            }
                         }
                 )
             }
@@ -1378,7 +1389,14 @@ struct FormInputSliderBlock: View {
                 Slider(value: $value, in: minVal...maxVal, step: stepVal)
             }
         }
+        // Single persistence sink — catches drag AND the VoiceOver accessibility
+        // Slider proxy (which mutates `value` without firing the DragGesture).
+        // Restores the catch-all the native Slider's .onChange used to provide.
+        .onChange(of: value) { newValue in
+            inputValues[fieldId] = newValue
+        }
         .onAppear {
+            sliderHaptic.prepare()
             if let saved = inputValues[fieldId] as? Double { value = saved }
             else { value = block.default_picker_value ?? cfgDouble(block.field_config?["default_value"]) ?? minVal; inputValues[fieldId] = value }
         }

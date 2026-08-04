@@ -1654,9 +1654,19 @@ struct ContentBlockRendererView: View {
         let rowBorderCol = (block.field_config?["border_color"]?.value as? String).map { Color(hex: $0) }
         let rowBgCol = (block.field_config?["bg_color"]?.value as? String).map { Color(hex: $0) }
         let rowCornerR = CGFloat((cfgDouble(block.field_config?["corner_radius"])) ?? 0)
+        // Leading icon slot — must render inside the wrap too (parity with
+        // standardRowBlock + Android FlowRow's LeadingIconSlot()).
+        let leadingIcon = block.field_config?["leading_icon"]?.value as? String
+        let leadingIconSize = CGFloat((cfgDouble(block.field_config?["leading_icon_size"])) ?? 24)
+        let leadingIconColor = (block.field_config?["leading_icon_color"]?.value as? String).map { Color(hex: $0) }
+        let leadingIconBgColor = (block.field_config?["leading_icon_bg_color"]?.value as? String).map { Color(hex: $0) }
+        let leadingIconBgSize = CGFloat((cfgDouble(block.field_config?["leading_icon_bg_size"])) ?? (leadingIconSize + 16))
         Group {
             if #available(iOS 16.0, *) {
                 WrapLayout(hSpacing: rowGap, vSpacing: rowGap) {
+                    if let icon = leadingIcon {
+                        rowLeadingIconView(icon: icon, size: leadingIconSize, color: leadingIconColor, bgColor: leadingIconBgColor, bgSize: leadingIconBgSize)
+                    }
                     ForEach(childBlocks) { child in
                         renderBlock(child)
                             .applyRelativeSizing(width: child.element_width, height: child.element_height)
