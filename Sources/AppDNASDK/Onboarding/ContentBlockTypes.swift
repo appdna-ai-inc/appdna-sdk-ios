@@ -1203,6 +1203,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let particle_color: String?
     public let particle_opacity: Double?
     public let particle_speed: String?     // slow, medium, fast (editor key; falls back to `speed`)
+    // Mrozu QA (2026-08-04): confetti multicolor — cycle a fixed palette instead of primary/secondary.
+    // Defaults on when particle_type == "confetti".
+    public let particle_multicolor: Bool?
 
     // SPEC-089d Phase F: wheel_picker fields
     public let min_value: Double?
@@ -1317,7 +1320,7 @@ public struct ContentBlock: Codable, Identifiable {
         case row_direction, row_distribution, row_child_fill, column_ratios
         case view_key, custom_config, placeholder_image_url, placeholder_text
         case particle_type, density, speed, secondary_color, size_range, fullscreen
-        case particle_color, particle_opacity, particle_speed
+        case particle_color, particle_opacity, particle_speed, particle_multicolor
         case min_value, max_value_picker, step_value, default_picker_value, default_value
         case unit, unit_position, visible_items
         case pulse_color, pulse_ring_count, pulse_speed, border_width, border_color
@@ -1545,6 +1548,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.particle_color = try c.decodeIfPresent(String.self, forKey: .particle_color)
         self.particle_opacity = try c.decodeIfPresent(Double.self, forKey: .particle_opacity)
         self.particle_speed = try c.decodeIfPresent(String.self, forKey: .particle_speed)
+        self.particle_multicolor = try c.decodeIfPresent(Bool.self, forKey: .particle_multicolor)
         self.min_value = try c.decodeIfPresent(Double.self, forKey: .min_value)
         self.max_value_picker = try c.decodeIfPresent(Double.self, forKey: .max_value_picker)
         self.step_value = try c.decodeIfPresent(Double.self, forKey: .step_value)

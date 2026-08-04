@@ -2102,6 +2102,9 @@ struct StarBackgroundBlockView: View {
         // Mrozu QA (2026-08-03): particle_type was decoded but the Canvas always drew a
         // circle, so stars/sparkles/snow all looked identical. Render the actual shape.
         let particleType = block.particle_type ?? "dots"
+        // Mrozu QA (2026-08-04): confetti = falling multicolor rounded rects. `particle_multicolor`
+        // cycles a fixed palette per-particle (defaults ON for confetti). Parity with Android.
+        let useMulticolor = block.particle_multicolor ?? (particleType == "confetti")
         let opacity = block.particle_opacity ?? block.block_style?.opacity ?? 0.8
         let particleCount: Int = {
             switch block.density {
@@ -2135,10 +2138,14 @@ struct StarBackgroundBlockView: View {
                         height: particle.size
                     )
                     context.opacity = particle.opacity * opacity
-                    // SPEC-419 pass-15 #27 — every 3rd particle uses secondary_color
+                    // Mrozu QA (2026-08-04): multicolor confetti cycles the palette; otherwise every
+                    // 3rd particle uses secondary_color (SPEC-419 pass-15 #27).
+                    let fillColor = useMulticolor
+                        ? Self.confettiPalette[i % Self.confettiPalette.count]
+                        : (i % 3 == 0 ? secondaryColor : color)
                     context.fill(
                         Self.particlePath(for: particleType, in: rect),
-                        with: .color(i % 3 == 0 ? secondaryColor : color)
+                        with: .color(fillColor)
                     )
                 }
             }
@@ -2190,9 +2197,17 @@ struct StarBackgroundBlockView: View {
         case "stars":    return starPath(points: 5, innerRatio: 0.42, in: rect)
         case "sparkles": return starPath(points: 4, innerRatio: 0.30, in: rect)
         case "snow":     return starPath(points: 6, innerRatio: 0.50, in: rect)
+        // Mrozu QA (2026-08-04): confetti = small rounded rect (parity w/ Android drawRoundRect).
+        case "confetti": return Path(roundedRect: rect, cornerSize: CGSize(width: rect.width * 0.3, height: rect.height * 0.3))
         default:         return Path(ellipseIn: rect) // dots, bokeh
         }
     }
+
+    // Mrozu QA (2026-08-04): fixed confetti palette — MUST stay byte-identical to Android confettiPalette.
+    static let confettiPalette: [Color] = [
+        Color(hex: "#EF4444"), Color(hex: "#F59E0B"), Color(hex: "#FCD34D"), Color(hex: "#10B981"),
+        Color(hex: "#3B82F6"), Color(hex: "#8B5CF6"), Color(hex: "#EC4899"),
+    ]
 
     private static func starPath(points: Int, innerRatio: CGFloat, in rect: CGRect) -> Path {
         var path = Path()

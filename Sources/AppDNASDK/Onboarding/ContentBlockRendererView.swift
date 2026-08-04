@@ -688,15 +688,19 @@ struct ContentBlockRendererView: View {
         let accent = Color(hex: block.active_color ?? accentHex)
         let icon = (block.field_config?["banner_icon"]?.value as? String) ?? defaultIcon
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
+        // Mrozu QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
+        // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
+        let bgOverride = block.bg_color.map { Color(hex: $0) }
+        let textColor = Color(hex: block.text_color ?? "#FFFFFF")
         return HStack(spacing: 10) {
             Text(icon).font(.system(size: 18))
-            Text(text).font(.system(size: 14, weight: .medium)).foregroundColor(.white)
+            Text(text).font(.system(size: 14, weight: .medium)).foregroundColor(textColor)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.14))
+        .background(bgOverride ?? accent.opacity(0.14))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.45), lineWidth: 1))
     }
@@ -804,12 +808,23 @@ struct ContentBlockRendererView: View {
         let stats: [[String: Any]] = statsRaw.compactMap { $0 as? [String: Any] }
         let headline = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         let defaultAccent = AppDNA.brandAccentHex ?? "#6366F1"
-        let rows: [[[String: Any]]] = stride(from: 0, to: stats.count, by: 2).map {
-            Array(stats[$0..<min($0 + 2, stats.count)])
+        // Mrozu QA (2026-08-04): cards/headline were hardcoded (#1F2937 bg, white text, center, 2-col).
+        // bg_color = card bg, text_color = headline + label, summary_align = headline align,
+        // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
+        let cardBg = Color(hex: block.bg_color ?? "#1F2937")
+        let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
+        let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
+        let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
+        let perRow = (block.field_config?["stats_layout"]?.value as? String) == "vertical" ? 1 : 2
+        let rows: [[[String: Any]]] = stride(from: 0, to: stats.count, by: perRow).map {
+            Array(stats[$0..<min($0 + perRow, stats.count)])
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
-                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(.white).frame(maxWidth: .infinity)
+                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(textColor)
+                    .multilineTextAlignment(headlineTextAlign)
+                    .frame(maxWidth: .infinity, alignment: headlineAlign)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, rowStats in
                 HStack(spacing: 12) {
@@ -820,14 +835,14 @@ struct ContentBlockRendererView: View {
                         let color = Color(hex: (m["color"] as? String) ?? defaultAccent)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
-                            Text(label).font(.system(size: 13)).foregroundColor(.white.opacity(0.7))
+                            Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .background(Color(hex: "#1F2937"))
+                        .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    if rowStats.count == 1 { Spacer().frame(maxWidth: .infinity) }
+                    if perRow == 2 && rowStats.count == 1 { Spacer().frame(maxWidth: .infinity) }
                 }
             }
         }

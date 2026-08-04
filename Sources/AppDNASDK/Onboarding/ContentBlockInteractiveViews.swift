@@ -47,6 +47,11 @@ struct OTPInputBlockView: View {
         let fieldId = block.field_id ?? block.id
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let boxBg = Color(hex: block.bg_color ?? "#1F2937")
+        // Mrozu QA (2026-08-04): box border/text were hardcoded (accent/gray + white). When set,
+        // border_color overrides the resting border (active box keeps the accent focus ring);
+        // text_color overrides the digit. Parity w/ Android.
+        let borderOverride = block.border_color.map { Color(hex: $0) }
+        let digitColor = Color(hex: block.text_color ?? "#FFFFFF")
         let chars = Array(entered)
 
         return ZStack {
@@ -76,14 +81,14 @@ struct OTPInputBlockView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(boxBg)
                         if let ch = ch {
-                            Text(String(ch)).font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
+                            Text(String(ch)).font(.system(size: 22, weight: .semibold)).foregroundColor(digitColor)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(isActive ? accent : (ch != nil ? accent.opacity(0.5) : Color.gray.opacity(0.35)),
+                            .stroke(isActive ? accent : (ch != nil ? (borderOverride ?? accent.opacity(0.5)) : (borderOverride?.opacity(0.35) ?? Color.gray.opacity(0.35))),
                                     lineWidth: (isActive || ch != nil) ? 2 : 1)
                     )
                 }
