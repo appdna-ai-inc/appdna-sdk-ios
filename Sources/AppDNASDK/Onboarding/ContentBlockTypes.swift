@@ -1080,6 +1080,9 @@ public struct ContentBlock: Codable, Identifiable {
     // when format == "custom". Authored top-level by the console editor.
     public let label_format: String?
     public let custom_label: String?
+    // Progress/Loading v2 — placement of the progress label relative to the bar:
+    // "above" (default) | "below" | "left" | "right".
+    public let label_placement: String?
 
     // SPEC-089d Phase A: timeline fields
     public let timeline_items: [TimelineItemConfig]?
@@ -1099,6 +1102,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text_position: String?  // "above" | "below" (default "below")
     public let loading_text_size: Double?
     public let loading_text_color: String?
+    // Progress/Loading v2 — horizontal alignment of the loading message:
+    // "left" | "center" (default) | "right".
+    public let loading_text_align: String?
     // EPIC-3 — media_gallery: horizontal row of image tiles.
     public let gallery_images: [String]?
     public let gallery_item_width: Double?
@@ -1282,10 +1288,10 @@ public struct ContentBlock: Codable, Identifiable {
         case markdown_content, rich_text_variant, base_style, link_color
         case progress_variant, progress_value, total_segments, filled_segments
         case bar_height, bar_color, bar_gradient_colors, track_color, show_label, segment_gap
-        case label_format, custom_label
+        case label_format, custom_label, label_placement
         case timeline_items, line_color, completed_color, current_color
         case upcoming_color, show_line, compact, title_style, subtitle_style
-        case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_items, progress_color, check_color
+        case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
         case total_duration_ms, auto_advance, show_percentage
         // SPEC-089d Phase F: new block fields
@@ -1435,6 +1441,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.segment_gap = try c.decodeIfPresent(Double.self, forKey: .segment_gap)
         self.label_format = try c.decodeIfPresent(String.self, forKey: .label_format)
         self.custom_label = try c.decodeIfPresent(String.self, forKey: .custom_label)
+        self.label_placement = try c.decodeIfPresent(String.self, forKey: .label_placement)
         self.timeline_items = try c.decodeIfPresent([TimelineItemConfig].self, forKey: .timeline_items)
         self.line_color = try c.decodeIfPresent(String.self, forKey: .line_color)
         self.completed_color = try c.decodeIfPresent(String.self, forKey: .completed_color)
@@ -1449,6 +1456,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text_position = try c.decodeIfPresent(String.self, forKey: .loading_text_position)
         self.loading_text_size = try c.decodeIfPresent(Double.self, forKey: .loading_text_size)
         self.loading_text_color = try c.decodeIfPresent(String.self, forKey: .loading_text_color)
+        self.loading_text_align = try c.decodeIfPresent(String.self, forKey: .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)
         self.gallery_images = try c.decodeIfPresent([String].self, forKey: .gallery_images)
         self.gallery_item_width = try c.decodeIfPresent(Double.self, forKey: .gallery_item_width)

@@ -298,24 +298,30 @@ struct AnimatedLoadingBlockView: View {
         let loadingMsgPos = block.loading_text_position ?? "below"
         let loadingMsgSize = CGFloat(block.loading_text_size ?? 15)
         let loadingMsgColor = block.loading_text_color.map { Color(hex: $0) } ?? Color(hex: block.text_color ?? "#9CA3AF")
+        // Progress/Loading v2 — loading message horizontal alignment (default center).
+        let loadingMsgAlign = block.loading_text_align ?? "center"
+        let loadingMsgTextAlign: TextAlignment = loadingMsgAlign == "left" ? .leading : loadingMsgAlign == "right" ? .trailing : .center
+        let loadingMsgFrameAlign: Alignment = loadingMsgAlign == "left" ? .leading : loadingMsgAlign == "right" ? .trailing : .center
 
         VStack(spacing: 16) {
             // Percentage is rendered inside each variant (circular ring center, linear bar, etc.)
             // to avoid duplicate display. See loadingVariantView for per-variant rendering.
 
-            // EPIC-3 — configurable loading message with independent position/size/color.
+            // EPIC-3 — configurable loading message with independent position/size/color/align.
             if let loadingMsg, loadingMsgPos == "above" {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(loadingMsgTextAlign)
+                    .frame(maxWidth: .infinity, alignment: loadingMsgFrameAlign)
             }
             loadingVariantView(variant: variant, itemList: itemList, progressCol: progressCol, checkCol: checkCol)
             if let loadingMsg, loadingMsgPos == "below" {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(loadingMsgTextAlign)
+                    .frame(maxWidth: .infinity, alignment: loadingMsgFrameAlign)
             }
         }
         .onAppear {

@@ -1547,7 +1547,10 @@ struct ContentBlockRendererView: View {
             // Auto-bind: current step index + 1 (1-based fill)
             return currentStepIndex + 1
         }()
-        let barH = CGFloat(block.bar_height ?? 8) // SPEC-419 pass-14 #14 — unset default 8 to match editor+preview (was 6)
+        // Progress/Loading v2 — clamp to the console slider max (24) so an
+        // out-of-range published value can't render a giant bar the editor
+        // can't reproduce (duolingo s7). Default 8 matches editor+preview.
+        let barH = min(CGFloat(block.bar_height ?? 8), 24)
         let barRadius = CGFloat(block.corner_radius ?? 3)
         let fillColor = Color(hex: block.bar_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // EPIC-2 — multiple progress colors at once (horizontal gradient across the fill).
@@ -1586,42 +1589,68 @@ struct ContentBlockRendererView: View {
             }
         }()
 
-        return VStack(spacing: 8) {
-            // SPEC-419 pass-14 #13 — show_label defaults TRUE (unset) to match the
-            // editor (inits true) + preview (`show_label !== false`). Was `== true`
-            // (false default), so AI/imported payloads without the flag hid the
-            // label on-device while the preview showed it.
-            if block.show_label != false {
-                Text(labelText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        // SPEC-419 pass-14 #13 — show_label defaults TRUE (unset) to match the
+        // editor (inits true) + preview (`show_label !== false`).
+        let showLbl = block.show_label != false
+        // Progress/Loading v2 — label placement relative to the bar.
+        let placement = block.label_placement ?? "above"
+        let labelView = AnyView(
+            Text(labelText)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        )
+        let barView = AnyView(
+            Group {
+                if variant == "segmented" {
+                    // Segmented: individual rounded bars
+                    HStack(spacing: gap) {
+                        ForEach(0..<totalSegs, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(index < filledSegs ? fillColor : trackCol)
+                                .frame(height: barH)
+                        }
+                    }
+                } else {
+                    // Continuous: single track + fill
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(trackCol)
+                                .frame(height: barH)
+
+                            let fraction = pvFraction ?? (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0)
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(fillStyle)
+                                .frame(width: geometry.size.width * min(fraction, 1.0), height: barH)
+                        }
+                    }
+                    .frame(height: barH)
+                }
             }
+        )
 
-            if variant == "segmented" {
-                // Segmented: individual rounded bars
-                HStack(spacing: gap) {
-                    ForEach(0..<totalSegs, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(index < filledSegs ? fillColor : trackCol)
-                            .frame(height: barH)
-                    }
+        return Group {
+            switch placement {
+            case "left":
+                HStack(spacing: 8) {
+                    if showLbl { labelView }
+                    barView
                 }
-            } else {
-                // Continuous: single track + fill
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(trackCol)
-                            .frame(height: barH)
-
-                        let fraction = pvFraction ?? (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0)
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(fillStyle)
-                            .frame(width: geometry.size.width * min(fraction, 1.0), height: barH)
-                    }
+            case "right":
+                HStack(spacing: 8) {
+                    barView
+                    if showLbl { labelView }
                 }
-                .frame(height: barH)
+            case "below":
+                VStack(spacing: 8) {
+                    barView
+                    if showLbl { labelView.frame(maxWidth: .infinity, alignment: .leading) }
+                }
+            default: // "above"
+                VStack(spacing: 8) {
+                    if showLbl { labelView.frame(maxWidth: .infinity, alignment: .leading) }
+                    barView
+                }
             }
         }
     }
