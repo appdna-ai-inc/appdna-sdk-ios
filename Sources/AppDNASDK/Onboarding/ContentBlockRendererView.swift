@@ -1336,16 +1336,18 @@ struct ContentBlockRendererView: View {
 
         return VStack(spacing: btnSpacing) {
             if dividerPosition == "top" { divider }
-            ForEach(Array(topGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
+            ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
+                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
                 // email button and the first OAuth button equals emailSpacer.
                 Color.clear.frame(height: max(0, emailSpacer - btnSpacing))
             }
-            ForEach(Array(bottomGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
+            ForEach(Array(bottomGroup.enumerated()), id: \.offset) { idx, provider in
+                // Mirror Android's post-split index scheme: bottomGroup labels are
+                // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
+                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
             }
             if dividerPosition != "top" { divider }
         }
@@ -1354,7 +1356,7 @@ struct ContentBlockRendererView: View {
     /// One social-login button with per-provider color/radius overrides applied.
     /// SPEC-089e amendment — any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
-    private func socialLoginButton(_ provider: SocialProviderConfig, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center") -> some View {
+    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center") -> some View {
         let providerType = provider.type ?? ""
         let radius = CGFloat(provider.corner_radius ?? Double(blockRadius))
         let bgColor: Color = {
@@ -1393,7 +1395,9 @@ struct ContentBlockRendererView: View {
                     // button and its reserved spacing offset the label. Plain centered CTA.
                     socialLoginIcon(providerType, iconStyle: provider.icon_style)
                 }
-                Text(provider.label ?? socialLoginDefaultLabel(providerType))
+                // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
+                // falling back to the authored label then the brand default.
+                Text(loc?("block.\(blockId).provider.\(index)", provider.label ?? socialLoginDefaultLabel(providerType)) ?? provider.label ?? socialLoginDefaultLabel(providerType))
                     .font(.body.weight(.semibold))
             }
             .padding(.horizontal, textAlign == "leading" ? 16 : 0)
