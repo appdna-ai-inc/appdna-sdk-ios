@@ -1633,6 +1633,57 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func rowBlock(_ block: ContentBlock) -> some View {
+        // Mrozu QA: `row.wrap == true` must flow children onto multiple lines
+        // (chips/badges) instead of a single clipped HStack. iOS 16+ Layout;
+        // pre-16 falls back to the normal HStack. Parity with Android FlowRow.
+        if block.wrap == true, (block.row_direction ?? "horizontal") == "horizontal",
+           parseColumnRatios((block.field_config?["column_ratios"]?.value as? String) ?? block.column_ratios).isEmpty {
+            wrappedRowBlock(block)
+        } else {
+            standardRowBlock(block)
+        }
+    }
+
+    @ViewBuilder
+    private func wrappedRowBlock(_ block: ContentBlock) -> some View {
+        let childBlocks = block.children ?? block.stack_children ?? []
+        let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
+        let rowBgOpacity = CGFloat((cfgDouble(block.field_config?["background_opacity"])) ?? 1.0)
+        let rowUseBlur = (block.field_config?["blur_background"]?.value as? Bool) == true
+        let rowBorderW = CGFloat((cfgDouble(block.field_config?["border_width"])) ?? 0)
+        let rowBorderCol = (block.field_config?["border_color"]?.value as? String).map { Color(hex: $0) }
+        let rowBgCol = (block.field_config?["bg_color"]?.value as? String).map { Color(hex: $0) }
+        let rowCornerR = CGFloat((cfgDouble(block.field_config?["corner_radius"])) ?? 0)
+        Group {
+            if #available(iOS 16.0, *) {
+                WrapLayout(hSpacing: rowGap, vSpacing: rowGap) {
+                    ForEach(childBlocks) { child in
+                        renderBlock(child)
+                            .applyRelativeSizing(width: child.element_width, height: child.element_height)
+                            .zIndex(child.overflow == "visible" ? 1 : 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Pre-iOS16 fallback: standard single-line row.
+                standardRowBlock(block)
+            }
+        }
+        .if(rowBgCol != nil || rowBorderW > 0 || rowUseBlur) { view in
+            view
+                .padding(rowBorderW > 0 ? 12 : 0)
+                .background {
+                    ZStack {
+                        if rowUseBlur { RoundedRectangle(cornerRadius: rowCornerR).fill(.ultraThinMaterial) }
+                        if let bg = rowBgCol { RoundedRectangle(cornerRadius: rowCornerR).fill(bg.opacity(rowBgOpacity)) }
+                        if rowBorderW > 0, let bc = rowBorderCol { RoundedRectangle(cornerRadius: rowCornerR).strokeBorder(bc, lineWidth: rowBorderW) }
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func standardRowBlock(_ block: ContentBlock) -> some View {
         let childBlocks = block.children ?? block.stack_children ?? []
         // SPEC-419 — the editor writes `spacing` (preview reads `spacing`); `gap` is the legacy/
         // imported key. Read spacing first so authored row gap isn't lost on-device.
@@ -1960,5 +2011,45 @@ enum SocialLoginActionDispatcher {
             ]
         }
         return [("social_login", providerType)]
+    }
+}
+
+// MARK: - WrapLayout (Mrozu QA: row.wrap == true → FlowRow parity)
+
+/// Flow layout that lays subviews left-to-right and wraps to the next line when
+/// the available width is exceeded (chip/badge behavior). Mirrors Android
+/// Compose FlowRow. iOS 16+ only; the row renderer falls back to HStack below that.
+@available(iOS 16.0, *)
+struct WrapLayout: Layout {
+    var hSpacing: CGFloat = 8
+    var vSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for sv in subviews {
+            let sz = sv.sizeThatFits(.unspecified)
+            if x > 0 && x + sz.width > maxWidth {
+                x = 0; y += rowHeight + vSpacing; rowHeight = 0
+            }
+            x += sz.width + hSpacing
+            rowHeight = max(rowHeight, sz.height)
+            widest = max(widest, x - hSpacing)
+        }
+        let w = maxWidth.isFinite ? min(maxWidth, widest) : widest
+        return CGSize(width: max(0, w), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX, y: CGFloat = bounds.minY, rowHeight: CGFloat = 0
+        for sv in subviews {
+            let sz = sv.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + sz.width > bounds.maxX {
+                x = bounds.minX; y += rowHeight + vSpacing; rowHeight = 0
+            }
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(sz))
+            x += sz.width + hSpacing
+            rowHeight = max(rowHeight, sz.height)
+        }
     }
 }
