@@ -418,6 +418,9 @@ struct ContentBlockRendererView: View {
     }
 
     // EPIC-3 — media_gallery: horizontal scrollable row of image tiles (rounded, fixed size, placeholder bg).
+    // Media-gallery v2 (Mrozu QA): gallery_fill = full-width edge-to-edge cover tiles; gallery_autoscroll =
+    // seamless marquee loop (gallery_autoscroll_speed = seconds per full cycle, default 20). Both default
+    // off → identical to the existing static tile row (no timer/animation cost when off — non-breaking).
     @ViewBuilder
     private func mediaGalleryBlock(_ block: ContentBlock) -> some View {
         let images = block.gallery_images ?? []
@@ -425,31 +428,45 @@ struct ContentBlockRendererView: View {
         let itemH = CGFloat(block.gallery_item_height ?? 180)
         let cr = CGFloat(block.gallery_corner_radius ?? 12)
         let spacing = CGFloat(block.gallery_spacing ?? 10)
+        let fill = block.gallery_fill ?? false
+        let autoscroll = block.gallery_autoscroll ?? false
+        let cycle = block.gallery_autoscroll_speed ?? 20
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
-        GeometryReader { geo in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: spacing) {
-                    ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
-                        ZStack {
-                            Color(hex: "#2A2A2E")
-                            if let url = URL(string: urlString) {
-                                BundledAsyncPhaseImage(url: url) { phase in
-                                    if case .success(let image) = phase {
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    }
-                                }
-                            }
+        if autoscroll && !images.isEmpty {
+            MediaGalleryAutoScrollRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, cycleSeconds: cycle)
+        } else {
+            GeometryReader { geo in
+                let tileW = fill ? geo.size.width : itemW
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: fill ? 0 : spacing) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
+                            mediaGalleryTile(urlString, width: tileW, height: itemH, cornerRadius: fill ? 0 : cr)
                         }
-                        .frame(width: itemW, height: itemH)
-                        .clipShape(RoundedRectangle(cornerRadius: cr))
+                    }
+                    .padding(.horizontal, fill ? 0 : 2)
+                    // EPIC-3 — settable align (start/center/end) when tiles fit; scrolls when they overflow.
+                    .frame(minWidth: geo.size.width, alignment: fill ? .leading : galleryAlignment)
+                }
+            }
+            .frame(height: itemH)
+        }
+    }
+
+    // Media-gallery v2 — shared tile builder (placeholder bg + cover image, rounded/clipped).
+    @ViewBuilder
+    private func mediaGalleryTile(_ urlString: String, width: CGFloat, height: CGFloat, cornerRadius: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
                     }
                 }
-                .padding(.horizontal, 2)
-                // EPIC-3 — settable align (start/center/end) when tiles fit; scrolls when they overflow.
-                .frame(minWidth: geo.size.width, alignment: galleryAlignment)
             }
         }
-        .frame(height: itemH)
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     /// SPEC-419 — shared image styling: image_fit (cover/contain/fill/none), aspect_ratio,
@@ -2163,5 +2180,59 @@ struct PageDotTriangle: Shape {
         p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
         p.closeSubpath()
         return p
+    }
+}
+
+// Media-gallery v2 (Mrozu QA) — continuous auto-scroll marquee. The image track is duplicated and
+// offset by exactly one copy-width per cycle, so the loop wraps seamlessly (no jump). Only instantiated
+// when gallery_autoscroll == true; a static gallery pays zero animation cost.
+struct MediaGalleryAutoScrollRow: View {
+    let images: [String]
+    let itemW: CGFloat
+    let itemH: CGFloat
+    let cornerRadius: CGFloat
+    let spacing: CGFloat
+    let fill: Bool
+    let cycleSeconds: Double
+
+    @State private var offset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let tileW = fill ? geo.size.width : itemW
+            let gap = fill ? 0 : spacing
+            // One copy = n tiles + n gaps; shifting by this aligns the 2nd copy onto the 1st → seamless.
+            let copyWidth = (tileW + gap) * CGFloat(images.count)
+            HStack(spacing: gap) {
+                ForEach(0..<(images.count * 2), id: \.self) { idx in
+                    tile(images[idx % images.count], width: tileW)
+                }
+            }
+            .offset(x: offset)
+            .onAppear {
+                offset = 0
+                withAnimation(.linear(duration: max(cycleSeconds, 1)).repeatForever(autoreverses: false)) {
+                    offset = -copyWidth
+                }
+            }
+        }
+        .frame(height: itemH)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func tile(_ urlString: String, width: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+            }
+        }
+        .frame(width: width, height: itemH)
+        .clipShape(RoundedRectangle(cornerRadius: fill ? 0 : cornerRadius))
     }
 }

@@ -1113,6 +1113,12 @@ public struct ContentBlock: Codable, Identifiable {
     public let gallery_corner_radius: Double?
     public let gallery_spacing: Double?
     public let gallery_align: String?  // "start" | "center" | "end" (default "center")
+    // Media-gallery v2 (Mrozu QA): gallery_fill = edge-to-edge cover tiles (full container width);
+    // gallery_autoscroll = continuous loop; gallery_autoscroll_speed = seconds per full cycle (default 20).
+    // All default off → identical to the existing static tile row (non-breaking).
+    public let gallery_fill: Bool?
+    public let gallery_autoscroll: Bool?
+    public let gallery_autoscroll_speed: Double?
     public let loading_items: [LoadingItemConfig]?
     public let progress_color: String?
     public let check_color: String?
@@ -1296,6 +1302,7 @@ public struct ContentBlock: Codable, Identifiable {
         case upcoming_color, show_line, compact, title_style, subtitle_style
         case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
+        case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
         // SPEC-089d Phase F: new block fields
         case gauge_variant, gauge_value, max_value, sublabel, stroke_width, min_label, max_label, min_max_font_size
@@ -1469,6 +1476,9 @@ public struct ContentBlock: Codable, Identifiable {
         self.gallery_corner_radius = try c.decodeIfPresent(Double.self, forKey: .gallery_corner_radius)
         self.gallery_spacing = try c.decodeIfPresent(Double.self, forKey: .gallery_spacing)
         self.gallery_align = try c.decodeIfPresent(String.self, forKey: .gallery_align)
+        self.gallery_fill = try c.decodeIfPresent(Bool.self, forKey: .gallery_fill)
+        self.gallery_autoscroll = try c.decodeIfPresent(Bool.self, forKey: .gallery_autoscroll)
+        self.gallery_autoscroll_speed = try c.decodeIfPresent(Double.self, forKey: .gallery_autoscroll_speed)
         self.progress_color = try c.decodeIfPresent(String.self, forKey: .progress_color)
         self.check_color = try c.decodeIfPresent(String.self, forKey: .check_color)
         self.total_duration_ms = try c.decodeIfPresent(Int.self, forKey: .total_duration_ms)
