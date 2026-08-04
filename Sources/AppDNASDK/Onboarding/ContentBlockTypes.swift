@@ -297,6 +297,11 @@ public struct EntranceAnimation: Codable {
     public let delay_ms: Int?     // 0-5000
     public let easing: String?    // linear, ease, ease_in, ease_out, ease_in_out, spring
     public let spring_damping: Double? // 0.1-1.0
+    // Sequenced animation (Mrozu Duolingo s14 / Asana): per-block stagger + ordering.
+    // animation_delay_ms is ADDED to delay_ms to sequence blocks; animation_order is
+    // authored ordering metadata (lower plays first, full timeline engine deferred).
+    public let animation_delay_ms: Int? // 0-5000
+    public let animation_order: Int?    // 0-999
 }
 
 // MARK: - Pressed Style (SPEC-089d §6.5)
@@ -610,7 +615,7 @@ struct EntranceAnimationWrapper<Content: View>: View {
                 axis: (x: 1, y: 0, z: 0)
             )
             .onAppear {
-                let delaySeconds = Double(animation.delay_ms ?? 0) / 1000.0
+                let delaySeconds = Double((animation.delay_ms ?? 0) + (animation.animation_delay_ms ?? 0)) / 1000.0
                 DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) {
                     withAnimation(swiftUIAnimation) {
                         isVisible = true

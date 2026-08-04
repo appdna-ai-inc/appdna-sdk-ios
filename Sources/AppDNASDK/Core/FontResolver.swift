@@ -5,8 +5,15 @@ import SwiftUI
 enum FontResolver {
 
     /// Maps a cross-platform font identifier to a native iOS font family name.
+    /// A `font_family` value may also be a hosted custom-font URL (.ttf/.otf) — in that
+    /// case `FontLoader` downloads + registers it and we return its PostScript name (or
+    /// fall back to the system font until the download completes).
     static func resolve(_ fontFamily: String?) -> String {
         guard let family = fontFamily else { return ".AppleSystemUIFont" }
+
+        if FontLoader.isCustomFontURL(family) {
+            return FontLoader.registeredName(forURL: family) ?? ".AppleSystemUIFont"
+        }
 
         switch family {
         // System
