@@ -326,6 +326,12 @@ public struct FormFieldBlockStyle: Codable {
     public let thumb_color: String?
     public let toggle_on_color: String?
     public let toggle_off_color: String?
+    // Select v2 (Mrozu QA) — per-option styling extras applied by the select renderers.
+    public let option_font_family: String?      // font family for option title/subtitle/labels
+    public let option_corner_radius: Double?    // option card corner radius (falls back to corner_radius ?? 10)
+    public let option_text_wrap: Bool?          // true → option text wraps fully; false → single-line truncate
+    public let option_image_scale: String?      // "contain" (default) | "cover" | "fit" for per-option images
+    public let checkmark_color: String?         // radio/checkmark indicator color, decoupled from fill/accent
 }
 
 /// Option for select, chips, and segmented inputs.

@@ -707,7 +707,17 @@ struct FormInputSelectBlock: View {
             ?? block.active_color
             ?? (AppDNA.brandAccentHex ?? "#6366F1")
         let fillCol = Color(hex: accentHex)
-        let cornerR = CGFloat(block.field_style?.corner_radius ?? 10)
+        // Select v2 — option card corner: `option_corner_radius` wins, else legacy `corner_radius`, else 10.
+        let cornerR = CGFloat(block.field_style?.option_corner_radius ?? block.field_style?.corner_radius ?? 10)
+        // Select v2 — per-option styling extras (Mrozu QA).
+        let optionFontFamily = block.field_style?.option_font_family
+        // Default TRUE = full wrap (preserves prior native behavior + the Mrozu ask
+        // that long option text stays fully visible). Authors opt into single-line
+        // truncation by setting option_text_wrap=false.
+        let optionTextWrap = block.field_style?.option_text_wrap ?? true
+        let optionImageScale = block.field_style?.option_image_scale ?? "contain"
+        // checkmark_color decouples the indicator tint from the accent/fill; falls back to fillCol when unset.
+        let checkmarkCol: Color = block.field_style?.checkmark_color.map { Color(hex: $0) } ?? fillCol
 
         // Colors from field_config
         let cfgOptBg = (cfg?["bg_color"]?.value as? String).map { Color(hex: $0) }
@@ -772,6 +782,18 @@ struct FormInputSelectBlock: View {
         let separatorCol = (cfg?["separator_color"]?.value as? String).map { Color(hex: $0) } ?? Color(hex: "#D1D5DB")
         let separatorThickness = CGFloat((cfgDouble(cfg?["separator_thickness"])) ?? 1)
 
+        // Select v2 — resolve the option font family once (falls back to the system font when
+        // the family isn't natively available). Applied to title/subtitle/leading/trailing.
+        let optFont: (CGFloat, Font.Weight) -> Font = { size, weight in
+            if let fam = optionFontFamily {
+                let resolved = FontResolver.resolve(fam)
+                if resolved != ".AppleSystemUIFont" {
+                    return .custom(resolved, size: size).weight(weight)
+                }
+            }
+            return .system(size: size, weight: weight)
+        }
+
         VStack(spacing: optionSpacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { pair in
                 let oi = pair.offset                 // SPEC-419 — per-index parity node key
@@ -811,15 +833,15 @@ struct FormInputSelectBlock: View {
                     toggleSelection(option: option, fieldId: fieldId)
                 } label: {
                     HStack(spacing: 12) {
-                        // Radio on left
+                        // Radio on left — indicator tint uses checkmark_color when set (else fillCol).
                         if showRadio && radioOnLeft {
-                            radioIndicator(isSelected: isSelected, fillCol: fillCol, radioFill: radioFill)
+                            radioIndicator(isSelected: isSelected, fillCol: checkmarkCol, radioFill: radioFill)
                         }
                         // Image with optional overlay circle — swaps between
                         // selected/unselected variants when the option defines
                         // them, otherwise falls back to the default image_url.
                         if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
-                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: stackedImageSize)
+                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: stackedImageSize, imageScale: optionImageScale)
                         }
                         if let icon = option.icon, !icon.isEmpty {
                             Text(icon)
@@ -827,22 +849,27 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — leading label at the START of the row
                         if let lt = option.leading_text, !lt.isEmpty {
                             Text(lt)
-                                .font(.system(size: optSubtitleSize, weight: .semibold))
+                                .font(optFont(optSubtitleSize, .semibold))
                                 .foregroundColor(optTitleColor)
                                 .accessibilityIdentifier("option.\(oi).leading_text")
                         }
-                        // Title + subtitle — fixedSize vertical so text wraps fully
+                        // Title + subtitle — option_text_wrap true → full multi-line wrap;
+                        // false (default) → single-line truncate (parity with the console preview).
                         VStack(alignment: (option.text_alignment == "center" ? .center : .leading), spacing: 2) {
                             Text(option.label ?? "")
-                                .font(.system(size: optTitleSize, weight: optTitleWeight))
+                                .font(optFont(optTitleSize, optTitleWeight))
                                 .foregroundColor(optTitleColor)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(optionTextWrap ? nil : 1)
+                                .truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: optionTextWrap)
                                 .accessibilityIdentifier("option.\(oi).title")
                             if let sub = option.subtitle, !sub.isEmpty {
                                 Text(sub)
-                                    .font(.system(size: optSubtitleSize))
+                                    .font(optFont(optSubtitleSize, .regular))
                                     .foregroundColor(optSubtitleColor)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(optionTextWrap ? nil : 1)
+                                    .truncationMode(.tail)
+                                    .fixedSize(horizontal: false, vertical: optionTextWrap)
                                     .accessibilityIdentifier("option.\(oi).subtitle")
                             }
                         }
@@ -859,13 +886,13 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — trailing label at the END of the row (e.g. "Casual")
                         if let tt = option.trailing_text, !tt.isEmpty {
                             Text(tt)
-                                .font(.system(size: optSubtitleSize))
+                                .font(optFont(optSubtitleSize, .regular))
                                 .foregroundColor(optSubtitleColor)
                                 .accessibilityIdentifier("option.\(oi).trailing_text")
                         }
-                        // Radio on right
+                        // Radio on right — indicator tint uses checkmark_color when set (else fillCol).
                         if showRadio && !radioOnLeft {
-                            radioIndicator(isSelected: isSelected, fillCol: fillCol, radioFill: radioFill)
+                            radioIndicator(isSelected: isSelected, fillCol: checkmarkCol, radioFill: radioFill)
                         }
                     }
                     .padding(12)
@@ -1016,11 +1043,14 @@ struct FormInputSelectBlock: View {
     }
 
     @ViewBuilder
-    private func imageWithOverlay(url: URL, option: InputOption, isSelected: Bool, size: CGFloat) -> some View {
+    private func imageWithOverlay(url: URL, option: InputOption, isSelected: Bool, size: CGFloat, imageScale: String = "contain") -> some View {
         let radius = optionImageCornerRadius(option.image_shape, size: size)
+        // Select v2 — option_image_scale: "cover" crops/fills the frame; "contain"/"fit" fit the
+        // whole image inside so an oversized image is not cropped.
+        let useFill = imageScale == "cover"
         ZStack {
             BundledAsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
+                useFill ? AnyView(image.resizable().scaledToFill()) : AnyView(image.resizable().scaledToFit())
             } placeholder: {
                 Color.gray.opacity(0.2)
             }
@@ -1194,7 +1224,10 @@ struct FormInputSelectBlock: View {
                                         // selected_image_url / unselected_image_url
                                         // when the option defines state variants.
                                         if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
-                                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: gridImageSize)
+                                            // Grid images keep fill/crop (unchanged) — option_image_scale
+                                            // is a stacked-list control; pin "cover" so the shared helper's
+                                            // new "contain" default doesn't letterbox grid cells.
+                                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: gridImageSize, imageScale: "cover")
                                         }
                                         // Icon with state change (selected/unselected variants)
                                         if let icon = option.icon, !icon.isEmpty {
