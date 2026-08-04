@@ -1483,6 +1483,98 @@ struct FormInputToggleBlock: View {
     }
 }
 
+/// Mrozu QA (2026-08-04, Flo s1) — standalone consent / agreement element: a tappable checkbox +
+/// a rich label whose `[terms](url)` / `[privacy](url)` markdown links open natively (SwiftUI
+/// `Text(AttributedString)` renders `.link` runs tappable). Persists a Bool to `inputValues[field_id]`;
+/// when `field_required` is set, `RequiredFieldGate` gates the CTA until the box is checked.
+/// All authoring config travels through `field_config` (parity with the Android `AgreementBlock`
+/// composable and the console editor keys).
+struct AgreementBlock: View {
+    let block: ContentBlock
+    @Binding var inputValues: [String: Any]
+
+    @State private var isChecked: Bool = false
+
+    var body: some View {
+        let fieldId = block.field_id ?? block.id
+        let checkboxColor = Color(hex: (block.field_config?["checkbox_color"]?.value as? String) ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let borderColor = Color(hex: (block.field_config?["checkbox_border_color"]?.value as? String) ?? "#C7C7CC")
+        let checkmarkColor = Color(hex: (block.field_config?["checkmark_color"]?.value as? String) ?? "#FFFFFF")
+        let textColor = Color(hex: (block.field_config?["text_color"]?.value as? String) ?? "#8E8E93")
+        let linkColor = Color(hex: (block.field_config?["link_color"]?.value as? String) ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let agreementText = (block.field_config?["agreement_text"]?.value as? String)
+            ?? block.text
+            ?? "I agree to the [Terms of Service](https://example.com/terms) and [Privacy Policy](https://example.com/privacy)."
+
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isChecked ? checkboxColor : Color.clear)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isChecked ? checkboxColor : borderColor, lineWidth: 1.5)
+                if isChecked {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(checkmarkColor)
+                }
+            }
+            .frame(width: 22, height: 22)
+            .contentShape(Rectangle())
+            .onTapGesture { isChecked.toggle() }
+            .accessibilityRepresentation { Toggle(agreementText, isOn: $isChecked) }
+
+            agreementLabel(agreementText, linkColor: linkColor, textColor: textColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Persist on any change (visual tap OR the a11y Toggle representation).
+        .onChange(of: isChecked) { newValue in inputValues[fieldId] = newValue }
+        .onAppear {
+            if let saved = inputValues[fieldId] as? Bool { isChecked = saved }
+            else { isChecked = (block.field_config?["default_checked"]?.value as? Bool) ?? false; inputValues[fieldId] = isChecked }
+        }
+    }
+
+    // Plain (non-ViewBuilder) helper — builds the attributed consent copy. Kept
+    // OUT of the ViewBuilder because a `for` loop can't live directly in a
+    // result-builder body.
+    @available(iOS 15.0, *)
+    private func buildAgreementAttributed(_ text: String, linkColor: Color, textColor: Color) -> AttributedString {
+        var result = AttributedString()
+        // Parse per line so a `\n` in the consent copy is preserved (mirrors rich_text).
+        for (index, line) in text.components(separatedBy: "\n").enumerated() {
+            if index > 0 { result.append(AttributedString("\n")) }
+            if var parsed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                for run in parsed.runs {
+                    if run.link != nil {
+                        parsed[run.range].foregroundColor = UIColor(linkColor)
+                        parsed[run.range].underlineStyle = .single
+                    } else {
+                        parsed[run.range].foregroundColor = UIColor(textColor)
+                    }
+                }
+                result.append(parsed)
+            } else {
+                result.append(AttributedString(line))
+            }
+        }
+        return result
+    }
+
+    @ViewBuilder
+    private func agreementLabel(_ text: String, linkColor: Color, textColor: Color) -> some View {
+        if #available(iOS 15.0, *) {
+            Text(buildAgreementAttributed(text, linkColor: linkColor, textColor: textColor))
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(text)
+                .font(.footnote)
+                .foregroundColor(textColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
 /// Stepper input for incrementing/decrementing numeric value.
 struct FormInputStepperBlock: View {
     let block: ContentBlock

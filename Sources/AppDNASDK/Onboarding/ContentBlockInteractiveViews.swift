@@ -126,34 +126,52 @@ struct PressHoldConfirmBlockView: View {
 
     var body: some View {
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA — track background (bg_color; default #1F2937), the filled-state label (confirm_text;
+        // default "✓"), and optional above/below labels (label_above/label_below) in text_color (default
+        // #111827). Parity w/ Android PressHoldConfirmBlock + console preview.
+        let track = Color(hex: block.bg_color ?? "#1F2937")
         let text = block.text ?? "Hold to confirm"
+        let confirmText = (block.field_config?["confirm_text"]?.value as? String) ?? "✓"
+        let labelAbove = block.field_config?["label_above"]?.value as? String
+        let labelBelow = block.field_config?["label_below"]?.value as? String
+        let labelColor = Color(hex: block.text_color ?? "#111827")
         let fieldId = block.field_id ?? block.id
 
-        return GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Color(hex: "#1F2937"))
-                Rectangle().fill(accent).frame(width: geo.size.width * CGFloat(progress))
-                Text(confirmed ? "✓" : text)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+        return VStack(spacing: 8) {
+            if let above = labelAbove, !above.isEmpty {
+                Text(above).font(.system(size: 14)).foregroundColor(labelColor)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 28))
-            .contentShape(RoundedRectangle(cornerRadius: 28))
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard !confirmed, !holding else { return }
-                        startHold(fieldId: fieldId)
-                    }
-                    .onEnded { _ in
-                        guard !confirmed else { return }
-                        cancelHold()
-                    }
-            )
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(track)
+                    Rectangle().fill(accent).frame(width: geo.size.width * CGFloat(progress))
+                    Text(confirmed ? confirmText : text)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .contentShape(RoundedRectangle(cornerRadius: 28))
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            guard !confirmed, !holding else { return }
+                            startHold(fieldId: fieldId)
+                        }
+                        .onEnded { _ in
+                            guard !confirmed else { return }
+                            cancelHold()
+                        }
+                )
+            }
+            .frame(height: 56)
+            .frame(maxWidth: .infinity)
+            if let below = labelBelow, !below.isEmpty {
+                Text(below).font(.system(size: 14)).foregroundColor(labelColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
-        .frame(height: 56)
-        .frame(maxWidth: .infinity)
         .onAppear {
             // Seed static preview progress (snapshots); a real hold overwrites it.
             if progress == 0 {

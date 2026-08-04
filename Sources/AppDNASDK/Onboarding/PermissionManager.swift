@@ -84,6 +84,12 @@ public final class PermissionManager {
         case "notification", "att", "location", "camera",
              "microphone", "photos", "contacts", "calendar":
             return true
+        // Mrozu QA (2026-08-04, Flo s26) — `health` (HealthKit connect) is a console-authorable
+        // permission_type that already ROUTES through this manager (resolvePermissionType → here),
+        // but the native HealthKit authorization request is DEFERRED (needs the HealthKit entitlement
+        // + a per-app read/share type set, which is host infra). It falls to the `default` safe path
+        // below, so the CTA advances instead of stranding the user. The standalone `health_connect`
+        // block is the host-driven connect surface today.
         default:
             return false
         }

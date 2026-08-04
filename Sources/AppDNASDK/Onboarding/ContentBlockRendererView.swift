@@ -246,6 +246,8 @@ struct ContentBlockRendererView: View {
         case .input_image_picker: return AnyView(FormInputImagePickerPlaceholderBlock(block: block, inputValues: $inputValues))
         case .input_color: return AnyView(FormInputColorBlock(block: block, inputValues: $inputValues))
         case .input_signature: return AnyView(FormInputSignatureBlock(block: block, inputValues: $inputValues))
+        // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement (checkbox + rich links → Bool).
+        case .agreement: return AnyView(AgreementBlock(block: block, inputValues: $inputValues))
         case .unknown: return AnyView(EmptyView())
         }
     }
@@ -327,6 +329,25 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Text
 
+    // Mrozu QA — trailing animated ellipsis ("", ".", "..", "...") for loading-style text
+    // (text block with field_config.show_trailing_dots). Parity with Android AnimatedTrailingDots
+    // + console preview's pulsing-dots span.
+    private struct AnimatedTrailingDots: View {
+        let font: Font
+        let color: Color
+        var body: some View {
+            TimelineView(.animation(minimumInterval: 0.4, paused: false)) { timeline in
+                let n = Int(timeline.date.timeIntervalSinceReferenceDate / 0.4) % 4
+                // Reserve the full "..." width so the baseline text does not shift as dots cycle.
+                Text(String(repeating: ".", count: n))
+                    .font(font)
+                    .foregroundColor(color)
+                    .frame(minWidth: 14, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func textBlock(_ block: ContentBlock) -> some View {
         let text = block.text ?? ""
         // EPIC-9 parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
@@ -355,7 +376,8 @@ struct ContentBlockRendererView: View {
             weight: block.style?.font_weight ?? 400
         )
         let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? .primary
-        return Text(loc?("block.\(block.id).text", text) ?? text)
+        let showTrailingDots = (block.field_config?["show_trailing_dots"]?.value as? Bool) ?? false
+        let base = Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)
             .foregroundColor(styleColor)
             .applyTextStyleDecorations(block.style)
@@ -364,7 +386,16 @@ struct ContentBlockRendererView: View {
             // nil → no limit (unchanged). Parity with Android maxLines.
             .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
+        if showTrailingDots {
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                base
+                AnimatedTrailingDots(font: styleFont, color: styleColor)
+            }
             .frame(maxWidth: .infinity, alignment: frameAlignment)
+        } else {
+            base
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
+        }
     }
 
     // MARK: - Image
@@ -431,9 +462,15 @@ struct ContentBlockRendererView: View {
         let fill = block.gallery_fill ?? false
         let autoscroll = block.gallery_autoscroll ?? false
         let cycle = block.gallery_autoscroll_speed ?? 20
+        // Mrozu QA (2026-08-04) — alarmy selectable gallery: gallery_preview_on_select opens a full-screen
+        // enlarged overlay of the tapped image. Default off → the existing static/marquee row (non-breaking).
+        // Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
+        let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
         if autoscroll && !images.isEmpty {
             MediaGalleryAutoScrollRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, cycleSeconds: cycle)
+        } else if previewOnSelect && !images.isEmpty {
+            MediaGalleryPreviewRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, galleryAlignment: galleryAlignment)
         } else {
             GeometryReader { geo in
                 let tileW = fill ? geo.size.width : itemW
@@ -607,7 +644,18 @@ struct ContentBlockRendererView: View {
     private func buttonBlock(_ block: ContentBlock) -> some View {
         let btnVariant = block.variant ?? "primary"
         let radius = CGFloat(block.button_corner_radius ?? 12)
-        let bgColor = Color(hex: block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA (2026-08-04) — Flo consent CTA: `cta_enabled_bg_color` / `cta_disabled_bg_color` drive the
+        // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
+        // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
+        // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
+        let bgColor: Color = {
+            let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
+            let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
+            let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            guard enabledHex != nil || disabledHex != nil else { return Color(hex: fallback) }
+            let satisfied = RequiredFieldGate.evaluate(blocks: blocks, inputValues: inputValues).canAdvance
+            return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
+        }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
@@ -741,10 +789,17 @@ struct ContentBlockRendererView: View {
         let bubbleColor = Color(hex: block.bg_color ?? "#FFFFFF")
         let textColor = Color(hex: block.text_color ?? "#111827")
         let tailPos = (block.field_config?["bubble_tail"]?.value as? String) ?? "left"
+        // Mrozu QA — bubble interior font family (bubble_font_family; nil → system) + tail geometry
+        // (tail_width/tail_length; default 18×9). Parity w/ Android SpeechBubbleBlock + console preview.
+        let bubbleFont = FontResolver.font(
+            family: block.field_config?["bubble_font_family"]?.value as? String,
+            size: 15, weight: 500)
+        let tailWidth = CGFloat(cfgDouble(block.field_config?["tail_width"]) ?? 18)
+        let tailLength = CGFloat(cfgDouble(block.field_config?["tail_length"]) ?? 9)
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         return VStack(alignment: .leading, spacing: 0) {
             Text(text)
-                .font(.system(size: 15, weight: .medium))
+                .font(bubbleFont)
                 .foregroundColor(textColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -756,12 +811,12 @@ struct ContentBlockRendererView: View {
                 if tailPos == "center" || tailPos == "right" { Spacer() }
                 Path { p in
                     p.move(to: CGPoint(x: 0, y: 0))
-                    p.addLine(to: CGPoint(x: 18, y: 0))
-                    p.addLine(to: CGPoint(x: 9, y: 9))
+                    p.addLine(to: CGPoint(x: tailWidth, y: 0))
+                    p.addLine(to: CGPoint(x: tailWidth / 2, y: tailLength))
                     p.closeSubpath()
                 }
                 .fill(bubbleColor)
-                .frame(width: 18, height: 9)
+                .frame(width: tailWidth, height: tailLength)
                 if tailPos == "right" { Spacer().frame(width: 24) }
                 if tailPos == "center" || tailPos == "left" { Spacer() }
             }
@@ -781,12 +836,27 @@ struct ContentBlockRendererView: View {
         default: accentHex = "#10B981"; icon = "✓"; defHead = "Great job!"
         }
         let accent = Color(hex: block.active_color ?? accentHex)
+        // Mrozu QA (2026-08-04) — duolingo above-CTA feedback: `feedback_bg_color` overrides the tinted
+        // panel background; `feedback_graphic_url` swaps the built-in ✓/✗ glyph for a custom image. Both
+        // default nil → identical to the existing accent-tinted glyph panel (non-breaking). The runtime
+        // correct/wrong EVENT that flips `feedback_state` is a host-driven behavioral concern (deferred);
+        // this is the static/config render + state-driven styling.
+        let panelBg = (block.field_config?["feedback_bg_color"]?.value as? String).map { Color(hex: $0) } ?? accent.opacity(0.15)
+        let graphicURL = (block.field_config?["feedback_graphic_url"]?.value as? String).flatMap { URL(string: $0) }
         let headline = loc?("block.\(block.id).text", block.text ?? defHead) ?? block.text ?? defHead
         let detail = block.field_config?["feedback_detail"]?.value as? String
         return HStack(spacing: 14) {
             ZStack {
                 Circle().fill(accent).frame(width: 40, height: 40)
-                Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                if let graphicURL = graphicURL {
+                    BundledAsyncImage(url: graphicURL) { image in
+                        image.resizable().aspectRatio(contentMode: .fill).frame(width: 40, height: 40).clipShape(Circle())
+                    } placeholder: {
+                        Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                    }
+                } else {
+                    Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(headline).font(.system(size: 17, weight: .bold)).foregroundColor(accent)
@@ -798,7 +868,7 @@ struct ContentBlockRendererView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.15))
+        .background(panelBg)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -2233,6 +2303,85 @@ struct MediaGalleryAutoScrollRow: View {
         }
         .frame(height: itemH)
         .clipped()
+    }
+
+    @ViewBuilder
+    private func tile(_ urlString: String, width: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+            }
+        }
+        .frame(width: width, height: itemH)
+        .clipShape(RoundedRectangle(cornerRadius: fill ? 0 : cornerRadius))
+    }
+}
+
+/// Mrozu QA (2026-08-04) — alarmy selectable gallery: the same static tile row as `mediaGalleryBlock`, but each
+/// tile is tappable and opens a full-screen enlarged overlay of the selected image (`gallery_preview_on_select`).
+/// Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
+struct MediaGalleryPreviewRow: View {
+    let images: [String]
+    let itemW: CGFloat
+    let itemH: CGFloat
+    let cornerRadius: CGFloat
+    let spacing: CGFloat
+    let fill: Bool
+    let galleryAlignment: Alignment
+
+    @State private var previewURL: String? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let tileW = fill ? geo.size.width : itemW
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: fill ? 0 : spacing) {
+                    ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
+                        tile(urlString, width: tileW)
+                            .contentShape(Rectangle())
+                            .onTapGesture { previewURL = urlString }
+                    }
+                }
+                .padding(.horizontal, fill ? 0 : 2)
+                .frame(minWidth: geo.size.width, alignment: fill ? .leading : galleryAlignment)
+            }
+        }
+        .frame(height: itemH)
+        .fullScreenCover(isPresented: Binding(
+            get: { previewURL != nil },
+            set: { if !$0 { previewURL = nil } }
+        )) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let urlString = previewURL, let url = URL(string: urlString) {
+                    BundledAsyncPhaseImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        }
+                    }
+                    .padding(20)
+                }
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { previewURL = nil } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        .padding(20)
+                    }
+                    Spacer()
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { previewURL = nil }
+        }
     }
 
     @ViewBuilder

@@ -33,6 +33,10 @@ public enum ContentBlockType: String, Codable {
     case settings_footer
     case memory_match
     case calendar_month
+    // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement: a tappable checkbox + a
+    // rich label with [terms](url)/[privacy](url) links, persisting a Bool to inputValues; its
+    // `field_required` gates the CTA via RequiredFieldGate.
+    case agreement
     // SPEC-089d Phase 3: Form input block types (22 types)
     case input_text, input_textarea, input_number, input_email, input_phone
     case input_password, input_date, input_time, input_datetime
