@@ -1592,25 +1592,35 @@ struct ContentBlockRendererView: View {
         }()
 
         return Group {
+            // Resolve the authored base_style font DIRECTLY on the Text so it wins
+            // over the env .font() applyTextStyle would apply (see heading/text
+            // pattern at ~line 314). Previously `.font(isLegal ? .caption : .body)`
+            // baked a font onto the Text that silently dropped base_style.font_family
+            // / font_size / font_weight on iOS.
+            let styleFont = FontResolver.font(
+                family: block.base_style?.font_family,
+                size: block.base_style?.font_size ?? (isLegal ? 12 : 17),
+                weight: block.base_style?.font_weight
+            )
             if #available(iOS 15.0, *) {
                 let textCol: Color? = block.base_style?.color.map { Color(hex: $0) }
                 let attributed = parseMarkdownToAttributedString(content, linkColor: linkCol, textColor: textCol)
                 Text(attributed)
-                    .font(isLegal ? .caption : .body)
+                    .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyle(block.base_style)
+                    .applyTextStyleDecorations(block.base_style)
                     // SPEC-419 pass-15 #23 — honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
-                    // Apply AFTER applyTextStyle — its internal multilineTextAlignment
+                    // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
                     // would otherwise override ours when base_style.alignment is unset.
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
             } else {
                 // Fallback: render as plain text, stripping markdown tokens
                 Text(stripMarkdown(content))
-                    .font(isLegal ? .caption : .body)
+                    .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyle(block.base_style)
+                    .applyTextStyleDecorations(block.base_style)
                     .lineLimit(block.max_lines)
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)

@@ -27,8 +27,12 @@ final class AudioPlayer {
 
         // Route to the playback category so the clip is audible even when the
         // device is on silent (matches typical onboarding "listen" affordances).
+        // Use `.mixWithOthers` so an onboarding sound does NOT permanently
+        // interrupt the host app's own audio or a background app (Spotify /
+        // podcast) — parity with Android's MediaPlayer path, which mixes and
+        // never grabs audio focus.
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [])
+        try? session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
         try? session.setActive(true, options: [])
 
         let item = AVPlayerItem(url: url)
@@ -42,5 +46,8 @@ final class AudioPlayer {
     func stop() {
         player?.pause()
         player = nil
+        // Deactivate so other apps that we allowed to keep playing resume their
+        // full volume (`.notifyOthersOnDeactivation`).
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
     }
 }

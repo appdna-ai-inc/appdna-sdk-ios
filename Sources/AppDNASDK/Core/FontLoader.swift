@@ -47,9 +47,23 @@ enum FontLoader {
 
     // MARK: - Private
 
+    /// Deterministic FNV-1a hash over the URL's UTF-8 bytes. `String.hashValue` is
+    /// seeded randomly PER PROCESS (Swift ≥4.2), so it yielded a different cache
+    /// filename on every cold launch — the on-disk cache was effectively dead and
+    /// the font was re-downloaded every app start. This stable hash survives
+    /// launches, matching Android's `urlString.hashCode()` reuse-forever behavior.
+    private static func stableHash(_ s: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in s.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return String(hash, radix: 16)
+    }
+
     private static func cacheURL(for urlString: String) -> URL {
         let ext = urlString.lowercased().contains(".otf") ? "otf" : "ttf"
-        let name = "\(urlString.hashValue).\(ext)"
+        let name = "\(stableHash(urlString)).\(ext)"
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("appdna-fonts", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -287,6 +287,19 @@ struct FormInputDateBlock: View {
         // Picker variant (UI: "Picker Variant" select on input_date/datetime).
         // Falls back to .compact when unset so existing flows don't change.
         let variant = (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
+        // SPEC — honor time_format ("12h"/"24h") + time_text_size on the time
+        // picker. The console writes both to input_time/input_datetime which
+        // route here (not to DateWheelPickerBlockView). Locale en_GB forces 24h
+        // (HH:mm, no AM/PM); en_US forces 12h (h:mm a). Only applies when a time
+        // component is shown; unset time_format keeps the device locale.
+        let isTimeComponent = components.contains(.hourAndMinute)
+        let timeLocale: Locale? = {
+            guard isTimeComponent, let tf = block.time_format?.lowercased() else { return nil }
+            return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
+        }()
+        let timeFont: Font? = isTimeComponent
+            ? block.time_text_size.map { Font.system(size: CGFloat($0)) }
+            : nil
         // Per-variant bg — both controls already exist in the console editor.
         let wheelBgHex = block.field_config?["wheel_bg_color"]?.value as? String
         let calendarBgHex = block.field_config?["calendar_bg_color"]?.value as? String
@@ -351,6 +364,7 @@ struct FormInputDateBlock: View {
                         .datePickerStyle(.wheel)
                         .labelsHidden()
                         .tint(accentColor)
+                        .environment(\.locale, timeLocale ?? Locale.current)
                         .frame(maxWidth: .infinity)
                         // #12 — wheel_text_color tints the spinning labels (.white = identity).
                         .colorMultiply(wheelTextColorHex.map { Color(hex: $0) } ?? .white)
@@ -361,6 +375,7 @@ struct FormInputDateBlock: View {
                         .datePickerStyle(.graphical)
                         .labelsHidden()
                         .tint(accentColor)
+                        .environment(\.locale, timeLocale ?? Locale.current)
                         .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
                         .cornerRadius(cornerRadius)
                 default: // compact
@@ -390,6 +405,8 @@ struct FormInputDateBlock: View {
                         if components == .date { f.dateStyle = .medium; f.timeStyle = .none }
                         else if components == .hourAndMinute { f.dateStyle = .none; f.timeStyle = .short }
                         else { f.dateStyle = .medium; f.timeStyle = .short }
+                        // Force 12h/24h display per time_format when a time is shown.
+                        if let loc = timeLocale { f.locale = loc }
                         return f
                     }()
                     let chevron = components == .hourAndMinute ? "clock" : "calendar"
@@ -399,6 +416,7 @@ struct FormInputDateBlock: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(fmt.string(from: selectedDate))
+                                .font(timeFont)
                                 .foregroundColor(fgColor)
                             Spacer()
                             Image(systemName: chevron)
@@ -427,6 +445,7 @@ struct FormInputDateBlock: View {
                                 .datePickerStyle(.wheel)
                                 .labelsHidden()
                                 .tint(accentColor)
+                                .environment(\.locale, timeLocale ?? Locale.current)
                                 .environment(\.colorScheme, resolvedScheme ?? .light)
                             Button("Done") { showCompactPopover = false }
                                 .buttonStyle(.borderedProminent)
