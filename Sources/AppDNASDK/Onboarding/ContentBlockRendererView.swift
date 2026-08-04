@@ -148,6 +148,13 @@ struct ContentBlockRendererView: View {
         if let toggleLabel = json["toggle_label"] as? String, toggleLabel.contains("{{") {
             json["toggle_label"] = resolveTemplateString(toggleLabel, hookData: hookData, responses: responses)
         }
+        // RichText v2 — rich_text's primary content field is `markdown_content`;
+        // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
+        // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
+        // words") resolves on device instead of rendering the literal token.
+        if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
+            json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses)
+        }
 
         // Decode back to ContentBlock
         if let updatedData = try? JSONSerialization.data(withJSONObject: json),
@@ -164,6 +171,8 @@ struct ContentBlockRendererView: View {
         if let placeholder = block.field_placeholder, placeholder.contains("{{") { return true }
         if let badgeText = block.badge_text, badgeText.contains("{{") { return true }
         if let toggleLabel = block.toggle_label, toggleLabel.contains("{{") { return true }
+        // RichText v2 — gate the resolve pass on rich_text markdown too.
+        if let markdown = block.markdown_content, markdown.contains("{{") { return true }
         return false
     }
 
