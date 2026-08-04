@@ -1321,14 +1321,12 @@ struct FormInputSliderBlock: View {
         let maxVal = max(rawMax, minVal + stepVal)
         let showValue = (block.field_config?["show_value"]?.value as? Bool) ?? true
         let unitStr = block.unit ?? ""
-        // NOTE: `track_color` (the inactive/max track) is intentionally NOT
-        // applied here. The native SwiftUI `Slider` exposes no per-instance
-        // max-track API — `.tint` colors only the active/min track + thumb.
-        // Honoring track_color needs a custom draggable slider, which would
-        // re-open the value-binding / step-snapping / min-max edge cases this
-        // native control already handles (see the SPEC-419 fixes below). Tracked
-        // for a dedicated custom-slider pass rather than risking regressions in a
-        // render-fix batch.
+        // Mrozu QA: custom slider so track_color (inactive/max track) + thumb_color
+        // are honored — the native SwiftUI Slider's `.tint` colors only the
+        // active/min track + thumb. The custom track keeps step-snapping, min/max
+        // clamping and the value binding, with a Slider a11y proxy for VoiceOver.
+        let trackCol = Color(hex: block.field_style?.track_color ?? block.track_color ?? "#E5E7EB")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
 
         VStack(alignment: .leading, spacing: 6) {
@@ -1350,11 +1348,35 @@ struct FormInputSliderBlock: View {
                 }
             }
 
-            Slider(value: $value, in: minVal...maxVal, step: stepVal)
-                .tint(fillCol)
-                .onChange(of: value) { newValue in
-                    inputValues[fieldId] = newValue
+            GeometryReader { geo in
+                let w = max(geo.size.width, 1)
+                let frac = maxVal > minVal ? CGFloat((value - minVal) / (maxVal - minVal)) : 0
+                let clampedFrac = max(0, min(1, frac))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(trackCol).frame(height: 4)
+                    Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                    Circle().fill(thumbColor)
+                        .frame(width: 24, height: 24)
+                        .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                        .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
                 }
+                .frame(height: 24)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { g in
+                            let f = Double(max(0, min(1, g.location.x / w)))
+                            let raw = minVal + f * (maxVal - minVal)
+                            let snapped = (raw / stepVal).rounded() * stepVal
+                            let clamped = max(minVal, min(maxVal, snapped))
+                            if clamped != value { value = clamped; inputValues[fieldId] = clamped }
+                        }
+                )
+            }
+            .frame(height: 24)
+            .accessibilityRepresentation {
+                Slider(value: $value, in: minVal...maxVal, step: stepVal)
+            }
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? Double { value = saved }
