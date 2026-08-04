@@ -907,7 +907,8 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — trailing label at the END of the row (e.g. "Casual")
                         if let tt = option.trailing_text, !tt.isEmpty {
                             Text(tt)
-                                .font(optFont(optSubtitleSize, .regular))
+                                // Parity with Android + console preview which render the trailing label at a fixed 12pt.
+                                .font(optFont(12, .regular))
                                 .foregroundColor(optSubtitleColor)
                                 .accessibilityIdentifier("option.\(oi).trailing_text")
                         }
@@ -1194,6 +1195,13 @@ struct FormInputSelectBlock: View {
         // Falls through to 40 so existing flows look unchanged.
         let gridImageSize = CGFloat((cfgDouble(cfg?["option_image_size"])) ?? 40)
 
+        // Block-level font-size defaults (parity with stackedSelectView + console preview).
+        // The grid previously ignored block-level title/subtitle sizes. The preview shrinks
+        // the grid title by 0.85 (OnboardingStepPreview ~3548) — match that here; subtitle
+        // keeps the raw default (no factor).
+        let defaultTitleSize = (cfgDouble(cfg?["title_font_size"])) ?? 15
+        let defaultSubtitleSize = (cfgDouble(cfg?["subtitle_font_size"])) ?? 12
+
         VStack(spacing: optionSpacing) {
             // Manual grid — LazyVGrid clips wrapped text (ignores fixedSize for row height).
             let rowCount = (options.count + colCount - 1) / colCount
@@ -1265,13 +1273,13 @@ struct FormInputSelectBlock: View {
                                         }
                                         // Label + subtitle
                                         Text(option.label ?? "")
-                                            .font(.system(size: CGFloat(option.title_font_size ?? 14)))
+                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85)))
                                             .foregroundColor(isSelected ? optSelectedText : textCol)
                                             .multilineTextAlignment(cellTextAlign)
                                             .fixedSize(horizontal: false, vertical: true)
                                         if let sub = option.subtitle, !sub.isEmpty {
                                             Text(sub)
-                                                .font(.system(size: CGFloat(option.subtitle_font_size ?? 12)))
+                                                .font(.system(size: CGFloat(option.subtitle_font_size ?? defaultSubtitleSize)))
                                                 // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha).
                                                 .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? textCol.opacity(0.65))
                                                 .multilineTextAlignment(cellTextAlign)

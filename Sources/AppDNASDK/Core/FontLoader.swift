@@ -93,7 +93,12 @@ enum FontLoader {
         // Ignore "already registered" failures — the PostScript name lookup below is
         // what matters and works whether or not this specific call registered it.
         _ = CTFontManagerRegisterFontsForURL(fileURL as CFURL, .process, &errorRef)
-        finish(urlString, postScriptName(of: fileURL))
+        // Self-heal a corrupt/incomplete download: if the PostScript name can't be read the cached
+        // file is unusable, so delete it — the next request re-downloads a fresh copy instead of
+        // failing forever against the poisoned cache. Mirrors Android FontLoader.build().
+        let name = postScriptName(of: fileURL)
+        if name == nil { try? FileManager.default.removeItem(at: fileURL) }
+        finish(urlString, name)
     }
 
     private static func postScriptName(of fileURL: URL) -> String? {
