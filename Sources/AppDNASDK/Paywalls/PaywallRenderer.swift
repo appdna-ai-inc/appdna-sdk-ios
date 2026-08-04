@@ -45,6 +45,21 @@ struct PaywallRenderer: View {
         config.sections.first(where: { $0.type == "cta" })
     }
 
+    /// The currently selected plan (matches `onAppear`'s resolution: section plans, then top-level).
+    private var selectedPlan: PaywallPlan? {
+        let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
+        let plans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+        return plans.first(where: { $0.id == selectedPlanId })
+    }
+
+    /// The selected plan's per-plan CTA text, when non-empty. Wired into the pinned CTA + sticky
+    /// footer so a plan can override the section/top-level CTA label (e.g. "Start 7-day trial").
+    /// Basic wire only — a full selected-plan template-variable namespace ({{plan.*}}) is deferred.
+    private var selectedPlanCtaText: String? {
+        guard let t = selectedPlan?.cta_text, !t.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return t
+    }
+
     /// Sections that should render INSIDE the pinned bottom area, BELOW the
     /// CTA + restore button. Currently only applies to `legal` sections that
     /// appear AFTER the cta section in the original `config.sections` array.
@@ -145,7 +160,8 @@ struct PaywallRenderer: View {
                     if let ctaSec = ctaSection {
                         let topLevelText = config.cta?.text
                         let sectionText = ctaSec.data?.ctaText ?? ctaSec.data?.text
-                        let ctaText = topLevelText ?? sectionText
+                        // Selected plan's per-plan CTA overrides the section/top-level label.
+                        let ctaText = selectedPlanCtaText ?? topLevelText ?? sectionText
                         let showRestore = ctaSec.data?.showRestore ?? false
                         let restorePosition = ctaSec.data?.restorePosition ?? "below"
                         // Restore button rendered OUTSIDE `.applyContainerStyle`
@@ -1101,8 +1117,8 @@ struct PaywallRenderer: View {
         let bgColor = Color(hex: data?.backgroundColor ?? "#FFFFFF")
 
         VStack(spacing: 8) {
-            // CTA button
-            if let ctaText = data?.ctaText {
+            // CTA button — selected plan's per-plan CTA overrides the footer's configured label.
+            if let ctaText = selectedPlanCtaText ?? data?.ctaText {
                 Button {
                     handleCTATap()
                 } label: {

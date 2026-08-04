@@ -14,6 +14,17 @@ struct HeaderSection: View {
         data?.subtitle_style ?? sectionStyle?.elements?["subtitle"]?.textStyle
     }
 
+    /// Horizontal alignment for the header graphic: leading | center (default) | trailing.
+    private var imageAlignment: Alignment {
+        switch data?.imageAlignment {
+        case "leading":  return .leading
+        case "trailing": return .trailing
+        default:         return .center
+        }
+    }
+
+    private var imageMaxHeight: CGFloat { data?.imageMaxHeight ?? 200 }
+
     var body: some View {
         VStack(spacing: 8) {
             if let imageUrl = data?.imageUrl, let url = URL(string: imageUrl) {
@@ -21,10 +32,11 @@ struct HeaderSection: View {
                     image
                         .resizable()
                         .scaledToFit()
-                        .frame(maxHeight: 200)
+                        .frame(maxHeight: imageMaxHeight)
                 } placeholder: {
-                    Color.clear.frame(height: 200)
+                    Color.clear.frame(height: imageMaxHeight)
                 }
+                .frame(maxWidth: .infinity, alignment: imageAlignment)
             }
 
             if let title = data?.title {

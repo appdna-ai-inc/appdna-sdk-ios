@@ -107,8 +107,14 @@ struct PlanCard: View {
                             planSubtitleView(desc)
                         }
 
-                        // Row 2: Price display
+                        // Row 2: Price display (+ optional struck-through original price)
                         HStack(spacing: 4) {
+                            if let original = plan.original_price_display, !original.isEmpty {
+                                Text(original)
+                                    .font(.caption)
+                                    .strikethrough()
+                                    .foregroundColor(Color(hex: cardStyle.strikethroughColor ?? "#9CA3AF"))
+                            }
                             if let ts = priceTextStyle {
                                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                                     .applyTextStyle(ts)
@@ -370,6 +376,7 @@ struct PlanCardStyle {
     var subtitlePosition: String? = nil  // "below_name", "below_price" (default), "above_price"
     var showDivider: Bool = false        // Divider line between price and features
     var dividerColor: String? = nil
+    var strikethroughColor: String? = nil  // Color of struck-through original_price_display
     // Show flags
     var showIcon: Bool = false
     var showImage: Bool = false
@@ -405,6 +412,7 @@ struct PlanCardStyle {
         self.subtitlePosition = data?.subtitlePosition
         self.showDivider = data?.showDivider ?? false
         self.dividerColor = data?.dividerColor
+        self.strikethroughColor = data?.strikethroughColor
         self.showIcon = data?.showPlanIcons ?? false
         self.showImage = data?.showPlanImages ?? false
         self.showSubtitle = data?.showPlanSubtitles ?? false

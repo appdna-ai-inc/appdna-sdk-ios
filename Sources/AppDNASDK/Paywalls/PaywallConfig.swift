@@ -85,6 +85,10 @@ struct PaywallSectionData: Codable {
     let title: String?
     let subtitle: String?
     let imageUrl: String?
+    /// Header graphic alignment: "leading" | "center" (default) | "trailing".
+    let imageAlignment: String?
+    /// Max height for the header graphic (default 200).
+    let imageMaxHeight: CGFloat?
     let title_style: TextStyleConfig?
     let subtitle_style: TextStyleConfig?
 
@@ -290,6 +294,8 @@ struct PaywallSectionData: Codable {
     let unselectedBorderColor: String?  // Border color for non-selected cards (defaults to a subtle gray)
     let unselectedBgColor: String?      // Background color for non-selected cards (supports "transparent")
     let selectedScale: CGFloat?
+    /// Color of the struck-through original price (plans[].original_price_display).
+    let strikethroughColor: String?
 
     enum CodingKeys: String, CodingKey {
         case title, subtitle, features, plans, cta, rating, testimonial, text, quote, height
@@ -300,6 +306,8 @@ struct PaywallSectionData: Codable {
         case restoreFontSize = "restore_font_size"
         case title_style, subtitle_style
         case imageUrl = "image_url"
+        case imageAlignment = "image_alignment"
+        case imageMaxHeight = "image_max_height"
         case reviewCount = "review_count"
         case guaranteeText = "guarantee_text"
         case subType = "sub_type"
@@ -413,6 +421,7 @@ struct PaywallSectionData: Codable {
         case unselectedBorderColor = "unselected_border_color"
         case unselectedBgColor = "unselected_bg_color"
         case selectedScale = "selected_scale"
+        case strikethroughColor = "strikethrough_color"
         case layout, orientation
         case planDisplayStyle = "plan_display_style"
         case showPlanIcons = "show_plan_icons"
@@ -470,6 +479,9 @@ struct PaywallPlan: Codable, Identifiable {
     let cta_text: String?
     let icon: String?
     let image_url: String?
+    /// Struck-through "old" price shown beside `displayPrice`. Section-level
+    /// `strikethrough_color` controls its color.
+    let original_price_display: String?
 
     /// Display name — try label first (Firestore), then name (legacy)
     var displayName: String { label ?? name ?? "" }
@@ -487,6 +499,7 @@ struct PaywallPlan: Codable, Identifiable {
         case _id = "id"
         case name, label, price, period, badge, price_display, sort_order
         case trial, description, features, savings_text, cta_text, icon, image_url
+        case original_price_display
         case productId = "product_id"
         case trialDuration = "trial_duration"
         case isDefault = "is_default"
@@ -521,6 +534,8 @@ struct PaywallPlan: Codable, Identifiable {
         self.cta_text = try c.decodeIfPresent(String.self, forKey: .cta_text)
         self.icon = try c.decodeIfPresent(String.self, forKey: .icon)
         self.image_url = try c.decodeIfPresent(String.self, forKey: .image_url)
+        // Loose-decode so a numeric anchor price (e.g. 19.99) can't nil the whole paywall.
+        self.original_price_display = PaywallPlan.looseString(c, .original_price_display)
     }
 
     /// A JSON string, or a number rendered as one. Nil when absent (never throws — the caller has
