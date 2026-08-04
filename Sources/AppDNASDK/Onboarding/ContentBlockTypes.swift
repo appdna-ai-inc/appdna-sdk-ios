@@ -1015,6 +1015,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let dot_size: Double?
     public let dot_spacing: Double?
     public let active_dot_width: Double?
+    public let dot_shape: String?   // "circle" (default) | "triangle" | "rectangle" | "star"
     public let alignment: String?
 
     // SPEC-089d Phase A: social_login fields
@@ -1153,6 +1154,8 @@ public struct ContentBlock: Codable, Identifiable {
     public let wheel_orientation: String?        // console saves this instead of orientation
     public let picker_presentation: String?      // "inline" | "field" for date picker
     public let picker_mode: String?              // "date" | "datetime" | "time" for date picker
+    public let time_format: String?              // "12h" (default) | "24h" — clock presentation for input_time
+    public let time_text_size: Double?           // font size (pt) of the displayed time in field/trigger mode
     public let picker_spacing: Double?           // spacing between time wheel and date graphical in datetime mode
     public let calendar_bg_color: String?        // explicit background color for graphical date picker
     public let wheel_bg_color: String?           // explicit background color for wheel date picker (top-level, not field_config)
@@ -1273,7 +1276,7 @@ public struct ContentBlock: Codable, Identifiable {
         case zone, vertical_align, horizontal_align, vertical_offset, horizontal_offset
         // SPEC-089d Phase A: new block fields
         case dot_count, active_index, active_color, inactive_color
-        case dot_size, dot_spacing, active_dot_width, alignment
+        case dot_size, dot_spacing, active_dot_width, dot_shape, alignment
         case providers, button_style, button_height, spacing
         case show_divider, divider_text
         // Social-Login styling v2
@@ -1300,6 +1303,7 @@ public struct ContentBlock: Codable, Identifiable {
         case label_color, label_font_size, animate, animation_duration_ms
         case columns, default_date_value, min_date, max_date, allow_future, allow_past, date_validation_message
         case highlight_color, haptic_on_scroll, orientation, wheel_orientation, picker_presentation, picker_mode
+        case time_format, time_text_size
         case picker_spacing, calendar_bg_color, wheel_bg_color, wheel_height
         case wheel_line_color, wheel_line_stroke_width
         case children, stack_children, z_index, gap, wrap, justify, align_items
@@ -1395,6 +1399,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.dot_size = try c.decodeIfPresent(Double.self, forKey: .dot_size)
         self.dot_spacing = try c.decodeIfPresent(Double.self, forKey: .dot_spacing)
         self.active_dot_width = try c.decodeIfPresent(Double.self, forKey: .active_dot_width)
+        self.dot_shape = try c.decodeIfPresent(String.self, forKey: .dot_shape)
         self.alignment = try c.decodeIfPresent(String.self, forKey: .alignment)
         self.providers = try c.decodeIfPresent([SocialProviderConfig].self, forKey: .providers)
         self.button_style = try c.decodeIfPresent(String.self, forKey: .button_style)
@@ -1497,6 +1502,8 @@ public struct ContentBlock: Codable, Identifiable {
         self.wheel_orientation = try c.decodeIfPresent(String.self, forKey: .wheel_orientation)
         self.picker_presentation = try c.decodeIfPresent(String.self, forKey: .picker_presentation)
         self.picker_mode = try c.decodeIfPresent(String.self, forKey: .picker_mode)
+        self.time_format = try c.decodeIfPresent(String.self, forKey: .time_format)
+        self.time_text_size = try c.decodeIfPresent(Double.self, forKey: .time_text_size)
         self.picker_spacing = try c.decodeIfPresent(Double.self, forKey: .picker_spacing)
         self.calendar_bg_color = try c.decodeIfPresent(String.self, forKey: .calendar_bg_color)
         self.wheel_bg_color = try c.decodeIfPresent(String.self, forKey: .wheel_bg_color)

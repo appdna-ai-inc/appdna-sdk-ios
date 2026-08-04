@@ -1101,6 +1101,8 @@ struct ContentBlockRendererView: View {
         let activeW = block.active_dot_width.map { CGFloat($0) }
         let activeColor = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let inactiveColor = Color(hex: block.inactive_color ?? "#D1D5DB")
+        // SPEC — per-dot shape (default "circle" preserves the legacy Capsule/Circle look).
+        let dotShape = (block.dot_shape ?? "circle").lowercased()
 
         let align: Alignment = {
             switch block.alignment {
@@ -1112,19 +1114,39 @@ struct ContentBlockRendererView: View {
 
         return HStack(spacing: dotSpacing) {
             ForEach(0..<dotCount, id: \.self) { index in
-                if index == activeIdx {
-                    Capsule()
-                        .fill(activeColor)
-                        .frame(width: activeW ?? dotSize, height: dotSize)
-                } else {
-                    Circle()
-                        .fill(inactiveColor)
-                        .frame(width: dotSize, height: dotSize)
-                }
+                let isActive = index == activeIdx
+                let color = isActive ? activeColor : inactiveColor
+                let w = isActive ? (activeW ?? dotSize) : dotSize
+                pageDot(shape: dotShape, color: color, width: w, height: dotSize, isActive: isActive)
             }
         }
         .frame(maxWidth: .infinity, alignment: align)
         .accessibilityLabel("Page \(activeIdx + 1) of \(dotCount)")
+    }
+
+    /// One page-indicator dot rendered in the configured shape. Circle keeps the
+    /// legacy behaviour exactly: active pill (active_dot_width set) → Capsule,
+    /// otherwise Circle.
+    @ViewBuilder
+    private func pageDot(shape: String, color: Color, width: CGFloat, height: CGFloat, isActive: Bool) -> some View {
+        switch shape {
+        case "rectangle":
+            Rectangle().fill(color).frame(width: width, height: height)
+        case "triangle":
+            PageDotTriangle().fill(color).frame(width: width, height: height)
+        case "star":
+            Image(systemName: "star.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundColor(color)
+                .frame(width: width, height: height)
+        default: // "circle"
+            if isActive && width != height {
+                Capsule().fill(color).frame(width: width, height: height)
+            } else {
+                Circle().fill(color).frame(width: width, height: height)
+            }
+        }
     }
 
     // MARK: - Social Login (SPEC-089d AC-015)
@@ -2120,5 +2142,17 @@ struct WrapLayout: Layout {
             x += sz.width + hSpacing
             rowHeight = max(rowHeight, sz.height)
         }
+    }
+}
+
+/// Upward-pointing triangle used by the page_indicator `dot_shape = "triangle"`.
+struct PageDotTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }

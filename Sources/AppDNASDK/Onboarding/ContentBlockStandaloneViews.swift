@@ -1364,7 +1364,11 @@ struct DateWheelPickerBlockView: View {
                     withAnimation { showPicker.toggle() }
                 } label: {
                     HStack {
+                        // SPEC — honor time_text_size on the displayed time (time / datetime modes).
                         Text(formatDate(selectedDate, components: components))
+                            .font(components.contains(.hourAndMinute)
+                                ? block.time_text_size.map { Font.system(size: CGFloat($0)) }
+                                : nil)
                             .foregroundColor(triggerTextColor)
                         Spacer()
                         Image(systemName: components == [.hourAndMinute] ? "clock" : "calendar")
@@ -1502,6 +1506,12 @@ struct DateWheelPickerBlockView: View {
         } else {
             f.dateStyle = .medium; f.timeStyle = .none
         }
+        // SPEC — honor time_format ("12h"/"24h") on the displayed time. Locale
+        // en_GB forces 24h (HH:mm, no AM/PM); en_US forces 12h (h:mm a). Unset
+        // falls through to the device locale.
+        if components.contains(.hourAndMinute), let tf = block.time_format?.lowercased() {
+            f.locale = Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
+        }
         return f.string(from: date)
     }
 
@@ -1611,6 +1621,13 @@ struct DateWheelPickerBlockView: View {
             if Color.isLightHex(bgHex) == false, bgHex.lowercased() != "transparent", bgHex != "" { return .dark }
             return .light
         }()
+        // SPEC — force the spinning time wheel into 12h/24h per time_format.
+        // en_GB → 24-hour columns (no AM/PM); en_US → 12-hour + AM/PM. Only the
+        // time wheel is affected; date-only wheels keep the device locale.
+        let timeLocale: Locale? = {
+            guard isTime, let tf = block.time_format?.lowercased() else { return nil }
+            return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
+        }()
         let picker: AnyView = {
             if useWheel || isTime {
                 let base = DatePicker("", selection: $selectedDate, in: dateRange, displayedComponents: components)
@@ -1618,6 +1635,7 @@ struct DateWheelPickerBlockView: View {
                     .labelsHidden()
                     .tint(highlightCol)
                     .environment(\.colorScheme, resolvedScheme)
+                    .environment(\.locale, timeLocale ?? Locale.current)
                     .frame(maxWidth: .infinity)
                 if let hex = wheelTextColorHex {
                     return AnyView(base.colorMultiply(Color(hex: hex)))
