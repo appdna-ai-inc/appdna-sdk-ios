@@ -1144,6 +1144,10 @@ struct FormInputSelectBlock: View {
             if let idx = selectedValues.firstIndex(of: option.resolvedValue) {
                 selectedValues.remove(at: idx)
             } else {
+                // Enforce the console-configured cap on the ADD path only;
+                // removing a selection must always work.
+                let maxSel = (block.field_config?["max_selections"]?.value as? Int)
+                if let m = maxSel, selectedValues.count >= m { return }
                 selectedValues.append(option.resolvedValue)
             }
             inputValues[fieldId] = selectedValues
