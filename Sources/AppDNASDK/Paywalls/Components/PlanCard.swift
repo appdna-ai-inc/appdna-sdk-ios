@@ -33,6 +33,9 @@ struct PlanCard: View {
     private var featureTextStyle: TextStyleConfig? {
         sectionStyle?.elements?["feature"]?.textStyle
     }
+    private var trialTextStyle: TextStyleConfig? {
+        sectionStyle?.elements?["trial_label"]?.textStyle
+    }
 
     private var cornerRadius: CGFloat { cardStyle.cardCornerRadius ?? 12 }
     private var cardPadding: CGFloat { cardStyle.cardPadding ?? 16 }
@@ -130,7 +133,7 @@ struct PlanCard: View {
                             // Round-30 — render `trialLabel` verbatim; the " free trial"
                             // suffix for duration-only trials now lives in the computed
                             // property (PaywallConfig.swift) so every layout + Android match.
-                            if let ts = featureTextStyle {
+                            if let ts = trialTextStyle {
                                 Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
                                     .applyTextStyle(ts)
                                     .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)

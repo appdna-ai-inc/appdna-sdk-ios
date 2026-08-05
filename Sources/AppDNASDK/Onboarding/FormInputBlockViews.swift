@@ -1963,7 +1963,9 @@ struct FormInputChipsBlock: View {
         let fieldId = block.field_id ?? block.id
         let options = block.field_options ?? []
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        let maxSelections = (block.field_config?["max_selections"]?.value as? Int)
+        // Console writes the cap as `max_chips` (Max Chips slider); `max_selections`
+        // kept as a fallback for older/imported configs.
+        let maxSelections = (block.field_config?["max_chips"]?.value as? Int) ?? (block.field_config?["max_selections"]?.value as? Int)
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
