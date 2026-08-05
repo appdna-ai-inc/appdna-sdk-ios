@@ -1333,8 +1333,10 @@ struct FormInputSelectBlock: View {
                                         if let sub = option.subtitle, !sub.isEmpty {
                                             Text(sub)
                                                 .font(.system(size: CGFloat(option.subtitle_font_size ?? defaultSubtitleSize)))
-                                                // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha).
-                                                .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? textCol.opacity(0.65))
+                                                // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha),
+                                                // then block-level field_config.subtitle_color (parity with the stacked branch's
+                                                // defaultSubtitleColor + the console preview), else the faded step text color.
+                                                .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? (cfg?["subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textCol.opacity(0.65))
                                                 .multilineTextAlignment(cellTextAlign)
                                                 .fixedSize(horizontal: false, vertical: true)
                                         }
