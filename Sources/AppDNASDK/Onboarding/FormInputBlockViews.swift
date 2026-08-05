@@ -286,7 +286,18 @@ struct FormInputDateBlock: View {
 
         // Picker variant (UI: "Picker Variant" select on input_date/datetime).
         // Falls back to .compact when unset so existing flows don't change.
-        let variant = (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
+        // block.picker_presentation (editor "Presentation" control) takes precedence, matching
+        // Android (ContentBlockRenderer.kt:7780-7784) + preview: "field" → tap-to-open compact,
+        // "inline" → graphical (only for variants that include a date component; time-only has no
+        // graphical style so it falls through to picker_variant).
+        let variant: String = {
+            if block.picker_presentation == "field" {
+                return "compact"
+            } else if block.picker_presentation == "inline" && components.contains(.date) {
+                return "graphical"
+            }
+            return (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
+        }()
         // SPEC — honor time_format ("12h"/"24h") + time_text_size on the time
         // picker. The console writes both to input_time/input_datetime which
         // route here (not to DateWheelPickerBlockView). Locale en_GB forces 24h
@@ -486,6 +497,20 @@ struct FormInputDateBlock: View {
                     inputValues[fieldId] = nil
                     return
                 }
+                // Mrozu QA — also enforce block.min_date / block.max_date on the form-input date
+                // variant (the editor's Min/Max Date controls). Previously only the standalone
+                // date_wheel_picker honored these; input_date/time/datetime silently dropped them.
+                // Parsed with the same helper the standalone picker uses (relative + ISO forms).
+                if let minD = DateWheelPickerBlockView.parseDate(block.min_date), newValue < minD {
+                    dateError = block.date_validation_message ?? "Date is before the allowed minimum"
+                    inputValues[fieldId] = nil
+                    return
+                }
+                if let maxD = DateWheelPickerBlockView.parseDate(block.max_date), newValue > maxD {
+                    dateError = block.date_validation_message ?? "Date is after the allowed maximum"
+                    inputValues[fieldId] = nil
+                    return
+                }
                 dateError = nil
                 let formatter = ISO8601DateFormatter()
                 inputValues[fieldId] = formatter.string(from: newValue)
@@ -572,11 +597,17 @@ struct FormInputSelectBlock: View {
         VStack(spacing: 0) {
             ForEach(Array(options.enumerated()), id: \.offset) { idx, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
+                // Parity with Android (ContentBlockRenderer list 8781/8795-8797) + preview:
+                // honor per-option title/subtitle font size, and per-option title_color for the
+                // unselected state (selected still uses the block-level selectedTextCol).
+                let optTitleSize = CGFloat(option.title_font_size ?? 16)
+                let optSubtitleSize = CGFloat(option.subtitle_font_size ?? 13)
+                let optTitleCol = isSelected ? selectedTextCol : (option.title_color.map { Color(hex: $0) } ?? textCol)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(option.label ?? "").font(.system(size: 16)).foregroundColor(isSelected ? selectedTextCol : textCol)
+                        Text(option.label ?? "").font(.system(size: optTitleSize)).foregroundColor(optTitleCol)
                         if let sub = option.subtitle, !sub.isEmpty {
-                            Text(sub).font(.system(size: 13)).foregroundColor(isSelected ? selectedTextCol : textCol)
+                            Text(sub).font(.system(size: optSubtitleSize)).foregroundColor(isSelected ? selectedTextCol : textCol)
                         }
                     }
                     Spacer()
@@ -616,7 +647,8 @@ struct FormInputSelectBlock: View {
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
                 let chipBorder = isSelected ? (option.selected_border_color.map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
                 Text(option.label ?? "")
-                    .font(.system(size: 14, weight: .medium))
+                    // Parity with Android bubble (ContentBlockRenderer.kt:8760): honor per-option title_font_size.
+                    .font(.system(size: CGFloat(option.title_font_size ?? 14), weight: .medium))
                     .foregroundColor(isSelected ? selectedTextCol : textCol)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 9)
@@ -671,10 +703,11 @@ struct FormInputSelectBlock: View {
                     LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.label ?? "")
-                            .font(.system(size: 15, weight: .semibold))
+                            // Parity with Android image_tiles (ContentBlockRenderer.kt:8709): honor per-option font size.
+                            .font(.system(size: CGFloat(option.title_font_size ?? 15), weight: .semibold))
                             .foregroundColor(.white)
                         if let sub = option.subtitle, !sub.isEmpty {
-                            Text(sub).font(.system(size: 12)).foregroundColor(.white.opacity(0.85))
+                            Text(sub).font(.system(size: CGFloat(option.subtitle_font_size ?? 12))).foregroundColor(.white.opacity(0.85))
                         }
                     }
                     .padding(10)
@@ -1506,7 +1539,9 @@ struct FormInputToggleBlock: View {
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? Bool { isOn = saved }
-            else { isOn = block.toggle_default ?? false; inputValues[fieldId] = isOn }
+            // Honor field_config.default_value first (parity with Android, which falls
+            // back to field_config["default_value"] as Boolean), then block.toggle_default.
+            else { isOn = (block.field_config?["default_value"]?.value as? Bool) ?? block.toggle_default ?? false; inputValues[fieldId] = isOn }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

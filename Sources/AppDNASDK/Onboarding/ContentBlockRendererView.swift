@@ -225,7 +225,7 @@ struct ContentBlockRendererView: View {
         case .date_wheel_picker: return AnyView(DateWheelPickerBlockView(block: block, inputValues: $inputValues))
         case .circular_gauge: return AnyView(CircularGaugeBlockView(block: block))
         case .row: return AnyView(rowBlock(block))
-        case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction))
+        case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction, inputValues: $inputValues))
         case .input_text: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .default))
         case .input_textarea: return AnyView(FormInputTextAreaBlock(block: block, inputValues: $inputValues))
         case .input_number: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .numberPad))
@@ -469,9 +469,13 @@ struct ContentBlockRendererView: View {
         // Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
         let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
-        if autoscroll && !images.isEmpty {
+        if images.isEmpty {
+            // Parity with Android (ContentBlockRenderer.kt:1841 `if (images.isEmpty()) return`) and
+            // preview: a cleared gallery renders nothing rather than reserving a blank itemH-tall gap.
+            EmptyView()
+        } else if autoscroll {
             MediaGalleryAutoScrollRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, cycleSeconds: cycle)
-        } else if previewOnSelect && !images.isEmpty {
+        } else if previewOnSelect {
             MediaGalleryPreviewRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, galleryAlignment: galleryAlignment)
         } else {
             GeometryReader { geo in
@@ -1337,7 +1341,7 @@ struct ContentBlockRendererView: View {
         return VStack(spacing: btnSpacing) {
             if dividerPosition == "top" { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
-                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
+                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color)
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1347,7 +1351,7 @@ struct ContentBlockRendererView: View {
             ForEach(Array(bottomGroup.enumerated()), id: \.offset) { idx, provider in
                 // Mirror Android's post-split index scheme: bottomGroup labels are
                 // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
-                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign)
+                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color)
             }
             if dividerPosition != "top" { divider }
         }
@@ -1356,12 +1360,12 @@ struct ContentBlockRendererView: View {
     /// One social-login button with per-provider color/radius overrides applied.
     /// SPEC-089e amendment — any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
-    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center") -> some View {
+    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center", blockAccentColor: String? = nil, blockBgColor: String? = nil) -> some View {
         let providerType = provider.type ?? ""
         let radius = CGFloat(provider.corner_radius ?? Double(blockRadius))
         let bgColor: Color = {
             if let hex = provider.bg_color, !hex.isEmpty { return Color(hex: hex) }
-            return socialLoginBgColor(providerType, style: btnStyle)
+            return socialLoginBgColor(providerType, style: btnStyle, blockAccent: blockAccentColor, blockBg: blockBgColor)
         }()
         let textColor: Color = {
             if let hex = provider.text_color, !hex.isEmpty { return Color(hex: hex) }
@@ -1451,9 +1455,10 @@ struct ContentBlockRendererView: View {
                 .font(.body)
                 .foregroundColor(monoColor))
         default:
-            return AnyView(Image(systemName: "person.fill")
-                .font(.body)
-                .foregroundColor(monoColor))
+            // Unknown/custom provider types render NO glyph (parity with Android
+            // ContentBlockRenderer.kt — empty icon for unrecognized providers). Known
+            // providers above keep their real icons; only the fallback is now empty.
+            return AnyView(EmptyView())
         }
     }
 
@@ -1464,18 +1469,27 @@ struct ContentBlockRendererView: View {
         case "email": return "Continue with Email"
         case "facebook": return "Continue with Facebook"
         case "github": return "Continue with GitHub"
-        default: return "Continue"
+        // Parity with Android (ContentBlockRenderer.kt:3636) + preview (OnboardingStepPreview.tsx:1572):
+        // unknown/custom provider types use "Continue with {Type}" (type capitalized).
+        default:
+            guard !type.isEmpty else { return "Continue" }
+            return "Continue with " + type.prefix(1).uppercased() + type.dropFirst()
         }
     }
 
-    private func socialLoginBgColor(_ type: String, style: String) -> Color {
+    private func socialLoginBgColor(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> Color {
         if style == "outlined" || style == "minimal" { return .clear }
         switch type {
         case "apple": return .black
         case "google": return Color(hex: "#4285F4") // Google brand blue
         case "facebook": return Color(hex: "#1877F2")
         case "github": return Color(hex: "#24292E")
-        default: return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Parity with Android (ContentBlockRenderer.kt:3656-3660): email/unknown provider
+        // honors block-level accent_color then bg_color before falling back to the brand accent.
+        default:
+            if let hex = blockAccent, !hex.isEmpty { return Color(hex: hex) }
+            if let hex = blockBg, !hex.isEmpty { return Color(hex: hex) }
+            return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
         }
     }
 

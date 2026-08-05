@@ -190,6 +190,7 @@ struct PaywallRenderer: View {
                                 sectionStyle: ctaSec.style,
                                 ctaGradient: ctaSec.data?.ctaGradient,
                                 textOverride: ctaText,
+                                ctaFontSize: ctaSec.data?.ctaFontSize,
                                 restoreText: nil,          // rendered outside
                                 showRestore: false,        // rendered outside
                                 onRestore: nil
@@ -557,6 +558,7 @@ struct PaywallRenderer: View {
                 sectionStyle: section.style,
                 ctaGradient: section.data?.ctaGradient,
                 textOverride: ctaText,
+                ctaFontSize: section.data?.ctaFontSize,
                 restoreText: section.data?.restoreText,
                 showRestore: section.data?.showRestore ?? false,
                 restorePosition: section.data?.restorePosition ?? "below",

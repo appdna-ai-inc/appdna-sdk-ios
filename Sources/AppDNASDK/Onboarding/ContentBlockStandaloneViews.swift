@@ -449,18 +449,27 @@ struct AnimatedLoadingBlockView: View {
 
         case "linear":
             return AnyView(
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(height: 8)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(progressCol)
-                            .frame(width: geometry.size.width * overallProgress, height: 8)
-                            .animation(.linear(duration: 0.3), value: overallProgress)
+                VStack(spacing: 8) {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 8)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(progressCol)
+                                .frame(width: geometry.size.width * overallProgress, height: 8)
+                                .animation(.linear(duration: 0.3), value: overallProgress)
+                        }
+                    }
+                    .frame(height: 8)
+                    // Parity with Android linear branch (ContentBlockRenderer.kt:5084-5090) + preview
+                    // (OnboardingStepPreview.tsx:1710): render the % below the bar when show_percentage.
+                    if block.show_percentage == true {
+                        Text("\(Int(overallProgress * 100))%")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(block.text_color.map { Color(hex: $0) } ?? .primary)
                     }
                 }
-                .frame(height: 8)
             )
 
         default: // checklist
@@ -1186,7 +1195,9 @@ struct DateWheelPickerBlockView: View {
     @State private var prewarmDate = Date()
 
     /// Parse relative date strings like "today", "-18y", "-100y", "+1y", "-30d", or ISO date "2000-01-01"
-    private static func parseDate(_ str: String?) -> Date? {
+    // Internal (was private) so FormInputDateBlock can reuse the identical min_date/max_date
+    // parsing (relative "-18y"/"+30d", "today"/"now", absolute ISO) for its own bounds gate.
+    static func parseDate(_ str: String?) -> Date? {
         guard let str, !str.isEmpty else { return nil }
         let trimmed = str.trimmingCharacters(in: .whitespaces).lowercased()
         if trimmed == "today" || trimmed == "now" { return Date() }
@@ -2233,6 +2244,9 @@ struct StarBackgroundBlockView: View {
 struct PricingCardBlockView: View {
     let block: ContentBlock
     let onAction: (_ action: String, _ actionValue: String?) -> Void
+    // Parity with Android (ContentBlockRenderer.kt:7175-7176): persist the tapped plan into
+    // inputValues so answer capture + next_step_rules answer_equals on the selection work.
+    @Binding var inputValues: [String: Any]
 
     @State private var selectedPlanId: String? = nil
 
@@ -2265,6 +2279,8 @@ struct PricingCardBlockView: View {
 
         return Button {
             selectedPlanId = plan.id
+            inputValues["selected_plan_id"] = plan.id ?? ""
+            inputValues["selected_plan_label"] = plan.label ?? ""
             onAction("select_plan", plan.id)
         } label: {
             VStack(spacing: 6) {
