@@ -1397,7 +1397,7 @@ struct ContentBlockRendererView: View {
                     // SPEC-419 — no glyph for the email provider (parity with Android): the
                     // envelope rendered awkwardly on the brand-tinted "Continue with Email"
                     // button and its reserved spacing offset the label. Plain centered CTA.
-                    socialLoginIcon(providerType, iconStyle: provider.icon_style)
+                    socialLoginIcon(providerType, iconStyle: provider.icon_style, buttonTextColor: textColor, btnStyle: btnStyle)
                 }
                 // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
                 // falling back to the authored label then the brand default.
@@ -1422,7 +1422,7 @@ struct ContentBlockRendererView: View {
     /// Social login icon with configurable style.
     /// icon_style: "default", "monochrome_light" (white icons), "monochrome_dark" (black icons),
     ///             "filled" (colored bg), "outline" (border only).
-    private func socialLoginIcon(_ type: String, iconStyle: String? = nil) -> AnyView {
+    private func socialLoginIcon(_ type: String, iconStyle: String? = nil, buttonTextColor: Color = .primary, btnStyle: String = "filled") -> AnyView {
         let style = iconStyle ?? "default"
         // Monochrome styles force icon color; default uses provider-native colors
         let monoColor: Color? = style == "monochrome_light" ? .white
@@ -1447,9 +1447,16 @@ struct ContentBlockRendererView: View {
                 .font(.body)
                 .foregroundColor(monoColor))
         case "facebook":
+            // Brand-blue "f" is only legible on transparent-background buttons
+            // (outlined/minimal). On a FILLED facebook button the background is
+            // already #1877F2, so a blue glyph would be invisible — use the button
+            // textColor (white) there. A monochrome icon_style override still wins.
+            // Matches Android + console preview.
+            let fbColor: Color = monoColor
+                ?? ((btnStyle == "outlined" || btnStyle == "minimal") ? Color(hex: "#1877F2") : buttonTextColor)
             return AnyView(Text("f")
                 .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(monoColor ?? Color(hex: "#1877F2")))
+                .foregroundColor(fbColor))
         case "github":
             return AnyView(Image(systemName: "chevron.left.forwardslash.chevron.right")
                 .font(.body)

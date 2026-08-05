@@ -101,7 +101,7 @@ struct CountdownTimerBlockView: View {
             }
         }
         .onAppear {
-            remainingSeconds = block.duration_seconds ?? 60
+            remainingSeconds = initialRemainingSeconds
         }
         .onReceive(timer) { _ in
             guard !expired else { return }
@@ -113,6 +113,23 @@ struct CountdownTimerBlockView: View {
                 handleExpiry()
             }
         }
+    }
+
+    // Initial countdown value. For target_type == "fixed_datetime" (parity with Android
+    // ContentBlockRenderer.kt) parse target_datetime as an absolute ISO-8601 UTC instant
+    // and count down the remaining seconds; otherwise fall back to duration_seconds.
+    private var initialRemainingSeconds: Int {
+        if block.target_type == "fixed_datetime", let iso = block.target_datetime, !iso.isEmpty {
+            let fmt = DateFormatter()
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            fmt.timeZone = TimeZone(identifier: "UTC")
+            fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            if let target = fmt.date(from: iso) {
+                let remaining = Int(target.timeIntervalSinceNow)
+                return max(0, remaining)
+            }
+        }
+        return block.duration_seconds ?? 60
     }
 
     // Accent color shared across all timer variants.

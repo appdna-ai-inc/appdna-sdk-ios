@@ -1053,6 +1053,11 @@ public struct ContentBlock: Codable, Identifiable {
     // SPEC-089d Phase A: countdown_timer fields
     public let timer_variant: String?      // digital, circular, flip, bar
     public let duration_seconds: Int?
+    // Countdown target mode (parity with Android ContentBlockRenderer.kt): "duration"
+    // (default — counts down duration_seconds) or "fixed_datetime" (counts down to an
+    // absolute ISO-8601 UTC instant in target_datetime).
+    public let target_type: String?
+    public let target_datetime: String?    // ISO-8601 UTC, e.g. "2026-12-31T23:59:59"
     public let show_days: Bool?
     public let show_hours: Bool?
     public let show_minutes: Bool?
@@ -1309,6 +1314,7 @@ public struct ContentBlock: Codable, Identifiable {
         // SPEC-089e amendment — email button placement + spacer
         case email_login_placement, email_cta_spacing_below
         case timer_variant, duration_seconds
+        case target_type, target_datetime
         case show_days, show_hours, show_minutes, show_seconds
         case labels, on_expire_action, expired_text, accent_color, font_size
         case max_stars, default_rating, star_size, filled_color, empty_color
@@ -1440,6 +1446,8 @@ public struct ContentBlock: Codable, Identifiable {
         self.email_cta_spacing_below = try c.decodeIfPresent(Double.self, forKey: .email_cta_spacing_below)
         self.timer_variant = try c.decodeIfPresent(String.self, forKey: .timer_variant)
         self.duration_seconds = try c.decodeIfPresent(Int.self, forKey: .duration_seconds)
+        self.target_type = try c.decodeIfPresent(String.self, forKey: .target_type)
+        self.target_datetime = try c.decodeIfPresent(String.self, forKey: .target_datetime)
         self.show_days = try c.decodeIfPresent(Bool.self, forKey: .show_days)
         self.show_hours = try c.decodeIfPresent(Bool.self, forKey: .show_hours)
         self.show_minutes = try c.decodeIfPresent(Bool.self, forKey: .show_minutes)
