@@ -265,7 +265,7 @@ struct PlanCard: View {
 
     @ViewBuilder
     private func planSubtitleView(_ desc: String) -> some View {
-        Text(desc)
+        Text(loc?("plan.\(planIndex).description", desc) ?? desc)
             .font(.caption)
             .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
             .lineLimit(2)

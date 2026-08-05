@@ -141,10 +141,12 @@ struct CountdownTimerBlockView: View {
 
     // h/m/s segment strings (gated by show_* flags), matching the preview.
     private var segmentStrings: [String] {
+        let days = remainingSeconds / 86400
         let hours = (remainingSeconds % 86400) / 3600
         let minutes = (remainingSeconds % 3600) / 60
         let seconds = remainingSeconds % 60
         var segs: [String] = []
+        if block.show_days != false && days > 0 { segs.append(String(format: "%02d", days)) }
         if block.show_hours != false { segs.append(String(format: "%02d", hours)) }
         if block.show_minutes != false { segs.append(String(format: "%02d", minutes)) }
         if block.show_seconds != false { segs.append(String(format: "%02d", seconds)) }
@@ -154,7 +156,9 @@ struct CountdownTimerBlockView: View {
     // SPEC-419 pass-15 #28 — default unit labels hrs/min/sec to match preview (was Hours/Min/Sec).
     private var labelStrings: [String] {
         let lbls = block.labels
+        let days = remainingSeconds / 86400
         var arr: [String] = []
+        if block.show_days != false && days > 0 { arr.append(lbls?.days ?? "days") }
         if block.show_hours != false { arr.append(lbls?.hours ?? "hrs") }
         if block.show_minutes != false { arr.append(lbls?.minutes ?? "min") }
         if block.show_seconds != false { arr.append(lbls?.seconds ?? "sec") }
