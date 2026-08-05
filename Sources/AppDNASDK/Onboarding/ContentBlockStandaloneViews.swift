@@ -82,6 +82,7 @@ struct CountdownTimerBlockView: View {
     let onAction: (_ action: String, _ actionValue: String?) -> Void
 
     @State private var remainingSeconds: Int = 0
+    @State private var initialSeconds: Int = 0
     @State private var expired: Bool = false
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -101,7 +102,8 @@ struct CountdownTimerBlockView: View {
             }
         }
         .onAppear {
-            remainingSeconds = initialRemainingSeconds
+            initialSeconds = initialRemainingSeconds
+            remainingSeconds = initialSeconds
         }
         .onReceive(timer) { _ in
             guard !expired else { return }
@@ -160,8 +162,9 @@ struct CountdownTimerBlockView: View {
     }
 
     private var barFraction: CGFloat {
-        let initial = CGFloat(max(block.duration_seconds ?? 60, 1))
-        return min(max(CGFloat(remainingSeconds) / initial, 0), 1)
+        // Denominator is the captured initial value (parity with Android's initialSeconds),
+        // NOT duration_seconds — fixed_datetime bars would otherwise stay pinned at 100%.
+        return min(max(CGFloat(remainingSeconds) / CGFloat(max(initialSeconds, 1)), 0), 1)
     }
 
     // Digital variant (default): HStack of time unit columns

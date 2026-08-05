@@ -1458,9 +1458,8 @@ struct ContentBlockRendererView: View {
                 .font(.system(size: 20, weight: .bold, design: .rounded))
                 .foregroundColor(fbColor))
         case "github":
-            return AnyView(Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.body)
-                .foregroundColor(monoColor))
+            // No glyph (parity with Android, which renders no github icon, + console preview).
+            return AnyView(EmptyView())
         default:
             // Unknown/custom provider types render NO glyph (parity with Android
             // ContentBlockRenderer.kt — empty icon for unrecognized providers). Known
