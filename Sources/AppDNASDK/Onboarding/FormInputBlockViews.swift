@@ -609,7 +609,7 @@ struct FormInputSelectBlock: View {
                     : (option.title_color.map { Color(hex: $0) } ?? textCol)
                 let optSubtitleCol = isSelected
                     ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
-                    : textCol
+                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
                 let optRowBg = isSelected
                     ? (option.selected_bg_color.map { Color(hex: $0) } ?? selectedBgCol)
                     : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)

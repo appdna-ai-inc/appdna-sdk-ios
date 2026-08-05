@@ -1795,7 +1795,7 @@ struct PaywallRenderer: View {
                                     .font(.subheadline.weight(.medium))
                                     .foregroundColor(.primary)
                                 HStack(spacing: 4) {
-                                    Text(plan.displayPrice).font(.caption.bold()).foregroundColor(.primary)
+                                    Text(loc("plan.\(index).price", plan.displayPrice)).font(.caption.bold()).foregroundColor(.primary)
                                     if let period = plan.period {
                                         Text("/ \(period)").font(.caption).foregroundColor(.secondary)
                                     }
@@ -1830,7 +1830,7 @@ struct PaywallRenderer: View {
                             VStack(spacing: 2) {
                                 Text(loc("plan.\(index).name", plan.displayName))
                                     .font(.subheadline.weight(.semibold))
-                                Text(plan.displayPrice)
+                                Text(loc("plan.\(index).price", plan.displayPrice))
                                     .font(.caption)
                             }
                             .padding(.horizontal, 20)
@@ -1861,9 +1861,9 @@ struct PaywallRenderer: View {
                 .pickerStyle(.segmented)
 
                 // Show price for selected plan
-                if let selected = plans.first(where: { $0.id == selectedPlanId }) {
+                if let (idx, selected) = plans.enumerated().first(where: { $0.element.id == selectedPlanId }) {
                     HStack(spacing: 4) {
-                        Text(selected.displayPrice).font(.title3.bold())
+                        Text(loc("plan.\(idx).price", selected.displayPrice)).font(.title3.bold())
                         if let period = selected.period {
                             Text("/ \(period)").font(.subheadline).foregroundColor(.secondary)
                         }
