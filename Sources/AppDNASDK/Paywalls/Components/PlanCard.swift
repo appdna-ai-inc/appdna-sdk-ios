@@ -156,7 +156,7 @@ struct PlanCard: View {
 
                         // Savings text
                         if showSavings, let savings = plan.savings_text, !savings.isEmpty {
-                            Text(savings)
+                            Text(loc?("plan.\(planIndex).savings", savings) ?? savings)
                                 .font(.caption2.bold())
                                 .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: "#22C55E"))
                         }
