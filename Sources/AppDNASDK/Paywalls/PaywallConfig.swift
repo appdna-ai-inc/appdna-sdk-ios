@@ -279,6 +279,7 @@ struct PaywallSectionData: Codable {
     let cardCornerRadius: CGFloat?
     let cardPadding: CGFloat?
     let cardGap: CGFloat?
+    let cardHeight: CGFloat?     // Minimum plan-card height in pt (console card_height; applied as minHeight)
     let cardShadow: AnyCodable?  // Bool or String ("none", "sm", "md", "lg")
     let badgePosition: String?       // top_left, top_right, inline, inside (default)
     let badgeStyle: String?          // capsule, rectangle, rounded
@@ -407,6 +408,7 @@ struct PaywallSectionData: Codable {
         case cardCornerRadius = "card_corner_radius"
         case cardPadding = "card_padding"
         case cardGap = "card_gap"
+        case cardHeight = "card_height"
         case cardShadow = "card_shadow"
         case badgePosition = "badge_position"
         case badgeStyle = "badge_style"

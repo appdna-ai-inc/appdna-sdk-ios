@@ -199,6 +199,9 @@ struct PlanCard: View {
                 .contentShape(Rectangle()) // Make entire card area tappable including Spacer gaps
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // console card_height → minimum card height (matches Android heightIn(min:)
+            // + PaywallPreview minHeight). nil param is unspecified, so it never forces a 0 floor.
+            .frame(minHeight: cardStyle.cardHeight)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill({
@@ -376,6 +379,7 @@ struct PlanCardStyle {
     var cardCornerRadius: CGFloat? = nil
     var cardPadding: CGFloat? = nil
     var cardGap: CGFloat? = nil
+    var cardHeight: CGFloat? = nil  // Minimum plan-card height in pt (console card_height); applied as .frame(minHeight:)
     var cardShadow: String? = nil  // "none", "sm", "md", "lg", or "true"/"false"
     var badgePosition: String? = nil
     var badgeStyle: String? = nil
@@ -413,6 +417,7 @@ struct PlanCardStyle {
         self.cardCornerRadius = data?.cardCornerRadius
         self.cardPadding = data?.cardPadding
         self.cardGap = data?.cardGap
+        self.cardHeight = data?.cardHeight
         // card_shadow can be Bool or String ("none", "sm", "md", "lg")
         if let val = data?.cardShadow?.value {
             if let b = val as? Bool { self.cardShadow = b ? "md" : "none" }
