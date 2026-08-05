@@ -1592,7 +1592,8 @@ struct ContentBlockRendererView: View {
     // MARK: - Rich Text (SPEC-089d AC-020)
 
     private func richTextBlock(_ block: ContentBlock) -> some View {
-        let content = block.markdown_content ?? block.text ?? ""
+        let rawContent = block.markdown_content ?? block.text ?? ""
+        let content = loc?("block.\(block.id).content", rawContent) ?? rawContent  // localize like Android (block.<id>.content)
         let isLegal = block.rich_text_variant == "legal"
         let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Mirror Android + preview: rich_text resolves its font/color/decorations/
