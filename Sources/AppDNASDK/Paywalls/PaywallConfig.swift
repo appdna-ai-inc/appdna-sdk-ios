@@ -179,6 +179,9 @@ struct PaywallSectionData: Codable {
     let ctaCornerRadius: CGFloat?
     let ctaHeight: CGFloat?
     let ctaFontSize: CGFloat?
+    /// CTA text font weight (console "Font Weight" = cta_font_weight): normal | medium | semibold | bold.
+    /// Applied only when no Style-tab button text_style weight is set. Parity with Android + the preview.
+    let ctaFontWeight: String?
     let secondaryText: String?
     let secondaryAction: String?   // restore | link
     let secondaryUrl: String?
@@ -354,6 +357,7 @@ struct PaywallSectionData: Codable {
         case ctaCornerRadius = "cta_corner_radius"
         case ctaHeight = "cta_height"
         case ctaFontSize = "cta_font_size"
+        case ctaFontWeight = "cta_font_weight"
         case secondaryText = "secondary_text"
         case secondaryAction = "secondary_action"
         case secondaryUrl = "secondary_url"

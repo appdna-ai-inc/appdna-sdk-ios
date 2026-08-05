@@ -925,7 +925,7 @@ private struct StickyFooterSectionView: View {
                     context.onAction(.next)
                 } label: {
                     Text(ctaText)
-                        .font(.system(size: data?.ctaFontSize ?? 17, weight: .semibold))
+                        .font(.system(size: data?.ctaFontSize ?? 17, weight: resolveCTAFontWeight(data?.ctaFontWeight)))
                         .foregroundColor(Color(hex: data?.ctaTextColor ?? "#FFFFFF"))
                 }
                 .frame(maxWidth: .infinity)

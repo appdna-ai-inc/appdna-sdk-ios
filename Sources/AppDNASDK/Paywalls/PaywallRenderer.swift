@@ -191,6 +191,7 @@ struct PaywallRenderer: View {
                                 ctaGradient: ctaSec.data?.ctaGradient,
                                 textOverride: ctaText,
                                 ctaFontSize: ctaSec.data?.ctaFontSize,
+                                ctaFontWeight: ctaSec.data?.ctaFontWeight,
                                 restoreText: nil,          // rendered outside
                                 showRestore: false,        // rendered outside
                                 onRestore: nil
@@ -559,6 +560,7 @@ struct PaywallRenderer: View {
                 ctaGradient: section.data?.ctaGradient,
                 textOverride: ctaText,
                 ctaFontSize: section.data?.ctaFontSize,
+                ctaFontWeight: section.data?.ctaFontWeight,
                 restoreText: section.data?.restoreText,
                 showRestore: section.data?.showRestore ?? false,
                 restorePosition: section.data?.restorePosition ?? "below",
@@ -1129,7 +1131,7 @@ struct PaywallRenderer: View {
                             .tint(.white)
                     } else {
                         Text(loc("sticky_footer.cta", ctaText))
-                            .font(.system(size: data?.ctaFontSize ?? 17, weight: .semibold))
+                            .font(.system(size: data?.ctaFontSize ?? 17, weight: resolveCTAFontWeight(data?.ctaFontWeight)))
                             .foregroundColor(Color(hex: data?.ctaTextColor ?? "#FFFFFF"))
                     }
                 }

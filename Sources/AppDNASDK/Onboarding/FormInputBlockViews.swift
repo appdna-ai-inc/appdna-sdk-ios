@@ -518,7 +518,9 @@ struct FormInputDateBlock: View {
             if let dateError {
                 Text(dateError)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    // Honor field_style.error_text_color (parity with Android, which uses
+                    // error_text_color ?? colorScheme.error) — was hardcoded system red.
+                    .foregroundColor(block.field_style?.error_text_color.map { Color(hex: $0) } ?? .red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1306,8 +1308,13 @@ struct FormInputSelectBlock: View {
                                         }
                                         // Label + subtitle
                                         Text(option.label ?? "")
-                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85)))
-                                            .foregroundColor(isSelected ? optSelectedText : textCol)
+                                            // Grid title honors per-option title_font_weight (parity with the
+                                            // stacked branch's optTitleWeight + Android's grid) — was weightless.
+                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85), weight: fontWeight(option.title_font_weight)))
+                                            // Grid title honors per-option title_color for the unselected state
+                                            // (parity with the stacked branch + Android grid optTitleColor); the
+                                            // selected state still wins via optSelectedText.
+                                            .foregroundColor(isSelected ? optSelectedText : (option.title_color.map { Color(hex: $0) } ?? textCol))
                                             .multilineTextAlignment(cellTextAlign)
                                             .fixedSize(horizontal: false, vertical: true)
                                         if let sub = option.subtitle, !sub.isEmpty {
@@ -1698,6 +1705,10 @@ struct FormInputSegmentedBlock: View {
                 }
             }
             .pickerStyle(.segmented)
+            // Tint the selected segment with the brand/fill accent so the segmented control
+            // isn't the system gray/white pill — parity with Android (fills the selected segment
+            // with field_style.fill_color ?? active_color ?? brand) and the console preview.
+            .tint(Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")))
             .onChange(of: selectedValue) { newValue in
                 inputValues[fieldId] = newValue
             }
@@ -1811,6 +1822,12 @@ struct FormInputRangeSliderBlock: View {
         let stepVal: Double = { let s = block.step_value ?? cfgDouble(block.field_config?["step"]) ?? 1; return s > 0 ? s : 1 }()
         let unitStr = block.unit ?? ""
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA — custom track so track_color (inactive track) + thumb_color are honored on the
+        // range slider too (native Slider().tint only colors the active/min track + thumb). Parity
+        // with the single FormInputSliderBlock + Android's range slider track_color + the editor's
+        // Track/Fill/Thumb controls for input_range_slider.
+        let trackCol = Color(hex: block.field_style?.track_color ?? block.track_color ?? "#E5E7EB")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -1828,15 +1845,70 @@ struct FormInputRangeSliderBlock: View {
                     Text((block.field_config?["min_label"]?.value as? String) ?? "Min")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    Slider(value: $lowValue, in: minVal...maxVal, step: stepVal)
-                        .tint(fillCol)
+                    // Custom track/fill/thumb mirroring FormInputSliderBlock so track_color +
+                    // thumb_color apply; drag snaps to the step grid (min-anchored) and the
+                    // VStack's .onChange clamp keeps low <= high.
+                    GeometryReader { geo in
+                        let w = max(geo.size.width, 1)
+                        let frac = maxVal > minVal ? CGFloat((lowValue - minVal) / (maxVal - minVal)) : 0
+                        let clampedFrac = max(0, min(1, frac))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(trackCol).frame(height: 4)
+                            Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                            Circle().fill(thumbColor)
+                                .frame(width: 24, height: 24)
+                                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                                .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
+                        }
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { g in
+                                    let f = Double(max(0, min(1, g.location.x / w)))
+                                    let raw = minVal + f * (maxVal - minVal)
+                                    let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
+                                    lowValue = max(minVal, min(maxVal, snapped))
+                                }
+                        )
+                    }
+                    .frame(height: 24)
+                    .accessibilityRepresentation {
+                        Slider(value: $lowValue, in: minVal...maxVal, step: stepVal)
+                    }
                 }
                 HStack {
                     Text((block.field_config?["max_label"]?.value as? String) ?? "Max")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    Slider(value: $highValue, in: minVal...maxVal, step: stepVal)
-                        .tint(fillCol)
+                    GeometryReader { geo in
+                        let w = max(geo.size.width, 1)
+                        let frac = maxVal > minVal ? CGFloat((highValue - minVal) / (maxVal - minVal)) : 0
+                        let clampedFrac = max(0, min(1, frac))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(trackCol).frame(height: 4)
+                            Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                            Circle().fill(thumbColor)
+                                .frame(width: 24, height: 24)
+                                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                                .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
+                        }
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { g in
+                                    let f = Double(max(0, min(1, g.location.x / w)))
+                                    let raw = minVal + f * (maxVal - minVal)
+                                    let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
+                                    highValue = max(minVal, min(maxVal, snapped))
+                                }
+                        )
+                    }
+                    .frame(height: 24)
+                    .accessibilityRepresentation {
+                        Slider(value: $highValue, in: minVal...maxVal, step: stepVal)
+                    }
                 }
             }
             .onChange(of: lowValue) { _ in
