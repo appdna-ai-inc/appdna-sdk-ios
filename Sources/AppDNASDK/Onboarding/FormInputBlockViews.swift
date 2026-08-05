@@ -604,12 +604,20 @@ struct FormInputSelectBlock: View {
                 // unselected state (selected still uses the block-level selectedTextCol).
                 let optTitleSize = CGFloat(option.title_font_size ?? 16)
                 let optSubtitleSize = CGFloat(option.subtitle_font_size ?? 13)
-                let optTitleCol = isSelected ? selectedTextCol : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                let optTitleCol = isSelected
+                    ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
+                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                let optSubtitleCol = isSelected
+                    ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
+                    : textCol
+                let optRowBg = isSelected
+                    ? (option.selected_bg_color.map { Color(hex: $0) } ?? selectedBgCol)
+                    : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.label ?? "").font(.system(size: optTitleSize)).foregroundColor(optTitleCol)
                         if let sub = option.subtitle, !sub.isEmpty {
-                            Text(sub).font(.system(size: optSubtitleSize)).foregroundColor(isSelected ? selectedTextCol : textCol)
+                            Text(sub).font(.system(size: optSubtitleSize)).foregroundColor(optSubtitleCol)
                         }
                     }
                     Spacer()
@@ -620,7 +628,7 @@ struct FormInputSelectBlock: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background(isSelected ? selectedBgCol : Color.clear)
+                .background(optRowBg)
                 .contentShape(Rectangle())
                 .onTapGesture { toggleSelection(option: option, fieldId: fieldId) }
                 if idx < options.count - 1 {
@@ -648,13 +656,18 @@ struct FormInputSelectBlock: View {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
                 let chipBorder = isSelected ? (option.selected_border_color.map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
+                // Parity with Android + preview: honor per-option bg_color / selected_bg_color
+                // (was hardcoded fillCol / clear, dropping per-option chip backgrounds).
+                let chipBg = isSelected
+                    ? (option.selected_bg_color.map { Color(hex: $0) } ?? fillCol)
+                    : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)
                 Text(option.label ?? "")
                     // Parity with Android bubble (ContentBlockRenderer.kt:8760): honor per-option title_font_size.
                     .font(.system(size: CGFloat(option.title_font_size ?? 14), weight: .medium))
                     .foregroundColor(isSelected ? selectedTextCol : textCol)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 9)
-                    .background(isSelected ? fillCol : Color.clear)
+                    .background(chipBg)
                     .clipShape(Capsule())
                     .overlay(Capsule().strokeBorder(chipBorder, lineWidth: isSelected ? selectedBorderW : unselectedBorderW))
                     .contentShape(Capsule())

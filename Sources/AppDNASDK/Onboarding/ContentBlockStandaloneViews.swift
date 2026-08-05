@@ -131,7 +131,7 @@ struct CountdownTimerBlockView: View {
                 return max(0, remaining)
             }
         }
-        return block.duration_seconds ?? 60
+        return block.duration_seconds ?? 300
     }
 
     // Accent color shared across all timer variants.
