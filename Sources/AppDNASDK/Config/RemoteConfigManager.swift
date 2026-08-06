@@ -106,8 +106,10 @@ final class RemoteConfigManager {
     #if DEBUG
     /// SPEC-419 D6 — the applied (fetched + parsed) onboarding flow version, for the
     /// structural parity harness's readiness poll ("poll until the device reports the
-    /// just-published version, then screenshot"). Debug builds ONLY — gated by `#if DEBUG`
-    /// so the symbol is absent from release SDK builds.
+    /// just-published version, then screenshot"). Reached via the unguarded public
+    /// `AppDNA.debugAppliedConfigVersion` (see its note) — present in ALL build configs
+    /// because the Flutter plugin calls it unconditionally (issue #527). This method was
+    /// never actually `#if DEBUG`-gated despite the earlier wording here.
     func debugAppliedOnboardingVersion(flowId: String?) -> Int? {
         queue.sync {
             let id = flowId ?? activeOnboardingFlowId
