@@ -1146,7 +1146,7 @@ struct FormInputSelectBlock: View {
             } else {
                 // Enforce the console-configured cap on the ADD path only;
                 // removing a selection must always work.
-                let maxSel = (block.field_config?["max_selections"]?.value as? Int)
+                let maxSel = cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
                 if let m = maxSel, selectedValues.count >= m { return }
                 selectedValues.append(option.resolvedValue)
             }
@@ -1969,7 +1969,7 @@ struct FormInputChipsBlock: View {
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Console writes the cap as `max_chips` (Max Chips slider); `max_selections`
         // kept as a fallback for older/imported configs.
-        let maxSelections = (block.field_config?["max_chips"]?.value as? Int) ?? (block.field_config?["max_selections"]?.value as? Int)
+        let maxSelections = cfgDouble(block.field_config?["max_chips"]).map { Int($0) } ?? cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
