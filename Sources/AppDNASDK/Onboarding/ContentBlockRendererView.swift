@@ -1775,7 +1775,8 @@ struct ContentBlockRendererView: View {
         // the SAME normalization as the fill (`pvFraction`). Previously the
         // label rendered the RAW `progress_value` → `progress_value=0.75` filled
         // 75% but the label read "0%". Matches Android pvPercent.
-        let pvPercent = Int(((pvFraction ?? 0) * 100).rounded())
+        let effFraction = pvFraction ?? (variant == "segmented" ? 0 : (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0))
+        let pvPercent = Int((effFraction * 100).rounded())
         // SPEC-419 gap#6 — honor `label_format`/`custom_label`; default keeps
         // the existing "Step X of Y" when no format is authored. Mirrors the
         // console preview progress_bar label logic.
