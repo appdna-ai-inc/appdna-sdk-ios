@@ -1881,7 +1881,7 @@ struct PaywallRenderer: View {
                             Text(loc("plan.\(index).name", plan.displayName))
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.primary)
-                            Text(plan.displayPrice)
+                            Text(loc("plan.\(index).price", plan.displayPrice))
                                 .font(.subheadline.bold())
                                 .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : .primary)
                             if let period = plan.period {
@@ -1936,11 +1936,11 @@ struct PaywallRenderer: View {
                                 }
                                 // Name + Price horizontal
                                 HStack {
-                                    Text(plan.displayName)
+                                    Text(loc("plan.\(index).name", plan.displayName))
                                         .font(.headline)
                                         .foregroundColor(.primary)
                                     Spacer()
-                                    Text(plan.displayPrice)
+                                    Text(loc("plan.\(index).price", plan.displayPrice))
                                         .font(.headline)
                                         .foregroundColor(.primary)
                                 }
