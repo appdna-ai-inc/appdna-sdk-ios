@@ -1341,7 +1341,7 @@ struct ContentBlockRendererView: View {
         return VStack(spacing: btnSpacing) {
             if dividerPosition == "top" { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
-                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color)
+                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1351,7 +1351,7 @@ struct ContentBlockRendererView: View {
             ForEach(Array(bottomGroup.enumerated()), id: \.offset) { idx, provider in
                 // Mirror Android's post-split index scheme: bottomGroup labels are
                 // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
-                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color)
+                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
             if dividerPosition != "top" { divider }
         }
@@ -1360,7 +1360,7 @@ struct ContentBlockRendererView: View {
     /// One social-login button with per-provider color/radius overrides applied.
     /// SPEC-089e amendment — any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
-    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center", blockAccentColor: String? = nil, blockBgColor: String? = nil) -> some View {
+    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center", blockAccentColor: String? = nil, blockBgColor: String? = nil, pressedStyle: PressedStyle? = nil) -> some View {
         let providerType = provider.type ?? ""
         let radius = CGFloat(provider.corner_radius ?? Double(blockRadius))
         let bgColor: Color = {
@@ -1415,6 +1415,7 @@ struct ContentBlockRendererView: View {
                     .stroke(borderColor, lineWidth: borderWidth)
             )
         }
+        .applyPressedStyle(pressedStyle)
     }
 
     // Social login helpers
