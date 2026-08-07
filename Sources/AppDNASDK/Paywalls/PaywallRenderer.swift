@@ -45,6 +45,21 @@ struct PaywallRenderer: View {
         config.sections.first(where: { $0.type == "cta" })
     }
 
+    /// The currently selected plan (matches `onAppear`'s resolution: section plans, then top-level).
+    private var selectedPlan: PaywallPlan? {
+        let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
+        let plans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+        return plans.first(where: { $0.id == selectedPlanId })
+    }
+
+    /// The selected plan's per-plan CTA text, when non-empty. Wired into the pinned CTA + sticky
+    /// footer so a plan can override the section/top-level CTA label (e.g. "Start 7-day trial").
+    /// Basic wire only — a full selected-plan template-variable namespace ({{plan.*}}) is deferred.
+    private var selectedPlanCtaText: String? {
+        guard let t = selectedPlan?.cta_text, !t.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return t
+    }
+
     /// Sections that should render INSIDE the pinned bottom area, BELOW the
     /// CTA + restore button. Currently only applies to `legal` sections that
     /// appear AFTER the cta section in the original `config.sections` array.
@@ -145,7 +160,8 @@ struct PaywallRenderer: View {
                     if let ctaSec = ctaSection {
                         let topLevelText = config.cta?.text
                         let sectionText = ctaSec.data?.ctaText ?? ctaSec.data?.text
-                        let ctaText = topLevelText ?? sectionText
+                        // Selected plan's per-plan CTA overrides the section/top-level label.
+                        let ctaText = selectedPlanCtaText ?? topLevelText ?? sectionText
                         let showRestore = ctaSec.data?.showRestore ?? false
                         let restorePosition = ctaSec.data?.restorePosition ?? "below"
                         // Restore button rendered OUTSIDE `.applyContainerStyle`
@@ -174,6 +190,8 @@ struct PaywallRenderer: View {
                                 sectionStyle: ctaSec.style,
                                 ctaGradient: ctaSec.data?.ctaGradient,
                                 textOverride: ctaText,
+                                ctaFontSize: ctaSec.data?.ctaFontSize,
+                                ctaFontWeight: ctaSec.data?.ctaFontWeight,
                                 restoreText: nil,          // rendered outside
                                 showRestore: false,        // rendered outside
                                 onRestore: nil
@@ -541,6 +559,8 @@ struct PaywallRenderer: View {
                 sectionStyle: section.style,
                 ctaGradient: section.data?.ctaGradient,
                 textOverride: ctaText,
+                ctaFontSize: section.data?.ctaFontSize,
+                ctaFontWeight: section.data?.ctaFontWeight,
                 restoreText: section.data?.restoreText,
                 showRestore: section.data?.showRestore ?? false,
                 restorePosition: section.data?.restorePosition ?? "below",
@@ -1101,8 +1121,8 @@ struct PaywallRenderer: View {
         let bgColor = Color(hex: data?.backgroundColor ?? "#FFFFFF")
 
         VStack(spacing: 8) {
-            // CTA button
-            if let ctaText = data?.ctaText {
+            // CTA button — selected plan's per-plan CTA overrides the footer's configured label.
+            if let ctaText = selectedPlanCtaText ?? data?.ctaText {
                 Button {
                     handleCTATap()
                 } label: {
@@ -1111,7 +1131,7 @@ struct PaywallRenderer: View {
                             .tint(.white)
                     } else {
                         Text(loc("sticky_footer.cta", ctaText))
-                            .font(.system(size: data?.ctaFontSize ?? 17, weight: .semibold))
+                            .font(.system(size: data?.ctaFontSize ?? 17, weight: resolveCTAFontWeight(data?.ctaFontWeight)))
                             .foregroundColor(Color(hex: data?.ctaTextColor ?? "#FFFFFF"))
                     }
                 }
@@ -1775,7 +1795,7 @@ struct PaywallRenderer: View {
                                     .font(.subheadline.weight(.medium))
                                     .foregroundColor(.primary)
                                 HStack(spacing: 4) {
-                                    Text(plan.displayPrice).font(.caption.bold()).foregroundColor(.primary)
+                                    Text(loc("plan.\(index).price", plan.displayPrice)).font(.caption.bold()).foregroundColor(.primary)
                                     if let period = plan.period {
                                         Text("/ \(period)").font(.caption).foregroundColor(.secondary)
                                     }
@@ -1810,7 +1830,7 @@ struct PaywallRenderer: View {
                             VStack(spacing: 2) {
                                 Text(loc("plan.\(index).name", plan.displayName))
                                     .font(.subheadline.weight(.semibold))
-                                Text(plan.displayPrice)
+                                Text(loc("plan.\(index).price", plan.displayPrice))
                                     .font(.caption)
                             }
                             .padding(.horizontal, 20)
@@ -1841,9 +1861,9 @@ struct PaywallRenderer: View {
                 .pickerStyle(.segmented)
 
                 // Show price for selected plan
-                if let selected = plans.first(where: { $0.id == selectedPlanId }) {
+                if let (idx, selected) = plans.enumerated().first(where: { $0.element.id == selectedPlanId }) {
                     HStack(spacing: 4) {
-                        Text(selected.displayPrice).font(.title3.bold())
+                        Text(loc("plan.\(idx).price", selected.displayPrice)).font(.title3.bold())
                         if let period = selected.period {
                             Text("/ \(period)").font(.subheadline).foregroundColor(.secondary)
                         }
@@ -1861,7 +1881,7 @@ struct PaywallRenderer: View {
                             Text(loc("plan.\(index).name", plan.displayName))
                                 .font(.caption.weight(.semibold))
                                 .foregroundColor(.primary)
-                            Text(plan.displayPrice)
+                            Text(loc("plan.\(index).price", plan.displayPrice))
                                 .font(.subheadline.bold())
                                 .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : .primary)
                             if let period = plan.period {
@@ -1916,11 +1936,11 @@ struct PaywallRenderer: View {
                                 }
                                 // Name + Price horizontal
                                 HStack {
-                                    Text(plan.displayName)
+                                    Text(loc("plan.\(index).name", plan.displayName))
                                         .font(.headline)
                                         .foregroundColor(.primary)
                                     Spacer()
-                                    Text(plan.displayPrice)
+                                    Text(loc("plan.\(index).price", plan.displayPrice))
                                         .font(.headline)
                                         .foregroundColor(.primary)
                                 }

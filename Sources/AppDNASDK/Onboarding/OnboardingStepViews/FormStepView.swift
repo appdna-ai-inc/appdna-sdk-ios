@@ -393,7 +393,16 @@ struct FormStepView: View {
 
     // MARK: - Select
 
+    @ViewBuilder
     private func selectField(_ field: FormField) -> some View {
+        if field.config?.multi_select == true {
+            multiSelectField(field)
+        } else {
+            singleSelectField(field)
+        }
+    }
+
+    private func singleSelectField(_ field: FormField) -> some View {
         let options = field.options ?? []
         let binding = Binding<String>(
             get: { values[field.id] as? String ?? "" },
@@ -406,6 +415,50 @@ struct FormStepView: View {
             }
         }
         .pickerStyle(.menu)
+    }
+
+    // SPEC-419 — multi_select mirrors Android FormStepComposable.SelectField:
+    // value shape is [String] (List<String>), additions capped by max_selections.
+    private func multiSelectField(_ field: FormField) -> some View {
+        let options = field.options ?? []
+        let maxSelections = field.config?.max_selections
+        let selected: [String] = {
+            if let arr = values[field.id] as? [String] { return arr }
+            if let str = values[field.id] as? String {
+                return str.split(separator: ",").map(String.init).filter { !$0.isEmpty }
+            }
+            return []
+        }()
+        return VStack(alignment: .leading, spacing: 8) {
+            ForEach(options) { opt in
+                let optId = opt.id ?? ""
+                let checked = selected.contains(optId)
+                Button(action: {
+                    var updated = selected
+                    if checked {
+                        updated.removeAll { $0 == optId }
+                    } else if maxSelections == nil || updated.count < maxSelections! {
+                        updated.append(optId)
+                    }
+                    values[field.id] = updated
+                    errors[field.id] = nil
+                }) {
+                    HStack {
+                        Image(systemName: checked ? "checkmark.square.fill" : "square")
+                            .foregroundColor(checked ? .accentColor : .secondary)
+                        Text((opt.label ?? "").interpolated())
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            if !selected.isEmpty {
+                Text(maxSelections != nil ? "\(selected.count) / \(maxSelections!) selected" : "\(selected.count) selected")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+        }
     }
 
     // MARK: - Slider

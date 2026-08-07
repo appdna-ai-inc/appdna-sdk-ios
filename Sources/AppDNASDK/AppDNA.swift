@@ -11,7 +11,7 @@ import FirebaseFirestore
 public final class AppDNA: @unchecked Sendable {
 
     /// SDK version string.
-    public static let sdkVersion = "1.0.70"
+    public static let sdkVersion = "1.0.71"
 
     /// Firestore instance used by the SDK.
     /// Uses a secondary Firebase app ("appdna") if GoogleService-Info-AppDNA.plist is found,
@@ -862,16 +862,20 @@ public final class AppDNA: @unchecked Sendable {
         ScreenManager.shared.previewScreen(json: json, completion: completion)
     }
 
-    #if DEBUG
     /// SPEC-419 D6 — the applied (fetched + parsed) onboarding config version, for the
     /// structural parity harness's readiness poll. The host app surfaces this into a hidden
     /// `accessibilityIdentifier("adn.appliedConfigVersion")` label that the harness polls
-    /// until it equals the just-published version. Debug builds ONLY — release SDK builds do
-    /// not contain this symbol (verified by the D6 acceptance predicate).
+    /// until it equals the just-published version.
+    ///
+    /// 🔴 NOT `#if DEBUG` — the Flutter plugin (`AppdnaPlugin.swift`) invokes this
+    /// unconditionally via its `debugAppliedConfigVersion` method channel. A CocoaPods pod
+    /// compiles in the HOST app's configuration, so guarding it made every Flutter customer's
+    /// Release archive fail to compile (`type 'AppDNA' has no member 'debugAppliedConfigVersion'`)
+    /// — the identical failure `previewScreen` above already hit. CI can't catch it because
+    /// nothing builds a wrapper in Release. Keep it unguarded. (Issue #527 — Wine Trails.)
     public static func debugAppliedConfigVersion(flowId: String? = nil) -> Int? {
         shared.remoteConfigManager?.debugAppliedOnboardingVersion(flowId: flowId)
     }
-    #endif
 
     /// Check if analytics consent is granted. Used by zero-code mechanisms.
     public static func isConsentGranted() -> Bool {

@@ -82,6 +82,7 @@ struct CountdownTimerBlockView: View {
     let onAction: (_ action: String, _ actionValue: String?) -> Void
 
     @State private var remainingSeconds: Int = 0
+    @State private var initialSeconds: Int = 0
     @State private var expired: Bool = false
 
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
@@ -101,7 +102,8 @@ struct CountdownTimerBlockView: View {
             }
         }
         .onAppear {
-            remainingSeconds = block.duration_seconds ?? 60
+            initialSeconds = initialRemainingSeconds
+            remainingSeconds = initialSeconds
         }
         .onReceive(timer) { _ in
             guard !expired else { return }
@@ -115,6 +117,23 @@ struct CountdownTimerBlockView: View {
         }
     }
 
+    // Initial countdown value. For target_type == "fixed_datetime" (parity with Android
+    // ContentBlockRenderer.kt) parse target_datetime as an absolute ISO-8601 UTC instant
+    // and count down the remaining seconds; otherwise fall back to duration_seconds.
+    private var initialRemainingSeconds: Int {
+        if block.target_type == "fixed_datetime", let iso = block.target_datetime, !iso.isEmpty {
+            let fmt = DateFormatter()
+            fmt.locale = Locale(identifier: "en_US_POSIX")
+            fmt.timeZone = TimeZone(identifier: "UTC")
+            fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            if let target = fmt.date(from: iso) {
+                let remaining = Int(target.timeIntervalSinceNow)
+                return max(0, remaining)
+            }
+        }
+        return block.duration_seconds ?? 300
+    }
+
     // Accent color shared across all timer variants.
     private var accentColor: Color {
         Color(hex: block.accent_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
@@ -122,10 +141,12 @@ struct CountdownTimerBlockView: View {
 
     // h/m/s segment strings (gated by show_* flags), matching the preview.
     private var segmentStrings: [String] {
+        let days = remainingSeconds / 86400
         let hours = (remainingSeconds % 86400) / 3600
         let minutes = (remainingSeconds % 3600) / 60
         let seconds = remainingSeconds % 60
         var segs: [String] = []
+        if block.show_days != false && days > 0 { segs.append(String(format: "%02d", days)) }
         if block.show_hours != false { segs.append(String(format: "%02d", hours)) }
         if block.show_minutes != false { segs.append(String(format: "%02d", minutes)) }
         if block.show_seconds != false { segs.append(String(format: "%02d", seconds)) }
@@ -135,7 +156,9 @@ struct CountdownTimerBlockView: View {
     // SPEC-419 pass-15 #28 — default unit labels hrs/min/sec to match preview (was Hours/Min/Sec).
     private var labelStrings: [String] {
         let lbls = block.labels
+        let days = remainingSeconds / 86400
         var arr: [String] = []
+        if block.show_days != false && days > 0 { arr.append(lbls?.days ?? "days") }
         if block.show_hours != false { arr.append(lbls?.hours ?? "hrs") }
         if block.show_minutes != false { arr.append(lbls?.minutes ?? "min") }
         if block.show_seconds != false { arr.append(lbls?.seconds ?? "sec") }
@@ -143,8 +166,9 @@ struct CountdownTimerBlockView: View {
     }
 
     private var barFraction: CGFloat {
-        let initial = CGFloat(max(block.duration_seconds ?? 60, 1))
-        return min(max(CGFloat(remainingSeconds) / initial, 0), 1)
+        // Denominator is the captured initial value (parity with Android's initialSeconds),
+        // NOT duration_seconds — fixed_datetime bars would otherwise stay pinned at 100%.
+        return min(max(CGFloat(remainingSeconds) / CGFloat(max(initialSeconds, 1)), 0), 1)
     }
 
     // Digital variant (default): HStack of time unit columns
@@ -298,24 +322,30 @@ struct AnimatedLoadingBlockView: View {
         let loadingMsgPos = block.loading_text_position ?? "below"
         let loadingMsgSize = CGFloat(block.loading_text_size ?? 15)
         let loadingMsgColor = block.loading_text_color.map { Color(hex: $0) } ?? Color(hex: block.text_color ?? "#9CA3AF")
+        // Progress/Loading v2 — loading message horizontal alignment (default center).
+        let loadingMsgAlign = block.loading_text_align ?? "center"
+        let loadingMsgTextAlign: TextAlignment = loadingMsgAlign == "left" ? .leading : loadingMsgAlign == "right" ? .trailing : .center
+        let loadingMsgFrameAlign: Alignment = loadingMsgAlign == "left" ? .leading : loadingMsgAlign == "right" ? .trailing : .center
 
         VStack(spacing: 16) {
             // Percentage is rendered inside each variant (circular ring center, linear bar, etc.)
             // to avoid duplicate display. See loadingVariantView for per-variant rendering.
 
-            // EPIC-3 — configurable loading message with independent position/size/color.
+            // EPIC-3 — configurable loading message with independent position/size/color/align.
             if let loadingMsg, loadingMsgPos == "above" {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(loadingMsgTextAlign)
+                    .frame(maxWidth: .infinity, alignment: loadingMsgFrameAlign)
             }
             loadingVariantView(variant: variant, itemList: itemList, progressCol: progressCol, checkCol: checkCol)
             if let loadingMsg, loadingMsgPos == "below" {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(loadingMsgTextAlign)
+                    .frame(maxWidth: .infinity, alignment: loadingMsgFrameAlign)
             }
         }
         .onAppear {
@@ -443,18 +473,27 @@ struct AnimatedLoadingBlockView: View {
 
         case "linear":
             return AnyView(
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(height: 8)
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(progressCol)
-                            .frame(width: geometry.size.width * overallProgress, height: 8)
-                            .animation(.linear(duration: 0.3), value: overallProgress)
+                VStack(spacing: 8) {
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 8)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(progressCol)
+                                .frame(width: geometry.size.width * overallProgress, height: 8)
+                                .animation(.linear(duration: 0.3), value: overallProgress)
+                        }
+                    }
+                    .frame(height: 8)
+                    // Parity with Android linear branch (ContentBlockRenderer.kt:5084-5090) + preview
+                    // (OnboardingStepPreview.tsx:1710): render the % below the bar when show_percentage.
+                    if block.show_percentage == true {
+                        Text("\(Int(overallProgress * 100))%")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(block.text_color.map { Color(hex: $0) } ?? .primary)
                     }
                 }
-                .frame(height: 8)
             )
 
         default: // checklist
@@ -1180,7 +1219,9 @@ struct DateWheelPickerBlockView: View {
     @State private var prewarmDate = Date()
 
     /// Parse relative date strings like "today", "-18y", "-100y", "+1y", "-30d", or ISO date "2000-01-01"
-    private static func parseDate(_ str: String?) -> Date? {
+    // Internal (was private) so FormInputDateBlock can reuse the identical min_date/max_date
+    // parsing (relative "-18y"/"+30d", "today"/"now", absolute ISO) for its own bounds gate.
+    static func parseDate(_ str: String?) -> Date? {
         guard let str, !str.isEmpty else { return nil }
         let trimmed = str.trimmingCharacters(in: .whitespaces).lowercased()
         if trimmed == "today" || trimmed == "now" { return Date() }
@@ -1358,7 +1399,11 @@ struct DateWheelPickerBlockView: View {
                     withAnimation { showPicker.toggle() }
                 } label: {
                     HStack {
+                        // SPEC — honor time_text_size on the displayed time (time / datetime modes).
                         Text(formatDate(selectedDate, components: components))
+                            .font(components.contains(.hourAndMinute)
+                                ? block.time_text_size.map { Font.system(size: CGFloat($0)) }
+                                : nil)
                             .foregroundColor(triggerTextColor)
                         Spacer()
                         Image(systemName: components == [.hourAndMinute] ? "clock" : "calendar")
@@ -1474,7 +1519,16 @@ struct DateWheelPickerBlockView: View {
             let formatter = ISO8601DateFormatter()
             if let date = formatter.date(from: saved) {
                 selectedDate = date
+                return
             }
+        }
+        // No prior answer — seed the wheel from the authored `default_date_value`
+        // (relative like "-18y" or ISO "2000-01-01") instead of always landing
+        // on today. Clamp into the valid range so a default outside min/max
+        // can't open on an invalid day. Parity with Android's default handling.
+        if let seeded = Self.parseDate(block.default_date_value) {
+            let range = dateRange
+            selectedDate = min(max(seeded, range.lowerBound), range.upperBound)
         }
     }
 
@@ -1486,6 +1540,12 @@ struct DateWheelPickerBlockView: View {
             f.dateStyle = .none; f.timeStyle = .short
         } else {
             f.dateStyle = .medium; f.timeStyle = .none
+        }
+        // SPEC — honor time_format ("12h"/"24h") on the displayed time. Locale
+        // en_GB forces 24h (HH:mm, no AM/PM); en_US forces 12h (h:mm a). Unset
+        // falls through to the device locale.
+        if components.contains(.hourAndMinute), let tf = block.time_format?.lowercased() {
+            f.locale = Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
         }
         return f.string(from: date)
     }
@@ -1596,6 +1656,13 @@ struct DateWheelPickerBlockView: View {
             if Color.isLightHex(bgHex) == false, bgHex.lowercased() != "transparent", bgHex != "" { return .dark }
             return .light
         }()
+        // SPEC — force the spinning time wheel into 12h/24h per time_format.
+        // en_GB → 24-hour columns (no AM/PM); en_US → 12-hour + AM/PM. Only the
+        // time wheel is affected; date-only wheels keep the device locale.
+        let timeLocale: Locale? = {
+            guard isTime, let tf = block.time_format?.lowercased() else { return nil }
+            return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
+        }()
         let picker: AnyView = {
             if useWheel || isTime {
                 let base = DatePicker("", selection: $selectedDate, in: dateRange, displayedComponents: components)
@@ -1603,6 +1670,7 @@ struct DateWheelPickerBlockView: View {
                     .labelsHidden()
                     .tint(highlightCol)
                     .environment(\.colorScheme, resolvedScheme)
+                    .environment(\.locale, timeLocale ?? Locale.current)
                     .frame(maxWidth: .infinity)
                 if let hex = wheelTextColorHex {
                     return AnyView(base.colorMultiply(Color(hex: hex)))
@@ -1734,6 +1802,12 @@ struct WheelPickerBlockView: View {
 
         let isHorizontal = block.wheel_orientation == "horizontal" || block.orientation == "horizontal"
 
+        // SPEC — honor wheel_height / visible_items as the drum height (was the
+        // system default). ~34pt per visible row; nil → natural sizing (unchanged).
+        // Parity with Android's drumHeightDp.
+        let wheelHeightPt: CGFloat? = block.wheel_height.map { CGFloat($0) }
+            ?? block.visible_items.map { CGFloat(max(1, min(9, $0))) * 34 }
+
         VStack(spacing: 8) {
             if let label = block.rating_label ?? block.text {
                 Text(label)
@@ -1759,6 +1833,7 @@ struct WheelPickerBlockView: View {
                 }
                 .pickerStyle(.wheel)
                 .frame(maxWidth: .infinity)
+                .frame(height: wheelHeightPt)  // nil → natural (unchanged); set → authored drum height
                 .tint(highlightCol)
             }
         }
@@ -1792,8 +1867,10 @@ struct WheelPickerBlockView: View {
                 persistValue(values: values)
                 // Horizontal-only haptic tick. Vertical Picker(.wheel) emits
                 // its own haptic natively; doubling would feel off.
+                // `haptic_on_scroll == false` suppresses the tick entirely
+                // (author opt-out); nil/true keep the default native feel.
                 let isHorizontal = block.wheel_orientation == "horizontal" || block.orientation == "horizontal"
-                if isHorizontal {
+                if isHorizontal && block.haptic_on_scroll != false {
                     selectionHaptic.selectionChanged()
                     selectionHaptic.prepare()
                 }
@@ -2057,6 +2134,12 @@ struct StarBackgroundBlockView: View {
         let color = Color(hex: block.particle_color ?? block.active_color ?? block.text_color ?? "#FFFFFF")
         // SPEC-419 pass-15 #27 — secondary_color tints 1/3 of particles (matches editor + preview)
         let secondaryColor = block.secondary_color.map { Color(hex: $0) } ?? color
+        // Mrozu QA (2026-08-03): particle_type was decoded but the Canvas always drew a
+        // circle, so stars/sparkles/snow all looked identical. Render the actual shape.
+        let particleType = block.particle_type ?? "stars"  // match console/preview default (element is star_background)
+        // Mrozu QA (2026-08-04): confetti = falling multicolor rounded rects. `particle_multicolor`
+        // cycles a fixed palette per-particle (defaults ON for confetti). Parity with Android.
+        let useMulticolor = block.particle_multicolor ?? (particleType == "confetti")
         let opacity = block.particle_opacity ?? block.block_style?.opacity ?? 0.8
         let particleCount: Int = {
             switch block.density {
@@ -2090,10 +2173,14 @@ struct StarBackgroundBlockView: View {
                         height: particle.size
                     )
                     context.opacity = particle.opacity * opacity
-                    // SPEC-419 pass-15 #27 — every 3rd particle uses secondary_color
+                    // Mrozu QA (2026-08-04): multicolor confetti cycles the palette; otherwise every
+                    // 3rd particle uses secondary_color (SPEC-419 pass-15 #27).
+                    let fillColor = useMulticolor
+                        ? Self.confettiPalette[i % Self.confettiPalette.count]
+                        : (i % 3 == 0 ? secondaryColor : color)
                     context.fill(
-                        Path(ellipseIn: rect),
-                        with: .color(i % 3 == 0 ? secondaryColor : color)
+                        Self.particlePath(for: particleType, in: rect),
+                        with: .color(fillColor)
                     )
                 }
             }
@@ -2136,6 +2223,43 @@ struct StarBackgroundBlockView: View {
             }
         }
     }
+
+    // Mrozu QA (2026-08-03): render the configured particle_type. `dots`/`bokeh`
+    // stay round; `stars`/`sparkles`/`snow` draw an N-point star polygon so the
+    // shape selector is no longer a no-op. Parity with Android drawParticle().
+    static func particlePath(for type: String, in rect: CGRect) -> Path {
+        switch type {
+        case "stars":    return starPath(points: 5, innerRatio: 0.42, in: rect)
+        case "sparkles": return starPath(points: 4, innerRatio: 0.30, in: rect)
+        case "snow":     return starPath(points: 6, innerRatio: 0.50, in: rect)
+        // Mrozu QA (2026-08-04): confetti = small rounded rect (parity w/ Android drawRoundRect).
+        case "confetti": return Path(roundedRect: rect, cornerSize: CGSize(width: rect.width * 0.3, height: rect.height * 0.3))
+        default:         return Path(ellipseIn: rect) // dots, bokeh
+        }
+    }
+
+    // Mrozu QA (2026-08-04): fixed confetti palette — MUST stay byte-identical to Android confettiPalette.
+    static let confettiPalette: [Color] = [
+        Color(hex: "#EF4444"), Color(hex: "#F59E0B"), Color(hex: "#FCD34D"), Color(hex: "#10B981"),
+        Color(hex: "#3B82F6"), Color(hex: "#8B5CF6"), Color(hex: "#EC4899"),
+    ]
+
+    private static func starPath(points: Int, innerRatio: CGFloat, in rect: CGRect) -> Path {
+        var path = Path()
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let outer = min(rect.width, rect.height) / 2
+        let inner = outer * innerRatio
+        let step = CGFloat.pi / CGFloat(points)
+        var angle = -CGFloat.pi / 2 // start pointing up
+        for i in 0..<(points * 2) {
+            let r = (i % 2 == 0) ? outer : inner
+            let pt = CGPoint(x: center.x + r * cos(angle), y: center.y + r * sin(angle))
+            i == 0 ? path.move(to: pt) : path.addLine(to: pt)
+            angle += step
+        }
+        path.closeSubpath()
+        return path
+    }
 }
 
 // MARK: - Pricing Card Block View (SPEC-089d Nurrai)
@@ -2144,6 +2268,9 @@ struct StarBackgroundBlockView: View {
 struct PricingCardBlockView: View {
     let block: ContentBlock
     let onAction: (_ action: String, _ actionValue: String?) -> Void
+    // Parity with Android (ContentBlockRenderer.kt:7175-7176): persist the tapped plan into
+    // inputValues so answer capture + next_step_rules answer_equals on the selection work.
+    @Binding var inputValues: [String: Any]
 
     @State private var selectedPlanId: String? = nil
 
@@ -2176,6 +2303,8 @@ struct PricingCardBlockView: View {
 
         return Button {
             selectedPlanId = plan.id
+            inputValues["selected_plan_id"] = plan.id ?? ""
+            inputValues["selected_plan_label"] = plan.label ?? ""
             onAction("select_plan", plan.id)
         } label: {
             VStack(spacing: 6) {

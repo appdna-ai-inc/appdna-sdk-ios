@@ -1762,6 +1762,11 @@ enum RequiredFieldGate {
             // must NOT satisfy a required field. Android's ContentBlockRenderer already blocks empty lists;
             // iOS lacked this branch and advanced past a required question with zero selections.
             if let arr = value as? [Any], arr.isEmpty { return (false, fieldId) }
+            // Mrozu QA (2026-08-04, Flo s1) — a required `agreement`/consent checkbox is satisfied
+            // ONLY when checked; an unchecked box reports a non-nil `false` that would otherwise slip
+            // past the gate. Scoped to `.agreement` so pre-existing required `input_toggle`/`toggle`
+            // fields keep their behavior. Parity with Android's `is Boolean` branch.
+            if block.type == .agreement, let b = value as? Bool, b == false { return (false, fieldId) }
         }
         return (true, nil)
     }

@@ -10,9 +10,13 @@ struct FormFieldLabelView: View {
     var body: some View {
         if let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
             let required = block.field_required ?? false
+            // SPEC — honor authored label_font_size (field_style first, then
+            // top-level), default .subheadline (~15pt). Parity with Android
+            // FormFieldLabel (field_style?.label_font_size ?: 15sp). Was hardcoded.
+            let labelSize = block.field_style?.label_font_size ?? block.label_font_size
             HStack(spacing: 2) {
                 Text(label)
-                    .font(.subheadline.weight(.medium))
+                    .font(labelSize.map { Font.system(size: CGFloat($0), weight: .medium) } ?? .subheadline.weight(.medium))
                     .foregroundColor(Color(hex: block.field_style?.label_color ?? "#374151"))
                 if required {
                     Text("*")
@@ -82,6 +86,10 @@ struct FormInputTextBlock: View {
     let keyboardType: UIKeyboardType
 
     @State private var text: String = ""
+    // SPEC — focus tracking so focused_background_color can swap the field fill
+    // while editing (parity with Android isFocused). UIKitTextField already
+    // drives this binding from textFieldDidBegin/EndEditing.
+    @State private var isFocused: Bool = false
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -94,6 +102,10 @@ struct FormInputTextBlock: View {
         // font_size (default 14), mirroring preview precedence. Was no font set +
         // a fixed inner height of 24 that clipped larger fonts.
         let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
+        // SPEC — focused_background_color swaps the field fill while editing;
+        // falls back to background_color when unset. Parity with Android.
+        let baseBg = Color(hex: block.field_style?.background_color ?? "transparent")
+        let focusedBg = block.field_style?.focused_background_color.map { Color(hex: $0) } ?? baseBg
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -106,13 +118,14 @@ struct FormInputTextBlock: View {
                 returnKeyType: .done,
                 font: UIFont.systemFont(ofSize: inputFontSize),
                 textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
-                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) }
+                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) },
+                isFocused: $isFocused
             )
             .frame(height: max(24, inputFontSize + 6))
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .frame(minHeight: fieldHeight(block), alignment: .center)
-            .background(Color(hex: block.field_style?.background_color ?? "transparent"))
+            .background(isFocused ? focusedBg : baseBg)
             .cornerRadius(cornerRadius)
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius)
@@ -273,7 +286,32 @@ struct FormInputDateBlock: View {
 
         // Picker variant (UI: "Picker Variant" select on input_date/datetime).
         // Falls back to .compact when unset so existing flows don't change.
-        let variant = (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
+        // block.picker_presentation (editor "Presentation" control) takes precedence, matching
+        // Android (ContentBlockRenderer.kt:7780-7784) + preview: "field" → tap-to-open compact,
+        // "inline" → graphical (only for variants that include a date component; time-only has no
+        // graphical style so it falls through to picker_variant).
+        let variant: String = {
+            if block.picker_presentation == "field" {
+                return "compact"
+            } else if block.picker_presentation == "inline" && components.contains(.date) {
+                return "graphical"
+            }
+            return (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
+        }()
+        // SPEC — honor time_format ("12h"/"24h") + time_text_size on the time
+        // picker. The console writes both to input_time/input_datetime which
+        // route here (not to DateWheelPickerBlockView). Locale en_GB forces 24h
+        // (HH:mm, no AM/PM); en_US forces 12h (h:mm a). Only applies when a time
+        // component is shown; unset time_format keeps the device locale.
+        let isTimeComponent = components.contains(.hourAndMinute)
+        let timeLocale: Locale? = {
+            guard isTimeComponent, let tf = block.time_format?.lowercased() else { return nil }
+            return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
+        }()
+        // Non-optional so the compact display text never falls back to SwiftUI's
+        // ~17pt body when time_text_size is unset. Mirrors Android's 14.sp default
+        // (time components honor time_text_size ?? 14; non-time components use 14).
+        let displayFont: Font = Font.system(size: CGFloat(isTimeComponent ? (block.time_text_size ?? 14) : 14))
         // Per-variant bg — both controls already exist in the console editor.
         let wheelBgHex = block.field_config?["wheel_bg_color"]?.value as? String
         let calendarBgHex = block.field_config?["calendar_bg_color"]?.value as? String
@@ -338,6 +376,7 @@ struct FormInputDateBlock: View {
                         .datePickerStyle(.wheel)
                         .labelsHidden()
                         .tint(accentColor)
+                        .environment(\.locale, timeLocale ?? Locale.current)
                         .frame(maxWidth: .infinity)
                         // #12 — wheel_text_color tints the spinning labels (.white = identity).
                         .colorMultiply(wheelTextColorHex.map { Color(hex: $0) } ?? .white)
@@ -348,6 +387,7 @@ struct FormInputDateBlock: View {
                         .datePickerStyle(.graphical)
                         .labelsHidden()
                         .tint(accentColor)
+                        .environment(\.locale, timeLocale ?? Locale.current)
                         .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
                         .cornerRadius(cornerRadius)
                 default: // compact
@@ -377,6 +417,8 @@ struct FormInputDateBlock: View {
                         if components == .date { f.dateStyle = .medium; f.timeStyle = .none }
                         else if components == .hourAndMinute { f.dateStyle = .none; f.timeStyle = .short }
                         else { f.dateStyle = .medium; f.timeStyle = .short }
+                        // Force 12h/24h display per time_format when a time is shown.
+                        if let loc = timeLocale { f.locale = loc }
                         return f
                     }()
                     let chevron = components == .hourAndMinute ? "clock" : "calendar"
@@ -386,6 +428,7 @@ struct FormInputDateBlock: View {
                     } label: {
                         HStack(spacing: 8) {
                             Text(fmt.string(from: selectedDate))
+                                .font(displayFont)
                                 .foregroundColor(fgColor)
                             Spacer()
                             Image(systemName: chevron)
@@ -414,6 +457,7 @@ struct FormInputDateBlock: View {
                                 .datePickerStyle(.wheel)
                                 .labelsHidden()
                                 .tint(accentColor)
+                                .environment(\.locale, timeLocale ?? Locale.current)
                                 .environment(\.colorScheme, resolvedScheme ?? .light)
                             Button("Done") { showCompactPopover = false }
                                 .buttonStyle(.borderedProminent)
@@ -453,6 +497,20 @@ struct FormInputDateBlock: View {
                     inputValues[fieldId] = nil
                     return
                 }
+                // Mrozu QA — also enforce block.min_date / block.max_date on the form-input date
+                // variant (the editor's Min/Max Date controls). Previously only the standalone
+                // date_wheel_picker honored these; input_date/time/datetime silently dropped them.
+                // Parsed with the same helper the standalone picker uses (relative + ISO forms).
+                if let minD = DateWheelPickerBlockView.parseDate(block.min_date), newValue < minD {
+                    dateError = block.date_validation_message ?? "Date is before the allowed minimum"
+                    inputValues[fieldId] = nil
+                    return
+                }
+                if let maxD = DateWheelPickerBlockView.parseDate(block.max_date), newValue > maxD {
+                    dateError = block.date_validation_message ?? "Date is after the allowed maximum"
+                    inputValues[fieldId] = nil
+                    return
+                }
                 dateError = nil
                 let formatter = ISO8601DateFormatter()
                 inputValues[fieldId] = formatter.string(from: newValue)
@@ -460,7 +518,9 @@ struct FormInputDateBlock: View {
             if let dateError {
                 Text(dateError)
                     .font(.caption)
-                    .foregroundColor(.red)
+                    // Honor field_style.error_text_color (parity with Android, which uses
+                    // error_text_color ?? colorScheme.error) — was hardcoded system red.
+                    .foregroundColor(block.field_style?.error_text_color.map { Color(hex: $0) } ?? .red)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -539,11 +599,25 @@ struct FormInputSelectBlock: View {
         VStack(spacing: 0) {
             ForEach(Array(options.enumerated()), id: \.offset) { idx, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
+                // Parity with Android (ContentBlockRenderer list 8781/8795-8797) + preview:
+                // honor per-option title/subtitle font size, and per-option title_color for the
+                // unselected state (selected still uses the block-level selectedTextCol).
+                let optTitleSize = CGFloat(option.title_font_size ?? 16)
+                let optSubtitleSize = CGFloat(option.subtitle_font_size ?? 13)
+                let optTitleCol = isSelected
+                    ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
+                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                let optSubtitleCol = isSelected
+                    ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
+                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                let optRowBg = isSelected
+                    ? (option.selected_bg_color.map { Color(hex: $0) } ?? selectedBgCol)
+                    : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(option.label ?? "").font(.system(size: 16)).foregroundColor(isSelected ? selectedTextCol : textCol)
+                        Text(option.label ?? "").font(.system(size: optTitleSize)).foregroundColor(optTitleCol)
                         if let sub = option.subtitle, !sub.isEmpty {
-                            Text(sub).font(.system(size: 13)).foregroundColor(isSelected ? selectedTextCol : textCol)
+                            Text(sub).font(.system(size: optSubtitleSize)).foregroundColor(optSubtitleCol)
                         }
                     }
                     Spacer()
@@ -554,7 +628,7 @@ struct FormInputSelectBlock: View {
                 .padding(.horizontal, 4)
                 .padding(.vertical, 14)
                 .frame(maxWidth: .infinity)
-                .background(isSelected ? selectedBgCol : Color.clear)
+                .background(optRowBg)
                 .contentShape(Rectangle())
                 .onTapGesture { toggleSelection(option: option, fieldId: fieldId) }
                 if idx < options.count - 1 {
@@ -582,12 +656,18 @@ struct FormInputSelectBlock: View {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
                 let chipBorder = isSelected ? (option.selected_border_color.map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
+                // Parity with Android + preview: honor per-option bg_color / selected_bg_color
+                // (was hardcoded fillCol / clear, dropping per-option chip backgrounds).
+                let chipBg = isSelected
+                    ? (option.selected_bg_color.map { Color(hex: $0) } ?? fillCol)
+                    : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)
                 Text(option.label ?? "")
-                    .font(.system(size: 14, weight: .medium))
+                    // Parity with Android bubble (ContentBlockRenderer.kt:8760): honor per-option title_font_size.
+                    .font(.system(size: CGFloat(option.title_font_size ?? 14), weight: .medium))
                     .foregroundColor(isSelected ? selectedTextCol : textCol)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 9)
-                    .background(isSelected ? fillCol : Color.clear)
+                    .background(chipBg)
                     .clipShape(Capsule())
                     .overlay(Capsule().strokeBorder(chipBorder, lineWidth: isSelected ? selectedBorderW : unselectedBorderW))
                     .contentShape(Capsule())
@@ -638,10 +718,11 @@ struct FormInputSelectBlock: View {
                     LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.label ?? "")
-                            .font(.system(size: 15, weight: .semibold))
+                            // Parity with Android image_tiles (ContentBlockRenderer.kt:8709): honor per-option font size.
+                            .font(.system(size: CGFloat(option.title_font_size ?? 15), weight: .semibold))
                             .foregroundColor(.white)
                         if let sub = option.subtitle, !sub.isEmpty {
-                            Text(sub).font(.system(size: 12)).foregroundColor(.white.opacity(0.85))
+                            Text(sub).font(.system(size: CGFloat(option.subtitle_font_size ?? 12))).foregroundColor(.white.opacity(0.85))
                         }
                     }
                     .padding(10)
@@ -694,7 +775,17 @@ struct FormInputSelectBlock: View {
             ?? block.active_color
             ?? (AppDNA.brandAccentHex ?? "#6366F1")
         let fillCol = Color(hex: accentHex)
-        let cornerR = CGFloat(block.field_style?.corner_radius ?? 10)
+        // Select v2 — option card corner: `option_corner_radius` wins, else legacy `corner_radius`, else 10.
+        let cornerR = CGFloat(block.field_style?.option_corner_radius ?? block.field_style?.corner_radius ?? 10)
+        // Select v2 — per-option styling extras (Mrozu QA).
+        let optionFontFamily = block.field_style?.option_font_family
+        // Default TRUE = full wrap (preserves prior native behavior + the Mrozu ask
+        // that long option text stays fully visible). Authors opt into single-line
+        // truncation by setting option_text_wrap=false.
+        let optionTextWrap = block.field_style?.option_text_wrap ?? true
+        let optionImageScale = block.field_style?.option_image_scale ?? "contain"
+        // checkmark_color decouples the indicator tint from the accent/fill; falls back to fillCol when unset.
+        let checkmarkCol: Color = block.field_style?.checkmark_color.map { Color(hex: $0) } ?? fillCol
 
         // Colors from field_config
         let cfgOptBg = (cfg?["bg_color"]?.value as? String).map { Color(hex: $0) }
@@ -759,6 +850,18 @@ struct FormInputSelectBlock: View {
         let separatorCol = (cfg?["separator_color"]?.value as? String).map { Color(hex: $0) } ?? Color(hex: "#D1D5DB")
         let separatorThickness = CGFloat((cfgDouble(cfg?["separator_thickness"])) ?? 1)
 
+        // Select v2 — resolve the option font family once (falls back to the system font when
+        // the family isn't natively available). Applied to title/subtitle/leading/trailing.
+        let optFont: (CGFloat, Font.Weight) -> Font = { size, weight in
+            if let fam = optionFontFamily {
+                let resolved = FontResolver.resolve(fam)
+                if resolved != ".AppleSystemUIFont" {
+                    return .custom(resolved, size: size).weight(weight)
+                }
+            }
+            return .system(size: size, weight: weight)
+        }
+
         VStack(spacing: optionSpacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { pair in
                 let oi = pair.offset                 // SPEC-419 — per-index parity node key
@@ -798,15 +901,15 @@ struct FormInputSelectBlock: View {
                     toggleSelection(option: option, fieldId: fieldId)
                 } label: {
                     HStack(spacing: 12) {
-                        // Radio on left
+                        // Radio on left — indicator tint uses checkmark_color when set (else fillCol).
                         if showRadio && radioOnLeft {
-                            radioIndicator(isSelected: isSelected, fillCol: fillCol, radioFill: radioFill)
+                            radioIndicator(isSelected: isSelected, fillCol: checkmarkCol, radioFill: radioFill)
                         }
                         // Image with optional overlay circle — swaps between
                         // selected/unselected variants when the option defines
                         // them, otherwise falls back to the default image_url.
                         if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
-                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: stackedImageSize)
+                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: stackedImageSize, imageScale: optionImageScale)
                         }
                         if let icon = option.icon, !icon.isEmpty {
                             Text(icon)
@@ -814,22 +917,28 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — leading label at the START of the row
                         if let lt = option.leading_text, !lt.isEmpty {
                             Text(lt)
-                                .font(.system(size: optSubtitleSize, weight: .semibold))
+                                // Parity with Android + console preview which render the leading label at 14pt.
+                                .font(optFont(14, .semibold))
                                 .foregroundColor(optTitleColor)
                                 .accessibilityIdentifier("option.\(oi).leading_text")
                         }
-                        // Title + subtitle — fixedSize vertical so text wraps fully
+                        // Title + subtitle — option_text_wrap true → full multi-line wrap;
+                        // false (default) → single-line truncate (parity with the console preview).
                         VStack(alignment: (option.text_alignment == "center" ? .center : .leading), spacing: 2) {
                             Text(option.label ?? "")
-                                .font(.system(size: optTitleSize, weight: optTitleWeight))
+                                .font(optFont(optTitleSize, optTitleWeight))
                                 .foregroundColor(optTitleColor)
-                                .fixedSize(horizontal: false, vertical: true)
+                                .lineLimit(optionTextWrap ? nil : 1)
+                                .truncationMode(.tail)
+                                .fixedSize(horizontal: false, vertical: optionTextWrap)
                                 .accessibilityIdentifier("option.\(oi).title")
                             if let sub = option.subtitle, !sub.isEmpty {
                                 Text(sub)
-                                    .font(.system(size: optSubtitleSize))
+                                    .font(optFont(optSubtitleSize, .regular))
                                     .foregroundColor(optSubtitleColor)
-                                    .fixedSize(horizontal: false, vertical: true)
+                                    .lineLimit(optionTextWrap ? nil : 1)
+                                    .truncationMode(.tail)
+                                    .fixedSize(horizontal: false, vertical: optionTextWrap)
                                     .accessibilityIdentifier("option.\(oi).subtitle")
                             }
                         }
@@ -846,13 +955,14 @@ struct FormInputSelectBlock: View {
                         // SPEC-070 EPIC-1 — trailing label at the END of the row (e.g. "Casual")
                         if let tt = option.trailing_text, !tt.isEmpty {
                             Text(tt)
-                                .font(.system(size: optSubtitleSize))
+                                // Parity with Android + console preview which render the trailing label at a fixed 12pt.
+                                .font(optFont(12, .regular))
                                 .foregroundColor(optSubtitleColor)
                                 .accessibilityIdentifier("option.\(oi).trailing_text")
                         }
-                        // Radio on right
+                        // Radio on right — indicator tint uses checkmark_color when set (else fillCol).
                         if showRadio && !radioOnLeft {
-                            radioIndicator(isSelected: isSelected, fillCol: fillCol, radioFill: radioFill)
+                            radioIndicator(isSelected: isSelected, fillCol: checkmarkCol, radioFill: radioFill)
                         }
                     }
                     .padding(12)
@@ -1003,11 +1113,14 @@ struct FormInputSelectBlock: View {
     }
 
     @ViewBuilder
-    private func imageWithOverlay(url: URL, option: InputOption, isSelected: Bool, size: CGFloat) -> some View {
+    private func imageWithOverlay(url: URL, option: InputOption, isSelected: Bool, size: CGFloat, imageScale: String = "contain") -> some View {
         let radius = optionImageCornerRadius(option.image_shape, size: size)
+        // Select v2 — option_image_scale: "cover" crops/fills the frame; "contain"/"fit" fit the
+        // whole image inside so an oversized image is not cropped.
+        let useFill = imageScale == "cover"
         ZStack {
             BundledAsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
+                useFill ? AnyView(image.resizable().scaledToFill()) : AnyView(image.resizable().scaledToFit())
             } placeholder: {
                 Color.gray.opacity(0.2)
             }
@@ -1031,6 +1144,10 @@ struct FormInputSelectBlock: View {
             if let idx = selectedValues.firstIndex(of: option.resolvedValue) {
                 selectedValues.remove(at: idx)
             } else {
+                // Enforce the console-configured cap on the ADD path only;
+                // removing a selection must always work.
+                let maxSel = cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
+                if let m = maxSel, selectedValues.count >= m { return }
                 selectedValues.append(option.resolvedValue)
             }
             inputValues[fieldId] = selectedValues
@@ -1130,6 +1247,13 @@ struct FormInputSelectBlock: View {
         // Falls through to 40 so existing flows look unchanged.
         let gridImageSize = CGFloat((cfgDouble(cfg?["option_image_size"])) ?? 40)
 
+        // Block-level font-size defaults (parity with stackedSelectView + console preview).
+        // The grid previously ignored block-level title/subtitle sizes. The preview shrinks
+        // the grid title by 0.85 (OnboardingStepPreview ~3548) — match that here; subtitle
+        // keeps the raw default (no factor).
+        let defaultTitleSize = (cfgDouble(cfg?["title_font_size"])) ?? 15
+        let defaultSubtitleSize = (cfgDouble(cfg?["subtitle_font_size"])) ?? 12
+
         VStack(spacing: optionSpacing) {
             // Manual grid — LazyVGrid clips wrapped text (ignores fixedSize for row height).
             let rowCount = (options.count + colCount - 1) / colCount
@@ -1181,7 +1305,10 @@ struct FormInputSelectBlock: View {
                                         // selected_image_url / unselected_image_url
                                         // when the option defines state variants.
                                         if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
-                                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: gridImageSize)
+                                            // Grid images keep fill/crop (unchanged) — option_image_scale
+                                            // is a stacked-list control; pin "cover" so the shared helper's
+                                            // new "contain" default doesn't letterbox grid cells.
+                                            imageWithOverlay(url: url, option: option, isSelected: isSelected, size: gridImageSize, imageScale: "cover")
                                         }
                                         // Icon with state change (selected/unselected variants)
                                         if let icon = option.icon, !icon.isEmpty {
@@ -1198,15 +1325,22 @@ struct FormInputSelectBlock: View {
                                         }
                                         // Label + subtitle
                                         Text(option.label ?? "")
-                                            .font(.subheadline)
-                                            .foregroundColor(isSelected ? optSelectedText : textCol)
+                                            // Grid title honors per-option title_font_weight (parity with the
+                                            // stacked branch's optTitleWeight + Android's grid) — was weightless.
+                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85), weight: fontWeight(option.title_font_weight)))
+                                            // Grid title honors per-option title_color for the unselected state
+                                            // (parity with the stacked branch + Android grid optTitleColor); the
+                                            // selected state still wins via optSelectedText.
+                                            .foregroundColor(isSelected ? optSelectedText : (option.title_color.map { Color(hex: $0) } ?? textCol))
                                             .multilineTextAlignment(cellTextAlign)
                                             .fixedSize(horizontal: false, vertical: true)
                                         if let sub = option.subtitle, !sub.isEmpty {
                                             Text(sub)
-                                                .font(.caption)
-                                                // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha).
-                                                .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? textCol.opacity(0.65))
+                                                .font(.system(size: CGFloat(option.subtitle_font_size ?? defaultSubtitleSize)))
+                                                // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha),
+                                                // then block-level field_config.subtitle_color (parity with the stacked branch's
+                                                // defaultSubtitleColor + the console preview), else the faded step text color.
+                                                .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? (cfg?["subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textCol.opacity(0.65))
                                                 .multilineTextAlignment(cellTextAlign)
                                                 .fixedSize(horizontal: false, vertical: true)
                                         }
@@ -1292,6 +1426,8 @@ struct FormInputSliderBlock: View {
     @Binding var inputValues: [String: Any]
 
     @State private var value: Double = 50
+    // Per-step selection haptic (parity with the native Slider / Android's tick).
+    @State private var sliderHaptic = UISelectionFeedbackGenerator()
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -1308,7 +1444,12 @@ struct FormInputSliderBlock: View {
         let maxVal = max(rawMax, minVal + stepVal)
         let showValue = (block.field_config?["show_value"]?.value as? Bool) ?? true
         let unitStr = block.unit ?? ""
+        // Mrozu QA: custom slider so track_color (inactive/max track) + thumb_color
+        // are honored — the native SwiftUI Slider's `.tint` colors only the
+        // active/min track + thumb. The custom track keeps step-snapping, min/max
+        // clamping and the value binding, with a Slider a11y proxy for VoiceOver.
         let trackCol = Color(hex: block.field_style?.track_color ?? block.track_color ?? "#E5E7EB")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
 
         VStack(alignment: .leading, spacing: 6) {
@@ -1330,13 +1471,53 @@ struct FormInputSliderBlock: View {
                 }
             }
 
-            Slider(value: $value, in: minVal...maxVal, step: stepVal)
-                .tint(fillCol)
-                .onChange(of: value) { newValue in
-                    inputValues[fieldId] = newValue
+            GeometryReader { geo in
+                let w = max(geo.size.width, 1)
+                let frac = maxVal > minVal ? CGFloat((value - minVal) / (maxVal - minVal)) : 0
+                let clampedFrac = max(0, min(1, frac))
+                ZStack(alignment: .leading) {
+                    Capsule().fill(trackCol).frame(height: 4)
+                    Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                    Circle().fill(thumbColor)
+                        .frame(width: 24, height: 24)
+                        .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                        .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
                 }
+                .frame(height: 24)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { g in
+                            let f = Double(max(0, min(1, g.location.x / w)))
+                            let raw = minVal + f * (maxVal - minVal)
+                            // MIN-anchored snapping (reachable = min + k·step) — matches
+                            // the native iOS Slider(step:) + Android Slider(steps:), which
+                            // both anchor at minVal, not at 0.
+                            let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
+                            let clamped = max(minVal, min(maxVal, snapped))
+                            if clamped != value {
+                                value = clamped
+                                // inputValues is written by .onChange(of: value) below —
+                                // the single sink that also catches the a11y proxy.
+                                sliderHaptic.selectionChanged()   // per-step tick (parity)
+                                sliderHaptic.prepare()
+                            }
+                        }
+                )
+            }
+            .frame(height: 24)
+            .accessibilityRepresentation {
+                Slider(value: $value, in: minVal...maxVal, step: stepVal)
+            }
+        }
+        // Single persistence sink — catches drag AND the VoiceOver accessibility
+        // Slider proxy (which mutates `value` without firing the DragGesture).
+        // Restores the catch-all the native Slider's .onChange used to provide.
+        .onChange(of: value) { newValue in
+            inputValues[fieldId] = newValue
         }
         .onAppear {
+            sliderHaptic.prepare()
             if let saved = inputValues[fieldId] as? Double { value = saved }
             else { value = block.default_picker_value ?? cfgDouble(block.field_config?["default_value"]) ?? minVal; inputValues[fieldId] = value }
         }
@@ -1354,24 +1535,133 @@ struct FormInputToggleBlock: View {
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let onColor = Color(hex: block.field_style?.toggle_on_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA (2026-08-03): toggle_off_color + thumb_color were decoded but the native
+        // SwiftUI Toggle only exposes `.tint` (the on-track). Use a custom capsule toggle so all
+        // three colors apply, with `.accessibilityRepresentation` preserving the native Switch a11y.
+        // Parity with Android SwitchDefaults.colors(checked/unchecked track+thumb).
+        let offColor = Color(hex: block.field_style?.toggle_off_color ?? "#E5E5EA")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
         let label = block.field_label ?? block.toggle_label ?? ""
 
         HStack {
             Text(label)
                 .font(.subheadline)
             Spacer()
-            Toggle("", isOn: $isOn)
-                .labelsHidden()
-                .tint(onColor)
-                .onChange(of: isOn) { newValue in
-                    inputValues[fieldId] = newValue
-                }
+            ZStack(alignment: isOn ? .trailing : .leading) {
+                Capsule().fill(isOn ? onColor : offColor).frame(width: 51, height: 31)
+                Circle().fill(thumbColor).frame(width: 27, height: 27).padding(2)
+                    .shadow(color: .black.opacity(0.15), radius: 1, y: 1)
+            }
+            .animation(.spring(response: 0.2, dampingFraction: 0.75), value: isOn)
+            .contentShape(Rectangle())
+            .onTapGesture { isOn.toggle() }
+            .accessibilityRepresentation { Toggle(label, isOn: $isOn) }
+        }
+        // Persist on ANY change to isOn — covers the visual tap AND the VoiceOver
+        // accessibilityRepresentation Toggle (which flips $isOn without firing the
+        // tap gesture). Persisting only in onTapGesture dropped a11y toggles.
+        .onChange(of: isOn) { newValue in
+            inputValues[fieldId] = newValue
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? Bool { isOn = saved }
-            else { isOn = block.toggle_default ?? false; inputValues[fieldId] = isOn }
+            // Honor field_config.default_value first (parity with Android, which falls
+            // back to field_config["default_value"] as Boolean), then block.toggle_default.
+            else { isOn = (block.field_config?["default_value"]?.value as? Bool) ?? block.toggle_default ?? false; inputValues[fieldId] = isOn }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// Mrozu QA (2026-08-04, Flo s1) — standalone consent / agreement element: a tappable checkbox +
+/// a rich label whose `[terms](url)` / `[privacy](url)` markdown links open natively (SwiftUI
+/// `Text(AttributedString)` renders `.link` runs tappable). Persists a Bool to `inputValues[field_id]`;
+/// when `field_required` is set, `RequiredFieldGate` gates the CTA until the box is checked.
+/// All authoring config travels through `field_config` (parity with the Android `AgreementBlock`
+/// composable and the console editor keys).
+struct AgreementBlock: View {
+    let block: ContentBlock
+    @Binding var inputValues: [String: Any]
+
+    @State private var isChecked: Bool = false
+
+    var body: some View {
+        let fieldId = block.field_id ?? block.id
+        let checkboxColor = Color(hex: (block.field_config?["checkbox_color"]?.value as? String) ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let borderColor = Color(hex: (block.field_config?["checkbox_border_color"]?.value as? String) ?? "#C7C7CC")
+        let checkmarkColor = Color(hex: (block.field_config?["checkmark_color"]?.value as? String) ?? "#FFFFFF")
+        let textColor = Color(hex: (block.field_config?["text_color"]?.value as? String) ?? "#8E8E93")
+        let linkColor = Color(hex: (block.field_config?["link_color"]?.value as? String) ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let agreementText = (block.field_config?["agreement_text"]?.value as? String)
+            ?? block.text
+            ?? "I agree to the [Terms of Service](https://example.com/terms) and [Privacy Policy](https://example.com/privacy)."
+
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isChecked ? checkboxColor : Color.clear)
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isChecked ? checkboxColor : borderColor, lineWidth: 1.5)
+                if isChecked {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(checkmarkColor)
+                }
+            }
+            .frame(width: 22, height: 22)
+            .contentShape(Rectangle())
+            .onTapGesture { isChecked.toggle() }
+            .accessibilityRepresentation { Toggle(agreementText, isOn: $isChecked) }
+
+            agreementLabel(agreementText, linkColor: linkColor, textColor: textColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Persist on any change (visual tap OR the a11y Toggle representation).
+        .onChange(of: isChecked) { newValue in inputValues[fieldId] = newValue }
+        .onAppear {
+            if let saved = inputValues[fieldId] as? Bool { isChecked = saved }
+            else { isChecked = (block.field_config?["default_checked"]?.value as? Bool) ?? false; inputValues[fieldId] = isChecked }
+        }
+    }
+
+    // Plain (non-ViewBuilder) helper — builds the attributed consent copy. Kept
+    // OUT of the ViewBuilder because a `for` loop can't live directly in a
+    // result-builder body.
+    @available(iOS 15.0, *)
+    private func buildAgreementAttributed(_ text: String, linkColor: Color, textColor: Color) -> AttributedString {
+        var result = AttributedString()
+        // Parse per line so a `\n` in the consent copy is preserved (mirrors rich_text).
+        for (index, line) in text.components(separatedBy: "\n").enumerated() {
+            if index > 0 { result.append(AttributedString("\n")) }
+            if var parsed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+                for run in parsed.runs {
+                    if run.link != nil {
+                        parsed[run.range].foregroundColor = UIColor(linkColor)
+                        parsed[run.range].underlineStyle = .single
+                    } else {
+                        parsed[run.range].foregroundColor = UIColor(textColor)
+                    }
+                }
+                result.append(parsed)
+            } else {
+                result.append(AttributedString(line))
+            }
+        }
+        return result
+    }
+
+    @ViewBuilder
+    private func agreementLabel(_ text: String, linkColor: Color, textColor: Color) -> some View {
+        if #available(iOS 15.0, *) {
+            Text(buildAgreementAttributed(text, linkColor: linkColor, textColor: textColor))
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            Text(text)
+                .font(.footnote)
+                .foregroundColor(textColor)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
 
@@ -1434,6 +1724,10 @@ struct FormInputSegmentedBlock: View {
                 }
             }
             .pickerStyle(.segmented)
+            // Tint the selected segment with the brand/fill accent so the segmented control
+            // isn't the system gray/white pill — parity with Android (fills the selected segment
+            // with field_style.fill_color ?? active_color ?? brand) and the console preview.
+            .tint(Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")))
             .onChange(of: selectedValue) { newValue in
                 inputValues[fieldId] = newValue
             }
@@ -1547,6 +1841,12 @@ struct FormInputRangeSliderBlock: View {
         let stepVal: Double = { let s = block.step_value ?? cfgDouble(block.field_config?["step"]) ?? 1; return s > 0 ? s : 1 }()
         let unitStr = block.unit ?? ""
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA — custom track so track_color (inactive track) + thumb_color are honored on the
+        // range slider too (native Slider().tint only colors the active/min track + thumb). Parity
+        // with the single FormInputSliderBlock + Android's range slider track_color + the editor's
+        // Track/Fill/Thumb controls for input_range_slider.
+        let trackCol = Color(hex: block.field_style?.track_color ?? block.track_color ?? "#E5E7EB")
+        let thumbColor = Color(hex: block.field_style?.thumb_color ?? "#FFFFFF")
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -1564,15 +1864,70 @@ struct FormInputRangeSliderBlock: View {
                     Text((block.field_config?["min_label"]?.value as? String) ?? "Min")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    Slider(value: $lowValue, in: minVal...maxVal, step: stepVal)
-                        .tint(fillCol)
+                    // Custom track/fill/thumb mirroring FormInputSliderBlock so track_color +
+                    // thumb_color apply; drag snaps to the step grid (min-anchored) and the
+                    // VStack's .onChange clamp keeps low <= high.
+                    GeometryReader { geo in
+                        let w = max(geo.size.width, 1)
+                        let frac = maxVal > minVal ? CGFloat((lowValue - minVal) / (maxVal - minVal)) : 0
+                        let clampedFrac = max(0, min(1, frac))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(trackCol).frame(height: 4)
+                            Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                            Circle().fill(thumbColor)
+                                .frame(width: 24, height: 24)
+                                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                                .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
+                        }
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { g in
+                                    let f = Double(max(0, min(1, g.location.x / w)))
+                                    let raw = minVal + f * (maxVal - minVal)
+                                    let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
+                                    lowValue = max(minVal, min(maxVal, snapped))
+                                }
+                        )
+                    }
+                    .frame(height: 24)
+                    .accessibilityRepresentation {
+                        Slider(value: $lowValue, in: minVal...maxVal, step: stepVal)
+                    }
                 }
                 HStack {
                     Text((block.field_config?["max_label"]?.value as? String) ?? "Max")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                    Slider(value: $highValue, in: minVal...maxVal, step: stepVal)
-                        .tint(fillCol)
+                    GeometryReader { geo in
+                        let w = max(geo.size.width, 1)
+                        let frac = maxVal > minVal ? CGFloat((highValue - minVal) / (maxVal - minVal)) : 0
+                        let clampedFrac = max(0, min(1, frac))
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(trackCol).frame(height: 4)
+                            Capsule().fill(fillCol).frame(width: w * clampedFrac, height: 4)
+                            Circle().fill(thumbColor)
+                                .frame(width: 24, height: 24)
+                                .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+                                .offset(x: max(0, min(w - 24, w * clampedFrac - 12)))
+                        }
+                        .frame(height: 24)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { g in
+                                    let f = Double(max(0, min(1, g.location.x / w)))
+                                    let raw = minVal + f * (maxVal - minVal)
+                                    let snapped = minVal + ((raw - minVal) / stepVal).rounded() * stepVal
+                                    highValue = max(minVal, min(maxVal, snapped))
+                                }
+                        )
+                    }
+                    .frame(height: 24)
+                    .accessibilityRepresentation {
+                        Slider(value: $highValue, in: minVal...maxVal, step: stepVal)
+                    }
                 }
             }
             .onChange(of: lowValue) { _ in
@@ -1612,7 +1967,9 @@ struct FormInputChipsBlock: View {
         let fieldId = block.field_id ?? block.id
         let options = block.field_options ?? []
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        let maxSelections = (block.field_config?["max_selections"]?.value as? Int)
+        // Console writes the cap as `max_chips` (Max Chips slider); `max_selections`
+        // kept as a fallback for older/imported configs.
+        let maxSelections = cfgDouble(block.field_config?["max_chips"]).map { Int($0) } ?? cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)

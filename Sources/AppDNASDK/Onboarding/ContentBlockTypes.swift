@@ -33,6 +33,13 @@ public enum ContentBlockType: String, Codable {
     case settings_footer
     case memory_match
     case calendar_month
+    // Mrozu (Duolingo s20/s22) — CTA-style button that plays an audio clip
+    // (mp3/wav/aac) from `audio_url` on tap; reuses all button styling fields.
+    case sound_button
+    // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement: a tappable checkbox + a
+    // rich label with [terms](url)/[privacy](url) links, persisting a Bool to inputValues; its
+    // `field_required` gates the CTA via RequiredFieldGate.
+    case agreement
     // SPEC-089d Phase 3: Form input block types (22 types)
     case input_text, input_textarea, input_number, input_email, input_phone
     case input_password, input_date, input_time, input_datetime
@@ -290,6 +297,11 @@ public struct EntranceAnimation: Codable {
     public let delay_ms: Int?     // 0-5000
     public let easing: String?    // linear, ease, ease_in, ease_out, ease_in_out, spring
     public let spring_damping: Double? // 0.1-1.0
+    // Sequenced animation (Mrozu Duolingo s14 / Asana): per-block stagger + ordering.
+    // animation_delay_ms is ADDED to delay_ms to sequence blocks; animation_order is
+    // authored ordering metadata (lower plays first, full timeline engine deferred).
+    public let animation_delay_ms: Int? // 0-5000
+    public let animation_order: Int?    // 0-999
 }
 
 // MARK: - Pressed Style (SPEC-089d §6.5)
@@ -326,6 +338,12 @@ public struct FormFieldBlockStyle: Codable {
     public let thumb_color: String?
     public let toggle_on_color: String?
     public let toggle_off_color: String?
+    // Select v2 (Mrozu QA) — per-option styling extras applied by the select renderers.
+    public let option_font_family: String?      // font family for option title/subtitle/labels
+    public let option_corner_radius: Double?    // option card corner radius (falls back to corner_radius ?? 10)
+    public let option_text_wrap: Bool?          // true → option text wraps fully; false → single-line truncate
+    public let option_image_scale: String?      // "contain" (default) | "cover" | "fit" for per-option images
+    public let checkmark_color: String?         // radio/checkmark indicator color, decoupled from fill/accent
 }
 
 /// Option for select, chips, and segmented inputs.
@@ -597,7 +615,7 @@ struct EntranceAnimationWrapper<Content: View>: View {
                 axis: (x: 1, y: 0, z: 0)
             )
             .onAppear {
-                let delaySeconds = Double(animation.delay_ms ?? 0) / 1000.0
+                let delaySeconds = Double((animation.delay_ms ?? 0) + (animation.animation_delay_ms ?? 0)) / 1000.0
                 DispatchQueue.main.asyncAfter(deadline: .now() + delaySeconds) {
                     withAnimation(swiftUIAnimation) {
                         isVisible = true
@@ -852,6 +870,10 @@ public struct SocialProviderConfig: Codable {
     public let border_color: String?
     public let border_width: Double?
     public let corner_radius: Double?
+    // Social-Login styling v2 — per-provider custom icon override. When set to a
+    // non-empty URL the SDK renders the remote image instead of the built-in
+    // provider glyph. nil → keep the brand glyph.
+    public let icon_url: String?
 }
 
 /// A single item for the `animated_loading` checklist OR for the
@@ -926,6 +948,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let bg_color: String?
     public let text_color: String?
     public let button_corner_radius: Double?
+    // sound_button — remote audio clip (mp3/wav/aac) played on tap. `autoplay`
+    // (declared below with the video fields) plays it when the block appears.
+    public let audio_url: String?
     // Spacer
     public let spacer_height: Double?
     // List
@@ -1005,6 +1030,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let dot_size: Double?
     public let dot_spacing: Double?
     public let active_dot_width: Double?
+    public let dot_shape: String?   // "circle" (default) | "triangle" | "rectangle" | "star"
     public let alignment: String?
 
     // SPEC-089d Phase A: social_login fields
@@ -1014,6 +1040,12 @@ public struct ContentBlock: Codable, Identifiable {
     public let spacing: Double?
     public let show_divider: Bool?
     public let divider_text: String?
+    // Social-Login styling v2 — divider placement ("top" | "bottom", default
+    // "bottom") and in-button text alignment ("leading" | "center", default
+    // "center"). divider_color (declared above with the divider block) tints the
+    // "or" separator rules.
+    public let divider_position: String?
+    public let button_text_align: String?
     // SPEC-089e amendment — email CTA placement + spacer
     public let email_login_placement: String?   // "with_providers" | "below_inputs"
     public let email_cta_spacing_below: Double? // px spacer after email button
@@ -1021,6 +1053,11 @@ public struct ContentBlock: Codable, Identifiable {
     // SPEC-089d Phase A: countdown_timer fields
     public let timer_variant: String?      // digital, circular, flip, bar
     public let duration_seconds: Int?
+    // Countdown target mode (parity with Android ContentBlockRenderer.kt): "duration"
+    // (default — counts down duration_seconds) or "fixed_datetime" (counts down to an
+    // absolute ISO-8601 UTC instant in target_datetime).
+    public let target_type: String?
+    public let target_datetime: String?    // ISO-8601 UTC, e.g. "2026-12-31T23:59:59"
     public let show_days: Bool?
     public let show_hours: Bool?
     public let show_minutes: Bool?
@@ -1064,6 +1101,9 @@ public struct ContentBlock: Codable, Identifiable {
     // when format == "custom". Authored top-level by the console editor.
     public let label_format: String?
     public let custom_label: String?
+    // Progress/Loading v2 — placement of the progress label relative to the bar:
+    // "above" (default) | "below" | "left" | "right".
+    public let label_placement: String?
 
     // SPEC-089d Phase A: timeline fields
     public let timeline_items: [TimelineItemConfig]?
@@ -1083,6 +1123,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text_position: String?  // "above" | "below" (default "below")
     public let loading_text_size: Double?
     public let loading_text_color: String?
+    // Progress/Loading v2 — horizontal alignment of the loading message:
+    // "left" | "center" (default) | "right".
+    public let loading_text_align: String?
     // EPIC-3 — media_gallery: horizontal row of image tiles.
     public let gallery_images: [String]?
     public let gallery_item_width: Double?
@@ -1090,6 +1133,12 @@ public struct ContentBlock: Codable, Identifiable {
     public let gallery_corner_radius: Double?
     public let gallery_spacing: Double?
     public let gallery_align: String?  // "start" | "center" | "end" (default "center")
+    // Media-gallery v2 (Mrozu QA): gallery_fill = edge-to-edge cover tiles (full container width);
+    // gallery_autoscroll = continuous loop; gallery_autoscroll_speed = seconds per full cycle (default 20).
+    // All default off → identical to the existing static tile row (non-breaking).
+    public let gallery_fill: Bool?
+    public let gallery_autoscroll: Bool?
+    public let gallery_autoscroll_speed: Double?
     public let loading_items: [LoadingItemConfig]?
     public let progress_color: String?
     public let check_color: String?
@@ -1131,6 +1180,8 @@ public struct ContentBlock: Codable, Identifiable {
     public let wheel_orientation: String?        // console saves this instead of orientation
     public let picker_presentation: String?      // "inline" | "field" for date picker
     public let picker_mode: String?              // "date" | "datetime" | "time" for date picker
+    public let time_format: String?              // "12h" (default) | "24h" — clock presentation for input_time
+    public let time_text_size: Double?           // font size (pt) of the displayed time in field/trigger mode
     public let picker_spacing: Double?           // spacing between time wheel and date graphical in datetime mode
     public let calendar_bg_color: String?        // explicit background color for graphical date picker
     public let wheel_bg_color: String?           // explicit background color for wheel date picker (top-level, not field_config)
@@ -1172,6 +1223,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let particle_color: String?
     public let particle_opacity: Double?
     public let particle_speed: String?     // slow, medium, fast (editor key; falls back to `speed`)
+    // Mrozu QA (2026-08-04): confetti multicolor — cycle a fixed palette instead of primary/secondary.
+    // Defaults on when particle_type == "confetti".
+    public let particle_multicolor: Bool?
 
     // SPEC-089d Phase F: wheel_picker fields
     public let min_value: Double?
@@ -1233,6 +1287,7 @@ public struct ContentBlock: Codable, Identifiable {
         case id, type, text, style, level
         case image_url, alt, corner_radius, height, image_fit, image_frame
         case variant, action, action_value, bg_color, text_color, button_corner_radius
+        case audio_url
         case spacer_height, items, list_style
         case divider_color, divider_thickness, divider_margin_y
         case badge_text, badge_bg_color, badge_text_color, badge_corner_radius
@@ -1251,12 +1306,15 @@ public struct ContentBlock: Codable, Identifiable {
         case zone, vertical_align, horizontal_align, vertical_offset, horizontal_offset
         // SPEC-089d Phase A: new block fields
         case dot_count, active_index, active_color, inactive_color
-        case dot_size, dot_spacing, active_dot_width, alignment
+        case dot_size, dot_spacing, active_dot_width, dot_shape, alignment
         case providers, button_style, button_height, spacing
         case show_divider, divider_text
+        // Social-Login styling v2
+        case divider_position, button_text_align
         // SPEC-089e amendment — email button placement + spacer
         case email_login_placement, email_cta_spacing_below
         case timer_variant, duration_seconds
+        case target_type, target_datetime
         case show_days, show_hours, show_minutes, show_seconds
         case labels, on_expire_action, expired_text, accent_color, font_size
         case max_stars, default_rating, star_size, filled_color, empty_color
@@ -1264,11 +1322,12 @@ public struct ContentBlock: Codable, Identifiable {
         case markdown_content, rich_text_variant, base_style, link_color
         case progress_variant, progress_value, total_segments, filled_segments
         case bar_height, bar_color, bar_gradient_colors, track_color, show_label, segment_gap
-        case label_format, custom_label
+        case label_format, custom_label, label_placement
         case timeline_items, line_color, completed_color, current_color
         case upcoming_color, show_line, compact, title_style, subtitle_style
-        case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_items, progress_color, check_color
+        case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
+        case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
         // SPEC-089d Phase F: new block fields
         case gauge_variant, gauge_value, max_value, sublabel, stroke_width, min_label, max_label, min_max_font_size
@@ -1276,13 +1335,14 @@ public struct ContentBlock: Codable, Identifiable {
         case label_color, label_font_size, animate, animation_duration_ms
         case columns, default_date_value, min_date, max_date, allow_future, allow_past, date_validation_message
         case highlight_color, haptic_on_scroll, orientation, wheel_orientation, picker_presentation, picker_mode
+        case time_format, time_text_size
         case picker_spacing, calendar_bg_color, wheel_bg_color, wheel_height
         case wheel_line_color, wheel_line_stroke_width
         case children, stack_children, z_index, gap, wrap, justify, align_items
         case row_direction, row_distribution, row_child_fill, column_ratios
         case view_key, custom_config, placeholder_image_url, placeholder_text
         case particle_type, density, speed, secondary_color, size_range, fullscreen
-        case particle_color, particle_opacity, particle_speed
+        case particle_color, particle_opacity, particle_speed, particle_multicolor
         case min_value, max_value_picker, step_value, default_picker_value, default_value
         case unit, unit_position, visible_items
         case pulse_color, pulse_ring_count, pulse_speed, border_width, border_color
@@ -1315,6 +1375,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.bg_color = try c.decodeIfPresent(String.self, forKey: .bg_color)
         self.text_color = try c.decodeIfPresent(String.self, forKey: .text_color)
         self.button_corner_radius = try c.decodeIfPresent(Double.self, forKey: .button_corner_radius)
+        self.audio_url = try c.decodeIfPresent(String.self, forKey: .audio_url)
         self.spacer_height = try c.decodeIfPresent(Double.self, forKey: .spacer_height)
         self.items = try c.decodeIfPresent([String].self, forKey: .items)
         self.list_style = try c.decodeIfPresent(String.self, forKey: .list_style)
@@ -1371,6 +1432,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.dot_size = try c.decodeIfPresent(Double.self, forKey: .dot_size)
         self.dot_spacing = try c.decodeIfPresent(Double.self, forKey: .dot_spacing)
         self.active_dot_width = try c.decodeIfPresent(Double.self, forKey: .active_dot_width)
+        self.dot_shape = try c.decodeIfPresent(String.self, forKey: .dot_shape)
         self.alignment = try c.decodeIfPresent(String.self, forKey: .alignment)
         self.providers = try c.decodeIfPresent([SocialProviderConfig].self, forKey: .providers)
         self.button_style = try c.decodeIfPresent(String.self, forKey: .button_style)
@@ -1378,10 +1440,14 @@ public struct ContentBlock: Codable, Identifiable {
         self.spacing = try c.decodeIfPresent(Double.self, forKey: .spacing)
         self.show_divider = try c.decodeIfPresent(Bool.self, forKey: .show_divider)
         self.divider_text = try c.decodeIfPresent(String.self, forKey: .divider_text)
+        self.divider_position = try c.decodeIfPresent(String.self, forKey: .divider_position)
+        self.button_text_align = try c.decodeIfPresent(String.self, forKey: .button_text_align)
         self.email_login_placement = try c.decodeIfPresent(String.self, forKey: .email_login_placement)
         self.email_cta_spacing_below = try c.decodeIfPresent(Double.self, forKey: .email_cta_spacing_below)
         self.timer_variant = try c.decodeIfPresent(String.self, forKey: .timer_variant)
         self.duration_seconds = try c.decodeIfPresent(Int.self, forKey: .duration_seconds)
+        self.target_type = try c.decodeIfPresent(String.self, forKey: .target_type)
+        self.target_datetime = try c.decodeIfPresent(String.self, forKey: .target_datetime)
         self.show_days = try c.decodeIfPresent(Bool.self, forKey: .show_days)
         self.show_hours = try c.decodeIfPresent(Bool.self, forKey: .show_hours)
         self.show_minutes = try c.decodeIfPresent(Bool.self, forKey: .show_minutes)
@@ -1415,6 +1481,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.segment_gap = try c.decodeIfPresent(Double.self, forKey: .segment_gap)
         self.label_format = try c.decodeIfPresent(String.self, forKey: .label_format)
         self.custom_label = try c.decodeIfPresent(String.self, forKey: .custom_label)
+        self.label_placement = try c.decodeIfPresent(String.self, forKey: .label_placement)
         self.timeline_items = try c.decodeIfPresent([TimelineItemConfig].self, forKey: .timeline_items)
         self.line_color = try c.decodeIfPresent(String.self, forKey: .line_color)
         self.completed_color = try c.decodeIfPresent(String.self, forKey: .completed_color)
@@ -1429,6 +1496,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text_position = try c.decodeIfPresent(String.self, forKey: .loading_text_position)
         self.loading_text_size = try c.decodeIfPresent(Double.self, forKey: .loading_text_size)
         self.loading_text_color = try c.decodeIfPresent(String.self, forKey: .loading_text_color)
+        self.loading_text_align = try c.decodeIfPresent(String.self, forKey: .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)
         self.gallery_images = try c.decodeIfPresent([String].self, forKey: .gallery_images)
         self.gallery_item_width = try c.decodeIfPresent(Double.self, forKey: .gallery_item_width)
@@ -1436,6 +1504,9 @@ public struct ContentBlock: Codable, Identifiable {
         self.gallery_corner_radius = try c.decodeIfPresent(Double.self, forKey: .gallery_corner_radius)
         self.gallery_spacing = try c.decodeIfPresent(Double.self, forKey: .gallery_spacing)
         self.gallery_align = try c.decodeIfPresent(String.self, forKey: .gallery_align)
+        self.gallery_fill = try c.decodeIfPresent(Bool.self, forKey: .gallery_fill)
+        self.gallery_autoscroll = try c.decodeIfPresent(Bool.self, forKey: .gallery_autoscroll)
+        self.gallery_autoscroll_speed = try c.decodeIfPresent(Double.self, forKey: .gallery_autoscroll_speed)
         self.progress_color = try c.decodeIfPresent(String.self, forKey: .progress_color)
         self.check_color = try c.decodeIfPresent(String.self, forKey: .check_color)
         self.total_duration_ms = try c.decodeIfPresent(Int.self, forKey: .total_duration_ms)
@@ -1469,6 +1540,8 @@ public struct ContentBlock: Codable, Identifiable {
         self.wheel_orientation = try c.decodeIfPresent(String.self, forKey: .wheel_orientation)
         self.picker_presentation = try c.decodeIfPresent(String.self, forKey: .picker_presentation)
         self.picker_mode = try c.decodeIfPresent(String.self, forKey: .picker_mode)
+        self.time_format = try c.decodeIfPresent(String.self, forKey: .time_format)
+        self.time_text_size = try c.decodeIfPresent(Double.self, forKey: .time_text_size)
         self.picker_spacing = try c.decodeIfPresent(Double.self, forKey: .picker_spacing)
         self.calendar_bg_color = try c.decodeIfPresent(String.self, forKey: .calendar_bg_color)
         self.wheel_bg_color = try c.decodeIfPresent(String.self, forKey: .wheel_bg_color)
@@ -1500,6 +1573,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.particle_color = try c.decodeIfPresent(String.self, forKey: .particle_color)
         self.particle_opacity = try c.decodeIfPresent(Double.self, forKey: .particle_opacity)
         self.particle_speed = try c.decodeIfPresent(String.self, forKey: .particle_speed)
+        self.particle_multicolor = try c.decodeIfPresent(Bool.self, forKey: .particle_multicolor)
         self.min_value = try c.decodeIfPresent(Double.self, forKey: .min_value)
         self.max_value_picker = try c.decodeIfPresent(Double.self, forKey: .max_value_picker)
         self.step_value = try c.decodeIfPresent(Double.self, forKey: .step_value)

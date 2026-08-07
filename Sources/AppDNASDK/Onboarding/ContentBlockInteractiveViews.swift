@@ -47,6 +47,11 @@ struct OTPInputBlockView: View {
         let fieldId = block.field_id ?? block.id
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let boxBg = Color(hex: block.bg_color ?? "#1F2937")
+        // Mrozu QA (2026-08-04): box border/text were hardcoded (accent/gray + white). When set,
+        // border_color overrides the resting border (active box keeps the accent focus ring);
+        // text_color overrides the digit. Parity w/ Android.
+        let borderOverride = block.border_color.map { Color(hex: $0) }
+        let digitColor = Color(hex: block.text_color ?? "#FFFFFF")
         let chars = Array(entered)
 
         return ZStack {
@@ -76,14 +81,14 @@ struct OTPInputBlockView: View {
                     ZStack {
                         RoundedRectangle(cornerRadius: 10).fill(boxBg)
                         if let ch = ch {
-                            Text(String(ch)).font(.system(size: 22, weight: .semibold)).foregroundColor(.white)
+                            Text(String(ch)).font(.system(size: 22, weight: .semibold)).foregroundColor(digitColor)
                         }
                     }
                     .frame(maxWidth: .infinity)
                     .frame(height: 56)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .stroke(isActive ? accent : (ch != nil ? accent.opacity(0.5) : Color.gray.opacity(0.35)),
+                            .stroke(isActive ? accent : (ch != nil ? (borderOverride ?? accent.opacity(0.5)) : (borderOverride?.opacity(0.35) ?? Color.gray.opacity(0.35))),
                                     lineWidth: (isActive || ch != nil) ? 2 : 1)
                     )
                 }
@@ -121,34 +126,52 @@ struct PressHoldConfirmBlockView: View {
 
     var body: some View {
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA — track background (bg_color; default #1F2937), the filled-state label (confirm_text;
+        // default "✓"), and optional above/below labels (label_above/label_below) in text_color (default
+        // #111827). Parity w/ Android PressHoldConfirmBlock + console preview.
+        let track = Color(hex: block.bg_color ?? "#1F2937")
         let text = block.text ?? "Hold to confirm"
+        let confirmText = (block.field_config?["confirm_text"]?.value as? String) ?? "✓"
+        let labelAbove = block.field_config?["label_above"]?.value as? String
+        let labelBelow = block.field_config?["label_below"]?.value as? String
+        let labelColor = Color(hex: block.text_color ?? "#111827")
         let fieldId = block.field_id ?? block.id
 
-        return GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Color(hex: "#1F2937"))
-                Rectangle().fill(accent).frame(width: geo.size.width * CGFloat(progress))
-                Text(confirmed ? "✓" : text)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.white)
+        return VStack(spacing: 8) {
+            if let above = labelAbove, !above.isEmpty {
+                Text(above).font(.system(size: 14)).foregroundColor(labelColor)
                     .frame(maxWidth: .infinity, alignment: .center)
             }
-            .clipShape(RoundedRectangle(cornerRadius: 28))
-            .contentShape(RoundedRectangle(cornerRadius: 28))
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { _ in
-                        guard !confirmed, !holding else { return }
-                        startHold(fieldId: fieldId)
-                    }
-                    .onEnded { _ in
-                        guard !confirmed else { return }
-                        cancelHold()
-                    }
-            )
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(track)
+                    Rectangle().fill(accent).frame(width: geo.size.width * CGFloat(progress))
+                    Text(confirmed ? confirmText : text)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 28))
+                .contentShape(RoundedRectangle(cornerRadius: 28))
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            guard !confirmed, !holding else { return }
+                            startHold(fieldId: fieldId)
+                        }
+                        .onEnded { _ in
+                            guard !confirmed else { return }
+                            cancelHold()
+                        }
+                )
+            }
+            .frame(height: 56)
+            .frame(maxWidth: .infinity)
+            if let below = labelBelow, !below.isEmpty {
+                Text(below).font(.system(size: 14)).foregroundColor(labelColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
-        .frame(height: 56)
-        .frame(maxWidth: .infinity)
         .onAppear {
             // Seed static preview progress (snapshots); a real hold overwrites it.
             if progress == 0 {
@@ -261,15 +284,68 @@ struct MemoryMatchBlockView: View {
 
 // MARK: - Month calendar
 
-/// EPIC-11 — one-month day grid. Tapping an in-month day highlights it, writes `inputValues[fid] = day`, and
-/// fires `("day_selected", String(day))` (config carries no month/year — the host derives the full date).
-/// Config `selected_days` still seed highlights (preview parity).
+/// Per-month descriptor for the (possibly multi-month) calendar grid.
+private struct CalendarMonthDesc {
+    let index: Int          // 0-based position in the stack
+    let label: String       // header text
+    let daysInMonth: Int    // clamped 0...31
+    let startOffset: Int    // weekday of the 1st (0=Sun), clamped 0...6
+    let year: Int
+    let month: Int          // 1...12
+    let today: Int          // today's day for this month, -1 if none
+}
+
+/// Month calendar (Flo). Renders `months_shown` (default 1) consecutive month grids stacked vertically.
+/// SINGLE mode (`range_selectable` false): tapping an in-month day highlights it. For a single displayed
+/// month this preserves the legacy contract — `inputValues[fid] = day` (Int) and `("day_selected", String(day))`
+/// — and `selected_days`/`today` seed the first month. For multi-month single-select it writes the ISO date.
+/// RANGE mode (`range_selectable` true): tapping two dates selects an inclusive range and persists
+/// `inputValues[fid] = ["start": "yyyy-MM-dd", "end": "yyyy-MM-dd"]`, firing `("range_selected", "start..end")`.
+/// NOTE (deferred, needs device verification): continuous vertical scroll paging + drag-to-select the range are
+/// not implemented — this renders all N months stacked and uses tap-two-dates selection.
 struct CalendarMonthBlockView: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
 
-    @State private var selectedDay: Int? = nil
+    @State private var selectedDay: Int? = nil      // legacy single-month day-number selection
+    @State private var selectedIso: String? = nil   // multi-month single-select ISO
+    @State private var rangeStart: String? = nil
+    @State private var rangeEnd: String? = nil
+
+    private static let monthNames = ["January", "February", "March", "April", "May", "June",
+                                     "July", "August", "September", "October", "November", "December"]
+
+    private func daysIn(_ year: Int, _ month: Int) -> Int {
+        let table = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        let m = min(max(month, 1), 12)
+        if m == 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) { return 29 }
+        return table[m - 1]
+    }
+
+    private func addMonths(_ year: Int, _ month: Int, _ delta: Int) -> (Int, Int) {
+        let total = (month - 1) + delta
+        return (year + total / 12, total % 12 + 1)
+    }
+
+    /// Parse "June 2026" → (2026, 6). Falls back to (2026, 6) so all surfaces agree.
+    private func parseBaseMonth(_ label: String) -> (Int, Int) {
+        let parts = label.lowercased().split(separator: " ").map(String.init)
+        var month = 6
+        var year = 2026
+        for p in parts {
+            if let idx = Self.monthNames.firstIndex(where: { $0.lowercased().hasPrefix(p) || p.hasPrefix($0.lowercased()) }) {
+                month = idx + 1
+            } else if let y = Int(p), y > 1900 && y < 3000 {
+                year = y
+            }
+        }
+        return (year, month)
+    }
+
+    private func iso(_ y: Int, _ m: Int, _ d: Int) -> String {
+        String(format: "%04d-%02d-%02d", y, m, d)
+    }
 
     var body: some View {
         let cfg = block.field_config
@@ -278,15 +354,48 @@ struct CalendarMonthBlockView: View {
         // Clamp 0...31 — a negative days_in_month made `0..<(startOffset+daysInMonth)` a malformed Range.
         let daysInMonth = min(max((cfg?["days_in_month"]?.value as? Int) ?? Int(cfgDouble(cfg?["days_in_month"]) ?? 30), 0), 31)
         let startOffset = min(max((cfg?["start_offset"]?.value as? Int) ?? Int(cfgDouble(cfg?["start_offset"]) ?? 0), 0), 6)
-        let seededDays = ((cfg?["selected_days"]?.value as? [Any]) ?? []).compactMap { ($0 as? Int) ?? ($0 as? Double).map { Int($0) } }
         let today = (cfg?["today"]?.value as? Int) ?? Int(cfgDouble(cfg?["today"]) ?? -1)
+        let monthsShown = min(max((cfg?["months_shown"]?.value as? Int) ?? Int(cfgDouble(cfg?["months_shown"]) ?? 1), 1), 12)
+        let rangeSelectable = (cfg?["range_selectable"]?.value as? Bool) ?? false
+
+        // Build the month descriptors. Month 0 honors authored days/offset/today; later months continue the
+        // weekday flow ((prevOffset + prevDays) % 7) and use real day counts for the parsed base month.
+        let (baseYear, baseMonth) = parseBaseMonth(monthLabel)
+        var months: [CalendarMonthDesc] = []
+        var prevOffset = startOffset
+        var prevDays = daysInMonth
+        for i in 0..<monthsShown {
+            if i == 0 {
+                months.append(CalendarMonthDesc(index: 0, label: monthLabel, daysInMonth: daysInMonth, startOffset: startOffset, year: baseYear, month: baseMonth, today: today))
+            } else {
+                let (yi, mi) = addMonths(baseYear, baseMonth, i)
+                let di = daysIn(yi, mi)
+                let off = (prevOffset + prevDays) % 7
+                months.append(CalendarMonthDesc(index: i, label: "\(Self.monthNames[mi - 1]) \(yi)", daysInMonth: di, startOffset: off, year: yi, month: mi, today: -1))
+                prevOffset = off
+                prevDays = di
+            }
+        }
+
+        return VStack(spacing: 20) {
+            ForEach(months, id: \.index) { m in
+                monthGrid(m, fieldId: fieldId, monthsShown: monthsShown, rangeSelectable: rangeSelectable)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func monthGrid(_ m: CalendarMonthDesc, fieldId: String, monthsShown: Int, rangeSelectable: Bool) -> some View {
+        let cfg = block.field_config
+        let seededDays = ((cfg?["selected_days"]?.value as? [Any]) ?? []).compactMap { ($0 as? Int) ?? ($0 as? Double).map { Int($0) } }
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let weekdays = ["S", "M", "T", "W", "T", "F", "S"]
-        let cells = (0..<(startOffset + daysInMonth)).map { $0 - startOffset + 1 }
+        let cells = (0..<(m.startOffset + m.daysInMonth)).map { $0 - m.startOffset + 1 }
         let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 7)
 
-        return VStack(spacing: 8) {
-            Text(monthLabel).font(.system(size: 20, weight: .bold)).foregroundColor(.white).frame(maxWidth: .infinity)
+        VStack(spacing: 8) {
+            Text(m.label).font(.system(size: 20, weight: .bold)).foregroundColor(.white).frame(maxWidth: .infinity)
             HStack(spacing: 0) {
                 ForEach(0..<7, id: \.self) { i in
                     Text(weekdays[i]).font(.system(size: 12, weight: .medium)).foregroundColor(.white.opacity(0.5)).frame(maxWidth: .infinity)
@@ -294,10 +403,24 @@ struct CalendarMonthBlockView: View {
             }
             LazyVGrid(columns: columns, spacing: 0) {
                 ForEach(Array(cells.enumerated()), id: \.offset) { _, day in
+                    let inMonth = day >= 1 && day <= m.daysInMonth
+                    let isoStr = inMonth ? iso(m.year, m.month, day) : ""
+                    // Selection state
+                    let isRangeStart = rangeSelectable && rangeStart != nil && isoStr == rangeStart
+                    let isRangeEnd = rangeSelectable && rangeEnd != nil && isoStr == rangeEnd
+                    let inRange = rangeSelectable && rangeStart != nil && rangeEnd != nil && isoStr > rangeStart! && isoStr < rangeEnd!
+                    let singleSel: Bool = {
+                        guard !rangeSelectable, inMonth else { return false }
+                        if monthsShown <= 1 { return (m.index == 0 && seededDays.contains(day)) || selectedDay == day }
+                        return selectedIso == isoStr
+                    }()
+                    let isSelected = isRangeStart || isRangeEnd || singleSel
+                    let isToday = inMonth && day == m.today
                     ZStack {
-                        if day >= 1 && day <= daysInMonth {
-                            let isSelected = seededDays.contains(day) || selectedDay == day
-                            let isToday = day == today
+                        if inMonth {
+                            if inRange {
+                                Rectangle().fill(accent.opacity(0.22)).frame(height: 34).frame(maxWidth: .infinity)
+                            }
                             Circle().fill(isSelected ? accent : Color.clear).frame(width: 34, height: 34)
                             if isToday && !isSelected {
                                 Circle().stroke(accent, lineWidth: 1.5).frame(width: 34, height: 34)
@@ -310,14 +433,39 @@ struct CalendarMonthBlockView: View {
                     .frame(height: 42)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        guard day >= 1 && day <= daysInMonth else { return }
-                        selectedDay = day
-                        inputValues[fieldId] = day
-                        onInteract(block.id, "day_selected", String(day))
+                        guard inMonth else { return }
+                        if rangeSelectable {
+                            handleRangeTap(isoStr, fieldId: fieldId)
+                        } else if monthsShown <= 1 {
+                            selectedDay = day
+                            inputValues[fieldId] = day
+                            onInteract(block.id, "day_selected", String(day))
+                        } else {
+                            selectedIso = isoStr
+                            inputValues[fieldId] = isoStr
+                            onInteract(block.id, "day_selected", isoStr)
+                        }
                     }
                 }
             }
         }
-        .frame(maxWidth: .infinity)
+    }
+
+    private func handleRangeTap(_ isoStr: String, fieldId: String) {
+        if rangeStart == nil || rangeEnd != nil {
+            // start a fresh range
+            rangeStart = isoStr
+            rangeEnd = nil
+            onInteract(block.id, "day_selected", isoStr)
+        } else {
+            // close the range (order the two endpoints)
+            var s = rangeStart!
+            var e = isoStr
+            if e < s { swap(&s, &e) }
+            rangeStart = s
+            rangeEnd = e
+            inputValues[fieldId] = ["start": s, "end": e]
+            onInteract(block.id, "range_selected", "\(s)..\(e)")
+        }
     }
 }

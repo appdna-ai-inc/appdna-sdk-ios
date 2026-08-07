@@ -33,6 +33,9 @@ struct PlanCard: View {
     private var featureTextStyle: TextStyleConfig? {
         sectionStyle?.elements?["feature"]?.textStyle
     }
+    private var trialTextStyle: TextStyleConfig? {
+        sectionStyle?.elements?["trial_label"]?.textStyle
+    }
 
     private var cornerRadius: CGFloat { cardStyle.cardCornerRadius ?? 12 }
     private var cardPadding: CGFloat { cardStyle.cardPadding ?? 16 }
@@ -107,8 +110,14 @@ struct PlanCard: View {
                             planSubtitleView(desc)
                         }
 
-                        // Row 2: Price display
+                        // Row 2: Price display (+ optional struck-through original price)
                         HStack(spacing: 4) {
+                            if let original = plan.original_price_display, !original.isEmpty {
+                                Text(original)
+                                    .font(.caption)
+                                    .strikethrough()
+                                    .foregroundColor(Color(hex: cardStyle.strikethroughColor ?? "#9CA3AF"))
+                            }
                             if let ts = priceTextStyle {
                                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                                     .applyTextStyle(ts)
@@ -124,7 +133,7 @@ struct PlanCard: View {
                             // Round-30 — render `trialLabel` verbatim; the " free trial"
                             // suffix for duration-only trials now lives in the computed
                             // property (PaywallConfig.swift) so every layout + Android match.
-                            if let ts = featureTextStyle {
+                            if let ts = trialTextStyle {
                                 Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
                                     .applyTextStyle(ts)
                                     .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
@@ -150,7 +159,7 @@ struct PlanCard: View {
 
                         // Savings text
                         if showSavings, let savings = plan.savings_text, !savings.isEmpty {
-                            Text(savings)
+                            Text(loc?("plan.\(planIndex).savings", savings) ?? savings)
                                 .font(.caption2.bold())
                                 .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: "#22C55E"))
                         }
@@ -190,6 +199,9 @@ struct PlanCard: View {
                 .contentShape(Rectangle()) // Make entire card area tappable including Spacer gaps
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            // console card_height → minimum card height (matches Android heightIn(min:)
+            // + PaywallPreview minHeight). nil param is unspecified, so it never forces a 0 floor.
+            .frame(minHeight: cardStyle.cardHeight)
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill({
@@ -259,7 +271,7 @@ struct PlanCard: View {
 
     @ViewBuilder
     private func planSubtitleView(_ desc: String) -> some View {
-        Text(desc)
+        Text(loc?("plan.\(planIndex).description", desc) ?? desc)
             .font(.caption)
             .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
             .lineLimit(2)
@@ -336,9 +348,29 @@ struct PlanCard: View {
             return AnyShape(RoundedRectangle(cornerRadius: 2))
         case "rounded":
             return AnyShape(RoundedRectangle(cornerRadius: 6))
+        case "ribbon":
+            // Notched-ribbon: rectangle with a triangular notch cut into the trailing
+            // edge, matching the console preview polygon (0,0 → 100,0 → 92,50 → 100,100 → 0,100).
+            return AnyShape(RibbonBadgeShape())
         default: // capsule
             return AnyShape(Capsule())
         }
+    }
+}
+
+/// Notched-ribbon badge shape — a rectangle whose trailing edge caves inward to a
+/// point at mid-height, producing top/bottom pennant tails. Kept visually equivalent
+/// to the console PaywallPreview clipPath and the Android GenericShape counterpart.
+private struct RibbonBadgeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.92, y: rect.midY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
     }
 }
 
@@ -347,6 +379,7 @@ struct PlanCardStyle {
     var cardCornerRadius: CGFloat? = nil
     var cardPadding: CGFloat? = nil
     var cardGap: CGFloat? = nil
+    var cardHeight: CGFloat? = nil  // Minimum plan-card height in pt (console card_height); applied as .frame(minHeight:)
     var cardShadow: String? = nil  // "none", "sm", "md", "lg", or "true"/"false"
     var badgePosition: String? = nil
     var badgeStyle: String? = nil
@@ -370,6 +403,7 @@ struct PlanCardStyle {
     var subtitlePosition: String? = nil  // "below_name", "below_price" (default), "above_price"
     var showDivider: Bool = false        // Divider line between price and features
     var dividerColor: String? = nil
+    var strikethroughColor: String? = nil  // Color of struck-through original_price_display
     // Show flags
     var showIcon: Bool = false
     var showImage: Bool = false
@@ -383,6 +417,7 @@ struct PlanCardStyle {
         self.cardCornerRadius = data?.cardCornerRadius
         self.cardPadding = data?.cardPadding
         self.cardGap = data?.cardGap
+        self.cardHeight = data?.cardHeight
         // card_shadow can be Bool or String ("none", "sm", "md", "lg")
         if let val = data?.cardShadow?.value {
             if let b = val as? Bool { self.cardShadow = b ? "md" : "none" }
@@ -405,6 +440,7 @@ struct PlanCardStyle {
         self.subtitlePosition = data?.subtitlePosition
         self.showDivider = data?.showDivider ?? false
         self.dividerColor = data?.dividerColor
+        self.strikethroughColor = data?.strikethroughColor
         self.showIcon = data?.showPlanIcons ?? false
         self.showImage = data?.showPlanImages ?? false
         self.showSubtitle = data?.showPlanSubtitles ?? false

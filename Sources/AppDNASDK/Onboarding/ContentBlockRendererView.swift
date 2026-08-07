@@ -148,6 +148,13 @@ struct ContentBlockRendererView: View {
         if let toggleLabel = json["toggle_label"] as? String, toggleLabel.contains("{{") {
             json["toggle_label"] = resolveTemplateString(toggleLabel, hookData: hookData, responses: responses)
         }
+        // RichText v2 — rich_text's primary content field is `markdown_content`;
+        // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
+        // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
+        // words") resolves on device instead of rendering the literal token.
+        if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
+            json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses)
+        }
 
         // Decode back to ContentBlock
         if let updatedData = try? JSONSerialization.data(withJSONObject: json),
@@ -164,6 +171,8 @@ struct ContentBlockRendererView: View {
         if let placeholder = block.field_placeholder, placeholder.contains("{{") { return true }
         if let badgeText = block.badge_text, badgeText.contains("{{") { return true }
         if let toggleLabel = block.toggle_label, toggleLabel.contains("{{") { return true }
+        // RichText v2 — gate the resolve pass on rich_text markdown too.
+        if let markdown = block.markdown_content, markdown.contains("{{") { return true }
         return false
     }
 
@@ -189,6 +198,8 @@ struct ContentBlockRendererView: View {
         case .memory_match: return AnyView(MemoryMatchBlockView(block: block, onInteract: onInteract))
         case .calendar_month: return AnyView(CalendarMonthBlockView(block: block, inputValues: $inputValues, onInteract: onInteract))
         case .button: return AnyView(buttonBlock(block))
+        // Mrozu (Duolingo s20/s22) — CTA-style button that plays `audio_url` on tap.
+        case .sound_button: return AnyView(soundButtonBlock(block))
         case .spacer: return AnyView(Spacer().frame(height: CGFloat(block.spacer_height ?? 24))) // SPEC-419 pass-14 #11 — unset default 24 to match editor+preview (was 16)
         case .list: return AnyView(listBlock(block))
         case .divider: return AnyView(dividerBlock(block))
@@ -214,7 +225,7 @@ struct ContentBlockRendererView: View {
         case .date_wheel_picker: return AnyView(DateWheelPickerBlockView(block: block, inputValues: $inputValues))
         case .circular_gauge: return AnyView(CircularGaugeBlockView(block: block))
         case .row: return AnyView(rowBlock(block))
-        case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction))
+        case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction, inputValues: $inputValues))
         case .input_text: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .default))
         case .input_textarea: return AnyView(FormInputTextAreaBlock(block: block, inputValues: $inputValues))
         case .input_number: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .numberPad))
@@ -237,6 +248,8 @@ struct ContentBlockRendererView: View {
         case .input_image_picker: return AnyView(FormInputImagePickerPlaceholderBlock(block: block, inputValues: $inputValues))
         case .input_color: return AnyView(FormInputColorBlock(block: block, inputValues: $inputValues))
         case .input_signature: return AnyView(FormInputSignatureBlock(block: block, inputValues: $inputValues))
+        // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement (checkbox + rich links → Bool).
+        case .agreement: return AnyView(AgreementBlock(block: block, inputValues: $inputValues))
         case .unknown: return AnyView(EmptyView())
         }
     }
@@ -309,12 +322,34 @@ struct ContentBlockRendererView: View {
             .foregroundColor(styleColor)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
+            // SPEC — honor max_lines on heading/text (only rich_text did before);
+            // nil → no limit (unchanged). Parity with Android maxLines.
+            .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: frameAlignment)
     }
 
     // MARK: - Text
 
+    // Mrozu QA — trailing animated ellipsis ("", ".", "..", "...") for loading-style text
+    // (text block with field_config.show_trailing_dots). Parity with Android AnimatedTrailingDots
+    // + console preview's pulsing-dots span.
+    private struct AnimatedTrailingDots: View {
+        let font: Font
+        let color: Color
+        var body: some View {
+            TimelineView(.animation(minimumInterval: 0.4, paused: false)) { timeline in
+                let n = Int(timeline.date.timeIntervalSinceReferenceDate / 0.4) % 4
+                // Reserve the full "..." width so the baseline text does not shift as dots cycle.
+                Text(String(repeating: ".", count: n))
+                    .font(font)
+                    .foregroundColor(color)
+                    .frame(minWidth: 14, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
     private func textBlock(_ block: ContentBlock) -> some View {
         let text = block.text ?? ""
         // EPIC-9 parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
@@ -343,13 +378,26 @@ struct ContentBlockRendererView: View {
             weight: block.style?.font_weight ?? 400
         )
         let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? .primary
-        return Text(loc?("block.\(block.id).text", text) ?? text)
+        let showTrailingDots = (block.field_config?["show_trailing_dots"]?.value as? Bool) ?? false
+        let base = Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)
             .foregroundColor(styleColor)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
+            // SPEC — honor max_lines on heading/text (only rich_text did before);
+            // nil → no limit (unchanged). Parity with Android maxLines.
+            .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
+        if showTrailingDots {
+            HStack(alignment: .firstTextBaseline, spacing: 1) {
+                base
+                AnimatedTrailingDots(font: styleFont, color: styleColor)
+            }
             .frame(maxWidth: .infinity, alignment: frameAlignment)
+        } else {
+            base
+                .frame(maxWidth: .infinity, alignment: frameAlignment)
+        }
     }
 
     // MARK: - Image
@@ -361,13 +409,22 @@ struct ContentBlockRendererView: View {
         let zonesRaw = (block.field_config?["background_zones"]?.value as? [Any]) ?? []
         let zones: [(CGFloat, Color)] = zonesRaw.compactMap { item in
             guard let m = item as? [String: Any] else { return nil }
-            let w = max((m["weight"] as? Double) ?? Double((m["weight"] as? Int) ?? 1), 0) // clamp ≥0 — negative gave a negative zone height (matches Android/preview)
+            let w = max((m["weight"] as? Double) ?? Double((m["weight"] as? Int) ?? 1), 0.01) // clamp ≥0.01 — a 0-weight zone renders a hairline sliver like Android (coerceAtLeast 0.01) + preview (Compose weight() can't be 0)
             return (CGFloat(w), Color(hex: (m["color"] as? String) ?? "#000000"))
         }
         let totalW = max(zones.reduce(0) { $0 + $1.0 }, 0.0001)
         let children = block.children ?? block.stack_children ?? []
         let arrangement = (block.field_config?["content_arrangement"]?.value as? String) ?? "space_between"
-        let height = CGFloat(block.height ?? 480)
+        // EPIC-4b v2 — background_extent (% of screen height, 1–100) lets the section fill the screen
+        // or reach a configured % from the top. When absent, fall back to the fixed height (parity with
+        // Android SectionBackgroundBlock + the console preview). Screen-relative height mirrors the
+        // `UIScreen.main.bounds.height * fraction` pattern already used in ContentBlockTypes.swift.
+        let extentPct: Double? = (block.field_config?["background_extent"]?.value as? Double)
+            ?? (block.field_config?["background_extent"]?.value as? Int).map(Double.init)
+        let height: CGFloat = {
+            if let pct = extentPct { return UIScreen.main.bounds.height * CGFloat(min(max(pct, 1), 100)) / 100 }
+            return CGFloat(block.height ?? 480)
+        }()
         ZStack {
             // Background: vertical weighted color zones.
             GeometryReader { geo in
@@ -394,6 +451,9 @@ struct ContentBlockRendererView: View {
     }
 
     // EPIC-3 — media_gallery: horizontal scrollable row of image tiles (rounded, fixed size, placeholder bg).
+    // Media-gallery v2 (Mrozu QA): gallery_fill = full-width edge-to-edge cover tiles; gallery_autoscroll =
+    // seamless marquee loop (gallery_autoscroll_speed = seconds per full cycle, default 20). Both default
+    // off → identical to the existing static tile row (no timer/animation cost when off — non-breaking).
     @ViewBuilder
     private func mediaGalleryBlock(_ block: ContentBlock) -> some View {
         let images = block.gallery_images ?? []
@@ -401,31 +461,55 @@ struct ContentBlockRendererView: View {
         let itemH = CGFloat(block.gallery_item_height ?? 180)
         let cr = CGFloat(block.gallery_corner_radius ?? 12)
         let spacing = CGFloat(block.gallery_spacing ?? 10)
+        let fill = block.gallery_fill ?? false
+        let autoscroll = block.gallery_autoscroll ?? false
+        let cycle = block.gallery_autoscroll_speed ?? 20
+        // Mrozu QA (2026-08-04) — alarmy selectable gallery: gallery_preview_on_select opens a full-screen
+        // enlarged overlay of the tapped image. Default off → the existing static/marquee row (non-breaking).
+        // Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
+        let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
-        GeometryReader { geo in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: spacing) {
-                    ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
-                        ZStack {
-                            Color(hex: "#2A2A2E")
-                            if let url = URL(string: urlString) {
-                                BundledAsyncPhaseImage(url: url) { phase in
-                                    if case .success(let image) = phase {
-                                        image.resizable().aspectRatio(contentMode: .fill)
-                                    }
-                                }
-                            }
+        if images.isEmpty {
+            // Parity with Android (ContentBlockRenderer.kt:1841 `if (images.isEmpty()) return`) and
+            // preview: a cleared gallery renders nothing rather than reserving a blank itemH-tall gap.
+            EmptyView()
+        } else if autoscroll {
+            MediaGalleryAutoScrollRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, cycleSeconds: cycle)
+        } else if previewOnSelect {
+            MediaGalleryPreviewRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, galleryAlignment: galleryAlignment)
+        } else {
+            GeometryReader { geo in
+                let tileW = fill ? geo.size.width : itemW
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: fill ? 0 : spacing) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
+                            mediaGalleryTile(urlString, width: tileW, height: itemH, cornerRadius: fill ? 0 : cr)
                         }
-                        .frame(width: itemW, height: itemH)
-                        .clipShape(RoundedRectangle(cornerRadius: cr))
+                    }
+                    .padding(.horizontal, fill ? 0 : 2)
+                    // EPIC-3 — settable align (start/center/end) when tiles fit; scrolls when they overflow.
+                    .frame(minWidth: geo.size.width, alignment: fill ? .leading : galleryAlignment)
+                }
+            }
+            .frame(height: itemH)
+        }
+    }
+
+    // Media-gallery v2 — shared tile builder (placeholder bg + cover image, rounded/clipped).
+    @ViewBuilder
+    private func mediaGalleryTile(_ urlString: String, width: CGFloat, height: CGFloat, cornerRadius: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
                     }
                 }
-                .padding(.horizontal, 2)
-                // EPIC-3 — settable align (start/center/end) when tiles fit; scrolls when they overflow.
-                .frame(minWidth: geo.size.width, alignment: galleryAlignment)
             }
         }
-        .frame(height: itemH)
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
     /// SPEC-419 — shared image styling: image_fit (cover/contain/fill/none), aspect_ratio,
@@ -563,16 +647,31 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Button (with outline variant — SPEC-089d §3.18)
 
-    private func buttonBlock(_ block: ContentBlock) -> some View {
+    private func buttonBlock(_ block: ContentBlock, onTapOverride: (() -> Void)? = nil) -> some View {
         let btnVariant = block.variant ?? "primary"
         let radius = CGFloat(block.button_corner_radius ?? 12)
-        let bgColor = Color(hex: block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mrozu QA (2026-08-04) — Flo consent CTA: `cta_enabled_bg_color` / `cta_disabled_bg_color` drive the
+        // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
+        // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
+        // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
+        let bgColor: Color = {
+            let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
+            let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
+            let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            guard enabledHex != nil || disabledHex != nil else { return Color(hex: fallback) }
+            let satisfied = RequiredFieldGate.evaluate(blocks: blocks, inputValues: inputValues).canAdvance
+            return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
+        }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
 
         return Button {
-            onAction(block.action ?? "next", block.action_value)
+            if let onTapOverride {
+                onTapOverride()
+            } else {
+                onAction(block.action ?? "next", block.action_value)
+            }
         } label: {
             HStack(spacing: 8) {
                 // Gap 6: icon_emoji
@@ -605,6 +704,29 @@ struct ContentBlockRendererView: View {
             )
         }
         .applyPressedStyle(block.pressed_style)
+    }
+
+    // MARK: - Sound Button (Mrozu Duolingo s20/s22)
+
+    /// A CTA-style button that plays an uploaded/remote audio clip (mp3/wav/aac)
+    /// from `block.audio_url` on tap — reuses ALL button styling fields via
+    /// `buttonBlock`. When `block.autoplay == true`, the clip plays as the block
+    /// appears. Playback is routed through the shared `AudioPlayer` helper.
+    private func soundButtonBlock(_ block: ContentBlock) -> some View {
+        buttonBlock(block, onTapOverride: {
+            AudioPlayer.shared.play(urlString: block.audio_url)
+        })
+        .onAppear {
+            if block.autoplay == true {
+                AudioPlayer.shared.play(urlString: block.audio_url)
+            }
+        }
+        // Stop playback + release the AVAudioSession when the block leaves the
+        // hierarchy (step change / dismiss); otherwise autoplayed audio keeps
+        // playing after the user navigates away.
+        .onDisappear {
+            AudioPlayer.shared.stop()
+        }
     }
 
     /// Gap 5: Button background — gradient or solid color.
@@ -647,15 +769,19 @@ struct ContentBlockRendererView: View {
         let accent = Color(hex: block.active_color ?? accentHex)
         let icon = (block.field_config?["banner_icon"]?.value as? String) ?? defaultIcon
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
+        // Mrozu QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
+        // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
+        let bgOverride = block.bg_color.map { Color(hex: $0) }
+        let textColor = Color(hex: block.text_color ?? "#FFFFFF")
         return HStack(spacing: 10) {
             Text(icon).font(.system(size: 18))
-            Text(text).font(.system(size: 14, weight: .medium)).foregroundColor(.white)
+            Text(text).font(.system(size: 14, weight: .medium)).foregroundColor(textColor)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.14))
+        .background(bgOverride ?? accent.opacity(0.14))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.45), lineWidth: 1))
     }
@@ -696,10 +822,17 @@ struct ContentBlockRendererView: View {
         let bubbleColor = Color(hex: block.bg_color ?? "#FFFFFF")
         let textColor = Color(hex: block.text_color ?? "#111827")
         let tailPos = (block.field_config?["bubble_tail"]?.value as? String) ?? "left"
+        // Mrozu QA — bubble interior font family (bubble_font_family; nil → system) + tail geometry
+        // (tail_width/tail_length; default 18×9). Parity w/ Android SpeechBubbleBlock + console preview.
+        let bubbleFont = FontResolver.font(
+            family: block.field_config?["bubble_font_family"]?.value as? String,
+            size: 15, weight: 500)
+        let tailWidth = CGFloat(cfgDouble(block.field_config?["tail_width"]) ?? 18)
+        let tailLength = CGFloat(cfgDouble(block.field_config?["tail_length"]) ?? 9)
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         return VStack(alignment: .leading, spacing: 0) {
             Text(text)
-                .font(.system(size: 15, weight: .medium))
+                .font(bubbleFont)
                 .foregroundColor(textColor)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
@@ -711,12 +844,12 @@ struct ContentBlockRendererView: View {
                 if tailPos == "center" || tailPos == "right" { Spacer() }
                 Path { p in
                     p.move(to: CGPoint(x: 0, y: 0))
-                    p.addLine(to: CGPoint(x: 18, y: 0))
-                    p.addLine(to: CGPoint(x: 9, y: 9))
+                    p.addLine(to: CGPoint(x: tailWidth, y: 0))
+                    p.addLine(to: CGPoint(x: tailWidth / 2, y: tailLength))
                     p.closeSubpath()
                 }
                 .fill(bubbleColor)
-                .frame(width: 18, height: 9)
+                .frame(width: tailWidth, height: tailLength)
                 if tailPos == "right" { Spacer().frame(width: 24) }
                 if tailPos == "center" || tailPos == "left" { Spacer() }
             }
@@ -736,12 +869,27 @@ struct ContentBlockRendererView: View {
         default: accentHex = "#10B981"; icon = "✓"; defHead = "Great job!"
         }
         let accent = Color(hex: block.active_color ?? accentHex)
+        // Mrozu QA (2026-08-04) — duolingo above-CTA feedback: `feedback_bg_color` overrides the tinted
+        // panel background; `feedback_graphic_url` swaps the built-in ✓/✗ glyph for a custom image. Both
+        // default nil → identical to the existing accent-tinted glyph panel (non-breaking). The runtime
+        // correct/wrong EVENT that flips `feedback_state` is a host-driven behavioral concern (deferred);
+        // this is the static/config render + state-driven styling.
+        let panelBg = (block.field_config?["feedback_bg_color"]?.value as? String).map { Color(hex: $0) } ?? accent.opacity(0.15)
+        let graphicURL = (block.field_config?["feedback_graphic_url"]?.value as? String).flatMap { URL(string: $0) }
         let headline = loc?("block.\(block.id).text", block.text ?? defHead) ?? block.text ?? defHead
         let detail = block.field_config?["feedback_detail"]?.value as? String
         return HStack(spacing: 14) {
             ZStack {
                 Circle().fill(accent).frame(width: 40, height: 40)
-                Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                if let graphicURL = graphicURL {
+                    BundledAsyncImage(url: graphicURL) { image in
+                        image.resizable().aspectRatio(contentMode: .fill).frame(width: 40, height: 40).clipShape(Circle())
+                    } placeholder: {
+                        Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                    }
+                } else {
+                    Text(icon).font(.system(size: 20, weight: .bold)).foregroundColor(.white)
+                }
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(headline).font(.system(size: 17, weight: .bold)).foregroundColor(accent)
@@ -753,7 +901,7 @@ struct ContentBlockRendererView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(accent.opacity(0.15))
+        .background(panelBg)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
@@ -763,12 +911,23 @@ struct ContentBlockRendererView: View {
         let stats: [[String: Any]] = statsRaw.compactMap { $0 as? [String: Any] }
         let headline = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         let defaultAccent = AppDNA.brandAccentHex ?? "#6366F1"
-        let rows: [[[String: Any]]] = stride(from: 0, to: stats.count, by: 2).map {
-            Array(stats[$0..<min($0 + 2, stats.count)])
+        // Mrozu QA (2026-08-04): cards/headline were hardcoded (#1F2937 bg, white text, center, 2-col).
+        // bg_color = card bg, text_color = headline + label, summary_align = headline align,
+        // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
+        let cardBg = Color(hex: block.bg_color ?? "#1F2937")
+        let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
+        let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
+        let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
+        let perRow = (block.field_config?["stats_layout"]?.value as? String) == "vertical" ? 1 : 2
+        let rows: [[[String: Any]]] = stride(from: 0, to: stats.count, by: perRow).map {
+            Array(stats[$0..<min($0 + perRow, stats.count)])
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
-                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(.white).frame(maxWidth: .infinity)
+                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(textColor)
+                    .multilineTextAlignment(headlineTextAlign)
+                    .frame(maxWidth: .infinity, alignment: headlineAlign)
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, rowStats in
                 HStack(spacing: 12) {
@@ -779,14 +938,14 @@ struct ContentBlockRendererView: View {
                         let color = Color(hex: (m["color"] as? String) ?? defaultAccent)
                         VStack(alignment: .leading, spacing: 4) {
                             Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
-                            Text(label).font(.system(size: 13)).foregroundColor(.white.opacity(0.7))
+                            Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
-                        .background(Color(hex: "#1F2937"))
+                        .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
-                    if rowStats.count == 1 { Spacer().frame(maxWidth: .infinity) }
+                    if perRow == 2 && rowStats.count == 1 { Spacer().frame(maxWidth: .infinity) }
                 }
             }
         }
@@ -1086,6 +1245,8 @@ struct ContentBlockRendererView: View {
         let activeW = block.active_dot_width.map { CGFloat($0) }
         let activeColor = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let inactiveColor = Color(hex: block.inactive_color ?? "#D1D5DB")
+        // SPEC — per-dot shape (default "circle" preserves the legacy Capsule/Circle look).
+        let dotShape = (block.dot_shape ?? "circle").lowercased()
 
         let align: Alignment = {
             switch block.alignment {
@@ -1097,19 +1258,39 @@ struct ContentBlockRendererView: View {
 
         return HStack(spacing: dotSpacing) {
             ForEach(0..<dotCount, id: \.self) { index in
-                if index == activeIdx {
-                    Capsule()
-                        .fill(activeColor)
-                        .frame(width: activeW ?? dotSize, height: dotSize)
-                } else {
-                    Circle()
-                        .fill(inactiveColor)
-                        .frame(width: dotSize, height: dotSize)
-                }
+                let isActive = index == activeIdx
+                let color = isActive ? activeColor : inactiveColor
+                let w = isActive ? (activeW ?? dotSize) : dotSize
+                pageDot(shape: dotShape, color: color, width: w, height: dotSize, isActive: isActive)
             }
         }
         .frame(maxWidth: .infinity, alignment: align)
         .accessibilityLabel("Page \(activeIdx + 1) of \(dotCount)")
+    }
+
+    /// One page-indicator dot rendered in the configured shape. Circle keeps the
+    /// legacy behaviour exactly: active pill (active_dot_width set) → Capsule,
+    /// otherwise Circle.
+    @ViewBuilder
+    private func pageDot(shape: String, color: Color, width: CGFloat, height: CGFloat, isActive: Bool) -> some View {
+        switch shape {
+        case "rectangle":
+            Rectangle().fill(color).frame(width: width, height: height)
+        case "triangle":
+            PageDotTriangle().fill(color).frame(width: width, height: height)
+        case "star":
+            Image(systemName: "star.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .foregroundColor(color)
+                .frame(width: width, height: height)
+        default: // "circle"
+            if isActive && width != height {
+                Capsule().fill(color).frame(width: width, height: height)
+            } else {
+                Circle().fill(color).frame(width: width, height: height)
+            }
+        }
     }
 
     // MARK: - Social Login (SPEC-089d AC-015)
@@ -1127,6 +1308,13 @@ struct ContentBlockRendererView: View {
         // sits directly under email+password input blocks.
         let placement = block.email_login_placement ?? "with_providers"
         let emailSpacer = CGFloat(block.email_cta_spacing_below ?? 16)
+        let textAlign = block.button_text_align ?? "center"
+        // Social-Login styling v2 — divider color + placement.
+        let dividerColor: Color = {
+            if let hex = block.divider_color, !hex.isEmpty { return Color(hex: hex) }
+            return Color.gray.opacity(0.3)
+        }()
+        let dividerPosition = block.divider_position ?? "bottom"
         let (topGroup, bottomGroup): ([SocialProviderConfig], [SocialProviderConfig]) = {
             if placement == "below_inputs", let emailIdx = providerList.firstIndex(where: { ($0.type ?? "") == "email" }) {
                 var rest = providerList
@@ -1136,41 +1324,48 @@ struct ContentBlockRendererView: View {
             return (providerList, [])
         }()
 
+        // Optional divider between social login and other options. Placement is
+        // controlled by divider_position ("top" | "bottom").
+        let divider = Group {
+            if block.show_divider == true {
+                HStack(spacing: 12) {
+                    Rectangle().fill(dividerColor).frame(height: 1)
+                    Text(loc?("block.\(block.id).divider", block.divider_text ?? "or") ?? block.divider_text ?? "or")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    Rectangle().fill(dividerColor).frame(height: 1)
+                }
+            }
+        }
+
         return VStack(spacing: btnSpacing) {
-            ForEach(Array(topGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius)
+            if dividerPosition == "top" { divider }
+            ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
+                socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
                 // email button and the first OAuth button equals emailSpacer.
                 Color.clear.frame(height: max(0, emailSpacer - btnSpacing))
             }
-            ForEach(Array(bottomGroup.enumerated()), id: \.offset) { _, provider in
-                socialLoginButton(provider, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius)
+            ForEach(Array(bottomGroup.enumerated()), id: \.offset) { idx, provider in
+                // Mirror Android's post-split index scheme: bottomGroup labels are
+                // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
+                socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
-
-            // Optional divider between social login and other options
-            if block.show_divider == true {
-                HStack(spacing: 12) {
-                    Rectangle().fill(Color.gray.opacity(0.3)).frame(height: 1)
-                    Text(loc?("block.\(block.id).divider", block.divider_text ?? "or") ?? block.divider_text ?? "or")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    Rectangle().fill(Color.gray.opacity(0.3)).frame(height: 1)
-                }
-            }
+            if dividerPosition != "top" { divider }
         }
     }
 
     /// One social-login button with per-provider color/radius overrides applied.
     /// SPEC-089e amendment — any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
-    private func socialLoginButton(_ provider: SocialProviderConfig, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat) -> some View {
+    private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center", blockAccentColor: String? = nil, blockBgColor: String? = nil, pressedStyle: PressedStyle? = nil) -> some View {
         let providerType = provider.type ?? ""
         let radius = CGFloat(provider.corner_radius ?? Double(blockRadius))
         let bgColor: Color = {
             if let hex = provider.bg_color, !hex.isEmpty { return Color(hex: hex) }
-            return socialLoginBgColor(providerType, style: btnStyle)
+            return socialLoginBgColor(providerType, style: btnStyle, blockAccent: blockAccentColor, blockBg: blockBgColor)
         }()
         let textColor: Color = {
             if let hex = provider.text_color, !hex.isEmpty { return Color(hex: hex) }
@@ -1190,16 +1385,27 @@ struct ContentBlockRendererView: View {
             }
         } label: {
             HStack(spacing: 10) {
-                // SPEC-419 — no glyph for the email provider (parity with Android): the
-                // envelope rendered awkwardly on the brand-tinted "Continue with Email"
-                // button and its reserved spacing offset the label. Plain centered CTA.
-                if providerType != "email" {
-                    socialLoginIcon(providerType, iconStyle: provider.icon_style)
+                // Social-Login styling v2 — a custom icon_url overrides the built-in
+                // provider glyph (email still suppresses its glyph unless a URL is set).
+                if let iconURL = provider.icon_url, !iconURL.isEmpty, let url = URL(string: iconURL) {
+                    BundledAsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fit).frame(width: 20, height: 20)
+                    } placeholder: {
+                        EmptyView()
+                    }
+                } else if providerType != "email" {
+                    // SPEC-419 — no glyph for the email provider (parity with Android): the
+                    // envelope rendered awkwardly on the brand-tinted "Continue with Email"
+                    // button and its reserved spacing offset the label. Plain centered CTA.
+                    socialLoginIcon(providerType, iconStyle: provider.icon_style, buttonTextColor: textColor, btnStyle: btnStyle)
                 }
-                Text(provider.label ?? socialLoginDefaultLabel(providerType))
+                // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
+                // falling back to the authored label then the brand default.
+                Text(loc?("block.\(blockId).provider.\(index)", provider.label ?? socialLoginDefaultLabel(providerType)) ?? provider.label ?? socialLoginDefaultLabel(providerType))
                     .font(.body.weight(.semibold))
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, textAlign == "leading" ? 16 : 0)
+            .frame(maxWidth: .infinity, alignment: textAlign == "leading" ? .leading : .center)
             .frame(height: btnHeight)
             .foregroundColor(textColor)
             .background(bgColor)
@@ -1209,6 +1415,7 @@ struct ContentBlockRendererView: View {
                     .stroke(borderColor, lineWidth: borderWidth)
             )
         }
+        .applyPressedStyle(pressedStyle)
     }
 
     // Social login helpers
@@ -1216,7 +1423,7 @@ struct ContentBlockRendererView: View {
     /// Social login icon with configurable style.
     /// icon_style: "default", "monochrome_light" (white icons), "monochrome_dark" (black icons),
     ///             "filled" (colored bg), "outline" (border only).
-    private func socialLoginIcon(_ type: String, iconStyle: String? = nil) -> AnyView {
+    private func socialLoginIcon(_ type: String, iconStyle: String? = nil, buttonTextColor: Color = .primary, btnStyle: String = "filled") -> AnyView {
         let style = iconStyle ?? "default"
         // Monochrome styles force icon color; default uses provider-native colors
         let monoColor: Color? = style == "monochrome_light" ? .white
@@ -1241,17 +1448,24 @@ struct ContentBlockRendererView: View {
                 .font(.body)
                 .foregroundColor(monoColor))
         case "facebook":
+            // Brand-blue "f" is only legible on transparent-background buttons
+            // (outlined/minimal). On a FILLED facebook button the background is
+            // already #1877F2, so a blue glyph would be invisible — use the button
+            // textColor (white) there. A monochrome icon_style override still wins.
+            // Matches Android + console preview.
+            let fbColor: Color = monoColor
+                ?? ((btnStyle == "outlined" || btnStyle == "minimal") ? Color(hex: "#1877F2") : buttonTextColor)
             return AnyView(Text("f")
                 .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(monoColor ?? Color(hex: "#1877F2")))
+                .foregroundColor(fbColor))
         case "github":
-            return AnyView(Image(systemName: "chevron.left.forwardslash.chevron.right")
-                .font(.body)
-                .foregroundColor(monoColor))
+            // No glyph (parity with Android, which renders no github icon, + console preview).
+            return AnyView(EmptyView())
         default:
-            return AnyView(Image(systemName: "person.fill")
-                .font(.body)
-                .foregroundColor(monoColor))
+            // Unknown/custom provider types render NO glyph (parity with Android
+            // ContentBlockRenderer.kt — empty icon for unrecognized providers). Known
+            // providers above keep their real icons; only the fallback is now empty.
+            return AnyView(EmptyView())
         }
     }
 
@@ -1262,18 +1476,27 @@ struct ContentBlockRendererView: View {
         case "email": return "Continue with Email"
         case "facebook": return "Continue with Facebook"
         case "github": return "Continue with GitHub"
-        default: return "Continue"
+        // Parity with Android (ContentBlockRenderer.kt:3636) + preview (OnboardingStepPreview.tsx:1572):
+        // unknown/custom provider types use "Continue with {Type}" (type capitalized).
+        default:
+            guard !type.isEmpty else { return "Continue" }
+            return "Continue with " + type.prefix(1).uppercased() + type.dropFirst()
         }
     }
 
-    private func socialLoginBgColor(_ type: String, style: String) -> Color {
+    private func socialLoginBgColor(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> Color {
         if style == "outlined" || style == "minimal" { return .clear }
         switch type {
         case "apple": return .black
         case "google": return Color(hex: "#4285F4") // Google brand blue
         case "facebook": return Color(hex: "#1877F2")
         case "github": return Color(hex: "#24292E")
-        default: return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Parity with Android (ContentBlockRenderer.kt:3656-3660): email/unknown provider
+        // honors block-level accent_color then bg_color before falling back to the brand accent.
+        default:
+            if let hex = blockAccent, !hex.isEmpty { return Color(hex: hex) }
+            if let hex = blockBg, !hex.isEmpty { return Color(hex: hex) }
+            return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
         }
     }
 
@@ -1370,9 +1593,14 @@ struct ContentBlockRendererView: View {
     // MARK: - Rich Text (SPEC-089d AC-020)
 
     private func richTextBlock(_ block: ContentBlock) -> some View {
-        let content = block.markdown_content ?? block.text ?? ""
+        let rawContent = block.markdown_content ?? block.text ?? ""
+        let content = loc?("block.\(block.id).content", rawContent) ?? rawContent  // localize like Android (block.<id>.content)
         let isLegal = block.rich_text_variant == "legal"
         let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        // Mirror Android + preview: rich_text resolves its font/color/decorations/
+        // alignment from base_style, falling back to `style` when base_style is nil,
+        // so a style-only rich_text block renders identically across platforms.
+        let rtStyle = block.base_style ?? block.style
 
         // SPEC-205 adjacent fix: honor `base_style.alignment` for rich_text.
         // Previously both `.multilineTextAlignment` and the outer frame alignment
@@ -1381,7 +1609,7 @@ struct ContentBlockRendererView: View {
         // visible inside `child_row` where the frame fills the cell and the
         // left-alignment overrode the authored value. Now: authored alignment
         // wins; legal keeps its center default when author didn't set one.
-        let authored = block.base_style?.alignment
+        let authored = rtStyle?.alignment
         let textAlign: TextAlignment = {
             switch authored {
             case "center": return .center
@@ -1400,25 +1628,35 @@ struct ContentBlockRendererView: View {
         }()
 
         return Group {
+            // Resolve the authored base_style font DIRECTLY on the Text so it wins
+            // over the env .font() applyTextStyle would apply (see heading/text
+            // pattern at ~line 314). Previously `.font(isLegal ? .caption : .body)`
+            // baked a font onto the Text that silently dropped base_style.font_family
+            // / font_size / font_weight on iOS.
+            let styleFont = FontResolver.font(
+                family: rtStyle?.font_family,
+                size: rtStyle?.font_size ?? (isLegal ? 12 : 17),
+                weight: rtStyle?.font_weight
+            )
             if #available(iOS 15.0, *) {
-                let textCol: Color? = block.base_style?.color.map { Color(hex: $0) }
+                let textCol: Color? = rtStyle?.color.map { Color(hex: $0) }
                 let attributed = parseMarkdownToAttributedString(content, linkColor: linkCol, textColor: textCol)
                 Text(attributed)
-                    .font(isLegal ? .caption : .body)
+                    .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyle(block.base_style)
+                    .applyTextStyleDecorations(rtStyle)
                     // SPEC-419 pass-15 #23 — honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
-                    // Apply AFTER applyTextStyle — its internal multilineTextAlignment
+                    // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
                     // would otherwise override ours when base_style.alignment is unset.
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
             } else {
                 // Fallback: render as plain text, stripping markdown tokens
                 Text(stripMarkdown(content))
-                    .font(isLegal ? .caption : .body)
+                    .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
-                    .applyTextStyle(block.base_style)
+                    .applyTextStyleDecorations(rtStyle)
                     .lineLimit(block.max_lines)
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
@@ -1507,11 +1745,17 @@ struct ContentBlockRendererView: View {
         let totalSegs = min(max(block.total_segments ?? totalSteps, 0), 50)
         let filledSegs: Int = {
             if let explicit = block.filled_segments { return explicit }
-            if block.progress_value != nil { return block.filled_segments ?? 1 }
-            // Auto-bind: current step index + 1 (1-based fill)
+            // Auto-bind: current step index + 1 (1-based fill). Note: when only
+            // progress_value is set (continuous fill), the label still tracks the
+            // step index — matching Android + the console preview. (Previously a
+            // `progress_value != nil` branch here forced this to 1, freezing the
+            // label at "Step 1".)
             return currentStepIndex + 1
         }()
-        let barH = CGFloat(block.bar_height ?? 8) // SPEC-419 pass-14 #14 — unset default 8 to match editor+preview (was 6)
+        // Progress/Loading v2 — clamp to the console slider max (24) so an
+        // out-of-range published value can't render a giant bar the editor
+        // can't reproduce (duolingo s7). Default 8 matches editor+preview.
+        let barH = min(CGFloat(block.bar_height ?? 8), 24)
         let barRadius = CGFloat(block.corner_radius ?? 3)
         let fillColor = Color(hex: block.bar_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // EPIC-2 — multiple progress colors at once (horizontal gradient across the fill).
@@ -1532,7 +1776,8 @@ struct ContentBlockRendererView: View {
         // the SAME normalization as the fill (`pvFraction`). Previously the
         // label rendered the RAW `progress_value` → `progress_value=0.75` filled
         // 75% but the label read "0%". Matches Android pvPercent.
-        let pvPercent = Int(((pvFraction ?? 0) * 100).rounded())
+        let effFraction = pvFraction ?? (variant == "segmented" ? 0 : (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0))
+        let pvPercent = Int((effFraction * 100).rounded())
         // SPEC-419 gap#6 — honor `label_format`/`custom_label`; default keeps
         // the existing "Step X of Y" when no format is authored. Mirrors the
         // console preview progress_bar label logic.
@@ -1550,42 +1795,68 @@ struct ContentBlockRendererView: View {
             }
         }()
 
-        return VStack(spacing: 8) {
-            // SPEC-419 pass-14 #13 — show_label defaults TRUE (unset) to match the
-            // editor (inits true) + preview (`show_label !== false`). Was `== true`
-            // (false default), so AI/imported payloads without the flag hid the
-            // label on-device while the preview showed it.
-            if block.show_label != false {
-                Text(labelText)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        // SPEC-419 pass-14 #13 — show_label defaults TRUE (unset) to match the
+        // editor (inits true) + preview (`show_label !== false`).
+        let showLbl = block.show_label != false
+        // Progress/Loading v2 — label placement relative to the bar.
+        let placement = block.label_placement ?? "above"
+        let labelView = AnyView(
+            Text(labelText)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        )
+        let barView = AnyView(
+            Group {
+                if variant == "segmented" {
+                    // Segmented: individual rounded bars
+                    HStack(spacing: gap) {
+                        ForEach(0..<totalSegs, id: \.self) { index in
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(index < filledSegs ? fillColor : trackCol)
+                                .frame(height: barH)
+                        }
+                    }
+                } else {
+                    // Continuous: single track + fill
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(trackCol)
+                                .frame(height: barH)
+
+                            let fraction = pvFraction ?? (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0)
+                            RoundedRectangle(cornerRadius: barRadius)
+                                .fill(fillStyle)
+                                .frame(width: geometry.size.width * min(fraction, 1.0), height: barH)
+                        }
+                    }
+                    .frame(height: barH)
+                }
             }
+        )
 
-            if variant == "segmented" {
-                // Segmented: individual rounded bars
-                HStack(spacing: gap) {
-                    ForEach(0..<totalSegs, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(index < filledSegs ? fillColor : trackCol)
-                            .frame(height: barH)
-                    }
+        return Group {
+            switch placement {
+            case "left":
+                HStack(spacing: 8) {
+                    if showLbl { labelView }
+                    barView
                 }
-            } else {
-                // Continuous: single track + fill
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(trackCol)
-                            .frame(height: barH)
-
-                        let fraction = pvFraction ?? (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0)
-                        RoundedRectangle(cornerRadius: barRadius)
-                            .fill(fillStyle)
-                            .frame(width: geometry.size.width * min(fraction, 1.0), height: barH)
-                    }
+            case "right":
+                HStack(spacing: 8) {
+                    barView
+                    if showLbl { labelView }
                 }
-                .frame(height: barH)
+            case "below":
+                VStack(spacing: 8) {
+                    barView
+                    if showLbl { labelView.frame(maxWidth: .infinity, alignment: .leading) }
+                }
+            default: // "above"
+                VStack(spacing: 8) {
+                    if showLbl { labelView.frame(maxWidth: .infinity, alignment: .leading) }
+                    barView
+                }
             }
         }
     }
@@ -1627,6 +1898,67 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func rowBlock(_ block: ContentBlock) -> some View {
+        // Mrozu QA: `row.wrap == true` must flow children onto multiple lines
+        // (chips/badges) instead of a single clipped HStack. iOS 16+ Layout;
+        // pre-16 falls back to the normal HStack. Parity with Android FlowRow.
+        if block.wrap == true, (block.row_direction ?? "horizontal") == "horizontal",
+           parseColumnRatios((block.field_config?["column_ratios"]?.value as? String) ?? block.column_ratios).isEmpty {
+            wrappedRowBlock(block)
+        } else {
+            standardRowBlock(block)
+        }
+    }
+
+    @ViewBuilder
+    private func wrappedRowBlock(_ block: ContentBlock) -> some View {
+        let childBlocks = block.children ?? block.stack_children ?? []
+        let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
+        let rowBgOpacity = CGFloat((cfgDouble(block.field_config?["background_opacity"])) ?? 1.0)
+        let rowUseBlur = (block.field_config?["blur_background"]?.value as? Bool) == true
+        let rowBorderW = CGFloat((cfgDouble(block.field_config?["border_width"])) ?? 0)
+        let rowBorderCol = (block.field_config?["border_color"]?.value as? String).map { Color(hex: $0) }
+        let rowBgCol = (block.field_config?["bg_color"]?.value as? String).map { Color(hex: $0) }
+        let rowCornerR = CGFloat((cfgDouble(block.field_config?["corner_radius"])) ?? 0)
+        // Leading icon slot — must render inside the wrap too (parity with
+        // standardRowBlock + Android FlowRow's LeadingIconSlot()).
+        let leadingIcon = block.field_config?["leading_icon"]?.value as? String
+        let leadingIconSize = CGFloat((cfgDouble(block.field_config?["leading_icon_size"])) ?? 24)
+        let leadingIconColor = (block.field_config?["leading_icon_color"]?.value as? String).map { Color(hex: $0) }
+        let leadingIconBgColor = (block.field_config?["leading_icon_bg_color"]?.value as? String).map { Color(hex: $0) }
+        let leadingIconBgSize = CGFloat((cfgDouble(block.field_config?["leading_icon_bg_size"])) ?? (leadingIconSize + 16))
+        Group {
+            if #available(iOS 16.0, *) {
+                WrapLayout(hSpacing: rowGap, vSpacing: rowGap) {
+                    if let icon = leadingIcon {
+                        rowLeadingIconView(icon: icon, size: leadingIconSize, color: leadingIconColor, bgColor: leadingIconBgColor, bgSize: leadingIconBgSize)
+                    }
+                    ForEach(childBlocks) { child in
+                        renderBlock(child)
+                            .applyRelativeSizing(width: child.element_width, height: child.element_height)
+                            .zIndex(child.overflow == "visible" ? 1 : 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Pre-iOS16 fallback: standard single-line row.
+                standardRowBlock(block)
+            }
+        }
+        .if(rowBgCol != nil || rowBorderW > 0 || rowUseBlur) { view in
+            view
+                .padding(rowBorderW > 0 ? 12 : 0)
+                .background {
+                    ZStack {
+                        if rowUseBlur { RoundedRectangle(cornerRadius: rowCornerR).fill(.ultraThinMaterial) }
+                        if let bg = rowBgCol { RoundedRectangle(cornerRadius: rowCornerR).fill(bg.opacity(rowBgOpacity)) }
+                        if rowBorderW > 0, let bc = rowBorderCol { RoundedRectangle(cornerRadius: rowCornerR).strokeBorder(bc, lineWidth: rowBorderW) }
+                    }
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func standardRowBlock(_ block: ContentBlock) -> some View {
         let childBlocks = block.children ?? block.stack_children ?? []
         // SPEC-419 — the editor writes `spacing` (preview reads `spacing`); `gap` is the legacy/
         // imported key. Read spacing first so authored row gap isn't lost on-device.
@@ -1954,5 +2286,190 @@ enum SocialLoginActionDispatcher {
             ]
         }
         return [("social_login", providerType)]
+    }
+}
+
+// MARK: - WrapLayout (Mrozu QA: row.wrap == true → FlowRow parity)
+
+/// Flow layout that lays subviews left-to-right and wraps to the next line when
+/// the available width is exceeded (chip/badge behavior). Mirrors Android
+/// Compose FlowRow. iOS 16+ only; the row renderer falls back to HStack below that.
+@available(iOS 16.0, *)
+struct WrapLayout: Layout {
+    var hSpacing: CGFloat = 8
+    var vSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, widest: CGFloat = 0
+        for sv in subviews {
+            let sz = sv.sizeThatFits(.unspecified)
+            if x > 0 && x + sz.width > maxWidth {
+                x = 0; y += rowHeight + vSpacing; rowHeight = 0
+            }
+            x += sz.width + hSpacing
+            rowHeight = max(rowHeight, sz.height)
+            widest = max(widest, x - hSpacing)
+        }
+        let w = maxWidth.isFinite ? min(maxWidth, widest) : widest
+        return CGSize(width: max(0, w), height: y + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x: CGFloat = bounds.minX, y: CGFloat = bounds.minY, rowHeight: CGFloat = 0
+        for sv in subviews {
+            let sz = sv.sizeThatFits(.unspecified)
+            if x > bounds.minX && x + sz.width > bounds.maxX {
+                x = bounds.minX; y += rowHeight + vSpacing; rowHeight = 0
+            }
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(sz))
+            x += sz.width + hSpacing
+            rowHeight = max(rowHeight, sz.height)
+        }
+    }
+}
+
+/// Upward-pointing triangle used by the page_indicator `dot_shape = "triangle"`.
+struct PageDotTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        p.closeSubpath()
+        return p
+    }
+}
+
+// Media-gallery v2 (Mrozu QA) — continuous auto-scroll marquee. The image track is duplicated and
+// offset by exactly one copy-width per cycle, so the loop wraps seamlessly (no jump). Only instantiated
+// when gallery_autoscroll == true; a static gallery pays zero animation cost.
+struct MediaGalleryAutoScrollRow: View {
+    let images: [String]
+    let itemW: CGFloat
+    let itemH: CGFloat
+    let cornerRadius: CGFloat
+    let spacing: CGFloat
+    let fill: Bool
+    let cycleSeconds: Double
+
+    @State private var offset: CGFloat = 0
+
+    var body: some View {
+        GeometryReader { geo in
+            let tileW = fill ? geo.size.width : itemW
+            let gap = fill ? 0 : spacing
+            // One copy = n tiles + n gaps; shifting by this aligns the 2nd copy onto the 1st → seamless.
+            let copyWidth = (tileW + gap) * CGFloat(images.count)
+            HStack(spacing: gap) {
+                ForEach(0..<(images.count * 2), id: \.self) { idx in
+                    tile(images[idx % images.count], width: tileW)
+                }
+            }
+            .offset(x: offset)
+            .onAppear {
+                offset = 0
+                withAnimation(.linear(duration: max(cycleSeconds, 1)).repeatForever(autoreverses: false)) {
+                    offset = -copyWidth
+                }
+            }
+        }
+        .frame(height: itemH)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func tile(_ urlString: String, width: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+            }
+        }
+        .frame(width: width, height: itemH)
+        .clipShape(RoundedRectangle(cornerRadius: fill ? 0 : cornerRadius))
+    }
+}
+
+/// Mrozu QA (2026-08-04) — alarmy selectable gallery: the same static tile row as `mediaGalleryBlock`, but each
+/// tile is tappable and opens a full-screen enlarged overlay of the selected image (`gallery_preview_on_select`).
+/// Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
+struct MediaGalleryPreviewRow: View {
+    let images: [String]
+    let itemW: CGFloat
+    let itemH: CGFloat
+    let cornerRadius: CGFloat
+    let spacing: CGFloat
+    let fill: Bool
+    let galleryAlignment: Alignment
+
+    @State private var previewURL: String? = nil
+
+    var body: some View {
+        GeometryReader { geo in
+            let tileW = fill ? geo.size.width : itemW
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: fill ? 0 : spacing) {
+                    ForEach(Array(images.enumerated()), id: \.offset) { _, urlString in
+                        tile(urlString, width: tileW)
+                            .contentShape(Rectangle())
+                            .onTapGesture { previewURL = urlString }
+                    }
+                }
+                .padding(.horizontal, fill ? 0 : 2)
+                .frame(minWidth: geo.size.width, alignment: fill ? .leading : galleryAlignment)
+            }
+        }
+        .frame(height: itemH)
+        .fullScreenCover(isPresented: Binding(
+            get: { previewURL != nil },
+            set: { if !$0 { previewURL = nil } }
+        )) {
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let urlString = previewURL, let url = URL(string: urlString) {
+                    BundledAsyncPhaseImage(url: url) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fit)
+                        }
+                    }
+                    .padding(20)
+                }
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { previewURL = nil } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white.opacity(0.9))
+                        }
+                        .padding(20)
+                    }
+                    Spacer()
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { previewURL = nil }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(_ urlString: String, width: CGFloat) -> some View {
+        ZStack {
+            Color(hex: "#2A2A2E")
+            if let url = URL(string: urlString) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    }
+                }
+            }
+        }
+        .frame(width: width, height: itemH)
+        .clipShape(RoundedRectangle(cornerRadius: fill ? 0 : cornerRadius))
     }
 }

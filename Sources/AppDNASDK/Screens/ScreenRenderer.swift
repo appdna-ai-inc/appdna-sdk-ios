@@ -119,7 +119,9 @@ internal struct ScreenRenderer: View {
                 duration_ms: anim.duration_ms,
                 delay_ms: anim.delay_ms,
                 easing: anim.easing,
-                spring_damping: anim.spring_damping
+                spring_damping: anim.spring_damping,
+                animation_delay_ms: nil,   // onboarding-only sequencing fields; not used by Screens
+                animation_order: nil
             )) {
                 AnyView(content)
             }

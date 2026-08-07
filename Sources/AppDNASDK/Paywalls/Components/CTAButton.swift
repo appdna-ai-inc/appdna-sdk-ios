@@ -1,5 +1,18 @@
 import SwiftUI
 
+/// Maps a console cta_font_weight string (normal | medium | semibold | bold) to a SwiftUI
+/// Font.Weight. Falls back to .semibold — the historical hardcoded CTA weight — so paywalls
+/// that never set the field keep their existing look. Shared by CTAButton + both sticky footers.
+func resolveCTAFontWeight(_ raw: String?) -> Font.Weight {
+    switch raw {
+    case "normal", "regular": return .regular
+    case "medium": return .medium
+    case "semibold": return .semibold
+    case "bold": return .bold
+    default: return .semibold
+    }
+}
+
 /// Primary purchase CTA button with loading state.
 struct CTAButton: View {
     let cta: PaywallCTA?
@@ -12,6 +25,13 @@ struct CTAButton: View {
     var ctaGradient: PaywallGradient? = nil
     /// Override CTA text (from section config.text)
     var textOverride: String? = nil
+    /// CTA text font size (console "Section Font Size" = cta_font_size). Applied only when no
+    /// Style-tab button text_style is set. Parity with Android (PaywallActivity.kt:2548, 17f
+    /// baseline) + preview (PaywallPreview.tsx:1385).
+    var ctaFontSize: CGFloat? = nil
+    /// CTA text font weight (console "Font Weight" = cta_font_weight). Applied only when no
+    /// Style-tab button text_style is set. Parity with Android + preview FONT_WEIGHT_MAP.
+    var ctaFontWeight: String? = nil
     /// Restore purchase text (from section config)
     var restoreText: String? = nil
     /// Whether to show restore button
@@ -64,7 +84,7 @@ struct CTAButton: View {
                         .applyTextStyle(ts)
                 } else {
                     Text(isPurchasing ? "Processing..." : (loc?("cta.text", textOverride ?? cta?.text ?? "Subscribe") ?? textOverride ?? cta?.text ?? "Subscribe"))
-                        .font(.headline)
+                        .font(.system(size: ctaFontSize ?? 17, weight: resolveCTAFontWeight(ctaFontWeight)))
                         .foregroundColor(buttonTextColor)
                 }
             }
