@@ -331,6 +331,14 @@ public struct FormFieldBlockStyle: Codable {
     public let focused_background_color: String?
     public let label_color: String?
     public let label_font_size: Double?
+    // SPEC-439 (#546) — `label_position` has been settable in the console (and honoured by
+    // the web preview) since it shipped, but NEITHER native decoded it, so authors were
+    // setting a control that did nothing on device. "hidden" is the value with a defined
+    // meaning; "inline"/"floating" are not distinct behaviours on any surface yet.
+    public let label_position: String?
+    // SPEC-439 (#546) — the two controls the reporter found genuinely missing.
+    public let label_align: String?          // "left" (default) | "center" | "right"
+    public let label_font_family: String?
     public let error_border_color: String?
     public let error_text_color: String?
     public let track_color: String?

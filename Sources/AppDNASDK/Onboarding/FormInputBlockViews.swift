@@ -8,21 +8,55 @@ struct FormFieldLabelView: View {
     let block: ContentBlock
 
     var body: some View {
-        if let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
+        // SPEC-439 (#546) — `label_position: "hidden"` was IGNORED here, so a label the
+        // author hid in the console still rendered on device. The console has offered this
+        // control for months and it did nothing on either native; the web preview honoured
+        // it, so the editor showed one thing and the device another.
+        // `inline` / `floating` are not distinct behaviours on ANY surface yet (the preview
+        // renders them as `above` too) — deliberately left alone rather than invented
+        // differently per platform, which is how the two natives drift apart.
+        let position = block.field_style?.label_position ?? "above"
+        if position != "hidden",
+           let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
             let required = block.field_required ?? false
             // SPEC — honor authored label_font_size (field_style first, then
             // top-level), default .subheadline (~15pt). Parity with Android
             // FormFieldLabel (field_style?.label_font_size ?: 15sp). Was hardcoded.
             let labelSize = block.field_style?.label_font_size ?? block.label_font_size
-            HStack(spacing: 2) {
-                Text(label)
-                    .font(labelSize.map { Font.system(size: CGFloat($0), weight: .medium) } ?? .subheadline.weight(.medium))
-                    .foregroundColor(Color(hex: block.field_style?.label_color ?? "#374151"))
-                if required {
-                    Text("*")
-                        .foregroundColor(.red)
+            // SPEC-439 (#546) — label_font_family + label_align were missing entirely.
+            let family = block.field_style?.label_font_family
+            let baseFont: Font = {
+                if let f = family, !f.isEmpty {
+                    return .custom(f, size: CGFloat(labelSize ?? 15))
+                }
+                return labelSize.map { Font.system(size: CGFloat($0), weight: .medium) } ?? .subheadline.weight(.medium)
+            }()
+            let alignment: HorizontalAlignment = {
+                switch block.field_style?.label_align {
+                case "center": return .center
+                case "right": return .trailing
+                default: return .leading
+                }
+            }()
+            let frameAlignment: Alignment = {
+                switch block.field_style?.label_align {
+                case "center": return .center
+                case "right": return .trailing
+                default: return .leading
+                }
+            }()
+            VStack(alignment: alignment, spacing: 0) {
+                HStack(spacing: 2) {
+                    Text(label)
+                        .font(baseFont)
+                        .foregroundColor(Color(hex: block.field_style?.label_color ?? "#374151"))
+                    if required {
+                        Text("*")
+                            .foregroundColor(.red)
+                    }
                 }
             }
+            .frame(maxWidth: .infinity, alignment: frameAlignment)
         }
     }
 }
