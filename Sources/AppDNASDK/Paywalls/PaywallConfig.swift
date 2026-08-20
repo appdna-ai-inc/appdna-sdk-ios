@@ -300,6 +300,13 @@ struct PaywallSectionData: Codable {
     let selectedScale: CGFloat?
     /// Color of the struck-through original price (plans[].original_price_display).
     let strikethroughColor: String?
+    /// SPEC-438 (#548) — size of the struck original price, and the gap between it and the
+    /// current price. Previously hardcoded, so authors had no control over either.
+    let strikethroughFontSize: CGFloat?
+    let strikethroughGap: CGFloat?
+    /// SPEC-438 (#548) — `inline` (default, unchanged) or `headline_stacked`: a large
+    /// current price with the struck was-price and the real charged total beneath it.
+    let priceLayout: String?
 
     enum CodingKeys: String, CodingKey {
         case title, subtitle, features, plans, cta, rating, testimonial, text, quote, height
@@ -428,6 +435,9 @@ struct PaywallSectionData: Codable {
         case unselectedBgColor = "unselected_bg_color"
         case selectedScale = "selected_scale"
         case strikethroughColor = "strikethrough_color"
+        case strikethroughFontSize = "strikethrough_font_size"
+        case strikethroughGap = "strikethrough_gap"
+        case priceLayout = "price_layout"
         case layout, orientation
         case planDisplayStyle = "plan_display_style"
         case showPlanIcons = "show_plan_icons"
@@ -463,6 +473,16 @@ struct PaywallPlanTrial: Codable {
     let label: String?
 }
 
+/// SPEC-438 (#544) — the plan subtitle rendered as a coloured pill rather than plain text.
+/// Authored on the product (Monetization → Products) and copied onto the plan when the
+/// product is selected, so one promotion is set once and every paywall inherits it.
+struct PaywallDescriptionBadge: Codable {
+    let enabled: Bool?
+    let bg_color: String?
+    let text_color: String?
+    let corner_radius: CGFloat?
+}
+
 struct PaywallPlan: Codable, Identifiable {
     private let _id: String?
     let productId: String?
@@ -488,6 +508,11 @@ struct PaywallPlan: Codable, Identifiable {
     /// Struck-through "old" price shown beside `displayPrice`. Section-level
     /// `strikethrough_color` controls its color.
     let original_price_display: String?
+    /// SPEC-438 (#548) — the real charged total, shown under a per-period headline price
+    /// when the section's `price_layout` is `headline_stacked`. Authored on the product.
+    let price_total_display: String?
+    /// SPEC-438 (#544) — render `description` as a coloured pill instead of plain text.
+    let description_badge: PaywallDescriptionBadge?
 
     /// Display name — try label first (Firestore), then name (legacy)
     var displayName: String { label ?? name ?? "" }
@@ -506,6 +531,8 @@ struct PaywallPlan: Codable, Identifiable {
         case name, label, price, period, badge, price_display, sort_order
         case trial, description, features, savings_text, cta_text, icon, image_url
         case original_price_display
+        case price_total_display
+        case description_badge
         case productId = "product_id"
         case trialDuration = "trial_duration"
         case isDefault = "is_default"
@@ -542,6 +569,10 @@ struct PaywallPlan: Codable, Identifiable {
         self.image_url = try c.decodeIfPresent(String.self, forKey: .image_url)
         // Loose-decode so a numeric anchor price (e.g. 19.99) can't nil the whole paywall.
         self.original_price_display = PaywallPlan.looseString(c, .original_price_display)
+        self.price_total_display = PaywallPlan.looseString(c, .price_total_display)
+        // Same defensive stance as every other optional here: a malformed badge object
+        // must cost the author their pill, never the whole paywall.
+        self.description_badge = try? c.decodeIfPresent(PaywallDescriptionBadge.self, forKey: .description_badge)
     }
 
     /// A JSON string, or a number rendered as one. Nil when absent (never throws — the caller has

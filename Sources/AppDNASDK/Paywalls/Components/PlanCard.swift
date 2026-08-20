@@ -110,24 +110,8 @@ struct PlanCard: View {
                             planSubtitleView(desc)
                         }
 
-                        // Row 2: Price display (+ optional struck-through original price)
-                        HStack(spacing: 4) {
-                            if let original = plan.original_price_display, !original.isEmpty {
-                                Text(original)
-                                    .font(.caption)
-                                    .strikethrough()
-                                    .foregroundColor(Color(hex: cardStyle.strikethroughColor ?? "#9CA3AF"))
-                            }
-                            if let ts = priceTextStyle {
-                                Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
-                                    .applyTextStyle(ts)
-                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
-                            } else {
-                                Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
-                                    .font(.subheadline.bold())
-                                    .foregroundColor(effectiveTextColor)
-                            }
-                        }
+                        // Row 2: Price display, in whichever layout preset the author picked
+                        priceBlockView
 
                         if let trial = plan.trialLabel {
                             // Round-30 — render `trialLabel` verbatim; the " free trial"
@@ -270,11 +254,91 @@ struct PlanCard: View {
     // MARK: - Subtitle helper
 
     @ViewBuilder
+    // MARK: - Price block (SPEC-438 #548)
+
+    private var strikeGap: CGFloat { cardStyle.strikethroughGap ?? 4 }
+    private var strikeColor: Color { Color(hex: cardStyle.strikethroughColor ?? "#9CA3AF") }
+
+    /// The struck "was" price. `strikethrough_font_size` is honoured when authored; the
+    /// `.caption` fallback is what shipped before, so unauthored paywalls are unchanged.
+    @ViewBuilder
+    private func struckPriceView(_ original: String) -> some View {
+        if let size = cardStyle.strikethroughFontSize {
+            Text(original).font(.system(size: size)).strikethrough().foregroundColor(strikeColor)
+        } else {
+            Text(original).font(.caption).strikethrough().foregroundColor(strikeColor)
+        }
+    }
+
+    @ViewBuilder
+    private var currentPriceView: some View {
+        if let ts = priceTextStyle {
+            Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
+                .applyTextStyle(ts)
+                .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+        } else {
+            Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
+                .font(.subheadline.bold())
+                .foregroundColor(effectiveTextColor)
+        }
+    }
+
+    /// `headline_stacked` mirrors the console preview: the current price large on its own
+    /// line, with the struck was-price and the real charged total side by side underneath.
+    /// Anything else falls through to the inline arrangement that shipped before, so
+    /// existing paywalls render byte-identically.
+    @ViewBuilder
+    private var priceBlockView: some View {
+        if (cardStyle.priceLayout ?? "inline") == "headline_stacked" {
+            VStack(alignment: .leading, spacing: 2) {
+                currentPriceView
+                if plan.original_price_display?.isEmpty == false || plan.price_total_display?.isEmpty == false {
+                    HStack(spacing: strikeGap) {
+                        if let original = plan.original_price_display, !original.isEmpty {
+                            struckPriceView(original)
+                        }
+                        if let total = plan.price_total_display, !total.isEmpty {
+                            if let size = cardStyle.strikethroughFontSize {
+                                Text(total).font(.system(size: size)).foregroundColor(effectiveTextColor)
+                            } else {
+                                Text(total).font(.caption).foregroundColor(effectiveTextColor)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            HStack(spacing: strikeGap) {
+                if let original = plan.original_price_display, !original.isEmpty {
+                    struckPriceView(original)
+                }
+                currentPriceView
+            }
+        }
+    }
+
+    /// SPEC-438 (#544) — the subtitle renders as a coloured pill when the product
+    /// authored one, and as plain text otherwise. The pill hugs its text rather than
+    /// filling the row, which is what makes it read as a badge instead of a banner.
+    @ViewBuilder
     private func planSubtitleView(_ desc: String) -> some View {
-        Text(loc?("plan.\(planIndex).description", desc) ?? desc)
-            .font(.caption)
-            .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
-            .lineLimit(2)
+        let text = loc?("plan.\(planIndex).description", desc) ?? desc
+        if let badge = plan.description_badge, badge.enabled == true {
+            Text(text)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(Color(hex: badge.text_color ?? "#FFFFFF"))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color(hex: badge.bg_color ?? "#15803D"))
+                .cornerRadius(badge.corner_radius ?? 6)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text(text)
+                .font(.caption)
+                .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
+                .lineLimit(2)
+        }
     }
 
     // MARK: - Badge helpers
@@ -404,6 +468,12 @@ struct PlanCardStyle {
     var showDivider: Bool = false        // Divider line between price and features
     var dividerColor: String? = nil
     var strikethroughColor: String? = nil  // Color of struck-through original_price_display
+    // SPEC-438 (#548) — size of the struck price and its gap to the current price were
+    // hardcoded, so authors could set the colour but nothing else.
+    var strikethroughFontSize: CGFloat? = nil
+    var strikethroughGap: CGFloat? = nil
+    // SPEC-438 (#548) — "inline" (default, unchanged) or "headline_stacked".
+    var priceLayout: String? = nil
     // Show flags
     var showIcon: Bool = false
     var showImage: Bool = false
@@ -441,6 +511,9 @@ struct PlanCardStyle {
         self.showDivider = data?.showDivider ?? false
         self.dividerColor = data?.dividerColor
         self.strikethroughColor = data?.strikethroughColor
+        self.strikethroughFontSize = data?.strikethroughFontSize
+        self.strikethroughGap = data?.strikethroughGap
+        self.priceLayout = data?.priceLayout
         self.showIcon = data?.showPlanIcons ?? false
         self.showImage = data?.showPlanImages ?? false
         self.showSubtitle = data?.showPlanSubtitles ?? false
