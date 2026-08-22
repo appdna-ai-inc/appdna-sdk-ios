@@ -28,6 +28,55 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
+    // MARK: - SPEC-439 (#546) — input label position / align / font
+
+    /// A Select whose LABEL is the thing under test. `label_position: hidden` was decoded by
+    /// neither native before this change, so a label the author hid still rendered on device —
+    /// the editor showed one thing and the phone another. Only pixels can show it is gone.
+    private static func labelSelectJSON(_ fieldStyle: String) -> String {
+        """
+        {
+          "id": "sel_label", "type": "input_select",
+          "field_id": "sound",
+          "field_label": "Wybierz dźwięk alarmu",
+          "field_style": \(fieldStyle),
+          "field_config": { "display_style": "stacked" },
+          "field_options": [
+            { "id": "o1", "label": "Trending" },
+            { "id": "o2", "label": "Loud" }
+          ]
+        }
+        """
+    }
+
+    func testSelectLabel_hidden_rendersNoLabel() throws {
+        let v = try render(Self.labelSelectJSON("""
+        { "label_position": "hidden", "label_color": "#E5E7EB", "label_font_size": 15 }
+        """))
+        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+    }
+
+    func testSelectLabel_above_default() throws {
+        let v = try render(Self.labelSelectJSON("""
+        { "label_position": "above", "label_color": "#E5E7EB", "label_font_size": 15 }
+        """))
+        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+    }
+
+    func testSelectLabel_centerAligned() throws {
+        let v = try render(Self.labelSelectJSON("""
+        { "label_position": "above", "label_align": "center", "label_color": "#E5E7EB", "label_font_size": 15 }
+        """))
+        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+    }
+
+    func testSelectLabel_rightAlignedLarge() throws {
+        let v = try render(Self.labelSelectJSON("""
+        { "label_position": "above", "label_align": "right", "label_color": "#E5E7EB", "label_font_size": 24 }
+        """))
+        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+    }
+
     // MARK: - SPEC-438 (#544, #548) — product-level price presentation
 
     /// Renders the REAL PlanCard from a console-shaped plan JSON, so the pill and the

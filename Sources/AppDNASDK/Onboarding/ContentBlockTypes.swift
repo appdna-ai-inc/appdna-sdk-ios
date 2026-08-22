@@ -1130,6 +1130,11 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text: String?
     public let loading_text_position: String?  // "above" | "below" (default "below")
     public let loading_text_size: Double?
+    /// SPEC-440 (#547) — the progress bar's thickness and the loading items' text size. Both
+    /// were hardcoded, so the element's single size parameter scaled every sub-element
+    /// together and neither could be tuned on its own.
+    public let loading_bar_height: Double?
+    public let loading_item_size: Double?
     public let loading_text_color: String?
     // Progress/Loading v2 — horizontal alignment of the loading message:
     // "left" | "center" (default) | "right".
@@ -1334,6 +1339,7 @@ public struct ContentBlock: Codable, Identifiable {
         case timeline_items, line_color, completed_color, current_color
         case upcoming_color, show_line, compact, title_style, subtitle_style
         case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
+        case loading_bar_height, loading_item_size
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
         case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
