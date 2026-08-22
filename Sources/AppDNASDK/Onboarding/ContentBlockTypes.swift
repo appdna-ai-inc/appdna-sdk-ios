@@ -367,6 +367,10 @@ public struct InputOption: Codable, Identifiable {
     // Falls back to `image_url` when either side is nil.
     public let selected_image_url: String?
     public let unselected_image_url: String?
+    /// SPEC-441 (#541) — which category chip this option belongs to. An option with NO
+    /// category shows under EVERY chip, so adding chips to an existing Select never hides
+    /// options the author already had.
+    public let category: String?
     // Per-option subtitle (shown below label in a smaller font)
     public let subtitle: String?
     // Per-option text styling — overrides field_config defaults when set
@@ -423,6 +427,7 @@ public struct InputOption: Codable, Identifiable {
         self.image_url = try container.decodeIfPresent(String.self, forKey: .image_url)
         self.selected_image_url = try container.decodeIfPresent(String.self, forKey: .selected_image_url)
         self.unselected_image_url = try container.decodeIfPresent(String.self, forKey: .unselected_image_url)
+        self.category = try container.decodeIfPresent(String.self, forKey: .category)
         self.subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
         self.title_color = try container.decodeIfPresent(String.self, forKey: .title_color)
         self.subtitle_color = try container.decodeIfPresent(String.self, forKey: .subtitle_color)
@@ -454,6 +459,7 @@ public struct InputOption: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, label, value, icon, image_url
         case selected_image_url, unselected_image_url
+        case category
         case subtitle, title_color, subtitle_color
         case title_font_size, subtitle_font_size, title_font_weight
         case selected_icon, unselected_icon
@@ -1130,11 +1136,6 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text: String?
     public let loading_text_position: String?  // "above" | "below" (default "below")
     public let loading_text_size: Double?
-    /// SPEC-440 (#547) — the progress bar's thickness and the loading items' text size. Both
-    /// were hardcoded, so the element's single size parameter scaled every sub-element
-    /// together and neither could be tuned on its own.
-    public let loading_bar_height: Double?
-    public let loading_item_size: Double?
     public let loading_text_color: String?
     // Progress/Loading v2 — horizontal alignment of the loading message:
     // "left" | "center" (default) | "right".
@@ -1339,7 +1340,6 @@ public struct ContentBlock: Codable, Identifiable {
         case timeline_items, line_color, completed_color, current_color
         case upcoming_color, show_line, compact, title_style, subtitle_style
         case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
-        case loading_bar_height, loading_item_size
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
         case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
@@ -1509,10 +1509,6 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text = try c.decodeIfPresent(String.self, forKey: .loading_text)
         self.loading_text_position = try c.decodeIfPresent(String.self, forKey: .loading_text_position)
         self.loading_text_size = try c.decodeIfPresent(Double.self, forKey: .loading_text_size)
-        // ContentBlock has a hand-written init, so a stored property added above must be
-        // decoded here too or the type does not compile.
-        self.loading_bar_height = try c.decodeIfPresent(Double.self, forKey: .loading_bar_height)
-        self.loading_item_size = try c.decodeIfPresent(Double.self, forKey: .loading_item_size)
         self.loading_text_color = try c.decodeIfPresent(String.self, forKey: .loading_text_color)
         self.loading_text_align = try c.decodeIfPresent(String.self, forKey: .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)

@@ -571,6 +571,8 @@ struct FormInputSelectBlock: View {
     // written array preserves SELECTION order, matching Android's LinkedHashSet. A Swift Set is
     // hash-ordered and non-deterministic across runs, so `Array(Set)` produced arbitrary ordering.
     @State private var selectedValues: [String] = []
+    /// SPEC-441 (#541) — the active category chip. Empty means "first chip".
+    @State private var activeCategory: String = ""
 
     private var isMultiSelect: Bool {
         block.multi_select == true ||
@@ -582,12 +584,76 @@ struct FormInputSelectBlock: View {
         (block.field_config?["display_style"]?.value as? String) ?? "dropdown"
     }
 
+    // MARK: - SPEC-441 (#541) — category chips
+
+    /// A scrollable row of chips above the options; the active chip filters what shows.
+    /// Authored as `field_config.categories` = [{ id, label, icon? }].
+    private var categories: [(id: String, label: String, icon: String?)] {
+        guard let raw = block.field_config?["categories"]?.value as? [Any] else { return [] }
+        return raw.compactMap { entry in
+            guard let m = entry as? [String: Any],
+                  let id = m["id"] as? String,
+                  let label = m["label"] as? String else { return nil }
+            return (id: id, label: label, icon: m["icon"] as? String)
+        }
+    }
+
+    private var showCategoryHeader: Bool {
+        (block.field_config?["category_header"]?.value as? Bool) ?? true
+    }
+
+    private var resolvedActiveCategory: String {
+        activeCategory.isEmpty ? (categories.first?.id ?? "") : activeCategory
+    }
+
+    /// An option with NO category shows under EVERY chip, so adding chips to an existing
+    /// Select never hides options the author already had.
+    private func optionsForActiveCategory(_ options: [InputOption]) -> [InputOption] {
+        guard !categories.isEmpty else { return options }
+        let active = resolvedActiveCategory
+        return options.filter { $0.category == nil || $0.category == active }
+    }
+
+    @ViewBuilder
+    private var categoryChipRow: some View {
+        if !categories.isEmpty {
+            let active = resolvedActiveCategory
+            let accent = Color(hex: AppDNA.brandAccentHex ?? "#6366F1")
+            VStack(alignment: .leading, spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(categories, id: \.id) { cat in
+                            Button(action: { activeCategory = cat.id }) {
+                                Text(cat.icon.map { "\($0) " + cat.label } ?? cat.label)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundColor(cat.id == active ? accent : .secondary)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .background(
+                                        Capsule().fill(cat.id == active ? accent.opacity(0.2) : Color.gray.opacity(0.15))
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+                if showCategoryHeader, let cat = categories.first(where: { $0.id == active }) {
+                    Text(cat.icon.map { "\($0) " + cat.label } ?? cat.label)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+    }
+
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        let options = block.field_options ?? []
+        // SPEC-441 (#541) — the active chip filters what the Select shows.
+        let options = optionsForActiveCategory(block.field_options ?? [])
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
+            categoryChipRow
 
             switch displayStyle {
             case "stacked":

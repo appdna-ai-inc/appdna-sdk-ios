@@ -365,8 +365,19 @@ struct AnimatedLoadingBlockView: View {
     /// SPEC-440 (#547) — per-sub-element sizing. Both were hardcoded, so the element's single
     /// size parameter scaled the bar and the item text together. Computed properties rather
     /// than locals in `body` because the variant builders below need them too.
-    private var loadingBarHeight: CGFloat { CGFloat(block.loading_bar_height ?? 8) }
-    private var loadingItemSize: CGFloat { CGFloat(block.loading_item_size ?? 14) }
+    /// Read off `field_config`, NOT as top-level ContentBlock params: the Kotlin data class
+    /// mirroring this type is at the JVM 255-constructor-arg ceiling, and two more top-level
+    /// fields broke Android's ContentBlock at runtime with a ClassFormatError.
+    private var loadingBarHeight: CGFloat {
+        CGFloat((block.field_config?["loading_bar_height"]?.value as? Double)
+            ?? (block.field_config?["loading_bar_height"]?.value as? Int).map(Double.init)
+            ?? 8)
+    }
+    private var loadingItemSize: CGFloat {
+        CGFloat((block.field_config?["loading_item_size"]?.value as? Double)
+            ?? (block.field_config?["loading_item_size"]?.value as? Int).map(Double.init)
+            ?? 14)
+    }
 
     private func loadingVariantView(variant: String, itemList: [LoadingItemConfig], progressCol: Color, checkCol: Color) -> AnyView {
         switch variant {

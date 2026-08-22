@@ -28,6 +28,40 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
+    // MARK: - SPEC-441 (#541) — category chips on a Select
+
+    /// The screen the reporter sent: a scrollable chip row above the options, the active chip
+    /// filtering the list, and a header echoing it. Only pixels can show the row scrolls and
+    /// the filter actually narrows the options.
+    private static let chipSelectJSON = """
+    {
+      "id": "sel_chips", "type": "input_select",
+      "field_id": "sound",
+      "field_label": "Wybierz własny dźwięk alarmu",
+      "field_config": {
+        "display_style": "stacked",
+        "category_header": true,
+        "categories": [
+          { "id": "trending", "label": "Trending", "icon": "💖" },
+          { "id": "loud", "label": "Loud", "icon": "💥" },
+          { "id": "alarm", "label": "Alarm tone", "icon": "🔔" },
+          { "id": "classic", "label": "Classical", "icon": "🎻" }
+        ]
+      },
+      "field_options": [
+        { "id": "o1", "label": "Wake up you lazy", "category": "trending" },
+        { "id": "o2", "label": "You're gonna be late", "category": "trending" },
+        { "id": "o3", "label": "Rise and Shine Mothertrucker", "category": "trending" },
+        { "id": "o4", "label": "Air Horn", "category": "loud" },
+        { "id": "o5", "label": "Available under every chip", "category": null }
+      ]
+    }
+    """
+
+    func testSelectCategoryChips_firstChipActive() throws {
+        assertSnapshot(of: try render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits))
+    }
+
     // MARK: - SPEC-439 (#546) — input label position / align / font
 
     /// A Select whose LABEL is the thing under test. `label_position: hidden` was decoded by
