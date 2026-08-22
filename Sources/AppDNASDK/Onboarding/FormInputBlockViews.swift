@@ -584,6 +584,13 @@ struct FormInputSelectBlock: View {
         (block.field_config?["display_style"]?.value as? String) ?? "dropdown"
     }
 
+    /// SPEC-442 (#552) — the GLOBAL selected-border colour. It existed per-option only, so
+    /// matching the selected border across N options meant editing N options by hand. A
+    /// per-option `selected_border_color` still wins; this is the shared fallback.
+    private var globalSelectedBorderHex: String? {
+        block.field_config?["selected_border_color"]?.value as? String
+    }
+
     // MARK: - SPEC-441 (#541) — category chips
 
     /// A scrollable row of chips above the options; the active chip filters what shows.
@@ -755,7 +762,7 @@ struct FormInputSelectBlock: View {
         ChipFlowLayout(spacing: spacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
-                let chipBorder = isSelected ? (option.selected_border_color.map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
+                let chipBorder = isSelected ? ((option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
                 // Parity with Android + preview: honor per-option bg_color / selected_bg_color
                 // (was hardcoded fillCol / clear, dropping per-option chip backgrounds).
                 let chipBg = isSelected
@@ -799,7 +806,7 @@ struct FormInputSelectBlock: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: cols), spacing: spacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
-                let optBorderCol = option.selected_border_color.map { Color(hex: $0) } ?? fillCol
+                let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                 let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
                 ZStack(alignment: .bottomLeading) {
                     if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
@@ -994,7 +1001,7 @@ struct FormInputSelectBlock: View {
                 let optTitleWeight: Font.Weight = fontWeight(option.title_font_weight)
 
                 // Per-option border color overrides
-                let optBorderCol = option.selected_border_color.map { Color(hex: $0) } ?? fillCol
+                let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                 let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
 
                 Button {
@@ -1366,7 +1373,7 @@ struct FormInputSelectBlock: View {
                             let isSelected = isMultiSelect
                                 ? selectedValues.contains(option.resolvedValue)
                                 : selectedValue == option.resolvedValue
-                            let optBorderCol = option.selected_border_color.map { Color(hex: $0) } ?? fillCol
+                            let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                             let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
                             let optUnselectedBg = option.bg_color.map { Color(hex: $0) } ?? optionBg
                             let optSelectedBg = option.selected_bg_color.map { Color(hex: $0) } ?? selectedBgCol
