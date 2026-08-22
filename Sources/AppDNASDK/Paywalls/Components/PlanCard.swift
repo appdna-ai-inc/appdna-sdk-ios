@@ -251,9 +251,6 @@ struct PlanCard: View {
         .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 
-    // MARK: - Subtitle helper
-
-    @ViewBuilder
     // MARK: - Price block (SPEC-438 #548)
 
     private var strikeGap: CGFloat { cardStyle.strikethroughGap ?? 4 }
@@ -320,6 +317,7 @@ struct PlanCard: View {
     /// SPEC-438 (#544) — the subtitle renders as a coloured pill when the product
     /// authored one, and as plain text otherwise. The pill hugs its text rather than
     /// filling the row, which is what makes it read as a badge instead of a banner.
+    // MARK: - Subtitle helper
     @ViewBuilder
     private func planSubtitleView(_ desc: String) -> some View {
         let text = loc?("plan.\(planIndex).description", desc) ?? desc

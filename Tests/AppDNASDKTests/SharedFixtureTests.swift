@@ -1344,6 +1344,10 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_block_id"] = block.id
             h.state["parsed_stack_children_count"] = children.count
             h.state["parsed_column_ratios"] = SharedFixtureTests.orNull(block.column_ratios)
+            // SPEC-439 (#546) — the label keys the natives previously did not decode at all.
+            h.state["parsed_label_position"] = SharedFixtureTests.orNull(block.field_style?.label_position)
+            h.state["parsed_label_align"] = SharedFixtureTests.orNull(block.field_style?.label_align)
+            h.state["parsed_label_font_family"] = SharedFixtureTests.orNull(block.field_style?.label_font_family)
             for child in children {
                 if let fit = child.image_fit { h.state["parsed_image_fit"] = fit }
                 if let variant = child.rich_text_variant { h.state["parsed_rich_text_variant"] = variant }
@@ -1371,6 +1375,26 @@ final class SharedFixtureTests: XCTestCase {
             // are read from the SDK's decoded object, neither is a top-level field.
             h.state["parsed_reviews_count"] = paywall.sections.reduce(0) { $0 + ($1.data?.reviews?.count ?? 0) }
             h.state["parsed_cta_corner_radius"] = SharedFixtureTests.orNull(paywall.cta?.resolvedCornerRadius)
+            // SPEC-438 (#544, #548) — product-level price presentation. Read off the DECODED
+            // objects, not the raw JSON, so a field the model silently drops shows up here.
+            let plansSection = paywall.sections.first { $0.type == "plans" }
+            h.state["parsed_price_layout"] = SharedFixtureTests.orNull(plansSection?.data?.priceLayout)
+            h.state["parsed_strikethrough_font_size"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughFontSize)
+            h.state["parsed_strikethrough_gap"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughGap)
+            let plansList = paywall.plans ?? []
+            let p0 = plansList.count > 0 ? plansList[0] : nil
+            let p1 = plansList.count > 1 ? plansList[1] : nil
+            h.state["parsed_plan0_price_display"] = SharedFixtureTests.orNull(p0?.displayPrice)
+            h.state["parsed_plan0_original_price_display"] = SharedFixtureTests.orNull(p0?.original_price_display)
+            h.state["parsed_plan0_price_total_display"] = SharedFixtureTests.orNull(p0?.price_total_display)
+            h.state["parsed_plan0_badge_enabled"] = SharedFixtureTests.orNull(p0?.description_badge?.enabled)
+            h.state["parsed_plan0_badge_bg_color"] = SharedFixtureTests.orNull(p0?.description_badge?.bg_color)
+            h.state["parsed_plan0_badge_text_color"] = SharedFixtureTests.orNull(p0?.description_badge?.text_color)
+            h.state["parsed_plan0_badge_corner_radius"] = SharedFixtureTests.orNull(p0?.description_badge?.corner_radius)
+            // Plan 1 authors NEITHER — absent must stay absent, which is what keeps an
+            // unauthored paywall rendering exactly as it did before.
+            h.state["parsed_plan1_price_total_display"] = SharedFixtureTests.orNull(p1?.price_total_display)
+            h.state["parsed_plan1_badge_enabled"] = SharedFixtureTests.orNull(p1?.description_badge?.enabled)
             return
         }
 
