@@ -28,6 +28,57 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
+    // MARK: - SPEC-438 (#544, #548) — product-level price presentation
+
+    /// Renders the REAL PlanCard from a console-shaped plan JSON, so the pill and the
+    /// headline price layout are checked as pixels rather than as decoded fields. The
+    /// strings are the production ones from the reported paywall: the length of
+    /// "25,00 zł miesięcznie" is the whole reason #545 existed.
+    private func renderPlanCard(planJSON: String, style: PlanCardStyle) throws -> some View {
+        let plan = try JSONDecoder().decode(PaywallPlan.self, from: Data(planJSON.utf8))
+        return PlanCard(plan: plan, isSelected: true, onSelect: {}, cardStyle: style)
+            .padding(16)
+            .frame(width: 390)
+            .background(Color(hex: "#0F1117"))
+    }
+
+    private static let promoPlanJSON = """
+    {
+      "id": "annual",
+      "product_id": "app.premium.annual",
+      "label": "Rocznie",
+      "price_display": "25,00 zł miesięcznie",
+      "original_price_display": "359,88 zł",
+      "price_total_display": "299,99 zł rocznie",
+      "description": "7-dniowy okres próbny",
+      "description_badge": {
+        "enabled": true,
+        "bg_color": "#15803D",
+        "text_color": "#DCFCE7",
+        "corner_radius": 6
+      },
+      "is_default": true
+    }
+    """
+
+    func testPlanCard_headlineStacked_withSubtitlePill() throws {
+        var style = PlanCardStyle()
+        style.showSubtitle = true
+        style.priceLayout = "headline_stacked"
+        style.strikethroughColor = "#9CA3AF"
+        style.strikethroughFontSize = 13
+        style.strikethroughGap = 8
+        assertSnapshot(of: try renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+    }
+
+    /// The default. Must look exactly like it did before SPEC-438 — no charged total,
+    /// struck price inline — because every existing paywall renders through this path.
+    func testPlanCard_inlineDefault_unchanged() throws {
+        var style = PlanCardStyle()
+        style.showSubtitle = true
+        assertSnapshot(of: try renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+    }
+
     private func renderMany(_ jsons: [String]) throws -> some View {
         let blocks = try jsons.map { try JSONDecoder().decode(ContentBlock.self, from: Data($0.utf8)) }
         return ContentBlockRendererView(
