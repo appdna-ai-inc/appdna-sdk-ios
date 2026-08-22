@@ -362,6 +362,12 @@ struct AnimatedLoadingBlockView: View {
     }
 
     /// Type-erased loading variant to avoid @ViewBuilder switch in body.
+    /// SPEC-440 (#547) — per-sub-element sizing. Both were hardcoded, so the element's single
+    /// size parameter scaled the bar and the item text together. Computed properties rather
+    /// than locals in `body` because the variant builders below need them too.
+    private var loadingBarHeight: CGFloat { CGFloat(block.loading_bar_height ?? 8) }
+    private var loadingItemSize: CGFloat { CGFloat(block.loading_item_size ?? 14) }
+
     private func loadingVariantView(variant: String, itemList: [LoadingItemConfig], progressCol: Color, checkCol: Color) -> AnyView {
         switch variant {
         case "orbiting_icons":
@@ -476,16 +482,16 @@ struct AnimatedLoadingBlockView: View {
                 VStack(spacing: 8) {
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: loadingBarHeight / 2)
                                 .fill(Color.gray.opacity(0.2))
-                                .frame(height: 8)
-                            RoundedRectangle(cornerRadius: 4)
+                                .frame(height: loadingBarHeight)
+                            RoundedRectangle(cornerRadius: loadingBarHeight / 2)
                                 .fill(progressCol)
-                                .frame(width: geometry.size.width * overallProgress, height: 8)
+                                .frame(width: geometry.size.width * overallProgress, height: loadingBarHeight)
                                 .animation(.linear(duration: 0.3), value: overallProgress)
                         }
                     }
-                    .frame(height: 8)
+                    .frame(height: loadingBarHeight)
                     // Parity with Android linear branch (ContentBlockRenderer.kt:5084-5090) + preview
                     // (OnboardingStepPreview.tsx:1710): render the % below the bar when show_percentage.
                     if block.show_percentage == true {
@@ -521,7 +527,9 @@ struct AnimatedLoadingBlockView: View {
                             .animation(.easeInOut(duration: 0.3), value: completedCount)
 
                             Text(item.label ?? "")
-                                .font(.subheadline)
+                                // SPEC-440 (#547) — authored item text size; .subheadline (~15)
+                                // was hardcoded, so items could not be sized independently.
+                                .font(.system(size: loadingItemSize))
                                 // SPEC-419 pass-14 #6/#7 — mirror the preview +
                                 // Android label-color logic: the ACTIVE (current)
                                 // item uses accent_color ("Active Text Color"),

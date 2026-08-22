@@ -1509,6 +1509,10 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text = try c.decodeIfPresent(String.self, forKey: .loading_text)
         self.loading_text_position = try c.decodeIfPresent(String.self, forKey: .loading_text_position)
         self.loading_text_size = try c.decodeIfPresent(Double.self, forKey: .loading_text_size)
+        // ContentBlock has a hand-written init, so a stored property added above must be
+        // decoded here too or the type does not compile.
+        self.loading_bar_height = try c.decodeIfPresent(Double.self, forKey: .loading_bar_height)
+        self.loading_item_size = try c.decodeIfPresent(Double.self, forKey: .loading_item_size)
         self.loading_text_color = try c.decodeIfPresent(String.self, forKey: .loading_text_color)
         self.loading_text_align = try c.decodeIfPresent(String.self, forKey: .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)
