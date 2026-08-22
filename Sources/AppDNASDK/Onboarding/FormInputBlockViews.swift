@@ -591,6 +591,18 @@ struct FormInputSelectBlock: View {
         block.field_config?["selected_border_color"]?.value as? String
     }
 
+    // SPEC-442 sweep — the remaining per-option styling fields that had no global. Same defect
+    // shape as Selected Border: consistency meant editing every option by hand. Per-option wins.
+    private var globalTextAlignment: String? { block.field_config?["text_alignment"]?.value as? String }
+    private var globalTitleWeight: String? { block.field_config?["title_font_weight"]?.value as? String }
+    private var globalImageShape: String? { block.field_config?["image_shape"]?.value as? String }
+    private var globalOverlayHex: String? { block.field_config?["image_overlay_color"]?.value as? String }
+    private var globalSelectedOverlayHex: String? { block.field_config?["selected_image_overlay_color"]?.value as? String }
+    private var globalOverlayOpacity: Double? {
+        (block.field_config?["image_overlay_opacity"]?.value as? Double)
+            ?? (block.field_config?["image_overlay_opacity"]?.value as? Int).map(Double.init)
+    }
+
     // MARK: - SPEC-441 (#541) — category chips
 
     /// A scrollable row of chips above the options; the active chip filters what shows.
@@ -817,8 +829,8 @@ struct FormInputSelectBlock: View {
                         }
                     }
                     // Selected uses selected_image_overlay_* (falls back to base). Parity with Android.
-                    if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? option.image_overlay_color) : option.image_overlay_color) {
-                        let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity) : option.image_overlay_opacity) ?? 0.3
+                    if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? globalSelectedOverlayHex ?? option.image_overlay_color ?? globalOverlayHex) : (option.image_overlay_color ?? globalOverlayHex)) {
+                        let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
                         Color(hex: ovHex).opacity(ovOpacity)
                     }
                     // Bottom scrim so the label stays legible over any image.
@@ -998,7 +1010,7 @@ struct FormInputSelectBlock: View {
                     : (option.subtitle_color.map { Color(hex: $0) } ?? defaultSubtitleColor)
                 let optTitleSize: CGFloat = CGFloat(option.title_font_size ?? defaultTitleSize)
                 let optSubtitleSize: CGFloat = CGFloat(option.subtitle_font_size ?? defaultSubtitleSize)
-                let optTitleWeight: Font.Weight = fontWeight(option.title_font_weight)
+                let optTitleWeight: Font.Weight = fontWeight(option.title_font_weight ?? globalTitleWeight)
 
                 // Per-option border color overrides
                 let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
@@ -1031,7 +1043,7 @@ struct FormInputSelectBlock: View {
                         }
                         // Title + subtitle — option_text_wrap true → full multi-line wrap;
                         // false (default) → single-line truncate (parity with the console preview).
-                        VStack(alignment: (option.text_alignment == "center" ? .center : .leading), spacing: 2) {
+                        VStack(alignment: ((option.text_alignment ?? globalTextAlignment) == "center" ? .center : .leading), spacing: 2) {
                             Text(option.label ?? "")
                                 .font(optFont(optTitleSize, optTitleWeight))
                                 .foregroundColor(optTitleColor)
@@ -1052,11 +1064,11 @@ struct FormInputSelectBlock: View {
                         // EPIC-1 — when centered, expand to fill the row so .center actually
                         // centers the text (a content-sized VStack stays pinned left). Mirrors
                         // Android's Column(weight 1f) + CenterHorizontally.
-                        .frame(maxWidth: option.text_alignment == "center" ? .infinity : nil)
+                        .frame(maxWidth: (option.text_alignment ?? globalTextAlignment) == "center" ? .infinity : nil)
                         .layoutPriority(1)
                         // No trailing Spacer in the centered case — it would compete with the
                         // VStack's maxWidth:.infinity and split the row (text drifts left).
-                        if option.text_alignment != "center" {
+                        if (option.text_alignment ?? globalTextAlignment) != "center" {
                             Spacer(minLength: 0)
                         }
                         // SPEC-070 EPIC-1 — trailing label at the END of the row (e.g. "Casual")
@@ -1221,7 +1233,7 @@ struct FormInputSelectBlock: View {
 
     @ViewBuilder
     private func imageWithOverlay(url: URL, option: InputOption, isSelected: Bool, size: CGFloat, imageScale: String = "contain") -> some View {
-        let radius = optionImageCornerRadius(option.image_shape, size: size)
+        let radius = optionImageCornerRadius(option.image_shape ?? globalImageShape, size: size)
         // Select v2 — option_image_scale: "cover" crops/fills the frame; "contain"/"fit" fit the
         // whole image inside so an oversized image is not cropped.
         let useFill = imageScale == "cover"
@@ -1235,8 +1247,8 @@ struct FormInputSelectBlock: View {
             .clipShape(RoundedRectangle(cornerRadius: radius))
 
             // EPIC-1 — overlay tint follows image_shape; selected uses selected_image_overlay_* (falls back to base).
-            if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? option.image_overlay_color) : option.image_overlay_color) {
-                let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity) : option.image_overlay_opacity) ?? 0.3
+            if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? globalSelectedOverlayHex ?? option.image_overlay_color ?? globalOverlayHex) : (option.image_overlay_color ?? globalOverlayHex)) {
+                let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
                 RoundedRectangle(cornerRadius: radius)
                     .fill(Color(hex: ovHex).opacity(ovOpacity))
                     .frame(width: size, height: size)
@@ -1434,7 +1446,7 @@ struct FormInputSelectBlock: View {
                                         Text(option.label ?? "")
                                             // Grid title honors per-option title_font_weight (parity with the
                                             // stacked branch's optTitleWeight + Android's grid) — was weightless.
-                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85), weight: fontWeight(option.title_font_weight)))
+                                            .font(.system(size: CGFloat(option.title_font_size ?? defaultTitleSize * 0.85), weight: fontWeight(option.title_font_weight ?? globalTitleWeight)))
                                             // Grid title honors per-option title_color for the unselected state
                                             // (parity with the stacked branch + Android grid optTitleColor); the
                                             // selected state still wins via optSelectedText.
