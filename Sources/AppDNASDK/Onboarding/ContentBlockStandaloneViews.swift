@@ -332,7 +332,10 @@ struct AnimatedLoadingBlockView: View {
             // to avoid duplicate display. See loadingVariantView for per-variant rendering.
 
             // EPIC-3 — configurable loading message with independent position/size/color/align.
-            if let loadingMsg, loadingMsgPos == "above" {
+            // SPEC-443 (#547) — when an explicit order is authored on the linear variant, the
+            // variant view places the message itself, so it must not also be drawn here.
+            let orderOwnsMessage = (variant == "linear" && loadingOrder != nil)
+            if let loadingMsg, loadingMsgPos == "above", !orderOwnsMessage {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
@@ -340,7 +343,7 @@ struct AnimatedLoadingBlockView: View {
                     .frame(maxWidth: .infinity, alignment: loadingMsgFrameAlign)
             }
             loadingVariantView(variant: variant, itemList: itemList, progressCol: progressCol, checkCol: checkCol)
-            if let loadingMsg, loadingMsgPos == "below" {
+            if let loadingMsg, loadingMsgPos == "below", !orderOwnsMessage {
                 Text(loadingMsg)
                     .font(.system(size: loadingMsgSize))
                     .foregroundColor(loadingMsgColor)
@@ -377,6 +380,21 @@ struct AnimatedLoadingBlockView: View {
         CGFloat((block.field_config?["loading_item_size"]?.value as? Double)
             ?? (block.field_config?["loading_item_size"]?.value as? Int).map(Double.init)
             ?? 14)
+    }
+
+    /// SPEC-443 (#547) — explicit top-to-bottom order of the Loading element's sub-elements.
+    /// The only control before this was "message above/below the indicator", which cannot
+    /// express bar -> message -> items. Absent = today's arrangement, so existing flows are
+    /// unchanged. Applies to the `linear` variant, the one with all three sub-elements.
+    private var loadingOrder: [String]? {
+        (block.field_config?["loading_order"]?.value as? [Any])?.compactMap { $0 as? String }
+    }
+
+    // The variant builders run outside `body`, so these mirror the locals it computes.
+    private var loadingMsgPosValue: String { block.loading_text_position ?? "below" }
+    private var loadingMsgSizeValue: CGFloat { CGFloat(block.loading_text_size ?? 15) }
+    private var loadingMsgColorValue: Color {
+        block.loading_text_color.map { Color(hex: $0) } ?? Color(hex: block.text_color ?? "#9CA3AF")
     }
 
     private func loadingVariantView(variant: String, itemList: [LoadingItemConfig], progressCol: Color, checkCol: Color) -> AnyView {
@@ -489,20 +507,46 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "linear":
+            // SPEC-443 (#547) — sub-elements drawn in the authored order. Default reproduces
+            // today's arrangement exactly (message above, or bar+items then message).
+            let order = loadingOrder ?? (loadingMsgPosValue == "above"
+                ? ["message", "bar", "items"]
+                : ["bar", "items", "message"])
             return AnyView(
                 VStack(spacing: 8) {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: loadingBarHeight / 2)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: loadingBarHeight)
-                            RoundedRectangle(cornerRadius: loadingBarHeight / 2)
-                                .fill(progressCol)
-                                .frame(width: geometry.size.width * overallProgress, height: loadingBarHeight)
-                                .animation(.linear(duration: 0.3), value: overallProgress)
+                    ForEach(Array(order.enumerated()), id: \.offset) { _, part in
+                        switch part {
+                        case "bar":
+                            GeometryReader { geometry in
+                                ZStack(alignment: .leading) {
+                                    RoundedRectangle(cornerRadius: loadingBarHeight / 2)
+                                        .fill(Color.gray.opacity(0.2))
+                                        .frame(height: loadingBarHeight)
+                                    RoundedRectangle(cornerRadius: loadingBarHeight / 2)
+                                        .fill(progressCol)
+                                        .frame(width: geometry.size.width * overallProgress, height: loadingBarHeight)
+                                        .animation(.linear(duration: 0.3), value: overallProgress)
+                                }
+                            }
+                            .frame(height: loadingBarHeight)
+                        case "message":
+                            if let msg = block.loading_text, !msg.isEmpty, loadingOrder != nil {
+                                Text(msg)
+                                    .font(.system(size: loadingMsgSizeValue))
+                                    .foregroundColor(loadingMsgColorValue)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        case "items":
+                            if let current = itemList.indices.contains(min(1, itemList.count - 1))
+                                ? itemList[min(1, itemList.count - 1)].label : nil {
+                                Text(current)
+                                    .font(.system(size: loadingItemSize))
+                                    .foregroundColor(block.text_color.map { Color(hex: $0) } ?? .secondary)
+                            }
+                        default:
+                            EmptyView()
                         }
                     }
-                    .frame(height: loadingBarHeight)
                     // Parity with Android linear branch (ContentBlockRenderer.kt:5084-5090) + preview
                     // (OnboardingStepPreview.tsx:1710): render the % below the bar when show_percentage.
                     if block.show_percentage == true {
