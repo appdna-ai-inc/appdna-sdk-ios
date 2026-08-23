@@ -573,6 +573,8 @@ struct FormInputSelectBlock: View {
     @State private var selectedValues: [String] = []
     /// SPEC-441 (#541) — the active category chip. Empty means "first chip".
     @State private var activeCategory: String = ""
+    /// SPEC-444 (#540, #542) — the option whose bottom sheet is presented, if any.
+    @State private var sheetOption: InputOption? = nil
 
     private var isMultiSelect: Bool {
         block.multi_select == true ||
@@ -698,6 +700,12 @@ struct FormInputSelectBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // SPEC-444 (#540, #542) — an option that owns sheet_blocks opens them in a bottom
+        // sheet when picked. The blocks render through the ordinary renderer, which is what
+        // lets one engine serve both the chooser and the detail screens.
+        .sheet(item: $sheetOption) { opt in
+            OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil })
+        }
         .onAppear {
             let fieldId = block.field_id ?? block.id
             if selectedValue.isEmpty, let saved = inputValues[fieldId] as? String {
@@ -1289,6 +1297,11 @@ struct FormInputSelectBlock: View {
         } else {
             selectedValue = option.resolvedValue
             inputValues[fieldId] = option.resolvedValue
+        }
+        // SPEC-444 (#540, #542) — picking an option that owns a sheet opens it. The choice is
+        // already recorded above; the sheet only presents, so nothing else is reported.
+        if let blocks = option.sheet_blocks, !blocks.isEmpty {
+            sheetOption = option
         }
     }
 
@@ -2795,5 +2808,53 @@ private extension View {
         } else {
             self.frame(height: height)
         }
+    }
+}
+
+// MARK: - SPEC-444 (#540, #542) — the option bottom sheet
+
+/// Presents an option's `sheet_blocks` through the ordinary content-block renderer.
+///
+/// One engine, two authoring presets: the console seeds a chooser set (slider / toggle /
+/// preview / CTA) or a detail set (badge / heading / media / CTA), and the author edits from
+/// there. That is what the reporter asked for on #542 — one mechanism, as long as they choose
+/// what goes on it.
+///
+/// Presentation-only by design: values set inside are NOT reported to the host app. The
+/// reporter confirmed only the option choice matters, which is why there is no response
+/// plumbing here on any platform.
+struct OptionBottomSheetView: View {
+    let option: InputOption
+    let onDismiss: () -> Void
+
+    @State private var sheetToggles: [String: Bool] = [:]
+    @State private var sheetInputs: [String: Any] = [:]
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Drag handle — the affordance in the reporter's recording.
+            Capsule()
+                .fill(Color.secondary.opacity(0.4))
+                .frame(width: 36, height: 5)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+
+            ScrollView {
+                ContentBlockRendererView(
+                    blocks: option.sheet_blocks ?? [],
+                    onAction: { action, _ in
+                        // The CTA closes the sheet; the flow continues underneath, where the
+                        // option is already selected.
+                        if action == "next" || action == "continue" || action == "dismiss" { onDismiss() }
+                    },
+                    toggleValues: $sheetToggles,
+                    inputValues: $sheetInputs
+                )
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.hidden)
     }
 }

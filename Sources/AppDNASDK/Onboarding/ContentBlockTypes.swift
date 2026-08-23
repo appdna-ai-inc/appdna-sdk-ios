@@ -371,6 +371,11 @@ public struct InputOption: Codable, Identifiable {
     /// category shows under EVERY chip, so adding chips to an existing Select never hides
     /// options the author already had.
     public let category: String?
+    /// SPEC-444 (#540, #542) — the bottom sheet this option opens when picked. Contents are
+    /// ordinary content blocks, so one engine serves both the chooser sheet and the detail
+    /// sheet. Presentation-only: nothing set inside is reported back, so there is no new
+    /// response plumbing here.
+    public let sheet_blocks: [ContentBlock]?
     // Per-option subtitle (shown below label in a smaller font)
     public let subtitle: String?
     // Per-option text styling — overrides field_config defaults when set
@@ -428,6 +433,9 @@ public struct InputOption: Codable, Identifiable {
         self.selected_image_url = try container.decodeIfPresent(String.self, forKey: .selected_image_url)
         self.unselected_image_url = try container.decodeIfPresent(String.self, forKey: .unselected_image_url)
         self.category = try container.decodeIfPresent(String.self, forKey: .category)
+        // Defensive, like every other optional here: a malformed sheet costs the author their
+        // sheet, never the whole step.
+        self.sheet_blocks = try? container.decodeIfPresent([ContentBlock].self, forKey: .sheet_blocks)
         self.subtitle = try container.decodeIfPresent(String.self, forKey: .subtitle)
         self.title_color = try container.decodeIfPresent(String.self, forKey: .title_color)
         self.subtitle_color = try container.decodeIfPresent(String.self, forKey: .subtitle_color)
@@ -459,7 +467,7 @@ public struct InputOption: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, label, value, icon, image_url
         case selected_image_url, unselected_image_url
-        case category
+        case category, sheet_blocks
         case subtitle, title_color, subtitle_color
         case title_font_size, subtitle_font_size, title_font_weight
         case selected_icon, unselected_icon

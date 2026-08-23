@@ -1348,6 +1348,13 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_label_position"] = SharedFixtureTests.orNull(block.field_style?.label_position)
             h.state["parsed_label_align"] = SharedFixtureTests.orNull(block.field_style?.label_align)
             h.state["parsed_label_font_family"] = SharedFixtureTests.orNull(block.field_style?.label_font_family)
+            // SPEC-444 (#540, #542) — the option's nested sheet blocks. A renderer cannot
+            // present what the model dropped, so the decode is what this pins.
+            let opts = block.field_options ?? []
+            h.state["parsed_opt0_sheet_block_count"] = (opts.first?.sheet_blocks ?? []).count
+            h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
+            h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
+            h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
             for child in children {
                 if let fit = child.image_fit { h.state["parsed_image_fit"] = fit }
                 if let variant = child.rich_text_variant { h.state["parsed_rich_text_variant"] = variant }
