@@ -15,6 +15,18 @@ import XCTest
 /// Then commit Tests/__Snapshots__/. CI re-runs without RECORD_SNAPSHOTS and fails on pixel deltas.
 final class VisualSnapshotTests: XCTestCase {
 
+    /// Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
+    /// The bridge passes TEST_RUNNER_RECORD_SNAPSHOTS, which xcodebuild forwards to the sim
+    /// test process as RECORD_SNAPSHOTS (plain env vars don't reach the test runner).
+    ///
+    /// Seven tests from the SPEC-438/439/441 batch asserted OUTSIDE this, so they could not be
+    /// re-recorded through the bridge at all — which is how the #541 golden stayed pinned to the
+    /// filter build after the render was corrected to section navigation, and the iOS suite sat
+    /// red on a golden nobody could refresh.
+    private var recordMode: SnapshotTestingConfiguration.Record {
+        ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+    }
+
     private func render(_ json: String, inputs: [String: Any] = [:], pad: CGFloat = 16) throws -> some View {
         let block = try JSONDecoder().decode(ContentBlock.self, from: Data(json.utf8))
         return ContentBlockRendererView(
@@ -59,7 +71,9 @@ final class VisualSnapshotTests: XCTestCase {
     """
 
     func testSelectCategoryChips_firstChipActive() throws {
-        assertSnapshot(of: try render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits))
+        }
     }
 
     // MARK: - SPEC-439 (#546) — input label position / align / font
@@ -87,28 +101,36 @@ final class VisualSnapshotTests: XCTestCase {
         let v = try render(Self.labelSelectJSON("""
         { "label_position": "hidden", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
-        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        }
     }
 
     func testSelectLabel_above_default() throws {
         let v = try render(Self.labelSelectJSON("""
         { "label_position": "above", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
-        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        }
     }
 
     func testSelectLabel_centerAligned() throws {
         let v = try render(Self.labelSelectJSON("""
         { "label_position": "above", "label_align": "center", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
-        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        }
     }
 
     func testSelectLabel_rightAlignedLarge() throws {
         let v = try render(Self.labelSelectJSON("""
         { "label_position": "above", "label_align": "right", "label_color": "#E5E7EB", "label_font_size": 24 }
         """))
-        assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+        }
     }
 
     // MARK: - SPEC-438 (#544, #548) — product-level price presentation
@@ -151,7 +173,9 @@ final class VisualSnapshotTests: XCTestCase {
         style.strikethroughColor = "#9CA3AF"
         style.strikethroughFontSize = 13
         style.strikethroughGap = 8
-        assertSnapshot(of: try renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+        }
     }
 
     /// The default. Must look exactly like it did before SPEC-438 — no charged total,
@@ -159,7 +183,9 @@ final class VisualSnapshotTests: XCTestCase {
     func testPlanCard_inlineDefault_unchanged() throws {
         var style = PlanCardStyle()
         style.showSubtitle = true
-        assertSnapshot(of: try renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+        }
     }
 
     private func renderMany(_ jsons: [String]) throws -> some View {
