@@ -625,12 +625,25 @@ struct FormInputSelectBlock: View {
         activeCategory.isEmpty ? (categories.first?.id ?? "") : activeCategory
     }
 
-    /// An option with NO category shows under EVERY chip, so adding chips to an existing
-    /// Select never hides options the author already had.
+    /// Options in section order: uncategorised first, then each category's options in the
+    /// authored category order.
+    ///
+    /// The chips are scroll-spy NAVIGATION, not a filter — every category renders as its own
+    /// titled section in one scrolling list. (An earlier build filtered to the active chip;
+    /// that was a misread of a screenshot showing only the first section.)
     private func optionsForActiveCategory(_ options: [InputOption]) -> [InputOption] {
         guard !categories.isEmpty else { return options }
-        let active = resolvedActiveCategory
-        return options.filter { $0.category == nil || $0.category == active }
+        let uncategorised = options.filter { $0.category == nil }
+        let grouped = categories.flatMap { cat in options.filter { $0.category == cat.id } }
+        return uncategorised + grouped
+    }
+
+    /// The category whose section STARTS at this index, or nil when the option continues the
+    /// previous section.
+    private func sectionStart(_ options: [InputOption], _ i: Int) -> (id: String, label: String, icon: String?)? {
+        guard !categories.isEmpty, let cat = options[i].category else { return nil }
+        if i > 0, options[i - 1].category == cat { return nil }
+        return categories.first { $0.id == cat }
     }
 
     @ViewBuilder
@@ -655,11 +668,6 @@ struct FormInputSelectBlock: View {
                             .buttonStyle(.plain)
                         }
                     }
-                }
-                if showCategoryHeader, let cat = categories.first(where: { $0.id == active }) {
-                    Text(cat.icon.map { "\($0) " + cat.label } ?? cat.label)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
                 }
             }
         }
@@ -985,6 +993,14 @@ struct FormInputSelectBlock: View {
             ForEach(Array(options.enumerated()), id: \.offset) { pair in
                 let oi = pair.offset                 // SPEC-419 — per-index parity node key
                 let option = pair.element
+                // SPEC-441 (#541) — section header before the first option of each category.
+                if showCategoryHeader, let sec = sectionStart(options, oi) {
+                    Text(sec.icon.map { "\($0) " + sec.label } ?? sec.label)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, oi == 0 ? 0 : 8)
+                }
                 let isSelected = isMultiSelect
                     ? selectedValues.contains(option.resolvedValue)
                     : selectedValue == option.resolvedValue
