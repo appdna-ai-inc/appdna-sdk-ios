@@ -1355,6 +1355,13 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
+            // SPEC-441 (#541) — the option's `category` drives section navigation. It is an
+            // OPTION-level key, which is the class Android parses by hand, so a missing parser
+            // line makes the chips point at nothing while every renderer still compiles.
+            h.state["parsed_opt0_category"] = SharedFixtureTests.orNull(opts.first?.category)
+            h.state["parsed_opt2_category"] = SharedFixtureTests.orNull(opts.count > 2 ? opts[2].category : nil)
+            h.state["parsed_categories"] = SharedFixtureTests.orNull(
+                (block.field_config?["categories"]?.value as? [Any])?.compactMap { $0 as? String })
             for child in children {
                 if let fit = child.image_fit { h.state["parsed_image_fit"] = fit }
                 if let variant = child.rich_text_variant { h.state["parsed_rich_text_variant"] = variant }
