@@ -882,9 +882,30 @@ struct ContentBlockRendererView: View {
                         let value = (m["value"] as? String) ?? (m["value"]).map { "\($0)" } ?? ""
                         let label = (m["label"] as? String) ?? (m["label"]).map { "\($0)" } ?? ""
                         let color = Color(hex: (m["color"] as? String) ?? defaultAccent)
+                        // SPEC-446 §3 — a stat may HOST a control instead of showing a fixed value.
+                        // The required-gate half of this shipped without the rendering half, on both
+                        // platforms: `RequiredFieldGate` blocks on an unanswered stat input while nothing
+                        // ever drew one, so a stat marked required could not be satisfied and the step
+                        // could not be advanced at all. A gate for a control that does not exist is worse
+                        // than neither.
+                        let statInput = (m["input"] as? String) ?? "none"
+                        let statFieldId = (m["field_id"] as? String) ?? ""
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
-                            Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
+                            if statInput != "none" && !statFieldId.isEmpty {
+                                SummaryStatInput(
+                                    stat: m,
+                                    fieldId: statFieldId,
+                                    valueColor: color,
+                                    labelColor: textColor.opacity(0.7),
+                                    label: label,
+                                    inputValues: $inputValues,
+                                    onInteract: onInteract,
+                                    blockId: block.id,
+                                )
+                            } else {
+                                Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
+                                Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
+                            }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(16)
@@ -2482,6 +2503,23 @@ func resolveBlockTemplates(
         // stops reaching the screen — iOS never declaring it is the same decision, reached from the
         // other side. Writing json["label"] on iOS was a no-op that the JSON round-trip discarded on
         // decode, which is why deleting it left every test green. The REAL gap was option text, above.
+        // SPEC-446 — a sibling stat reading `{{step.<field_id>}}` must resolve on the FIRST frame.
+        // The control seeds its authored default after composition, so on that first pass the id is
+        // absent from `stepInputs`, the token does not resolve, and the suppression below then DROPS
+        // the stat entirely: the live-value card the reporter asked for simply was not there until
+        // the user touched the slider. Authored defaults are therefore merged in UNDER the live
+        // values, which always win.
+        var effectiveStepInputs = stepInputs ?? [:]
+        if let cfgForDefaults = json["field_config"] as? [String: Any],
+           let statsForDefaults = cfgForDefaults["summary_stats"] as? [[String: Any]] {
+            for s in statsForDefaults {
+                guard let fid = s["field_id"] as? String, !fid.isEmpty,
+                      effectiveStepInputs[fid] == nil, let def = s["default"] else { continue }
+                effectiveStepInputs[fid] = def
+            }
+        }
+        let stepInputs = effectiveStepInputs.isEmpty ? stepInputs : effectiveStepInputs
+
         // SPEC-446 R4 — OPTION text. `{{var}}` in a select/image-tile option was resolved by NOTHING
         // on either platform: the whitelist only ever touched the block's own top-level `label`. The
         // console's variable picker is available wherever an author types, options included, so this
@@ -2575,4 +2613,92 @@ func blockContainsTemplates(_ block: ContentBlock) -> Bool {
             }
         }
         return false
+}
+
+/// SPEC-446 §3 — the control a Summary Screen stat can host.
+///
+/// Kept as its own View, not inlined into `summaryScreenBlock`, because it owns writes to
+/// `inputValues` and a `@Binding` mutated inside a `ForEach` closure in a large `some View`
+/// builder is where SwiftUI type-checking gets slow and where a stale-value bug hides.
+///
+/// The value it writes is what a LATER step reads through `{{responses.<field_id>}}` and what a
+/// stat on the SAME card reads live through `{{step.<field_id>}}` — the case the reporter actually
+/// described. That live path works because the renderer passes `inputValues` into the template
+/// resolver as `stepInputs`, so a write here recomposes the sibling stat.
+struct SummaryStatInput: View {
+    let stat: [String: Any]
+    let fieldId: String
+    let valueColor: Color
+    let labelColor: Color
+    let label: String
+    @Binding var inputValues: [String: Any]
+    var onInteract: (String, String, String?) -> Void = { _, _, _ in }
+    var blockId: String = ""
+
+    private func statDouble(_ key: String, _ fallback: Double) -> Double {
+        if let d = stat[key] as? Double { return d }
+        if let i = stat[key] as? Int { return Double(i) }
+        // A numeric STRING survives here even though normalize-step-numerics coerces on save:
+        // a flow imported or AI-generated outside that path still reaches the device as a string.
+        if let s = stat[key] as? String, let d = Double(s) { return d }
+        return fallback
+    }
+
+    private var current: Double {
+        if let d = inputValues[fieldId] as? Double { return d }
+        if let i = inputValues[fieldId] as? Int { return Double(i) }
+        if let s = inputValues[fieldId] as? String, let d = Double(s) { return d }
+        return statDouble("default", statDouble("min", 0))
+    }
+
+    private func write(_ v: Double) {
+        let stepV = max(statDouble("step", 1), 0.0001)
+        let lo = statDouble("min", 0)
+        let hi = max(statDouble("max", 100), lo + stepV)
+        let clamped = Swift.min(Swift.max(v, lo), hi)
+        // Whole numbers go back as Int so `{{step.x}}` renders "4" and not "4.0" — the raw Double
+        // is what a summary card shows the user, so the formatting is the feature.
+        inputValues[fieldId] = clamped.rounded() == clamped ? Int(clamped) : clamped
+        onInteract(blockId, "change", String(describing: inputValues[fieldId] ?? ""))
+    }
+
+    var body: some View {
+        let stepV = max(statDouble("step", 1), 0.0001)
+        let lo = statDouble("min", 0)
+        let hi = max(statDouble("max", 100), lo + stepV)
+        let shown = current.rounded() == current ? String(Int(current)) : String(current)
+
+        VStack(alignment: .leading, spacing: 6) {
+            Text(shown).font(.system(size: 24, weight: .bold)).foregroundColor(valueColor)
+            Text(label).font(.system(size: 13)).foregroundColor(labelColor)
+            if (stat["input"] as? String) == "stepper" {
+                HStack(spacing: 12) {
+                    Button { write(current - stepV) } label: {
+                        Image(systemName: "minus.circle.fill").font(.system(size: 22)).foregroundColor(valueColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Decrease \(label)")
+                    Button { write(current + stepV) } label: {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 22)).foregroundColor(valueColor)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Increase \(label)")
+                }
+            } else {
+                Slider(
+                    value: Binding(get: { current }, set: { write($0) }),
+                    in: lo...hi,
+                    step: stepV,
+                )
+                .accentColor(valueColor)
+                .accessibilityLabel(label)
+                .accessibilityValue(shown)
+            }
+        }
+        .onAppear {
+            // Seed the authored default so a stat that is NOT required still reports a value, and
+            // so the sibling `{{step.x}}` stat has something to show before the first drag.
+            if inputValues[fieldId] == nil, stat["default"] != nil { write(statDouble("default", lo)) }
+        }
+    }
 }
