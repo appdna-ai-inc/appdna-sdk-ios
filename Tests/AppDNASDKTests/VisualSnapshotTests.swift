@@ -371,6 +371,37 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-446 §3 — a Summary Screen stat that HOSTS a control.
+    ///
+    /// The required-gate for these shipped without the rendering half on both platforms:
+    /// `RequiredFieldGate` blocked on an unanswered stat input while nothing ever drew one, so a
+    /// stat marked required could not be satisfied and the step could not be advanced. Every fixture
+    /// passed, because a fixture sets `inputValues` directly and never asks a renderer to produce
+    /// the control a user is supposed to touch. Only pixels separate those two states.
+    ///
+    /// The second card reads `{{step.party}}`, which is the reporter's own case: a value shown live
+    /// on the SAME screen as the control that sets it. It also pins the first-frame bug found while
+    /// recording this — the control seeds its default after composition, so without merging authored
+    /// defaults into the resolver that card resolved to nothing and was suppressed entirely.
+    func testSummaryStat_rendersItsSliderControl() throws {
+        let view = try render("""
+        {
+          "id": "sum_input", "type": "summary_screen", "text": "Your trip",
+          "field_config": {
+            "stats_layout": "vertical",
+            "summary_stats": [
+              { "label": "Party size", "color": "#6366F1", "input": "slider",
+                "field_id": "party", "min": 1, "max": 30, "step": 1, "default": 4 },
+              { "value": "{{step.party}}", "label": "Guests" }
+            ]
+          }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     func testSelect_imageTiles_contained() throws {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",
