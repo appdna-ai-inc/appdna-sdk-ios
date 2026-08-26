@@ -831,17 +831,48 @@ struct FormInputSelectBlock: View {
         let selectedBorderW = CGFloat((cfgDouble(cfg?["selected_border_width"])) ?? 2)
         let unselectedBorderW = CGFloat((cfgDouble(cfg?["unselected_border_width"])) ?? 1)
         let spacing = CGFloat((cfgDouble(cfg?["option_spacing"])) ?? 8)
+        // SPEC-447 (#555) — where the TEXT sits relative to the image. `full_bleed` is the default
+        // and renders exactly as before; the other two give the label a surface of its own instead
+        // of relying on a scrim to dim the photograph.
+        let tileLayout = (cfg?["tile_image_layout"]?.value as? String) ?? "full_bleed"
+        let stripRatio = min(0.95, max(0.5, (cfgDouble(cfg?["tile_strip_ratio"])) ?? 0.75))
+        let surfaceHex = (cfg?["tile_surface_color"]?.value as? String)
+            ?? block.field_style?.background_color ?? "#111827"
+        let imgInset = CGFloat((cfgDouble(cfg?["tile_image_inset"])) ?? 8)
+        let frameW = CGFloat((cfgDouble(cfg?["tile_image_frame_width"])) ?? 0)
+        let frameHex = (cfg?["tile_image_frame_color"]?.value as? String) ?? "#374151"
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: cols), spacing: spacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
                 let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                 let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
                 ZStack(alignment: .bottomLeading) {
+                    if tileLayout != "full_bleed" {
+                        // The text surface sits under everything; the image is then laid over its
+                        // own share of the tile, so the label never has a photograph behind it.
+                        Color(hex: surfaceHex)
+                    }
                     if let imgUrl = option.resolvedImageURL(isSelected: isSelected), let url = URL(string: imgUrl) {
-                        BundledAsyncImage(url: url) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Color.gray.opacity(0.2)
+                        GeometryReader { geo in
+                            BundledAsyncImage(url: url) { image in
+                                image.resizable().scaledToFill()
+                            } placeholder: {
+                                Color.gray.opacity(0.2)
+                            }
+                            .frame(
+                                width: tileLayout == "contained" ? geo.size.width - imgInset * 2 : geo.size.width,
+                                height: tileLayout == "full_bleed"
+                                    ? geo.size.height
+                                    : geo.size.height * CGFloat(stripRatio) - (tileLayout == "contained" ? imgInset : 0),
+                            )
+                            .clipped()
+                            .overlay(
+                                frameW > 0 && tileLayout == "contained"
+                                    ? RoundedRectangle(cornerRadius: 8).stroke(Color(hex: frameHex), lineWidth: frameW)
+                                    : nil,
+                            )
+                            .cornerRadius(tileLayout == "contained" ? 8 : 0)
+                            .offset(x: tileLayout == "contained" ? imgInset : 0, y: tileLayout == "contained" ? imgInset : 0)
                         }
                     }
                     // Selected uses selected_image_overlay_* (falls back to base). Parity with Android.
@@ -849,8 +880,12 @@ struct FormInputSelectBlock: View {
                         let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
                         Color(hex: ovHex).opacity(ovOpacity)
                     }
-                    // Bottom scrim so the label stays legible over any image.
-                    LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+                    // Bottom scrim so the label stays legible over any image — only meaningful when
+                    // the text is ON the image. With a text surface it would dim the very surface
+                    // these layouts exist to provide.
+                    if tileLayout == "full_bleed" {
+                        LinearGradient(colors: [.clear, .black.opacity(0.65)], startPoint: .center, endPoint: .bottom)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.label ?? "")
                             // Parity with Android image_tiles (ContentBlockRenderer.kt:8709): honor per-option font size.
