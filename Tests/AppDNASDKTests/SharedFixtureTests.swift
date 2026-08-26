@@ -1355,6 +1355,28 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
+            // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
+            // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
+            // resolver and the resolved strings are exported. Parsing a `{{token}}` proves nothing
+            // about whether it ever becomes a value on screen.
+            let sess = f.setup.session_data?.objectValue ?? [:]
+            let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
+            let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
+            if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty {
+                h.state["resolved_text"] = resolveTemplateString(
+                    block.text ?? "", hookData: nil, responses: fixtureResponses,
+                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
+                let firstOptionLabel = (block.field_options ?? []).first?.label ?? ""
+                h.state["resolved_option_label"] = resolveTemplateString(
+                    firstOptionLabel, hookData: nil, responses: fixtureResponses,
+                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
+                let rawStats = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
+                let firstStat = rawStats.first as? [String: Any]
+                h.state["resolved_stat0_value"] = resolveTemplateString(
+                    (firstStat?["value"] as? String) ?? "", hookData: nil, responses: fixtureResponses,
+                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
+            }
+
             // SPEC-441 (#541) — the option's `category` drives section navigation. It is an
             // OPTION-level key, which is the class Android parses by hand, so a missing parser
             // line makes the chips point at nothing while every renderer still compiles.
