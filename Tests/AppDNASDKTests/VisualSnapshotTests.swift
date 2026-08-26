@@ -325,6 +325,45 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-447 (#555) — the two layouts that move the text OFF the image.
+    ///
+    /// A dto_parsing fixture proves the keys reach the model; it cannot prove a renderer honours
+    /// them — I verified that by deleting Android's `tile_image_layout` read and watching the
+    /// fixture stay green. Only pixels close that gap, which is why the spec's acceptance
+    /// criterion is "asserted by golden BYTES differing" rather than by inspection.
+    private static func tilesJSON(_ layoutConfig: String) -> String {
+        """
+        {
+          "id": "tiles_layout", "type": "input_select",
+          "field_config": { "display_style": "image_tiles", "grid_columns": 2, \(layoutConfig) },
+          "field_style": { "fill_color": "#FACC15" },
+          "field_options": [
+            { "id": "w1", "value": "w1", "label": "Winnica Wschód", "subtitle": "Dolny Śląsk", "image_url": "https://example.com/a.png" },
+            { "id": "w2", "value": "w2", "label": "Winnica Południe", "subtitle": "Małopolska", "image_url": "https://example.com/b.png" }
+          ]
+        }
+        """
+    }
+
+    func testSelect_imageTiles_imageStrip() throws {
+        let view = try render(Self.tilesJSON("""
+        "tile_image_layout": "image_strip", "tile_strip_ratio": 0.75, "tile_surface_color": "#1F2937"
+        """), inputs: ["tiles_layout": "w1"])
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testSelect_imageTiles_contained() throws {
+        let view = try render(Self.tilesJSON("""
+        "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",
+        "tile_image_inset": 10, "tile_image_frame_width": 2, "tile_image_frame_color": "#F59E0B"
+        """), inputs: ["tiles_layout": "w1"])
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// Image-fill tiles layout — 2×2 grid (image fills the tile, label overlaid over a scrim);
     /// "Lifting" selected with a yellow accent border. Parity with Android.
     func testSelect_imageTiles() throws {
