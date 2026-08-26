@@ -1355,6 +1355,21 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
+            // SPEC-446 §3 — the gate, exercised in BOTH directions plus the deadlock case.
+            if block.type == .summary_screen {
+                let statFieldIds: [String] = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
+                    .compactMap { ($0 as? [String: Any])?["field_id"] as? String }
+                let unanswered = RequiredFieldGate.evaluate(blocks: [block], inputValues: [:])
+                var answered: [String: Any] = [:]
+                for id in statFieldIds { answered[id] = "5" }
+                let satisfied = RequiredFieldGate.evaluate(blocks: [block], inputValues: answered)
+                h.state["gate_blocks_when_unanswered"] = !unanswered.canAdvance
+                h.state["gate_releases_when_answered"] = satisfied.canAdvance
+                // block-level `field_required` is true in the fixture; if it were honoured the gate
+                // would read a key nothing writes and never release — so releasing IS the assertion.
+                h.state["gate_ignores_block_level_required"] = satisfied.canAdvance
+            }
+
             // SPEC-447 (#555) — the image-tile layout keys.
             h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
             h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)

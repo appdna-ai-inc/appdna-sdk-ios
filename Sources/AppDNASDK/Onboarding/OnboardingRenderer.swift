@@ -1752,7 +1752,29 @@ struct PermissionSettingsAlert: Identifiable {
 /// unit-testable without a live host, proving an interaction-driven advance can't bypass validation.
 enum RequiredFieldGate {
     static func evaluate(blocks: [ContentBlock], inputValues: [String: Any]) -> (canAdvance: Bool, firstMissing: String?) {
+        // SPEC-446 §3 — a Summary Screen can host inputs INSIDE its stats, so one block may carry
+        // several field ids. This loop reads exactly one key per block (`field_id ?? id`), so
+        // without this pass it sees none of them — and if an author set block-level
+        // `field_required` on such a block it would read a key nothing ever writes and the CTA
+        // could never enable: an unadvanceable step, the class this gate's own history records
+        // fixing twice. Required-ness is therefore PER STAT, and block-level `field_required` on a
+        // summary_screen is ignored rather than honoured.
+        for block in blocks where block.type == .summary_screen {
+            let stats = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
+            for entry in stats {
+                guard let stat = entry as? [String: Any],
+                      let input = stat["input"] as? String, input != "none",
+                      String(describing: stat["required"] ?? "") == "true",
+                      let fieldId = stat["field_id"] as? String, !fieldId.isEmpty
+                else { continue }
+                let value = inputValues[fieldId]
+                if value == nil { return (false, fieldId) }
+                if let s = value as? String, s.isEmpty { return (false, fieldId) }
+            }
+        }
+
         for block in blocks where block.field_required == true {
+            if block.type == .summary_screen { continue } // see above — per-stat, never block-level
             let fieldId = block.field_id ?? block.id
             let value = inputValues[fieldId]
             if value == nil { return (false, fieldId) }
