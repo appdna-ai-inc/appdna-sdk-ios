@@ -2516,8 +2516,21 @@ func resolveBlockTemplates(
                 }
                 return next
             }
-            if changed {
-                cfg["summary_stats"] = resolvedStats
+            // SPEC-446 AC — "no raw {{token}} can reach the screen from a stat". resolveTemplateString
+            // returns the LITERAL when a path misses and no `| fallback` was written, which is correct
+            // for a headline (an author sees their typo) and wrong for a stat: it puts `{{responses.x}}`
+            // in the big colored number on a summary card. Dropping the stat here rather than in the
+            // renderer means no current or future renderer can leak it, and a fixture can see it as a
+            // count. A stat whose LABEL alone is unresolved keeps its value and loses the caption.
+            let safeStats: [[String: Any]] = resolvedStats.compactMap { stat in
+                if let v = stat["value"] as? String, v.contains("{{") { return nil }
+                if let l = stat["label"] as? String, l.contains("{{") {
+                    var next = stat; next.removeValue(forKey: "label"); return next
+                }
+                return stat
+            }
+            if changed || safeStats.count != resolvedStats.count {
+                cfg["summary_stats"] = safeStats
                 json["field_config"] = cfg
             }
         }

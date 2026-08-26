@@ -1394,6 +1394,10 @@ final class SharedFixtureTests: XCTestCase {
                 let rawStats = (r.field_config?["summary_stats"]?.value as? [Any]) ?? []
                 let firstStat = rawStats.first as? [String: Any]
                 h.state["resolved_stat0_value"] = (firstStat?["value"] as? String) ?? ""
+                // A stat that could not resolve and had no `| fallback` is DROPPED, so the count is
+                // what proves the raw token never reaches a renderer.
+                h.state["resolved_stat_count"] = rawStats.count
+                h.state["resolved_stat0_label"] = (firstStat?["label"] as? String) ?? ""
             }
 
             // SPEC-441 (#541) — the option's `category` drives section navigation. It is an
