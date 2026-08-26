@@ -331,15 +331,15 @@ final class VisualSnapshotTests: XCTestCase {
     /// them — I verified that by deleting Android's `tile_image_layout` read and watching the
     /// fixture stay green. Only pixels close that gap, which is why the spec's acceptance
     /// criterion is "asserted by golden BYTES differing" rather than by inspection.
-    private static func tilesJSON(_ layoutConfig: String) -> String {
+    private static func tilesJSON(_ layoutConfig: String, optionExtras: String = "") -> String {
         """
         {
           "id": "tiles_layout", "type": "input_select",
           "field_config": { "display_style": "image_tiles", "grid_columns": 2, \(layoutConfig) },
           "field_style": { "fill_color": "#FACC15" },
           "field_options": [
-            { "id": "w1", "value": "w1", "label": "Winnica Wschód", "subtitle": "Dolny Śląsk", "image_url": "https://example.com/a.png" },
-            { "id": "w2", "value": "w2", "label": "Winnica Południe", "subtitle": "Małopolska", "image_url": "https://example.com/b.png" }
+            { "id": "w1", "value": "w1", "label": "Winnica Wschód", "subtitle": "Dolny Śląsk", "image_url": "https://example.com/a.png"\(optionExtras) },
+            { "id": "w2", "value": "w2", "label": "Winnica Południe", "subtitle": "Małopolska", "image_url": "https://example.com/b.png"\(optionExtras) }
           ]
         }
         """
@@ -349,6 +349,23 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "image_strip", "tile_strip_ratio": 0.75, "tile_surface_color": "#1F2937"
         """), inputs: ["tiles_layout": "w1"])
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// SPEC-447 AC — "in image_strip and contained the overlay covers the IMAGE REGION ONLY;
+    /// switching layout with a dark scrim set must not dim the text surface."
+    ///
+    /// The overlay was an unconstrained `Color` in the ZStack, so it tinted the band too and the
+    /// authored `tile_surface_color` came out muddied by a setting meant for the photograph. Every
+    /// key still parsed and every view still drew, so only pixels show it — and only iOS pixels
+    /// show it on iOS, since this renderer is separate from Android's.
+    func testSelect_imageTiles_stripOverlayDoesNotDimTheBand() throws {
+        let overlay = ", \"image_overlay_color\": \"#000000\", \"image_overlay_opacity\": 0.6"
+        let view = try render(Self.tilesJSON("""
+        "tile_image_layout": "image_strip", "tile_strip_ratio": 0.75, "tile_surface_color": "#1F2937"
+        """, optionExtras: overlay), inputs: ["tiles_layout": "w1"])
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }

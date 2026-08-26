@@ -878,7 +878,25 @@ struct FormInputSelectBlock: View {
                     // Selected uses selected_image_overlay_* (falls back to base). Parity with Android.
                     if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? globalSelectedOverlayHex ?? option.image_overlay_color ?? globalOverlayHex) : (option.image_overlay_color ?? globalOverlayHex)) {
                         let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
-                        Color(hex: ovHex).opacity(ovOpacity)
+                        // SPEC-447 AC — the overlay covers the IMAGE REGION ONLY in the two surfaced
+                        // layouts. Unconstrained it fills the ZStack, so authoring a dark scrim and then
+                        // switching layout dimmed the text band too: the very surface these layouts exist
+                        // to provide, tinted by a setting meant for the photograph. The bottom scrim below
+                        // was already gated on full_bleed; this is that same reasoning applied to the other
+                        // overlay. Geometry mirrors the image exactly, inset included.
+                        // Its own GeometryReader, for the same reason the image above has one: the
+                        // overlay has to be measured against the TILE to cover the image's share of it.
+                        GeometryReader { ovGeo in
+                            Color(hex: ovHex).opacity(ovOpacity)
+                                .frame(
+                                    width: tileLayout == "contained" ? ovGeo.size.width - imgInset * 2 : ovGeo.size.width,
+                                    height: tileLayout == "full_bleed"
+                                        ? ovGeo.size.height
+                                        : ovGeo.size.height * CGFloat(stripRatio) - (tileLayout == "contained" ? imgInset : 0)
+                                )
+                                .cornerRadius(tileLayout == "contained" ? 8 : 0)
+                                .offset(x: tileLayout == "contained" ? imgInset : 0, y: tileLayout == "contained" ? imgInset : 0)
+                        }
                     }
                     // Bottom scrim so the label stays legible over any image — only meaningful when
                     // the text is ON the image. With a text surface it would dim the very surface
