@@ -237,7 +237,10 @@ func resolveDotPath(
     responses: [String: Any],
     hookData: [String: Any]?,
     userTraits: [String: Any]?,
-    sessionData: [String: Any]?
+    sessionData: [String: Any]?,
+    /// SPEC-446 — the current step's live `inputValues`, addressable as `{{step.field_id}}`.
+    /// Defaulted so every existing call site keeps compiling and behaves exactly as before.
+    stepInputs: [String: Any]? = nil
 ) -> Any? {
     guard let path = path, !path.isEmpty else { return nil }
     let parts = path.split(separator: ".").map(String.init)
@@ -249,6 +252,11 @@ func resolveDotPath(
     case "hook_data": root = hookData
     case "user": root = userTraits
     case "session": root = sessionData
+    // SPEC-446 — the CURRENT step's in-progress inputs. `responses` holds completed steps only,
+    // so a stat showing the value of a slider on the same card resolved to nothing until the step
+    // ended, at which point the card is gone. Registered here, in the preview, and in the
+    // picker's namespace list; an unregistered root resolves to nil and renders raw.
+    case "step": root = stepInputs
     default: root = nil
     }
 
@@ -516,10 +524,16 @@ func resolveTemplateString(
     hookData: [String: Any]?,
     responses: [String: Any],
     sessionData: [String: Any]? = nil,
-    userTraits: [String: Any]? = nil
+    userTraits: [String: Any]? = nil,
+    stepInputs: [String: Any]? = nil
 ) -> String {
     var result = text
-    let pattern = "\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*\\}\\}"
+    // SPEC-446 §3b — the console's variable picker tells authors to write `{{var | fallback}}`
+    // and the web preview implements it. Neither native did: this character class contained
+    // neither `|` nor a space, so `{{responses.name | Guest}}` did not match AT ALL and the whole
+    // literal — pipe included — rendered on the user's screen. An author following our own
+    // instruction shipped a raw token to customers.
+    let pattern = "\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*(?:\\|\\s*([^}]*?)\\s*)?\\}\\}"
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
     let nsRange = NSRange(text.startIndex..., in: text)
     let matches = regex.matches(in: text, range: nsRange)
@@ -529,9 +543,16 @@ func resolveTemplateString(
         guard let fullRange = Range(match.range, in: result),
               let pathRange = Range(match.range(at: 1), in: result) else { continue }
         let path = String(result[pathRange])
-        let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
+        // `{{x | Guest}}` — the fallback is used when the path resolves to nothing, which is also
+        // the only way an author can stop an unresolved token reaching a customer's screen.
+        let fallback: String? = match.range(at: 2).location == NSNotFound
+            ? nil
+            : Range(match.range(at: 2), in: result).map { String(result[$0]) }
         if let resolved = resolved {
             result.replaceSubrange(fullRange, with: "\(resolved)")
+        } else if let fallback = fallback {
+            result.replaceSubrange(fullRange, with: fallback)
         }
     }
     return result

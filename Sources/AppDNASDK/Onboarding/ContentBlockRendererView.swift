@@ -152,6 +152,32 @@ struct ContentBlockRendererView: View {
         // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
         // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
         // words") resolves on device instead of rendering the literal token.
+        // SPEC-446 §3c — a LIVE PARITY BUG: Android resolves `label` (ContentBlockRenderer.kt:1205)
+        // and iOS did not, so `{{var}}` in a label resolved on one platform and printed raw on the
+        // other. Shipped in 1.0.72 / 1.0.44; no fixture covered it, which is why it survived.
+        if let label = json["label"] as? String, label.contains("{{") {
+            json["label"] = resolveTemplateString(label, hookData: hookData, responses: responses)
+        }
+        // SPEC-446 §2 — stats are an ARRAY OF DICTS nested inside field_config, so the resolver
+        // has to walk into it. Every other entry here is a flat `json["key"] as? String`.
+        if var cfg = json["field_config"] as? [String: Any],
+           let rawStats = cfg["summary_stats"] as? [[String: Any]] {
+            var changed = false
+            let resolvedStats: [[String: Any]] = rawStats.map { stat in
+                var next = stat
+                for key in ["value", "label"] {
+                    if let s = stat[key] as? String, s.contains("{{") {
+                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses)
+                        changed = true
+                    }
+                }
+                return next
+            }
+            if changed {
+                cfg["summary_stats"] = resolvedStats
+                json["field_config"] = cfg
+            }
+        }
         if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
             json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses)
         }
