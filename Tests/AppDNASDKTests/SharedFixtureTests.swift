@@ -1355,6 +1355,11 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
+            // SPEC-447 (#555) — the image-tile layout keys.
+            h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
+            h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)
+            h.state["parsed_tile_surface_color"] = SharedFixtureTests.orNull(block.field_config?["tile_surface_color"]?.value as? String)
+
             // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
             // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
             // resolver and the resolved strings are exported. Parsing a `{{token}}` proves nothing
