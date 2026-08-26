@@ -888,14 +888,19 @@ struct FormInputSelectBlock: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text(option.label ?? "")
-                            // Parity with Android image_tiles (ContentBlockRenderer.kt:8709): honor per-option font size.
+                            // Parity with Android image_tiles: honour the per-option font size.
                             .font(.system(size: CGFloat(option.title_font_size ?? 15), weight: .semibold))
                             .foregroundColor(.white)
                         if let sub = option.subtitle, !sub.isEmpty {
                             Text(sub).font(.system(size: CGFloat(option.subtitle_font_size ?? 12))).foregroundColor(.white.opacity(0.85))
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
+                    // SPEC-447 — the band is painted UNDER THE TEXT, so it is exactly as tall as the
+                    // text needs. A band sized as a fixed share of the tile puts the title back on
+                    // the photograph the moment two lines do not fit that share. Parity with Android.
+                    .background(tileLayout == "full_bleed" ? Color.clear : Color(hex: surfaceHex))
                 }
                 .frame(maxWidth: .infinity)
                 .tileSize(aspectRatio: tileAspect, height: tileHeight)
