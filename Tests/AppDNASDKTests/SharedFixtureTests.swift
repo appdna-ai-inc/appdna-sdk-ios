@@ -1377,24 +1377,23 @@ final class SharedFixtureTests: XCTestCase {
 
             // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
             // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
-            // resolver and the resolved strings are exported. Parsing a `{{token}}` proves nothing
-            // about whether it ever becomes a value on screen.
+            // whitelist pass and the resolved strings are exported. Parsing a `{{token}}` proves
+            // nothing about whether it ever becomes a value on screen — and calling
+            // resolveTemplateString by hand (which this used to do, while claiming otherwise) proves
+            // only that the resolver CAN expand a token, not that the block pass applies it to that
+            // key. Round-4 bug injection deleted the `label` line from the whitelist and this file
+            // stayed green, which is why resolveBlockTemplates was lifted out of the View.
             let sess = f.setup.session_data?.objectValue ?? [:]
             let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
             let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
             if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty {
-                h.state["resolved_text"] = resolveTemplateString(
-                    block.text ?? "", hookData: nil, responses: fixtureResponses,
-                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
-                let firstOptionLabel = (block.field_options ?? []).first?.label ?? ""
-                h.state["resolved_option_label"] = resolveTemplateString(
-                    firstOptionLabel, hookData: nil, responses: fixtureResponses,
-                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
-                let rawStats = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
+                let r = resolveBlockTemplates(
+                    block, hookData: nil, responses: fixtureResponses, stepInputs: fixtureStepInputs)
+                h.state["resolved_text"] = r.text ?? ""
+                h.state["resolved_option_label"] = (r.field_options ?? []).first?.label ?? ""
+                let rawStats = (r.field_config?["summary_stats"]?.value as? [Any]) ?? []
                 let firstStat = rawStats.first as? [String: Any]
-                h.state["resolved_stat0_value"] = resolveTemplateString(
-                    (firstStat?["value"] as? String) ?? "", hookData: nil, responses: fixtureResponses,
-                    sessionData: nil, userTraits: nil, stepInputs: fixtureStepInputs)
+                h.state["resolved_stat0_value"] = (firstStat?["value"] as? String) ?? ""
             }
 
             // SPEC-441 (#541) — the option's `category` drives section navigation. It is an

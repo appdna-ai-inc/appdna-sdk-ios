@@ -114,93 +114,13 @@ struct ContentBlockRendererView: View {
     /// AC-064/065/066: Resolves dynamic bindings and template strings on a block.
     /// Returns a new block with resolved text fields and binding overrides.
     private func resolveBlockBindings(_ block: ContentBlock, hookData: [String: Any]?, responses: [String: Any]) -> ContentBlock {
-        guard block.bindings != nil || containsTemplates(block) else { return block }
-
-        // Since ContentBlock is a struct with let properties, we use JSON round-trip to create a mutable copy.
-        // This is the simplest approach without refactoring the entire model to use var properties.
-        guard let data = try? JSONEncoder().encode(block),
-              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return block
-        }
-
-        // AC-066: Resolve bindings map — override block properties from data context
-        if let bindings = block.bindings {
-            for (property, path) in bindings {
-                if let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil) {
-                    json[property] = resolved
-                }
-            }
-        }
-
-        // AC-064: Resolve template strings in text fields
-        if let text = json["text"] as? String, text.contains("{{") {
-            json["text"] = resolveTemplateString(text, hookData: hookData, responses: responses)
-        }
-        if let label = json["field_label"] as? String, label.contains("{{") {
-            json["field_label"] = resolveTemplateString(label, hookData: hookData, responses: responses)
-        }
-        if let placeholder = json["field_placeholder"] as? String, placeholder.contains("{{") {
-            json["field_placeholder"] = resolveTemplateString(placeholder, hookData: hookData, responses: responses)
-        }
-        if let badgeText = json["badge_text"] as? String, badgeText.contains("{{") {
-            json["badge_text"] = resolveTemplateString(badgeText, hookData: hookData, responses: responses)
-        }
-        if let toggleLabel = json["toggle_label"] as? String, toggleLabel.contains("{{") {
-            json["toggle_label"] = resolveTemplateString(toggleLabel, hookData: hookData, responses: responses)
-        }
-        // RichText v2 — rich_text's primary content field is `markdown_content`;
-        // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
-        // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
-        // words") resolves on device instead of rendering the literal token.
-        // SPEC-446 §3c — a LIVE PARITY BUG: Android resolves `label` (ContentBlockRenderer.kt:1205)
-        // and iOS did not, so `{{var}}` in a label resolved on one platform and printed raw on the
-        // other. Shipped in 1.0.72 / 1.0.44; no fixture covered it, which is why it survived.
-        if let label = json["label"] as? String, label.contains("{{") {
-            json["label"] = resolveTemplateString(label, hookData: hookData, responses: responses)
-        }
-        // SPEC-446 §2 — stats are an ARRAY OF DICTS nested inside field_config, so the resolver
-        // has to walk into it. Every other entry here is a flat `json["key"] as? String`.
-        if var cfg = json["field_config"] as? [String: Any],
-           let rawStats = cfg["summary_stats"] as? [[String: Any]] {
-            var changed = false
-            let resolvedStats: [[String: Any]] = rawStats.map { stat in
-                var next = stat
-                for key in ["value", "label"] {
-                    if let s = stat[key] as? String, s.contains("{{") {
-                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses)
-                        changed = true
-                    }
-                }
-                return next
-            }
-            if changed {
-                cfg["summary_stats"] = resolvedStats
-                json["field_config"] = cfg
-            }
-        }
-        if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
-            json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses)
-        }
-
-        // Decode back to ContentBlock
-        if let updatedData = try? JSONSerialization.data(withJSONObject: json),
-           let resolved = try? JSONDecoder().decode(ContentBlock.self, from: updatedData) {
-            return resolved
-        }
-        return block
+        // `inputValues` is the live map of what the user has typed on THIS step — see the note on
+        // `resolveBlockTemplates`' stepInputs parameter for why passing it matters.
+        resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: inputValues)
     }
 
     /// Check if a block contains `{{...}}` template patterns in its text fields.
-    private func containsTemplates(_ block: ContentBlock) -> Bool {
-        if let text = block.text, text.contains("{{") { return true }
-        if let label = block.field_label, label.contains("{{") { return true }
-        if let placeholder = block.field_placeholder, placeholder.contains("{{") { return true }
-        if let badgeText = block.badge_text, badgeText.contains("{{") { return true }
-        if let toggleLabel = block.toggle_label, toggleLabel.contains("{{") { return true }
-        // RichText v2 — gate the resolve pass on rich_text markdown too.
-        if let markdown = block.markdown_content, markdown.contains("{{") { return true }
-        return false
-    }
+    private func containsTemplates(_ block: ContentBlock) -> Bool { blockContainsTemplates(block) }
 
     /// Uses AnyView type erasure to avoid exponential Swift type-checking
     /// on the 45-case switch statement (was causing 30+ min compile times).
@@ -2498,4 +2418,148 @@ struct MediaGalleryPreviewRow: View {
         .frame(width: width, height: itemH)
         .clipShape(RoundedRectangle(cornerRadius: fill ? 0 : cornerRadius))
     }
+}
+
+
+// MARK: - Template resolution (file scope)
+
+/// The real whitelist + binding pass. It lived as a `private` method on the View above, which made
+/// the WHITELIST untestable: a fixture could only call `resolveTemplateString` directly, proving the
+/// resolver handles a token while proving nothing about whether this pass applies it to a given key.
+/// Round-4 bug injection deleted the `label` line and the whole suite stayed green.
+/// Same reason `RequiredFieldGate` and `mergeFieldConfigOverrides` are free functions.
+func resolveBlockTemplates(
+    _ block: ContentBlock,
+    hookData: [String: Any]?,
+    responses: [String: Any],
+    // SPEC-446 R4 — the LIVE values typed on the current step, addressable as `{{step.field_id}}`.
+    // resolveTemplateString has accepted a stepInputs map since the `step` root landed, but NO caller
+    // ever passed one, so the console's "This Step (live)" picker group offered authors a namespace
+    // that resolved to nothing on device. Declaring the parameter is not wiring it.
+    stepInputs: [String: Any]? = nil
+) -> ContentBlock {
+        guard block.bindings != nil || blockContainsTemplates(block) else { return block }
+
+        // Since ContentBlock is a struct with let properties, we use JSON round-trip to create a mutable copy.
+        // This is the simplest approach without refactoring the entire model to use var properties.
+        guard let data = try? JSONEncoder().encode(block),
+              var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return block
+        }
+
+        // AC-066: Resolve bindings map — override block properties from data context
+        if let bindings = block.bindings {
+            for (property, path) in bindings {
+                if let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil, stepInputs: stepInputs) {
+                    json[property] = resolved
+                }
+            }
+        }
+
+        // AC-064: Resolve template strings in text fields
+        if let text = json["text"] as? String, text.contains("{{") {
+            json["text"] = resolveTemplateString(text, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+        if let label = json["field_label"] as? String, label.contains("{{") {
+            json["field_label"] = resolveTemplateString(label, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+        if let placeholder = json["field_placeholder"] as? String, placeholder.contains("{{") {
+            json["field_placeholder"] = resolveTemplateString(placeholder, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+        if let badgeText = json["badge_text"] as? String, badgeText.contains("{{") {
+            json["badge_text"] = resolveTemplateString(badgeText, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+        if let toggleLabel = json["toggle_label"] as? String, toggleLabel.contains("{{") {
+            json["toggle_label"] = resolveTemplateString(toggleLabel, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+        // RichText v2 — rich_text's primary content field is `markdown_content`;
+        // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
+        // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
+        // words") resolves on device instead of rendering the literal token.
+        // NOT a `label` entry here, deliberately. SPEC-446 §3c originally claimed Android resolving
+        // block-level `label` and iOS not was a live parity bug; it is not. That field is a legacy
+        // RATING key, and SPEC-401-A R61 removed `?: block.label` from the renderers precisely so it
+        // stops reaching the screen — iOS never declaring it is the same decision, reached from the
+        // other side. Writing json["label"] on iOS was a no-op that the JSON round-trip discarded on
+        // decode, which is why deleting it left every test green. The REAL gap was option text, above.
+        // SPEC-446 R4 — OPTION text. `{{var}}` in a select/image-tile option was resolved by NOTHING
+        // on either platform: the whitelist only ever touched the block's own top-level `label`. The
+        // console's variable picker is available wherever an author types, options included, so this
+        // rendered a raw token on BOTH platforms rather than differing between them — which is why
+        // symmetric fixtures never noticed it.
+        if let rawOpts = json["field_options"] as? [[String: Any]] {
+            var optChanged = false
+            let nextOpts: [[String: Any]] = rawOpts.map { opt in
+                var next = opt
+                for key in ["label", "subtitle", "leading_text"] {
+                    if let s = opt[key] as? String, s.contains("{{") {
+                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses, stepInputs: stepInputs)
+                        optChanged = true
+                    }
+                }
+                return next
+            }
+            if optChanged { json["field_options"] = nextOpts }
+        }
+        // SPEC-446 §2 — stats are an ARRAY OF DICTS nested inside field_config, so the resolver
+        // has to walk into it. Every other entry here is a flat `json["key"] as? String`.
+        if var cfg = json["field_config"] as? [String: Any],
+           let rawStats = cfg["summary_stats"] as? [[String: Any]] {
+            var changed = false
+            let resolvedStats: [[String: Any]] = rawStats.map { stat in
+                var next = stat
+                for key in ["value", "label"] {
+                    if let s = stat[key] as? String, s.contains("{{") {
+                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses, stepInputs: stepInputs)
+                        changed = true
+                    }
+                }
+                return next
+            }
+            if changed {
+                cfg["summary_stats"] = resolvedStats
+                json["field_config"] = cfg
+            }
+        }
+        if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
+            json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses, stepInputs: stepInputs)
+        }
+
+        // Decode back to ContentBlock
+        if let updatedData = try? JSONSerialization.data(withJSONObject: json),
+           let resolved = try? JSONDecoder().decode(ContentBlock.self, from: updatedData) {
+            return resolved
+        }
+        return block
+}
+
+/// Gate for the pass above. Returning `false` here SKIPS resolution entirely, so every key the
+/// resolver handles must be represented — otherwise the block short-circuits and ships raw `{{tokens}}`.
+func blockContainsTemplates(_ block: ContentBlock) -> Bool {
+        if let text = block.text, text.contains("{{") { return true }
+        if let label = block.field_label, label.contains("{{") { return true }
+        if let placeholder = block.field_placeholder, placeholder.contains("{{") { return true }
+        if let badgeText = block.badge_text, badgeText.contains("{{") { return true }
+        if let toggleLabel = block.toggle_label, toggleLabel.contains("{{") { return true }
+        // RichText v2 — gate the resolve pass on rich_text markdown too.
+        if let markdown = block.markdown_content, markdown.contains("{{") { return true }
+        // SPEC-446 R4 — the resolver handles OPTION text and the nested `field_config.summary_stats`,
+        // but this gate did not, so a block whose ONLY templates live there returned early and rendered
+        // the raw token. That is the COMMON summary-screen shape: static headline, variables in the
+        // stats. Android was missing the same two.
+        if let opts = block.field_options {
+            for o in opts {
+                for s in [o.label, o.subtitle, o.leading_text] {
+                    if let s, s.contains("{{") { return true }
+                }
+            }
+        }
+        if let stats = block.field_config?["summary_stats"]?.value as? [Any] {
+            for case let stat as [String: Any] in stats {
+                for key in ["value", "label"] {
+                    if let s = stat[key] as? String, s.contains("{{") { return true }
+                }
+            }
+        }
+        return false
 }
