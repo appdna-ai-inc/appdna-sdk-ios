@@ -533,7 +533,12 @@ func resolveTemplateString(
     // neither `|` nor a space, so `{{responses.name | Guest}}` did not match AT ALL and the whole
     // literal — pipe included — rendered on the user's screen. An author following our own
     // instruction shipped a raw token to customers.
-    let pattern = "\\{\\{\\s*([a-zA-Z0-9_.]+)\\s*(?:\\|\\s*([^}]*?)\\s*)?\\}\\}"
+    // The character class includes `-` because `field_id` is a free string in the console schema:
+    // an author can type `party-size`, and an AI-generated flow routinely does. The picker then
+    // offers `{{responses.party-size}}` and the editor preview drew it as a valid chip, while this
+    // pattern did not match it AT ALL and the literal shipped to the user — the same shape as the
+    // pipe bug, where the console advertised a syntax the natives could not read.
+    let pattern = "\\{\\{\\s*([a-zA-Z0-9_.\\-]+)\\s*(?:\\|\\s*([^}]*?)\\s*)?\\}\\}"
     guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
     let nsRange = NSRange(text.startIndex..., in: text)
     let matches = regex.matches(in: text, range: nsRange)
