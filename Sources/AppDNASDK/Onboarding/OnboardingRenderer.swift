@@ -1767,6 +1767,13 @@ enum RequiredFieldGate {
                       String(describing: stat["required"] ?? "") == "true",
                       let fieldId = stat["field_id"] as? String, !fieldId.isEmpty
                 else { continue }
+                // An authored `default` SATISFIES the requirement, and is checked here rather than
+                // relying on the control having seeded it. The control seeds on appear, so a summary
+                // block below the fold in a scrolling step has not run that code yet — the value
+                // would be missing, the CTA would stay disabled, and the user would have to scroll
+                // to a control they never needed to touch before Continue lit up. The gate must not
+                // depend on view lifecycle to agree with what the screen will show.
+                if stat["default"] != nil { continue }
                 let value = inputValues[fieldId]
                 if value == nil { return (false, fieldId) }
                 if let s = value as? String, s.isEmpty { return (false, fieldId) }

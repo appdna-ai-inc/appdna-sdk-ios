@@ -1368,6 +1368,21 @@ final class SharedFixtureTests: XCTestCase {
                 // block-level `field_required` is true in the fixture; if it were honoured the gate
                 // would read a key nothing writes and never release — so releasing IS the assertion.
                 h.state["gate_ignores_block_level_required"] = satisfied.canAdvance
+                // A required stat carrying an authored `default` must not block: the control seeds
+                // that value when it first appears, so a gate waiting on inputValues would keep the
+                // CTA disabled for a block below the fold. Answer ONLY the required stats that have
+                // no default — if the gate still releases, the defaulted one did not block, and the
+                // assertion cannot be satisfied by simply answering everything.
+                let rawStats = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
+                    .compactMap { $0 as? [String: Any] }
+                if rawStats.contains(where: { $0["default"] != nil }) {
+                    var partial: [String: Any] = [:]
+                    for s in rawStats where s["default"] == nil {
+                        if let fid = s["field_id"] as? String { partial[fid] = "5" }
+                    }
+                    h.state["gate_ignores_required_stat_with_default"] =
+                        RequiredFieldGate.evaluate(blocks: [block], inputValues: partial).canAdvance
+                }
             }
 
             // SPEC-447 (#555) — the image-tile layout keys.
