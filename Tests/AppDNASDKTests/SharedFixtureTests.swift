@@ -455,6 +455,7 @@ final class SharedFixtureTests: XCTestCase {
         case "tap_link":                       runTapLink(fixture, harness)
         case "pick_measurement":               await runPickMeasurement(fixture, harness)
         case "fetch_remote_config":            runFetchRemoteConfig(fixture, harness)
+        case "merge_step_override":            runMergeStepOverride(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
@@ -1308,6 +1309,54 @@ final class SharedFixtureTests: XCTestCase {
     // REAL: RemoteConfigManager.decodePaywallPayload — the sanitize + decode path the live config
     // parsers use — and the SDK's own Codable models for ContentBlock / SurveyTheme.
 
+    /// SPEC-448 §B — drives the REAL `StepConfigOverrideMerger` with host-supplied options.
+    ///
+    /// Its own driver rather than a branch of the config one: this is not a parse, it is a merge,
+    /// and the thing under test is what the merge leaves ALONE. A merge that rebuilt the block
+    /// array from only the named blocks would delete the heading and the button, and every
+    /// assertion about the named block would still pass.
+    private func runMergeStepOverride(_ fixture: Fixture, _ h: Harness) {
+        let sess = fixture.setup.session_data?.objectValue ?? [:]
+        guard let hostOptions = sess["host_field_options"]?.objectValue else {
+            XCTFail("[\(fixture.id)] merge_step_override needs setup.session_data.host_field_options")
+            return
+        }
+
+        var byBlock: [String: [InputOption]] = [:]
+        for (blockId, arr) in hostOptions {
+            guard let raw = arr.foundation as? [[String: Any]],
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let opts = try? JSONDecoder().decode([InputOption].self, from: data)
+            else { continue }
+            byBlock[blockId] = opts
+        }
+
+        // Decoded through StepConfig's own Codable, so the merger is fed the same shape the
+        // renderer feeds it.
+        guard let cfgJSON = fixture.setup.config?.foundation,
+              let cfgData = try? JSONSerialization.data(withJSONObject: cfgJSON),
+              let stepCfg = try? JSONDecoder().decode(StepConfig.self, from: cfgData)
+        else {
+            XCTFail("[\(fixture.id)] setup.config did not decode as a StepConfig")
+            return
+        }
+
+        let merged = StepConfigOverrideMerger.apply(
+            StepConfigOverride(fieldOptions: byBlock), to: stepCfg
+        )
+        let blocks = merged.content_blocks ?? []
+        h.state["merged_block_count"] = blocks.count
+        h.state["merged_block_ids"] = blocks.map { $0.id }
+        if let target = blocks.first(where: { $0.id == "winery_select" }) {
+            h.state["merged_target_option_count"] = (target.field_options ?? []).count
+            h.state["merged_target_first_value"] = (target.field_options ?? []).first?.resolvedValue
+        }
+        if let untouched = blocks.first(where: { $0.id == "other_select" }) {
+            h.state["merged_untouched_option_value"] = (untouched.field_options ?? []).first?.resolvedValue
+        }
+        h.state["merged_heading_text"] = blocks.first(where: { $0.id == "intro_heading" })?.text
+    }
+
     private func runFetchRemoteConfig(_ f: Fixture, _ h: Harness) {
         guard let configJSON = f.setup.config, let config = configJSON.objectValue else {
             return XCTFail("[\(f.id)] fetch_remote_config needs setup.config")
@@ -1407,6 +1456,29 @@ final class SharedFixtureTests: XCTestCase {
             // key. Round-4 bug injection deleted the `label` line from the whitelist and this file
             // stayed green, which is why resolveBlockTemplates was lifted out of the View.
             let sess = f.setup.session_data?.objectValue ?? [:]
+
+            // SPEC-448 (#556) — the Option Set source keys. `field_options` must STILL parse when a
+            // set is bound: that array doubles as the embedded page, and a parser treating a bound
+            // set as "ignore the inline options" would leave older builds with an empty Select.
+            h.state["parsed_option_set_id"] = SharedFixtureTests.orNull(block.field_config?["option_set_id"]?.value as? String)
+            h.state["parsed_option_set_version"] = SharedFixtureTests.orNull(block.field_config?["option_set_version"]?.value as? Int)
+            h.state["parsed_options_search"] = SharedFixtureTests.orNull(block.field_config?["options_search"]?.value as? Bool)
+            h.state["parsed_embedded_option_count"] = (block.field_options ?? []).count
+
+            // SPEC-447 (#555) — the image-tile layout keys.
+            h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
+            h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)
+            h.state["parsed_tile_surface_color"] = SharedFixtureTests.orNull(block.field_config?["tile_surface_color"]?.value as? String)
+
+            // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
+            // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
+            // whitelist pass and the resolved strings are exported. Parsing a `{{token}}` proves
+            // nothing about whether it ever becomes a value on screen — and calling
+            // resolveTemplateString by hand (which this used to do, while claiming otherwise) proves
+            // only that the resolver CAN expand a token, not that the block pass applies it to that
+            // key. Round-4 bug injection deleted the `label` line from the whitelist and this file
+            // stayed green, which is why resolveBlockTemplates was lifted out of the View.
+
             let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
             let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
             // SPEC-448 — seed the selected-option store so `{{selected.…}}` has something to

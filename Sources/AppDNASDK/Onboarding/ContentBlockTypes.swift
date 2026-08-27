@@ -1311,7 +1311,11 @@ public struct ContentBlock: Codable, Identifiable {
     public let field_placeholder: String?
     public let field_required: Bool?
     public let field_style: FormFieldBlockStyle?
-    public let field_options: [InputOption]?
+    /// `var`, not `let`, for the same reason `StepConfig`'s fields are: SPEC-448 §B lets a host
+    /// replace a single block's options, and a merge that had to rebuild the whole ContentBlock
+    /// through its memberwise init would silently drop any field the author of that call forgot —
+    /// the exact bug `StepConfigOverrideMerger` documents having shipped once already.
+    public var field_options: [InputOption]?
     public let multi_select: Bool?
     // Form input specific config
     public let field_config: [String: AnyCodable]?

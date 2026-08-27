@@ -631,21 +631,36 @@ public struct StepConfigOverride {
     /// Override CTA text.
     public var ctaText: String?
 
-    /// Additional layout overrides (merged into step config).
-    public var layoutOverrides: [String: Any]?
+    /// SPEC-448 §B — options supplied by the HOST APP, keyed by block id.
+    ///
+    /// The app reads its own backend with its own client, auth and cache, and hands the list over.
+    /// No network, no credentials and no retry semantics inside this SDK — which is the point:
+    /// a customer whose list lives behind their own auth cannot be served by our fetcher.
+    ///
+    /// `[blockId: [InputOption]]`. A block not named here keeps its authored options.
+    public var fieldOptions: [String: [InputOption]]?
 
+    /// SPEC-448 §B — `layoutOverrides` was REMOVED here.
+    ///
+    /// It was declared on all four SDKs and bridged by the wrappers, and no renderer ever read it:
+    /// a host could set it and nothing happened. Making it work was the wrong fix — a bag that can
+    /// overwrite any part of a step is unbounded, untestable, and a promise we would have to keep
+    /// forever. `fieldOptions` gives the one real use case a typed home instead.
+    ///
+    /// Removing a public field is normally breaking; here nothing ever read it, so no host can
+    /// depend on its behaviour.
     public init(
         fieldDefaults: [String: Any]? = nil,
         title: String? = nil,
         subtitle: String? = nil,
         ctaText: String? = nil,
-        layoutOverrides: [String: Any]? = nil
+        fieldOptions: [String: [InputOption]]? = nil
     ) {
         self.fieldDefaults = fieldDefaults
         self.title = title
         self.subtitle = subtitle
         self.ctaText = ctaText
-        self.layoutOverrides = layoutOverrides
+        self.fieldOptions = fieldOptions
     }
 }
 

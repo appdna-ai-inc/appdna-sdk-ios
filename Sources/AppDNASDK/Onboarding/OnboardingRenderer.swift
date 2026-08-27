@@ -549,17 +549,36 @@ struct OnboardingFlowHost: View {
         currentIndex < flow.steps.count && flow.steps[currentIndex].hide_back == true
     }
 
+    /// SPEC-448 §B — how long the host gets before the step renders without its override.
+    ///
+    /// Deliberately shorter than the server-hook default of 10s: a hook is a background call, this
+    /// one is between the user and a visible screen.
+    private static let overrideTimeout: TimeInterval = 3.0
+
     private func handleStepAppear(step: OnboardingStep) {
         Task {
-            if let override = await delegate?.onBeforeStepRender(
-                flowId: flow.id,
-                stepId: step.id,
-                stepIndex: currentIndex,
-                stepType: step.type.rawValue,
-                responses: responses
-            ) {
+            // 🔴 BOUNDED. This `await` used to have no timeout at all, which was mostly harmless
+            // while few hosts did real work in this hook — SPEC-448 §B asks every host to FETCH
+            // DATA here, so a customer awaiting their own backend on a bad connection, with no
+            // timeout of their own, would hang the step indefinitely and it would look like our bug.
+            // The SDK's own server hooks have always bounded themselves; this one now matches.
+            let override = await withOverrideTimeout(Self.overrideTimeout) {
+                await delegate?.onBeforeStepRender(
+                    flowId: flow.id,
+                    stepId: step.id,
+                    stepIndex: currentIndex,
+                    stepType: step.type.rawValue,
+                    responses: responses
+                )
+            }
+            if let override {
                 await MainActor.run {
-                    configOverrides[step.id] = override
+                    // A late reply is applied only if the user is STILL on this step. Dropping it
+                    // into a step they have left would rewrite a screen they are no longer looking
+                    // at; silently discarding it while they are still here would lose their data.
+                    if currentIndex < flow.steps.count, flow.steps[currentIndex].id == step.id {
+                        configOverrides[step.id] = override
+                    }
                 }
             }
             await MainActor.run {
@@ -2287,6 +2306,27 @@ enum StepAdvanceResultNaming {
 /// Field-by-field merge of a host-supplied `StepConfigOverride` onto a step's authored `StepConfig`.
 /// Extracted from the view so the "which fields an override may replace" contract is testable — an
 /// override that silently stops applying is otherwise only visible on a device.
+/// Races an async producer against a deadline.
+///
+/// Returns nil on expiry and lets the caller carry on — the flow proceeds with cache then static
+/// options rather than holding the UI for a host that may never answer. The losing task is
+/// cancelled, so a host doing real work is not left running against a screen nobody is watching.
+func withOverrideTimeout<T: Sendable>(
+    _ seconds: TimeInterval,
+    _ operation: @escaping @Sendable () async -> T?
+) async -> T? {
+    await withTaskGroup(of: T?.self) { group in
+        group.addTask { await operation() }
+        group.addTask {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            return nil
+        }
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
+    }
+}
+
 enum StepConfigOverrideMerger {
     /// 🔴 NON-DESTRUCTIVE: copy the authored config, then assign only the fields the override NAMES.
     ///
@@ -2316,6 +2356,23 @@ enum StepConfigOverrideMerger {
         // field defaults.
         if let fieldDefaults = override.fieldDefaults {
             merged.field_defaults = fieldDefaults.mapValues { AnyCodable($0) }
+        }
+        // SPEC-448 §B — host-supplied options.
+        //
+        // ⚠️ This is NOT another assignment like the four above. Those replace flat scalars on the
+        // step; options live at `content_blocks[i].field_options`, one level down inside an array.
+        // So it locates each named block by id and rebuilds THAT block's option list, leaving every
+        // sibling block untouched. A merge that rebuilt the array from only the named blocks would
+        // silently delete the rest of the step — invisible until an author noticed a missing block,
+        // which is exactly why the fixture asserts the untouched siblings survive.
+        if let fieldOptions = override.fieldOptions, !fieldOptions.isEmpty,
+           let blocks = merged.content_blocks {
+            merged.content_blocks = blocks.map { block in
+                guard let replacement = fieldOptions[block.id] else { return block }
+                var copy = block
+                copy.field_options = replacement
+                return copy
+            }
         }
         return merged
     }
