@@ -894,6 +894,27 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// #560 — per-provider label size. The DTO fixture proves the number is DECODED; only a
+    /// snapshot proves it is DRAWN, which is the half a decode-only test would let ship broken.
+    /// Two providers at different sizes, so the golden fails on a renderer that reads the field
+    /// and then ignores it as much as on one that never reads it.
+    func testSocial_providerFontSize() throws {
+        let view = try render("""
+        {
+          "id": "sl_size", "type": "social_login",
+          "providers": [
+            {"type": "google", "label": "Continue with Google", "font_size": 22},
+            {"type": "email", "label": "Continue with Email", "font_size": 12}
+          ]
+        }
+        """)
+        let recordMode: SnapshotTestingConfiguration.Record =
+            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// EPIC-8 — swipeable carousel: 3 pages + dot indicator (page 0). Parity with Android.
     func testLayout_carousel() throws {
         let view = try render("""
