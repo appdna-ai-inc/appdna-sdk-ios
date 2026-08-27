@@ -575,6 +575,23 @@ struct FormInputSelectBlock: View {
     @State private var activeCategory: String = ""
     /// SPEC-444 (#540, #542) — the option whose bottom sheet is presented, if any.
     @State private var sheetOption: InputOption? = nil
+    // SPEC-448 (#556) — options fetched for this block's Option Set. Empty until a refresh lands,
+    // which is why the ladder falls back to `field_options` rather than waiting on it.
+    @State private var dynamicOptions: [InputOption] = []
+
+    /// The set this Select is bound to, or nil for an authored list.
+    private var optionSetId: String? {
+        block.field_config?["option_set_id"]?.value as? String
+    }
+
+    /// The version the flow config was published with. The store treats a cached entry at or
+    /// above this as current, which is what makes an author's edit land on next launch rather
+    /// than only after some cache TTL expires.
+    private var optionSetVersion: Int? {
+        if let v = block.field_config?["option_set_version"]?.value as? Int { return v }
+        if let d = block.field_config?["option_set_version"]?.value as? Double { return Int(d) }
+        return nil
+    }
 
     private var isMultiSelect: Bool {
         block.multi_select == true ||
@@ -677,8 +694,18 @@ struct FormInputSelectBlock: View {
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
+        // SPEC-448 (#556) — a Select can source its options from an Option Set instead of the
+        // authored list. The ladder is cache → embedded page → authored, resolved synchronously
+        // so the FIRST frame has something real: making this await would put the network on the
+        // render path, which is exactly the "looks like it is fetching" the spec forbids.
+        // `field_options` doubles as the embedded page — the same array an SDK predating this
+        // spec renders — so an old build degrades to a short list rather than an empty Select.
+        let sourced: [InputOption] = {
+            guard let setId = optionSetId, !setId.isEmpty else { return block.field_options ?? [] }
+            return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
+        }()
         // SPEC-441 (#541) — the active chip filters what the Select shows.
-        let options = optionsForActiveCategory(block.field_options ?? [])
+        let options = optionsForActiveCategory(sourced)
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -714,6 +741,21 @@ struct FormInputSelectBlock: View {
             if selectedValues.isEmpty, let saved = inputValues[fieldId] as? [String] {
                 selectedValues = saved
             }
+        }
+        // SPEC-448 (#556) — refresh the set AFTER the first frame has drawn. `.task` runs once the
+        // view is on screen, so the list the user sees is whatever the ladder already had; when a
+        // fresher one arrives it swaps in. Nothing here blocks a render, which is the difference
+        // between a list that is occasionally a moment stale and one that visibly loads.
+        .task(id: optionSetId) {
+            guard let setId = optionSetId, !setId.isEmpty else { return }
+            let fresh = await OptionSetStore.shared.refresh(
+                setId: setId,
+                client: AppDNA.optionSetClient,
+                expectedVersion: optionSetVersion
+            )
+            // A failed refresh returns empty, and empty must NOT clear a working list — the
+            // fallback ladder stays standing rather than being replaced by nothing.
+            if !fresh.isEmpty { dynamicOptions = fresh }
         }
     }
 

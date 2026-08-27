@@ -96,6 +96,10 @@ public final class AppDNA: @unchecked Sendable {
     /// Internal accessor for the push token manager (legacy).
     static var push: PushTokenManager? { shared.pushTokenManager }
     static var geocodeClient: APIClient? { shared.apiClient }
+    /// SPEC-448 — the Option Set store's client. Same accessor shape as `geocodeClient`;
+    /// nil before `configure()`, which the store treats as "no refresh possible" rather than
+    /// an error, so the fallback ladder still renders.
+    static var optionSetClient: APIClient? { shared.apiClient }
 
     // MARK: - Module Namespaces (v1.0)
 
