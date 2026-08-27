@@ -930,6 +930,10 @@ public struct SocialProviderConfig: Codable {
     // non-empty URL the SDK renders the remote image instead of the built-in
     // provider glyph. nil → keep the brand glyph.
     public let icon_url: String?
+    /// Per-provider label size. Requested by QA on #560 once the Style section became findable:
+    /// the colours were there and the size was not, so a provider could be styled to match a brand
+    /// everywhere except its type.
+    public let font_size: Double?
 }
 
 /// A single item for the `animated_loading` checklist OR for the

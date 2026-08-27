@@ -1369,7 +1369,10 @@ struct ContentBlockRendererView: View {
                 // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
                 // falling back to the authored label then the brand default.
                 Text(loc?("block.\(blockId).provider.\(index)", provider.label ?? socialLoginDefaultLabel(providerType)) ?? provider.label ?? socialLoginDefaultLabel(providerType))
-                    .font(.body.weight(.semibold))
+                    // #560 — per-provider label size. `.body` is ~17pt, which is the size this
+                    // rendered at before the field existed, so an unset value is byte-identical to
+                    // the previous behaviour rather than a silent restyle of every existing flow.
+                    .font(.system(size: provider.font_size.map { CGFloat($0) } ?? 17, weight: .semibold))
             }
             .padding(.horizontal, textAlign == "leading" ? 16 : 0)
             .frame(maxWidth: .infinity, alignment: textAlign == "leading" ? .leading : .center)

@@ -1397,6 +1397,13 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_label_position"] = SharedFixtureTests.orNull(block.field_style?.label_position)
             h.state["parsed_label_align"] = SharedFixtureTests.orNull(block.field_style?.label_align)
             h.state["parsed_label_font_family"] = SharedFixtureTests.orNull(block.field_style?.label_font_family)
+            // #560 follow-up — per-provider label size. Two providers, one with and one without,
+            // so an omitted size must decode as nil rather than 0.
+            let provs = block.providers ?? []
+            h.state["parsed_provider_count"] = provs.count
+            h.state["parsed_provider0_font_size"] = SharedFixtureTests.orNull(provs.first?.font_size)
+            h.state["parsed_provider0_text_color"] = SharedFixtureTests.orNull(provs.first?.text_color)
+            h.state["parsed_provider1_font_size"] = SharedFixtureTests.orNull(provs.count > 1 ? provs[1].font_size : nil)
             // SPEC-444 (#540, #542) — the option's nested sheet blocks. A renderer cannot
             // present what the model dropped, so the decode is what this pins.
             let opts = block.field_options ?? []

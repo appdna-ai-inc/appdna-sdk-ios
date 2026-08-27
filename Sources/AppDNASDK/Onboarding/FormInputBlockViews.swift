@@ -890,6 +890,12 @@ struct FormInputSelectBlock: View {
         // between a list that is occasionally a moment stale and one that visibly loads.
         .task(id: optionSetId) {
             guard let setId = optionSetId, !setId.isEmpty else { return }
+            // Load any persisted copy FIRST, so a cold launch has a real cache rung rather than
+            // falling to the embedded page and re-downloading on every app start.
+            await OptionSetStore.shared.hydrate(setId: setId)
+            let hydrated = await OptionSetStore.shared.cachedItems(for: setId)
+            if !hydrated.isEmpty { dynamicOptions = hydrated }
+
             let fresh = await OptionSetStore.shared.refresh(
                 setId: setId,
                 client: AppDNA.optionSetClient,

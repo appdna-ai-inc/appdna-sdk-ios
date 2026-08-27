@@ -40,11 +40,97 @@ actor OptionSetStore {
         let fetchedAt: Date
     }
 
+    /// 🔴 SCALE. Three limits, because this feature is explicitly for lists of thousands and an
+    /// unbounded store is how that becomes a memory report rather than a feature.
+    ///
+    /// - `maxItemsPerSet` caps what paging accumulates. A user scrolling a 20,000-item list would
+    ///   otherwise hold all 20,000 decoded options resident; the oldest pages are dropped, and
+    ///   scrolling back re-fetches them, which is far cheaper than never releasing them.
+    /// - `maxCachedSets` caps how many sets stay resident, evicting least-recently-used. An app
+    ///   with a set per screen would otherwise keep every one it ever showed.
+    /// - `maxDiskBytes` caps what is persisted, so the SDK cannot grow a user's storage without
+    ///   bound on a device that never clears it.
+    private static let maxItemsPerSet = 2_000
+    private static let maxCachedSets = 8
+    private static let maxDiskBytes = 2 * 1_024 * 1_024
+
     private var cache: [String: CacheEntry] = [:]
+    /// Access order for LRU eviction — most recent last.
+    private var lru: [String] = []
     /// Next-page cursor per set. Separate from the entry so a merge does not lose it.
     private var cursors: [String: String] = [:]
     /// In-flight fetches, so ten cells appearing at once cause one request rather than ten.
     private var inFlight: [String: Task<[InputOption], Never>] = [:]
+
+    // MARK: - Persistence
+    //
+    // 🔴 Without this the ladder's FIRST rung is empty on every cold launch, and the spec's promise
+    // that a warm run never looks like it is fetching only holds within one process. A user who
+    // opens the app fresh would see the embedded 50 items and a re-download every time — on a list
+    // of thousands that is both a worse experience and real, repeated bandwidth for the customer.
+    //
+    // Written to Caches, not Documents: this is re-derivable from the server, so the OS is welcome
+    // to reclaim it under pressure. Failures are ignored throughout — a cache that cannot be
+    // written must never break a render.
+
+    private static var cacheDirectory: URL? {
+        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        else { return nil }
+        let dir = base.appendingPathComponent("appdna-option-sets", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private struct PersistedEntry: Codable {
+        let version: Int
+        let totalCount: Int
+        let items: [InputOption]
+        let cursor: String?
+    }
+
+    private func persist(setId: String) {
+        guard let dir = Self.cacheDirectory, let entry = cache[setId] else { return }
+        let payload = PersistedEntry(
+            version: entry.version,
+            totalCount: entry.totalCount,
+            items: entry.items,
+            cursor: cursors[setId]
+        )
+        guard let data = try? JSONEncoder().encode(payload),
+              data.count <= Self.maxDiskBytes else { return }
+        try? data.write(to: dir.appendingPathComponent("\(setId).json"), options: .atomic)
+    }
+
+    /// Load a persisted set into memory. Called before the ladder is consulted, so a cold launch
+    /// still has a real first rung.
+    func hydrate(setId: String) {
+        guard cache[setId] == nil, let dir = Self.cacheDirectory else { return }
+        let url = dir.appendingPathComponent("\(setId).json")
+        guard let data = try? Data(contentsOf: url),
+              let payload = try? JSONDecoder().decode(PersistedEntry.self, from: data)
+        else { return }
+        cache[setId] = CacheEntry(
+            version: payload.version,
+            items: payload.items,
+            totalCount: payload.totalCount,
+            fetchedAt: Date()
+        )
+        if let cursor = payload.cursor { cursors[setId] = cursor }
+        touch(setId)
+    }
+
+    /// Mark a set as most-recently-used and evict past the cap.
+    private func touch(_ setId: String) {
+        lru.removeAll { $0 == setId }
+        lru.append(setId)
+        while lru.count > Self.maxCachedSets, let oldest = lru.first {
+            lru.removeFirst()
+            cache.removeValue(forKey: oldest)
+            cursors.removeValue(forKey: oldest)
+            // The DISK copy stays: eviction is about memory, and the file is what makes the next
+            // cold start fast. Disk is bounded by its own byte cap instead.
+        }
+    }
 
     /// What a Select should render RIGHT NOW, without waiting for anything.
     ///
@@ -135,6 +221,8 @@ actor OptionSetStore {
             totalCount: page.total_count,
             fetchedAt: Date()
         )
+        touch(setId)
+        persist(setId: setId)
         // Absence means 'no next page'. A `[String: String?]` here would make lookups
         // return String?? and silently never match a plain String?.
         if let next = page.next_cursor, !next.isEmpty { cursors[setId] = next }
@@ -151,12 +239,19 @@ actor OptionSetStore {
             merged.append(item)
             seen.insert(item.resolvedValue)
         }
+        // Cap what paging accumulates: keep the MOST RECENT window. Scrolling back re-fetches,
+        // which is cheaper than holding every page a long session ever touched.
+        let capped = merged.count > Self.maxItemsPerSet
+            ? Array(merged.suffix(Self.maxItemsPerSet))
+            : merged
         cache[setId] = CacheEntry(
             version: page.version,
-            items: merged,
+            items: capped,
             totalCount: page.total_count,
             fetchedAt: existing.fetchedAt
         )
+        touch(setId)
+        persist(setId: setId)
         // Absence means 'no next page'. A `[String: String?]` here would make lookups
         // return String?? and silently never match a plain String?.
         if let next = page.next_cursor, !next.isEmpty { cursors[setId] = next }
@@ -167,6 +262,7 @@ actor OptionSetStore {
     func resetForTesting() {
         cache.removeAll()
         cursors.removeAll()
+        lru.removeAll()
         inFlight.removeAll()
     }
 }
