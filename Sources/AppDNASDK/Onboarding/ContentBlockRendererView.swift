@@ -2652,11 +2652,10 @@ struct SummaryStatInput: View {
     }
 
     private func write(_ v: Double) {
-        let rawStep = statDouble("step", 1)
+        // Only the range matters here: snapping is the control's own job, so this path does not
+        // need the step at all.
         let lo = statDouble("min", 0)
         let hi = max(statDouble("max", 100), lo + 0.0001)
-        let stepV = rawStep > 0 ? rawStep : (hi - lo)
-        _ = stepV // the write path clamps to the range; snapping is the Slider's own job
         let clamped = Swift.min(Swift.max(v, lo), hi)
         // Whole numbers go back as Int so `{{step.x}}` renders "4" and not "4.0" — the raw Double
         // is what a summary card shows the user, so the formatting is the feature.
@@ -2692,14 +2691,22 @@ struct SummaryStatInput: View {
                     .accessibilityLabel("Increase \(label)")
                 }
             } else {
-                Slider(
-                    value: Binding(get: { current }, set: { write($0) }),
-                    in: lo...hi,
-                    step: stepV,
-                )
-                .accentColor(valueColor)
-                .accessibilityLabel(label)
-                .accessibilityValue(shown)
+                // Two Sliders, not one with a computed step. `step: (hi - lo)` is NOT continuous —
+                // it snaps to the two endpoints, so a stat authored with `step: 0` would let the user
+                // pick only the minimum or the maximum. Android reads the same input as continuous
+                // (Compose `steps = 0`), so the single-expression version was a silent divergence in
+                // the degenerate case round 14 introduced.
+                if rawStep > 0 {
+                    Slider(value: Binding(get: { current }, set: { write($0) }), in: lo...hi, step: stepV)
+                        .accentColor(valueColor)
+                        .accessibilityLabel(label)
+                        .accessibilityValue(shown)
+                } else {
+                    Slider(value: Binding(get: { current }, set: { write($0) }), in: lo...hi)
+                        .accentColor(valueColor)
+                        .accessibilityLabel(label)
+                        .accessibilityValue(shown)
+                }
             }
         }
         .onAppear {
