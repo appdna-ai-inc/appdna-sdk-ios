@@ -1413,6 +1413,19 @@ final class SharedFixtureTests: XCTestCase {
                 // what proves the raw token never reaches a renderer.
                 h.state["resolved_stat_count"] = rawStats.count
                 h.state["resolved_stat0_label"] = (firstStat?["label"] as? String) ?? ""
+                // #558 — a stat BOUND to an earlier answer that also hosts a control must open on the
+                // RESOLVED value, not the authored default. Read off `r`, not the raw block: the first
+                // version read the unresolved `{{responses.group_size}}`, found it non-numeric, fell
+                // back to the default and asserted 9 — the very bug it forbids, passing as correct.
+                if let bound = rawStats.compactMap({ $0 as? [String: Any] })
+                    .first(where: { $0["field_id"] as? String == "group" }) {
+                    if let s = bound["value"] as? String,
+                       let d = Double(s.trimmingCharacters(in: .whitespaces)) {
+                        h.state["prefilled_stat_seeds_control"] = d.rounded() == d ? String(Int(d)) : String(d)
+                    } else {
+                        h.state["prefilled_stat_seeds_control"] = String(describing: bound["default"] ?? "")
+                    }
+                }
             }
 
             // SPEC-441 (#541) — the option's `category` drives section navigation. It is an

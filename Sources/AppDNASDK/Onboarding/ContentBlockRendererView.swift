@@ -2644,11 +2644,33 @@ struct SummaryStatInput: View {
         return fallback
     }
 
+    /// Seed order, and the middle entry is the point of #558.
+    ///
+    /// 1. what the user has already set on this step
+    /// 2. the stat's own resolved `value` — this is the PRE-FILL. `value: "{{responses.group_size}}"`
+    ///    has already been through the resolver by the time this renders, so it is the number an
+    ///    earlier answer produced. Without this the control ignored it and opened on the authored
+    ///    default, which is the "pre-filled value I cannot adjust" the reporter described: the
+    ///    number shown before was not the number the control started from.
+    /// 3. the authored `default`, for a stat with no binding
+    /// 4. `min`
+    ///
+    /// Real data beats a static default, which is why `value` is checked first of the two.
     private var current: Double {
         if let d = inputValues[fieldId] as? Double { return d }
         if let i = inputValues[fieldId] as? Int { return Double(i) }
         if let s = inputValues[fieldId] as? String, let d = Double(s) { return d }
+        if let v = statDoubleOrNil("value") { return v }
         return statDouble("default", statDouble("min", 0))
+    }
+
+    /// `value` is display text and is often NOT numeric ("3 nights", an unresolved token). Only a
+    /// cleanly numeric one can seed a control, so this returns nil rather than a fallback.
+    private func statDoubleOrNil(_ key: String) -> Double? {
+        if let d = stat[key] as? Double { return d }
+        if let i = stat[key] as? Int { return Double(i) }
+        if let s = stat[key] as? String { return Double(s.trimmingCharacters(in: .whitespaces)) }
+        return nil
     }
 
     private func write(_ v: Double) {
@@ -2712,7 +2734,9 @@ struct SummaryStatInput: View {
         .onAppear {
             // Seed the authored default so a stat that is NOT required still reports a value, and
             // so the sibling `{{step.x}}` stat has something to show before the first drag.
-            if inputValues[fieldId] == nil, stat["default"] != nil { write(statDouble("default", lo)) }
+            if inputValues[fieldId] == nil, stat["default"] != nil || statDoubleOrNil("value") != nil {
+                write(current)
+            }
         }
     }
 }
