@@ -1385,6 +1385,14 @@ final class SharedFixtureTests: XCTestCase {
                 }
             }
 
+            // SPEC-448 (#556) — the Option Set source keys. `field_options` must STILL parse when a
+            // set is bound: that array doubles as the embedded page, and a parser treating a bound
+            // set as "ignore the inline options" would leave older builds with an empty Select.
+            h.state["parsed_option_set_id"] = SharedFixtureTests.orNull(block.field_config?["option_set_id"]?.value as? String)
+            h.state["parsed_option_set_version"] = SharedFixtureTests.orNull(block.field_config?["option_set_version"]?.value as? Int)
+            h.state["parsed_options_search"] = SharedFixtureTests.orNull(block.field_config?["options_search"]?.value as? Bool)
+            h.state["parsed_embedded_option_count"] = (block.field_options ?? []).count
+
             // SPEC-447 (#555) — the image-tile layout keys.
             h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
             h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)

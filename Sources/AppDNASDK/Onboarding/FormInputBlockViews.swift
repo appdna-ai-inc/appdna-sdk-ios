@@ -578,6 +578,17 @@ struct FormInputSelectBlock: View {
     // SPEC-448 (#556) — options fetched for this block's Option Set. Empty until a refresh lands,
     // which is why the ladder falls back to `field_options` rather than waiting on it.
     @State private var dynamicOptions: [InputOption] = []
+    // SPEC-448 — the search box. `searchResults` is nil when no search is active, which is a
+    // different state from "searched and found nothing" and must render differently.
+    @State private var searchText: String = ""
+    @State private var searchResults: [InputOption]? = nil
+    @State private var isSearching: Bool = false
+    @State private var searchTask: Task<Void, Never>? = nil
+
+    /// Whether the author asked for a search box.
+    private var showsSearch: Bool {
+        (block.field_config?["options_search"]?.value as? Bool) == true
+    }
 
     /// The set this Select is bound to, or nil for an authored list.
     private var optionSetId: String? {
@@ -692,6 +703,88 @@ struct FormInputSelectBlock: View {
         }
     }
 
+    /// SPEC-448 §C — progress is shown INSIDE the search field and nowhere else.
+    ///
+    /// A spinner over the list would say "this screen is loading", which is false: the list is
+    /// right there and still usable while a search is in flight. The rule the whole feature is
+    /// built around is that it never looks like it is fetching.
+    @ViewBuilder
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13))
+                .foregroundColor(.secondary)
+            TextField("Search", text: $searchText)
+                .font(.system(size: 15))
+                .autocorrectionDisabled()
+                .onChange(of: searchText) { newValue in
+                    runSearch(newValue)
+                }
+            if isSearching {
+                ProgressView().scaleEffect(0.7)
+            } else if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                    searchResults = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.secondary.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Debounced remote search.
+    ///
+    /// Each keystroke cancels the previous task, so a fast typist issues one request rather than
+    /// one per character — the endpoint has its own rate-limit bucket precisely because a search
+    /// box is the chattiest thing pointed at it.
+    private func runSearch(_ query: String) {
+        searchTask?.cancel()
+
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty {
+            // Clearing the box restores the full list rather than showing "no results" — an empty
+            // query is not a filter.
+            searchResults = nil
+            isSearching = false
+            return
+        }
+
+        guard let setId = optionSetId, !setId.isEmpty else {
+            // A locally-authored list is searched in memory. No network, no spinner, and it works
+            // with no Option Set at all.
+            let folded = trimmed.lowercased()
+            searchResults = (block.field_options ?? []).filter {
+                ($0.label ?? "").lowercased().contains(folded)
+                    || ($0.subtitle ?? "").lowercased().contains(folded)
+            }
+            return
+        }
+
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 250_000_000) // debounce
+            if Task.isCancelled { return }
+            await MainActor.run { isSearching = true }
+            let results = await OptionSetStore.shared.search(
+                setId: setId, query: trimmed, client: AppDNA.optionSetClient
+            )
+            if Task.isCancelled { return }
+            await MainActor.run {
+                isSearching = false
+                // nil means the search could NOT be performed. Leaving the previous list up is
+                // right: replacing it with an empty one would tell the user their query matched
+                // nothing, which is a different and wrong statement.
+                if let results { searchResults = results }
+            }
+        }
+    }
     var body: some View {
         let fieldId = block.field_id ?? block.id
         // SPEC-448 (#556) — a Select can source its options from an Option Set instead of the
@@ -701,6 +794,10 @@ struct FormInputSelectBlock: View {
         // `field_options` doubles as the embedded page — the same array an SDK predating this
         // spec renders — so an old build degrades to a short list rather than an empty Select.
         let sourced: [InputOption] = {
+            // An active search REPLACES the list, including an empty result — that is the honest
+            // answer to "nothing matched", and falling back to the full list here would silently
+            // ignore what the user typed.
+            if let results = searchResults { return results }
             guard let setId = optionSetId, !setId.isEmpty else { return block.field_options ?? [] }
             return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
         }()
