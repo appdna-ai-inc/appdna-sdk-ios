@@ -2652,9 +2652,11 @@ struct SummaryStatInput: View {
     }
 
     private func write(_ v: Double) {
-        let stepV = max(statDouble("step", 1), 0.0001)
+        let rawStep = statDouble("step", 1)
         let lo = statDouble("min", 0)
-        let hi = max(statDouble("max", 100), lo + stepV)
+        let hi = max(statDouble("max", 100), lo + 0.0001)
+        let stepV = rawStep > 0 ? rawStep : (hi - lo)
+        _ = stepV // the write path clamps to the range; snapping is the Slider's own job
         let clamped = Swift.min(Swift.max(v, lo), hi)
         // Whole numbers go back as Int so `{{step.x}}` renders "4" and not "4.0" — the raw Double
         // is what a summary card shows the user, so the formatting is the feature.
@@ -2663,9 +2665,14 @@ struct SummaryStatInput: View {
     }
 
     var body: some View {
-        let stepV = max(statDouble("step", 1), 0.0001)
+        // A step at or below zero means "continuous" — the whole range in one stride — rather than
+        // a 0.0001 floor, which on Android handed Compose 290,001 tick marks to lay out and would
+        // hang the device on one `step: 0` typed into the editor. Kept identical here so the two
+        // platforms agree about what a degenerate step means.
+        let rawStep = statDouble("step", 1)
         let lo = statDouble("min", 0)
-        let hi = max(statDouble("max", 100), lo + stepV)
+        let hi = max(statDouble("max", 100), lo + 0.0001)
+        let stepV = rawStep > 0 ? rawStep : (hi - lo)
         let shown = current.rounded() == current ? String(Int(current)) : String(current)
 
         VStack(alignment: .leading, spacing: 6) {
