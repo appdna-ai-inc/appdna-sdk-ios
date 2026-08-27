@@ -38,7 +38,7 @@ enum Endpoint {
             var path = "/api/v1/sdk/option-sets/\(id)"
             var params: [String] = []
             // Percent-encoded: a set id is a UUID, but a QUERY is whatever the user typed —
-            // `Wschód słońca` or an ampersand would otherwise corrupt the URL.
+            // `Café Ridge` or an ampersand would otherwise corrupt the URL.
             if let cursor, !cursor.isEmpty {
                 params.append("cursor=\(cursor.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? cursor)")
             }

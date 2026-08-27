@@ -338,8 +338,8 @@ final class VisualSnapshotTests: XCTestCase {
           "field_config": { "display_style": "image_tiles", "grid_columns": 2, \(layoutConfig) },
           "field_style": { "fill_color": "#FACC15" },
           "field_options": [
-            { "id": "w1", "value": "w1", "label": "Winnica Wschód", "subtitle": "Dolny Śląsk", "image_url": "https://example.com/a.png"\(optionExtras) },
-            { "id": "w2", "value": "w2", "label": "Winnica Południe", "subtitle": "Małopolska", "image_url": "https://example.com/b.png"\(optionExtras) }
+            { "id": "w1", "value": "w1", "label": "Sunrise Vineyard", "subtitle": "Lakeside", "image_url": "https://example.com/a.png"\(optionExtras) },
+            { "id": "w2", "value": "w2", "label": "Southridge Vineyard", "subtitle": "Highlands", "image_url": "https://example.com/b.png"\(optionExtras) }
           ]
         }
         """
