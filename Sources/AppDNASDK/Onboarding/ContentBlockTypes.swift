@@ -257,6 +257,10 @@ func resolveDotPath(
     // ended, at which point the card is gone. Registered here, in the preview, and in the
     // picker's namespace list; an unregistered root resolves to nil and renders raw.
     case "step": root = stepInputs
+    // SPEC-448 — the OPTION the user picked, not just its value. `{{selected.winery.subtitle}}`
+    // on a later screen. Read from its own store rather than `responses`, because `responses` is
+    // what customer webhooks receive and must stay byte-identical for anyone not using this.
+    case "selected": root = SelectedOptionStore.shared.snapshot
     default: root = nil
     }
 
@@ -264,6 +268,10 @@ func resolveDotPath(
     for part in parts.dropFirst() {
         if let dict = current as? [String: Any], let next = dict[part] {
             current = next
+        } else if let array = current as? [Any], let idx = Int(part), idx >= 0, idx < array.count {
+            // Numeric step into an array — `{{selected.tags.0.label}}`. Multi-select records an
+            // array in selection order, so without this the first choice is unreachable.
+            current = array[idx]
         } else {
             return nil
         }

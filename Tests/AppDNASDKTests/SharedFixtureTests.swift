@@ -1409,7 +1409,17 @@ final class SharedFixtureTests: XCTestCase {
             let sess = f.setup.session_data?.objectValue ?? [:]
             let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
             let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
-            if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty {
+            // SPEC-448 — seed the selected-option store so `{{selected.…}}` has something to
+            // resolve. It is a process-lifetime singleton, so it is reset first: a value left over
+            // from an earlier fixture would make this one pass for the wrong reason.
+            SelectedOptionStore.shared.resetForTesting()
+            if let selected = sess["selected"]?.objectValue {
+                for (fieldId, payload) in selected {
+                    SelectedOptionStore.shared.seedForTesting(fieldId: fieldId, value: payload.foundation)
+                }
+            }
+
+            if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty || sess["selected"] != nil {
                 let r = resolveBlockTemplates(
                     block, hookData: nil, responses: fixtureResponses, stepInputs: fixtureStepInputs)
                 h.state["resolved_text"] = r.text ?? ""

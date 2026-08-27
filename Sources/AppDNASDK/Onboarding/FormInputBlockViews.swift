@@ -740,6 +740,14 @@ struct FormInputSelectBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    /// Every option currently in play, by the same ladder the body uses. The multi-select branch
+    /// needs the full objects to record, and it only holds values.
+    private var allSourcedOptions: [InputOption] {
+        if let results = searchResults { return results }
+        guard let setId = optionSetId, !setId.isEmpty else { return block.field_options ?? [] }
+        return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
+    }
+
     /// Debounced remote search.
     ///
     /// Each keystroke cancels the previous task, so a fast typist issues one request rather than
@@ -1491,9 +1499,19 @@ struct FormInputSelectBlock: View {
                 selectedValues.append(option.resolvedValue)
             }
             inputValues[fieldId] = selectedValues
+            // SPEC-448 — record the full OPTIONS alongside the values, in selection order, so a
+            // later screen can say `{{selected.<field_id>.0.label}}`. inputValues keeps carrying
+            // the values alone, which is what reaches responses and therefore customer webhooks.
+            let chosen = allSourcedOptions.filter { selectedValues.contains($0.resolvedValue) }
+                .sorted { a, b in
+                    (selectedValues.firstIndex(of: a.resolvedValue) ?? 0)
+                        < (selectedValues.firstIndex(of: b.resolvedValue) ?? 0)
+                }
+            SelectedOptionStore.shared.record(fieldId: fieldId, options: chosen)
         } else {
             selectedValue = option.resolvedValue
             inputValues[fieldId] = option.resolvedValue
+            SelectedOptionStore.shared.record(fieldId: fieldId, option: option)
         }
         // SPEC-444 (#540, #542) — picking an option that owns a sheet opens it. The choice is
         // already recorded above; the sheet only presents, so nothing else is reported.
