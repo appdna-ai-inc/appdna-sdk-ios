@@ -41,6 +41,8 @@ actor OptionSetStore {
     }
 
     private var cache: [String: CacheEntry] = [:]
+    /// Next-page cursor per set. Separate from the entry so a merge does not lose it.
+    private var cursors: [String: String] = [:]
     /// In-flight fetches, so ten cells appearing at once cause one request rather than ten.
     private var inFlight: [String: Task<[InputOption], Never>] = [:]
 
@@ -120,6 +122,12 @@ actor OptionSetStore {
         }
     }
 
+    /// The cursor for the next page, or nil at the end.
+    func cursor(for setId: String) -> String? { cursors[setId] }
+
+    /// Everything cached for this set, after de-duplication.
+    func cachedItems(for setId: String) -> [InputOption] { cache[setId]?.items ?? [] }
+
     private func store(setId: String, page: OptionSetPage) {
         cache[setId] = CacheEntry(
             version: page.version,
@@ -127,6 +135,10 @@ actor OptionSetStore {
             totalCount: page.total_count,
             fetchedAt: Date()
         )
+        // Absence means 'no next page'. A `[String: String?]` here would make lookups
+        // return String?? and silently never match a plain String?.
+        if let next = page.next_cursor, !next.isEmpty { cursors[setId] = next }
+        else { cursors.removeValue(forKey: setId) }
     }
 
     private func appendToCache(setId: String, page: OptionSetPage) {
@@ -145,11 +157,16 @@ actor OptionSetStore {
             totalCount: page.total_count,
             fetchedAt: existing.fetchedAt
         )
+        // Absence means 'no next page'. A `[String: String?]` here would make lookups
+        // return String?? and silently never match a plain String?.
+        if let next = page.next_cursor, !next.isEmpty { cursors[setId] = next }
+        else { cursors.removeValue(forKey: setId) }
     }
 
     /// Test seam — the cache is process-lifetime, so tests must be able to start clean.
     func resetForTesting() {
         cache.removeAll()
+        cursors.removeAll()
         inFlight.removeAll()
     }
 }

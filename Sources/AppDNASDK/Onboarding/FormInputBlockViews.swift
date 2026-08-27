@@ -584,6 +584,10 @@ struct FormInputSelectBlock: View {
     @State private var searchResults: [InputOption]? = nil
     @State private var isSearching: Bool = false
     @State private var searchTask: Task<Void, Never>? = nil
+    // SPEC-448 — paging. `nextCursor` nil means "no more, or not started"; `isPaging` stops a
+    // burst of onAppear callbacks from firing several identical requests for the same page.
+    @State private var nextCursor: String? = nil
+    @State private var isPaging: Bool = false
 
     /// Whether the author asked for a search box.
     private var showsSearch: Bool {
@@ -740,6 +744,39 @@ struct FormInputSelectBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
+    /// SPEC-448 — fetch the next page when the user reaches the end of the list.
+    ///
+    /// Triggered by the LAST rendered option appearing rather than by a scroll offset: offsets
+    /// differ per display style (a grid, a stacked list and a dropdown all scroll differently) and
+    /// would need separate maths for each, while "the last row became visible" means the same
+    /// thing everywhere. Search results are never paged from here — the server already returned
+    /// the matches for that query, and appending page 2 of the UNFILTERED list under them would
+    /// silently mix the two.
+    private func pageInIfNeeded(after option: InputOption) {
+        guard searchResults == nil,
+              let setId = optionSetId, !setId.isEmpty,
+              let cursor = nextCursor, !isPaging,
+              option.resolvedValue == allSourcedOptions.last?.resolvedValue
+        else { return }
+
+        isPaging = true
+        Task {
+            let page = await OptionSetStore.shared.nextPage(
+                setId: setId, cursor: cursor, client: AppDNA.optionSetClient
+            )
+            await MainActor.run {
+                isPaging = false
+                guard let page else { return }
+                // Read the merged list back from the store rather than appending here: the store
+                // de-duplicates by value, and a reorder between two fetches can legitimately return
+                // an item already held.
+                nextCursor = page.next_cursor
+            }
+            let merged = await OptionSetStore.shared.cachedItems(for: setId)
+            await MainActor.run { if !merged.isEmpty { dynamicOptions = merged } }
+        }
+    }
+
     /// Every option currently in play, by the same ladder the body uses. The multi-select branch
     /// needs the full objects to record, and it only holds values.
     private var allSourcedOptions: [InputOption] {
@@ -861,6 +898,7 @@ struct FormInputSelectBlock: View {
             // A failed refresh returns empty, and empty must NOT clear a working list — the
             // fallback ladder stays standing rather than being replaced by nothing.
             if !fresh.isEmpty { dynamicOptions = fresh }
+            nextCursor = await OptionSetStore.shared.cursor(for: setId)
         }
     }
 
@@ -881,6 +919,7 @@ struct FormInputSelectBlock: View {
         VStack(spacing: 0) {
             ForEach(Array(options.enumerated()), id: \.offset) { idx, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
+                let _ = pageInIfNeeded(after: option)
                 // Parity with Android (ContentBlockRenderer list 8781/8795-8797) + preview:
                 // honor per-option title/subtitle font size, and per-option title_color for the
                 // unselected state (selected still uses the block-level selectedTextCol).
@@ -937,6 +976,7 @@ struct FormInputSelectBlock: View {
         ChipFlowLayout(spacing: spacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
+                let _ = pageInIfNeeded(after: option)
                 let chipBorder = isSelected ? ((option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
                 // Parity with Android + preview: honor per-option bg_color / selected_bg_color
                 // (was hardcoded fillCol / clear, dropping per-option chip backgrounds).
@@ -991,6 +1031,7 @@ struct FormInputSelectBlock: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: spacing), count: cols), spacing: spacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
+                let _ = pageInIfNeeded(after: option)
                 let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                 let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
                 ZStack(alignment: .bottomLeading) {
