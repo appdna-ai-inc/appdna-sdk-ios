@@ -1404,6 +1404,15 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_provider0_font_size"] = SharedFixtureTests.orNull(provs.first?.font_size)
             h.state["parsed_provider0_text_color"] = SharedFixtureTests.orNull(provs.first?.text_color)
             h.state["parsed_provider1_font_size"] = SharedFixtureTests.orNull(provs.count > 1 ? provs[1].font_size : nil)
+            // #581 — the Style section. `image_frame` is top-level; its settings ride in
+            // field_config because ContentBlock is at the JVM argument ceiling.
+            h.state["parsed_image_frame"] = SharedFixtureTests.orNull(block.image_frame)
+            h.state["parsed_frame_color"] = SharedFixtureTests.orNull(block.field_config?["frame_color"]?.value as? String)
+            h.state["parsed_frame_glow_color"] = SharedFixtureTests.orNull(block.field_config?["frame_glow_color"]?.value as? String)
+            h.state["parsed_frame_corner_radius"] = SharedFixtureTests.orNull(
+                (block.field_config?["frame_corner_radius"]?.value as? Int).map(Double.init)
+                    ?? (block.field_config?["frame_corner_radius"]?.value as? Double)
+            )
             // SPEC-444 (#540, #542) — the option's nested sheet blocks. A renderer cannot
             // present what the model dropped, so the decode is what this pins.
             let opts = block.field_options ?? []

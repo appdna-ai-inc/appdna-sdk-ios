@@ -526,8 +526,43 @@ struct ContentBlockRendererView: View {
         }()
 
         return Group {
-            if block.image_frame == "phone", let urlString = block.image_url, let url = URL(string: urlString) {
-                phoneMockup(url: url, height: imgHeight, alt: block.alt)
+            if block.image_frame == "phone" || block.image_frame == "phone_thin",
+               let urlString = block.image_url, let url = URL(string: urlString) {
+                phoneMockup(url: url, height: imgHeight, alt: block.alt, thin: block.image_frame == "phone_thin")
+            } else if block.image_frame == "glow" || block.image_frame == "color_frame",
+                      let urlString = block.image_url, let url = URL(string: urlString) {
+                // #581 — effects on the plain image rather than mockups. Settings come from
+                // `field_config`: ContentBlock sits at the JVM 255-argument ceiling, so a new
+                // top-level field would compile and then die at runtime with a bare ClassFormatError.
+                let isGlow = block.image_frame == "glow"
+                let glowColor = Color(hex: (block.field_config?["frame_glow_color"]?.value as? String) ?? "#6366F1")
+                let frameColor = Color(hex: (block.field_config?["frame_color"]?.value as? String) ?? "#374151")
+                // Authored numbers arrive as Int or Double depending on how the console serialised
+                // them, so both are read — a Double-only cast silently falls back to the default.
+                let frameRadius: CGFloat = {
+                    if let d = block.field_config?["frame_corner_radius"]?.value as? Double { return CGFloat(d) }
+                    if let i = block.field_config?["frame_corner_radius"]?.value as? Int { return CGFloat(i) }
+                    return 16
+                }()
+                BundledAsyncPhaseImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
+                            .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
+                            .padding(isGlow ? 0 : 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: isGlow ? cr : frameRadius)
+                                    .fill(isGlow ? Color.clear : frameColor)
+                            )
+                            // A coloured bloom BEHIND the image, not a border — "color added on the
+                            // bg to make it glowing" is a shadow, and a border would be the other
+                            // option this dropdown already offers.
+                            .shadow(color: isGlow ? glowColor : .clear, radius: 16)
+                            .accessibilityLabel(block.alt ?? "Image")
+                    default:
+                        imagePlaceholder
+                    }
+                }
             } else if let urlString = block.image_url, let url = URL(string: urlString) {
                 BundledAsyncPhaseImage(url: url) { phase in
                     switch phase {
@@ -560,8 +595,14 @@ struct ContentBlockRendererView: View {
     }
 
     /// EPIC-3 — phone mockup: device bezel + dynamic-island notch, image as the "screen".
-    private func phoneMockup(url: URL, height: CGFloat, alt: String?) -> some View {
-        ZStack(alignment: .top) {
+    /// #581 — `thin: true` is the same mockup with a narrower bezel. One function rather than two,
+    /// because everything except the padding and the two radii is identical, and a copy is how the
+    /// notch or the width cap ends up different between them.
+    private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false) -> some View {
+        let pad: CGFloat = thin ? 4 : 10
+        let outerR: CGFloat = thin ? 32 : 40
+        let innerR: CGFloat = thin ? 28 : 30
+        return ZStack(alignment: .top) {
             BundledAsyncPhaseImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
@@ -572,14 +613,14 @@ struct ContentBlockRendererView: View {
             }
             .frame(height: height)
             .frame(maxWidth: .infinity)
-            .clipShape(RoundedRectangle(cornerRadius: 30))
+            .clipShape(RoundedRectangle(cornerRadius: innerR))
             Capsule()
                 .fill(Color.black)
                 .frame(width: 96, height: 26)
                 .padding(.top, 8)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 40).fill(Color(hex: "#101012")))
+        .padding(pad)
+        .background(RoundedRectangle(cornerRadius: outerR).fill(Color(hex: "#101012")))
         .frame(maxWidth: 260)
         .accessibilityLabel(alt ?? "Image")
     }
