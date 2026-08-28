@@ -544,25 +544,32 @@ struct ContentBlockRendererView: View {
                     if let i = block.field_config?["frame_corner_radius"]?.value as? Int { return CGFloat(i) }
                     return 16
                 }()
+                // 🔴 The frame and the glow wrap the WHOLE phase view, not just `.success`.
+                //
+                // Nested inside the success case they vanished whenever the image was slow or
+                // failed: an author sets an amber frame, the image 404s, and the frame is gone too
+                // — leaving a bare placeholder that looks like the setting did nothing. Android
+                // already decorated the container rather than the loaded image, so this was also a
+                // silent divergence between the two.
                 BundledAsyncPhaseImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
                         styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                             .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
-                            .padding(isGlow ? 0 : 6)
-                            .background(
-                                RoundedRectangle(cornerRadius: isGlow ? cr : frameRadius)
-                                    .fill(isGlow ? Color.clear : frameColor)
-                            )
-                            // A coloured bloom BEHIND the image, not a border — "color added on the
-                            // bg to make it glowing" is a shadow, and a border would be the other
-                            // option this dropdown already offers.
-                            .shadow(color: isGlow ? glowColor : .clear, radius: 16)
                             .accessibilityLabel(block.alt ?? "Image")
                     default:
                         imagePlaceholder
+                            .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
                     }
                 }
+                .padding(isGlow ? 0 : 6)
+                .background(
+                    RoundedRectangle(cornerRadius: isGlow ? cr : frameRadius)
+                        .fill(isGlow ? Color.clear : frameColor)
+                )
+                // A coloured bloom BEHIND the image, not a border — "color added on the bg to make
+                // it glowing" is a shadow, and a border is the other option this dropdown offers.
+                .shadow(color: isGlow ? glowColor : .clear, radius: 16)
             } else if let urlString = block.image_url, let url = URL(string: urlString) {
                 BundledAsyncPhaseImage(url: url) { phase in
                     switch phase {

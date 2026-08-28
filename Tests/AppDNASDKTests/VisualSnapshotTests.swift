@@ -406,6 +406,65 @@ final class VisualSnapshotTests: XCTestCase {
     // one on the CI image is the fix if that is ever wanted. A skip-list here is not -- and
     // `check:fixture-runner-skips` would catch it.
 
+    // MARK: - #581 / #580 — the new Image styles and the Sound Button icon
+    //
+    // A fixture proves the keys are DECODED; only a snapshot proves they are DRAWN. Both features
+    // are entirely visual, so a decode-only test would pass against a renderer that reads every
+    // value and ignores it.
+
+    func testImage_glowStyle() throws {
+        let view = try render("""
+        {
+          "id": "img_glow", "type": "image", "image_url": "https://example.com/a.png",
+          "image_frame": "glow", "height": 160, "corner_radius": 16,
+          "field_config": { "frame_glow_color": "#F472B6" }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testImage_colorFrameStyle() throws {
+        let view = try render("""
+        {
+          "id": "img_cf", "type": "image", "image_url": "https://example.com/a.png",
+          "image_frame": "color_frame", "height": 160,
+          "field_config": { "frame_color": "#F59E0B", "frame_corner_radius": 24 }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// Thin beside thick is the point — the two differ only in bezel padding and radii, and a
+    /// golden of one alone would not show a renderer that ignored the distinction.
+    func testImage_phoneMockupThin() throws {
+        let view = try render("""
+        {
+          "id": "img_thin", "type": "image", "image_url": "https://example.com/a.png",
+          "image_frame": "phone_thin", "height": 160
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testSound_buttonPlayIcon() throws {
+        let view = try render("""
+        {
+          "id": "snd_icon", "type": "sound_button", "text": "Play sound",
+          "audio_url": "https://example.com/clip.mp3",
+          "field_config": { "sound_icon": "play", "sound_icon_size": 24, "sound_icon_color": "#FDE047", "sound_icon_gap": 12 }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     func testSelect_imageTiles_contained() throws {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",
