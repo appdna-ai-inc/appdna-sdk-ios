@@ -104,11 +104,30 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
     ///
     /// Reads the LIVE `EventTracker` sink — what the SDK genuinely enqueued — rather than asserting
     /// that some emit helper was invoked. An emit that reaches nobody must fail this.
-    private func eventsEmitted(during body: () async throws -> Void) async rethrows -> EventSpy {
+    ///
+    /// 🔴 `body()` returning does NOT mean the events have arrived. Emission hops queues, so
+    /// reading the spy the instant the purchase call returns is a race: it wins on a developer
+    /// machine and loses on a loaded CI runner, which is exactly how this test failed three times
+    /// in CI while passing four for four locally.
+    ///
+    /// So the caller names what it expects and this waits for it, then lets the pipeline go quiet.
+    /// The settle is what keeps the NEGATIVE assertions honest — a test claiming
+    /// `subscription_started` was not emitted proves nothing if it looked before the emit could
+    /// have happened.
+    private func eventsEmitted(
+        expecting expected: [String] = [],
+        during body: () async throws -> Void
+    ) async rethrows -> EventSpy {
         let spy = EventSpy()
         AppDNA.eventTrackerForTesting?.eventSink = { ev in spy.record(ev.event_name) }
         defer { AppDNA.eventTrackerForTesting?.eventSink = nil }
         try await body()
+        waitUntil("events \(expected) to reach the pipeline", timeout: 10) {
+            expected.allSatisfy { spy.count($0) > 0 }
+        }
+        // Quiescence: give anything ELSE the same chance to arrive, so an event that should not
+        // have been emitted still gets caught rather than merely being late.
+        RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         return spy
     }
 
@@ -121,7 +140,7 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
         spy.isSubscription = true
         AppDNA.billing.bridge = spy
 
-        let emitted = try await eventsEmitted {
+        let emitted = try await eventsEmitted(expecting: ["purchase_completed", "subscription_started"]) {
             _ = try await AppDNA.billing.purchase("com.example.pro.monthly")
         }
 
@@ -145,7 +164,9 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
         spy.isSubscription = false
         AppDNA.billing.bridge = spy
 
-        let emitted = try await eventsEmitted {
+        // Only the event that MUST arrive is waited for. `subscription_started` is asserted absent,
+        // so waiting for it would hang for the full timeout on every correct run.
+        let emitted = try await eventsEmitted(expecting: ["purchase_completed"]) {
             _ = try await AppDNA.billing.purchase("com.example.lifetime")
         }
 
