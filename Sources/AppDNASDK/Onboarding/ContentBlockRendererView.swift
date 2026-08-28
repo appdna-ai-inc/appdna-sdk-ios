@@ -660,11 +660,19 @@ struct ContentBlockRendererView: View {
                 onAction(block.action ?? "next", block.action_value)
             }
         } label: {
-            HStack(spacing: 8) {
+            // #580 — the icon and its spacing are authored. `sound_icon_gap` defaults to the 8 the
+            // button has always used, so a button with no icon settings lays out identically.
+            HStack(spacing: CGFloat(numFromConfig(block, "sound_icon_gap") ?? 8)) {
                 // Gap 6: icon_emoji
                 if let emoji = block.icon_emoji, !emoji.isEmpty {
                     Text(emoji)
                 }
+                // #580 — an authored icon: a built-in play triangle, or an uploaded image.
+                //
+                // Defaults to "none". The button has never drawn an icon, so anything else would
+                // change the appearance of every sound button already authored — a fix nobody asked
+                // for arriving as a surprise on customers' screens.
+                soundButtonIcon(block)
                 // Gap 6: image_url icon
                 if let imageUrl = block.image_url, let url = URL(string: imageUrl) {
                     BundledAsyncImage(url: url) { image in
@@ -699,6 +707,37 @@ struct ContentBlockRendererView: View {
     /// from `block.audio_url` on tap — reuses ALL button styling fields via
     /// `buttonBlock`. When `block.autoplay == true`, the clip plays as the block
     /// appears. Playback is routed through the shared `AudioPlayer` helper.
+    /// A number out of `field_config`, tolerating Int or Double — the console serialises either.
+    private func numFromConfig(_ block: ContentBlock, _ key: String) -> Double? {
+        if let d = block.field_config?[key]?.value as? Double { return d }
+        if let i = block.field_config?[key]?.value as? Int { return Double(i) }
+        return nil
+    }
+
+    /// #580 — the Sound Button's icon. Authored source, size, colour and spacing.
+    @ViewBuilder
+    private func soundButtonIcon(_ block: ContentBlock) -> some View {
+        let kind = (block.field_config?["sound_icon"]?.value as? String) ?? "none"
+        let size = CGFloat(numFromConfig(block, "sound_icon_size") ?? 18)
+        let tint = Color(hex: (block.field_config?["sound_icon_color"]?.value as? String) ?? "#FFFFFF")
+        if kind == "play" {
+            // The built-in fallback the issue asks for: a filled triangle, tinted.
+            Image(systemName: "play.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: size, height: size)
+                .foregroundColor(tint)
+        } else if kind == "custom",
+                  let raw = block.field_config?["sound_icon_url"]?.value as? String,
+                  !raw.isEmpty, let url = URL(string: raw) {
+            BundledAsyncImage(url: url) { image in
+                image.resizable().aspectRatio(contentMode: .fit).frame(width: size, height: size)
+            } placeholder: {
+                EmptyView()
+            }
+        }
+    }
+
     private func soundButtonBlock(_ block: ContentBlock) -> some View {
         buttonBlock(block, onTapOverride: {
             AudioPlayer.shared.play(urlString: block.audio_url)

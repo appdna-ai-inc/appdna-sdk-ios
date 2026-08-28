@@ -1409,6 +1409,15 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_image_frame"] = SharedFixtureTests.orNull(block.image_frame)
             h.state["parsed_frame_color"] = SharedFixtureTests.orNull(block.field_config?["frame_color"]?.value as? String)
             h.state["parsed_frame_glow_color"] = SharedFixtureTests.orNull(block.field_config?["frame_glow_color"]?.value as? String)
+            // #580 — the Sound Button's authored icon.
+            h.state["parsed_sound_icon"] = SharedFixtureTests.orNull(block.field_config?["sound_icon"]?.value as? String)
+            h.state["parsed_sound_icon_color"] = SharedFixtureTests.orNull(block.field_config?["sound_icon_color"]?.value as? String)
+            h.state["parsed_sound_icon_size"] = SharedFixtureTests.orNull(
+                (block.field_config?["sound_icon_size"]?.value as? Int).map(Double.init)
+                    ?? (block.field_config?["sound_icon_size"]?.value as? Double))
+            h.state["parsed_sound_icon_gap"] = SharedFixtureTests.orNull(
+                (block.field_config?["sound_icon_gap"]?.value as? Int).map(Double.init)
+                    ?? (block.field_config?["sound_icon_gap"]?.value as? Double))
             h.state["parsed_frame_corner_radius"] = SharedFixtureTests.orNull(
                 (block.field_config?["frame_corner_radius"]?.value as? Int).map(Double.init)
                     ?? (block.field_config?["frame_corner_radius"]?.value as? Double)
