@@ -465,6 +465,47 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// #578 — the divider between two SPECIFIC providers.
+    ///
+    /// Three providers with the divider in the middle slot. A decode test cannot catch the bug
+    /// this guards: a renderer that reads the slot and then places the divider at the end still
+    /// parses everything correctly. Only the picture shows where it landed.
+    func testSocial_dividerBetweenProviders() throws {
+        let view = try render("""
+        {
+          "id": "social_div", "type": "social_login",
+          "show_divider": true, "divider_text": "or", "divider_position": "after",
+          "field_config": { "divider_after_index": 1 },
+          "providers": [
+            {"type": "apple", "label": "Continue with Apple"},
+            {"type": "google", "label": "Continue with Google"},
+            {"type": "email", "label": "Continue with Email"}
+          ]
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// The end slot, beside the interior one. `bottom` must still draw EXACTLY ONE divider — the
+    /// failure mode when the end is guarded on "not top" is two of them.
+    func testSocial_dividerAtBottom() throws {
+        let view = try render("""
+        {
+          "id": "social_div_b", "type": "social_login",
+          "show_divider": true, "divider_text": "or", "divider_position": "bottom",
+          "providers": [
+            {"type": "apple", "label": "Continue with Apple"},
+            {"type": "google", "label": "Continue with Google"}
+          ]
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     func testSelect_imageTiles_contained() throws {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",
