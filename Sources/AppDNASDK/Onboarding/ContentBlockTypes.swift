@@ -14,6 +14,8 @@ public enum ContentBlockType: String, Codable {
     case rating, rich_text, progress_bar
     // SPEC-089d Phase F: Container & advanced block types
     case stack, custom_view, date_wheel_picker, circular_gauge, row
+    // SPEC-451 — map with an optional route. Every setting rides in `field_config`.
+    case map
     // SPEC-089d Nurrai
     case pricing_card
     // EPIC-3 — media gallery (horizontal row of image tiles)

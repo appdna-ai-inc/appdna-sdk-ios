@@ -138,6 +138,60 @@ public final class AppDNA: @unchecked Sendable {
         registeredCustomViews[key] = factory
     }
 
+    // MARK: - Map View Registry (SPEC-451)
+
+    /// Host-provided interactive map views, keyed by the map block's `map_view_key`
+    /// (or `"default"` when the block names none).
+    public static var registeredMapViews: [String: ([String: Any]) -> AnyView] = [:]
+
+    /// Register an interactive map for the `map` content block.
+    ///
+    /// 🔴 The factory RECEIVES THE AUTHORED CONFIG — stops, route styling, mode, zoom — which is
+    /// the whole reason this exists rather than pointing hosts at `registerCustomView`. With an
+    /// opaque view the growth team can place a map and change nothing about it without an app
+    /// release; here they keep control of the content and the developer supplies only the canvas.
+    ///
+    /// Registering nothing is a supported state, not a failure: the block falls back to a static
+    /// map image, which needs no native dependency and no key in the binary.
+    ///
+    /// - Parameters:
+    ///   - key: matches the block's `map_view_key`; use `"default"` for every map block.
+    ///   - factory: builds the view from the block's resolved config. Keys are documented in
+    ///     SPEC-451 §4 and mirror what the console writes.
+    public static func registerMapView(_ key: String = "default", factory: @escaping ([String: Any]) -> AnyView) {
+        registeredMapViews[key] = factory
+    }
+
+    /// The Mapbox access token the `map` block's static images are fetched with.
+    ///
+    /// Normally the customer sets this once in the console and it arrives on every bootstrap — no
+    /// host code at all. Setting it here overrides that, for hosts who would rather keep the token
+    /// out of a network response and in their own binary.
+    ///
+    /// 🔴 It is always the CUSTOMER's token, never ours. Mapbox's terms forbid us proxying or
+    /// caching the imagery, so the device fetches it directly and the request bills to whoever
+    /// owns the token (SPEC-451 §5). A host token set here wins over the bootstrap value forever —
+    /// an explicit choice beats a remote default.
+    public static var mapboxToken: String? {
+        get { hostMapboxToken ?? remoteMapboxToken ?? UserDefaults.standard.string(forKey: mapboxTokenDefaultsKey) }
+        set { hostMapboxToken = newValue }
+    }
+
+    private static var hostMapboxToken: String?
+    private static var remoteMapboxToken: String?
+    private static let mapboxTokenDefaultsKey = "appdna.mapbox_token"
+
+    /// Cached across launches so the very first onboarding of a cold, offline start still draws a
+    /// map rather than the fallback text. Bootstrap has not answered yet at that point.
+    internal static func applyRemoteMapboxToken(_ token: String?) {
+        remoteMapboxToken = token
+        if let token, !token.isEmpty {
+            UserDefaults.standard.set(token, forKey: mapboxTokenDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: mapboxTokenDefaultsKey)
+        }
+    }
+
     // MARK: - Config Bundle (v1.0)
 
     /// Current config bundle version reported by events.
@@ -1503,6 +1557,8 @@ public final class AppDNA: @unchecked Sendable {
             // (idle → locked or locked → idle), not on every bootstrap.
             // Repeated bootstraps in the same state are a no-op for delegate
             // notification.
+            AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
+
             let previousLock = AppDNA.runtimeLock
             let currentLock = data.runtime_lock
             AppDNA.runtimeLock = currentLock
@@ -1935,6 +1991,9 @@ struct BootstrapSettings: Codable {
     let flushInterval: Int
     let batchSize: Int
     let configTTL: Int
+    /// SPEC-451 — the customer's own Mapbox token, set once in the console. Optional so every
+    /// pre-451 backend response still decodes.
+    let mapboxToken: String?
 }
 
 struct BootstrapGeo: Codable {

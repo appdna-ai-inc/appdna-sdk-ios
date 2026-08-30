@@ -168,6 +168,7 @@ struct ContentBlockRendererView: View {
         case .progress_bar: return AnyView(progressBarBlock(block))
         case .stack: return AnyView(stackBlock(block))
         case .custom_view: return AnyView(customViewBlock(block))
+        case .map: return AnyView(mapBlock(block))
         case .date_wheel_picker: return AnyView(DateWheelPickerBlockView(block: block, inputValues: $inputValues))
         case .circular_gauge: return AnyView(CircularGaugeBlockView(block: block))
         case .row: return AnyView(rowBlock(block))
@@ -2306,6 +2307,168 @@ struct ContentBlockRendererView: View {
             guard total > 0 else { return Array(repeating: avail / CGFloat(count), count: count) }
             return weights.map { avail * ($0 / total) }
         }
+    }
+
+    // MARK: - Map (SPEC-451)
+
+    /// Google's encoded-polyline format, which is what Mapbox's `path` overlay takes.
+    ///
+    /// 🔴 Implemented here, in TypeScript for the console preview, and again in Kotlin — three
+    /// times, because Mapbox forbids us proxying or caching the image, so there is no server-side
+    /// composer to be the single source of truth. A shared fixture pins the composed URL across all
+    /// three; without it a divergence would show a customer a different map than the console did.
+    private func encodePolyline(_ points: [(Double, Double)]) -> String {
+        var lastLat = 0, lastLng = 0
+        var out = ""
+        func chunk(_ v: Int) -> String {
+            var value = v < 0 ? ~(v << 1) : (v << 1)
+            var s = ""
+            while value >= 0x20 {
+                s.append(Character(UnicodeScalar(UInt8(0x20 | (value & 0x1f)) + 63)))
+                value >>= 5
+            }
+            s.append(Character(UnicodeScalar(UInt8(value) + 63)))
+            return s
+        }
+        for (lat, lng) in points {
+            let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
+            out += chunk(iLat - lastLat) + chunk(iLng - lastLng)
+            lastLat = iLat; lastLng = iLng
+        }
+        return out
+    }
+
+    /// `#6366F1` -> `6366f1`. Mapbox overlays take a bare hex; anything else falls back rather
+    /// than emitting an overlay the API will reject.
+    private func mapboxHex(_ raw: String?, _ fallback: String) -> String {
+        let s = (raw ?? fallback).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+        let ok = s.count == 6 && s.allSatisfy { $0.isHexDigit }
+        return (ok ? s : fallback.replacingOccurrences(of: "#", with: "")).lowercased()
+    }
+
+    private func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
+        block.field_config?[key]?.value
+    }
+
+    private func mapDouble(_ block: ContentBlock, _ key: String) -> Double? {
+        if let d = mapCfg(block, key) as? Double { return d }
+        if let i = mapCfg(block, key) as? Int { return Double(i) }
+        return nil
+    }
+
+    /// The stops this map draws, from whichever source won.
+    ///
+    /// Precedence is delegate > variable > authored, and it is resolved BEFORE this point — the
+    /// renderer only ever sees the winner in `field_config.map_stops`. Anything without both
+    /// coordinates is dropped: a title alone is not a place.
+    private func mapStops(_ block: ContentBlock) -> [(lat: Double, lng: Double)] {
+        if (mapCfg(block, "map_mode") as? String) == "place" {
+            guard let lat = mapDouble(block, "place_lat"), let lng = mapDouble(block, "place_lng") else { return [] }
+            return [(lat, lng)]
+        }
+        let raw = (mapCfg(block, "map_stops") as? [Any]) ?? []
+        return raw.compactMap { item in
+            guard let m = item as? [String: Any] else { return nil }
+            let lat = (m["lat"] as? Double) ?? (m["lat"] as? Int).map(Double.init)
+            let lng = (m["lng"] as? Double) ?? (m["lng"] as? Int).map(Double.init)
+            guard let la = lat, let ln = lng, la.isFinite, ln.isFinite else { return nil }
+            return (la, ln)
+        }
+    }
+
+    private func mapStaticURL(_ block: ContentBlock, width: CGFloat, height: CGFloat) -> URL? {
+        guard let token = AppDNA.mapboxToken, !token.isEmpty else { return nil }
+        let styles = [
+            "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
+            "satellite": "mapbox/satellite-v9", "satellite_streets": "mapbox/satellite-streets-v12",
+            "light": "mapbox/light-v11", "dark": "mapbox/dark-v11",
+        ]
+        let style = styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
+        let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
+        let stops = mapStops(block)
+        var overlays: [String] = []
+
+        // Route BEFORE markers, so pins draw on top of the line rather than under it.
+        let routeOn = !isPlace && (mapCfg(block, "route_show") as? Bool) != false
+        if routeOn {
+            let encoded = (mapCfg(block, "map_route_polyline") as? String)
+                ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
+            if let e = encoded, !e.isEmpty {
+                let w = Int(mapDouble(block, "route_width") ?? 4)
+                let c = mapboxHex(mapCfg(block, "route_color") as? String, "6366f1")
+                let o = min(max(mapDouble(block, "route_opacity") ?? 1, 0), 1)
+                let esc = e.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? e
+                overlays.append("path-\(w)+\(c)-\(o)(\(esc))")
+            }
+        }
+        let marker = mapboxHex(mapCfg(block, "marker_color") as? String, "6366f1")
+        for (i, s) in stops.enumerated() {
+            // `pin-s-<label>` holds ONE character, so past 9 stops the number is dropped rather
+            // than rendering a truncated, wrong one.
+            let label = stops.count <= 9 ? "-\(i + 1)" : ""
+            overlays.append("pin-s\(label)+\(marker)(\(s.lng),\(s.lat))")
+        }
+        let overlayPart = overlays.isEmpty ? "" : overlays.joined(separator: ",") + "/"
+
+        // `auto` fits the overlays. With none there is nothing to fit and Mapbox treats it as an
+        // error, so an explicit viewport is required; a single place is always centred on itself.
+        let fit = !isPlace && (mapCfg(block, "map_fit_to_stops") as? Bool) != false && !overlays.isEmpty
+        let centreLat = isPlace ? (mapDouble(block, "place_lat") ?? 47.6205) : (mapDouble(block, "map_center_lat") ?? 47.6205)
+        let centreLng = isPlace ? (mapDouble(block, "place_lng") ?? -122.3493) : (mapDouble(block, "map_center_lng") ?? -122.3493)
+        let viewport = fit ? "auto" : "\(centreLng),\(centreLat),\(Int(mapDouble(block, "map_zoom") ?? 12)),0"
+
+        let w = Int(max(1, width)), h = Int(max(1, height))
+        let tok = token.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "._-"))) ?? token
+        return URL(string: "https://api.mapbox.com/styles/v1/\(style)/static/\(overlayPart)\(viewport)/\(w)x\(h)@2x?access_token=\(tok)")
+    }
+
+    /// The Map block, resolved through the ladder in SPEC-451 §2:
+    ///   1. a host-registered map view, handed the authored config
+    ///   2. the Mapbox static image
+    ///   3. the authored fallback text
+    /// Only rung 3 is a visible degradation, and it is labelled rather than blank.
+    @ViewBuilder
+    private func mapBlock(_ block: ContentBlock) -> some View {
+        let height = CGFloat(mapDouble(block, "map_height") ?? 220)
+        let radius = CGFloat(mapDouble(block, "map_corner_radius") ?? 12)
+        let surface = Color(hex: (mapCfg(block, "map_surface_color") as? String) ?? "#E5E7EB")
+        let viewKey = (mapCfg(block, "map_view_key") as? String) ?? "default"
+
+        Group {
+            if let factory = AppDNA.registeredMapViews[viewKey] {
+                // Tier 2 — the host's own map, given everything the author set.
+                factory(mapResolvedConfig(block))
+            } else if let url = mapStaticURL(block, width: 390, height: height) {
+                BundledAsyncPhaseImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().aspectRatio(contentMode: .fill)
+                    default:
+                        surface
+                    }
+                }
+            } else {
+                ZStack {
+                    surface
+                    Text((mapCfg(block, "map_fallback_text") as? String) ?? "Map unavailable")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .frame(height: height)
+        .frame(maxWidth: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: radius))
+        .accessibilityLabel(block.alt ?? "Map")
+    }
+
+    /// What a host map view receives. Plain Foundation types only — a host should not have to
+    /// import our DTOs to draw a map.
+    private func mapResolvedConfig(_ block: ContentBlock) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (k, v) in block.field_config ?? [:] { out[k] = v.value }
+        out["resolved_stops"] = mapStops(block).map { ["lat": $0.lat, "lng": $0.lng] }
+        return out
     }
 
     // MARK: - Custom View (SPEC-089d AC-026)
