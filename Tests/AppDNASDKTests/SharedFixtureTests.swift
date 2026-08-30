@@ -1415,6 +1415,11 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_sound_icon_size"] = SharedFixtureTests.orNull(
                 (block.field_config?["sound_icon_size"]?.value as? Int).map(Double.init)
                     ?? (block.field_config?["sound_icon_size"]?.value as? Double))
+            // #578 — the divider slot.
+            h.state["parsed_divider_position"] = SharedFixtureTests.orNull(block.divider_position)
+            h.state["parsed_divider_after_index"] = SharedFixtureTests.orNull(
+                (block.field_config?["divider_after_index"]?.value as? Int).map(Double.init)
+                    ?? (block.field_config?["divider_after_index"]?.value as? Double))
             h.state["parsed_sound_icon_gap"] = SharedFixtureTests.orNull(
                 (block.field_config?["sound_icon_gap"]?.value as? Int).map(Double.init)
                     ?? (block.field_config?["sound_icon_gap"]?.value as? Double))

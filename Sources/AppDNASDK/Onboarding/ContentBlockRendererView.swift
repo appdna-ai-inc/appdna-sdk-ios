@@ -1392,10 +1392,29 @@ struct ContentBlockRendererView: View {
             }
         }
 
+        // #578 — the divider is a SLOT in the stack, not one of two fixed ends.
+        //
+        // `top` is slot 0 and `bottom` is the last slot, kept as their own values so no flow
+        // authored before this release changes and an older SDK build still understands them.
+        // `after` names an interior slot through `field_config.divider_after_index` (0-based, the
+        // divider sits AFTER that provider) — ContentBlock is at the JVM argument ceiling, so the
+        // index cannot be a top-level field.
+        let dividerSlot: Int = {
+            if dividerPosition == "top" { return 0 }
+            guard dividerPosition == "after" else { return topGroup.count }
+            let raw: Int = {
+                if let i = block.field_config?["divider_after_index"]?.value as? Int { return i }
+                if let d = block.field_config?["divider_after_index"]?.value as? Double { return Int(d) }
+                return 0
+            }()
+            return min(max(raw + 1, 0), topGroup.count)
+        }()
+
         return VStack(spacing: btnSpacing) {
-            if dividerPosition == "top" { divider }
+            if dividerSlot == 0 { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
                 socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
+                if dividerSlot == index + 1 { divider }
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1407,7 +1426,9 @@ struct ContentBlockRendererView: View {
                 // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
                 socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
-            if dividerPosition != "top" { divider }
+            // The end slot. Guarded on the slot rather than "not top", so an interior slot does
+            // not also draw one down here — which is what a `!= top` test would do.
+            if dividerSlot >= topGroup.count { divider }
         }
     }
 
