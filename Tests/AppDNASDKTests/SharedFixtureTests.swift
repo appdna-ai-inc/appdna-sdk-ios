@@ -1488,6 +1488,33 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
+            // #585 — the min-selection gate, in BOTH directions plus the untouched state.
+            //
+            // Driven through the REAL `RequiredFieldGate`, the same type the CTA consults, so a gate
+            // that stops reading `min_selections` fails here rather than shipping a control that
+            // silently does nothing again.
+            if let rawMin = block.field_config?["min_selections"]?.value {
+                let minSel = (rawMin as? Int) ?? (rawMin as? Double).map { Int($0) } ?? 0
+                if minSel > 0 {
+                    let fieldId = block.field_id ?? block.id
+                    func gateWith(_ n: Int) -> Bool {
+                        let values: [String: Any] = n == 0 ? [:] : [fieldId: (1...n).map { "v\($0)" }]
+                        return RequiredFieldGate.evaluate(blocks: [block], inputValues: values).canAdvance
+                    }
+                    h.state["parsed_min_selections"] = minSel
+                    // Untouched: no key at all, not an empty list. A gate that only checks list size
+                    // would pass this and let an unanswered step advance.
+                    h.state["gate_blocks_when_untouched"] = !gateWith(0)
+                    h.state["gate_blocks_below_minimum"] = !gateWith(minSel - 1)
+                    h.state["gate_releases_at_minimum"] = gateWith(minSel)
+                    h.state["gate_releases_above_minimum"] = gateWith(minSel + 1)
+                    // The block deliberately does NOT set field_required — setting a minimum IS the
+                    // requirement. If the gate only fired for required blocks, the two blocking
+                    // assertions above would already be false.
+                    h.state["gate_needs_no_field_required"] = block.field_required != true
+                }
+            }
+
             // SPEC-446 §3 — the gate, exercised in BOTH directions plus the deadlock case.
             if block.type == .summary_screen {
                 let statFieldIds: [String] = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
