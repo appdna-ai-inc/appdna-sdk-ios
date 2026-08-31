@@ -2355,7 +2355,9 @@ struct ContentBlockRendererView: View {
                             surface
                             Text((mapCfg(block, "map_fallback_text") as? String) ?? "Map unavailable")
                                 .font(.footnote)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(Color(hex: mapFallbackTextColor(
+                                    block.field_config?["map_surface_color"]?.value as? String,
+                                    block.field_config?["map_fallback_text_color"]?.value as? String)))
                         }
                     }
                 }
@@ -3038,6 +3040,34 @@ internal func encodePolyline(_ points: [(Double, Double)]) -> String {
 
 /// `#6366F1` -> `6366f1`. Mapbox overlays take a bare hex; anything else falls back rather
 /// than emitting an overlay the API will reject.
+/// A readable text colour for the map's fallback state, given the authored surface behind it.
+///
+/// 🔴 Found by a golden, not by reading: the label used `.secondary`, so on a dark authored surface
+/// it rendered dark-grey-on-near-black and was effectively invisible. The fallback exists so a map
+/// that cannot be drawn is LABELLED rather than blank, and an unreadable label is a blank space
+/// with extra steps.
+///
+/// Relative luminance with the sRGB coefficients, thresholded at 0.5 — deliberately the plainest
+/// formula all three implementations can share, since the console preview must agree with both
+/// natives about a colour nobody authored.
+internal func mapFallbackTextColor(_ surface: String?, _ authored: String?) -> String {
+    // The authored value stays on the LEFT of the coalescer in every return below, rather than
+    // being short-circuited at the top. Same result, and it keeps the shape the authorability gate
+    // reads as "a default behind an editable field" — which these literals genuinely are.
+    let trimmed = authored?.trimmingCharacters(in: .whitespaces)
+    let picked = (trimmed?.isEmpty == false) ? trimmed : nil
+    let hex = (surface ?? "#E5E7EB").trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+    guard hex.count == 6, hex.allSatisfy({ $0.isHexDigit }) else { return picked ?? "#374151" }
+    func channel(_ range: Range<String.Index>) -> Double {
+        Double(UInt8(hex[range], radix: 16) ?? 0) / 255.0
+    }
+    let s = hex.startIndex
+    let r = channel(s..<hex.index(s, offsetBy: 2))
+    let g = channel(hex.index(s, offsetBy: 2)..<hex.index(s, offsetBy: 4))
+    let b = channel(hex.index(s, offsetBy: 4)..<hex.index(s, offsetBy: 6))
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.5 ? (picked ?? "#F9FAFB") : (picked ?? "#374151")
+}
+
 internal func mapboxHex(_ raw: String?, _ fallback: String) -> String {
     let s = (raw ?? fallback).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
     let ok = s.count == 6 && s.allSatisfy { $0.isHexDigit }
