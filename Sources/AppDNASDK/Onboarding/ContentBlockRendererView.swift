@@ -706,10 +706,22 @@ struct ContentBlockRendererView: View {
                 // `applyTextStyle` BAKES a colour into the Text when the style sets one, so a later
                 // `.foregroundColor` on the wrapping stack is a no-op — the override has to be
                 // applied to the Text itself, after the style.
-                Text(labelText)
-                    .font(.body.weight(.semibold))
-                    .applyTextStyle(block.style)
-                    .foregroundColor(block.text_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) })
+                // 🔴 Applied CONDITIONALLY. `.foregroundColor(nil)` does not mean "inherit" in
+                // SwiftUI — it RESETS to the default foreground, which would override the
+                // `fgColor` the enclosing stack sets for every button that never authored a
+                // `text_color`. A nil-passing version of this shipped briefly and changed three
+                // goldens on CI while rendering identically on a Mac, because the default it reset
+                // to follows the system appearance.
+                if let hex = block.text_color, !hex.isEmpty {
+                    Text(labelText)
+                        .font(.body.weight(.semibold))
+                        .applyTextStyle(block.style)
+                        .foregroundColor(Color(hex: hex))
+                } else {
+                    Text(labelText)
+                        .font(.body.weight(.semibold))
+                        .applyTextStyle(block.style)
+                }
             }
             .foregroundColor(fgColor)
             // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
@@ -992,16 +1004,17 @@ struct ContentBlockRendererView: View {
         // bg_color = card bg, text_color = headline + label, summary_align = headline align,
         // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
         let cardBg = Color(hex: block.bg_color ?? "#1F2937")
-        // 🔴 #595 — "renders completely blank". `text_color` serves TWO surfaces and defaulted to
-        // white for both. Inside a stat card that is right: `cardBg` defaults to #1F2937. The
-        // HEADLINE sits on the step background, which is light by default — so white-on-white, and
-        // a summary screen with a headline and no stats was genuinely invisible.
+        // #595 was a CONSOLE defect (the preview's step surface is light by default, so a white
+        // headline was invisible there). On DEVICE the default stays #FFFFFF deliberately.
         //
-        // An authored `text_color` still wins for both. Only the DEFAULT splits: the headline falls
-        // back to `.primary`, which adapts to the step's colour scheme the way every other
-        // top-level text block here does, and card text keeps contrasting with the card.
+        // 🔴 `.primary` was tried here and reverted: it follows the SYSTEM appearance, not the
+        // step's painted background. An onboarding step paints its own background — usually dark —
+        // so on a light-mode device `.primary` renders the headline BLACK ON DARK: the same
+        // invisibility bug, inverted. It also made three goldens render differently on CI than on
+        // a developer's Mac, purely because the two simulators were in different appearance modes,
+        // which is how it was caught.
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
-        let headlineColor: Color = block.text_color.map { Color(hex: $0) } ?? .primary
+        let headlineColor = textColor
         let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
         let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
