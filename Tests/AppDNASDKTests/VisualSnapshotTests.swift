@@ -506,6 +506,89 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Map (SPEC-451)
+
+    /// The fallback state, at an aspect-ratio height.
+    ///
+    /// This is the state most authors will see first — a customer who has not pasted a Mapbox token
+    /// yet — and it is the one a decode test cannot judge at all. What the picture pins is that the
+    /// surface is the AUTHORED colour, the corner radius is honoured, the label is centred, and
+    /// 16:9 resolves against the same 390pt reference width Android uses. Android computes that
+    /// height in its own code; only paired goldens show the two agreeing.
+    func testMap_fallbackAtAspectRatio() throws {
+        let view = try render("""
+        {
+          "id": "map_fallback", "type": "map",
+          "field_config": {
+            "map_mode": "route",
+            "map_height_mode": "aspect", "map_aspect": "16:9",
+            "map_corner_radius": 20,
+            "map_surface_color": "#1F2937",
+            "map_fallback_text": "Route unavailable offline",
+            "map_stops": [
+              {"title": "A", "lat": 52.2297, "lng": 21.0122},
+              {"title": "B", "lat": 54.352, "lng": 18.6466}
+            ]
+          }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// The place info card overlaid on the map.
+    ///
+    /// Position is purely visual: a renderer that reads `place_info_position` and then always draws
+    /// the card below parses every field correctly and looks right in no screenshot. The card's
+    /// colours and radius ride along, because "authored colour honoured" is the other thing a
+    /// parse cannot show.
+    func testMap_placeInfoCardOverlaid() throws {
+        let view = try render("""
+        {
+          "id": "map_place", "type": "map",
+          "field_config": {
+            "map_mode": "place",
+            "map_height": 200, "map_corner_radius": 14,
+            "map_surface_color": "#111827",
+            "map_fallback_text": "Map unavailable",
+            "place_lat": 51.5072, "place_lng": -0.1276,
+            "place_title": "Our Shoreditch studio",
+            "place_subtitle": "Open daily 11-6 · tastings from £15",
+            "place_info_position": "overlay_bottom",
+            "place_info_bg": "#FFFFFF", "place_info_text": "#111827", "place_info_radius": 12
+          }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// The same card BELOW the map rather than over it — the case that separates a renderer which
+    /// honours the position from one that has a single hard-coded layout.
+    func testMap_placeInfoCardBelow() throws {
+        let view = try render("""
+        {
+          "id": "map_place_below", "type": "map",
+          "field_config": {
+            "map_mode": "place",
+            "map_height": 200, "map_corner_radius": 14,
+            "map_surface_color": "#111827",
+            "map_fallback_text": "Map unavailable",
+            "place_lat": 51.5072, "place_lng": -0.1276,
+            "place_title": "Our Shoreditch studio",
+            "place_subtitle": "Open daily 11-6",
+            "place_info_position": "below",
+            "place_info_bg": "#0F172A", "place_info_text": "#F9FAFB", "place_info_radius": 8
+          }
+        }
+        """)
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     func testSelect_imageTiles_contained() throws {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",
