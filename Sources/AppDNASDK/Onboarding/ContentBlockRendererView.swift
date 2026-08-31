@@ -940,6 +940,31 @@ struct ContentBlockRendererView: View {
     }
 
     // EPIC-11 — session summary screen (Duolingo end-of-lesson): optional headline + 2-column stat-card grid.
+    /// #593 — stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
+    /// strings from the console. Coerced the same way `statDouble` coerces those, with a fallback
+    /// rather than a zero-size font on anything unparseable.
+    private func summaryStatSize(_ stat: [String: Any], _ key: String, _ fallback: CGFloat) -> CGFloat {
+        let raw = stat[key]
+        if let d = raw as? Double, d > 0 { return CGFloat(d) }
+        if let i = raw as? Int, i > 0 { return CGFloat(i) }
+        if let s = raw as? String, let d = Double(s), d > 0 { return CGFloat(d) }
+        return fallback
+    }
+
+    /// A stat's string value by key. Key-as-argument like `statDouble`, so the authorability gate
+    /// can see WHICH key is read — a bare subscript on the loop variable tells it nothing.
+    private func summaryStatString(_ stat: [String: Any], _ key: String) -> String? {
+        stat[key] as? String
+    }
+
+    private func summaryStatAlignment(_ stat: [String: Any], _ key: String) -> Alignment {
+        switch stat[key] as? String {
+        case "center": return .center
+        case "right": return .trailing
+        default: return .leading
+        }
+    }
+
     private func summaryScreenBlock(_ block: ContentBlock) -> some View {
         let statsRaw = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
         let stats: [[String: Any]] = statsRaw.compactMap { $0 as? [String: Any] }
@@ -978,24 +1003,36 @@ struct ContentBlockRendererView: View {
                         // than neither.
                         let statInput = (m["input"] as? String) ?? "none"
                         let statFieldId = (m["field_id"] as? String) ?? ""
-                        VStack(alignment: .leading, spacing: 4) {
+                        // #593 — the sub-headline's own type. `color` above styles the VALUE; the
+                        // label under it had no colour, size or alignment at all, and neither did a
+                        // slider/stepper's displayed number — the same text through a different
+                        // control. An authored label colour drops the 0.7 opacity with it: an
+                        // author who picked a colour meant that colour.
+                        let statLabelColor = (summaryStatString(m, "label_color")).flatMap { $0.isEmpty ? nil : Color(hex: $0) }
+                            ?? textColor.opacity(0.7)
+                        let statLabelSize = summaryStatSize(m, "label_font_size", 13)
+                        let statValueSize = summaryStatSize(m, "value_font_size", 24)
+                        let statAlign = summaryStatAlignment(m, "align")
+                        VStack(alignment: statAlign.horizontal, spacing: 4) {
                             if statInput != "none" && !statFieldId.isEmpty {
                                 SummaryStatInput(
                                     stat: m,
                                     fieldId: statFieldId,
                                     valueColor: color,
-                                    labelColor: textColor.opacity(0.7),
+                                    labelColor: statLabelColor,
+                                    labelSize: statLabelSize,
+                                    valueSize: statValueSize,
                                     label: label,
                                     inputValues: $inputValues,
                                     onInteract: onInteract,
                                     blockId: block.id,
                                 )
                             } else {
-                                Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
-                                Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
+                                Text(value).font(.system(size: statValueSize, weight: .bold)).foregroundColor(color)
+                                Text(label).font(.system(size: statLabelSize)).foregroundColor(statLabelColor)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: statAlign)
                         .padding(16)
                         .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1879,10 +1916,16 @@ struct ContentBlockRendererView: View {
         let showLbl = block.show_label != false
         // Progress/Loading v2 — label placement relative to the bar.
         let placement = block.label_placement ?? "above"
+        // #584 — the label's own colour and size. It rendered in `.secondary` with no control at
+        // all, so an author could style the bar and its track and not the words beside them. Every
+        // displayed piece of text should be colourable on its own.
         let labelView = AnyView(
             Text(labelText)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.system(size: cfgDouble(block.field_config?["progress_label_font_size"]).map { CGFloat($0) } ?? 12))
+                .foregroundColor(
+                    (block.field_config?["progress_label_color"]?.value as? String)
+                        .flatMap { $0.isEmpty ? nil : Color(hex: $0) } ?? .secondary
+                )
         )
         let barView = AnyView(
             Group {
@@ -2893,6 +2936,9 @@ struct SummaryStatInput: View {
     let fieldId: String
     let valueColor: Color
     let labelColor: Color
+    /// #593 — authored sizes, so a stat hosting a control matches one that shows a fixed value.
+    var labelSize: CGFloat = 13
+    var valueSize: CGFloat = 24
     let label: String
     @Binding var inputValues: [String: Any]
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
@@ -2960,8 +3006,8 @@ struct SummaryStatInput: View {
         let shown = current.rounded() == current ? String(Int(current)) : String(current)
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(shown).font(.system(size: 24, weight: .bold)).foregroundColor(valueColor)
-            Text(label).font(.system(size: 13)).foregroundColor(labelColor)
+            Text(shown).font(.system(size: valueSize, weight: .bold)).foregroundColor(valueColor)
+            Text(label).font(.system(size: labelSize)).foregroundColor(labelColor)
             if (stat["input"] as? String) == "stepper" {
                 HStack(spacing: 12) {
                     Button { write(current - stepV) } label: {
