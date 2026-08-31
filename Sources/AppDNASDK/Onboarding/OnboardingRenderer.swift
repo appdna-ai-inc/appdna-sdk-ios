@@ -109,6 +109,12 @@ struct OnboardingFlowHost: View {
                         currentStepIndex: currentIndex,
                         totalSteps: flow.steps.count,
                         savedResponses: responses[step.id] as? [String: Any],
+                        // SPEC-401-A parity — the WHOLE response map, so block-level templates,
+                        // bindings and visibility conditions can see prior steps' answers. Android
+                        // has passed this since R11; iOS passed only `savedResponses` above.
+                        accumulatedResponses: responses,
+                        // SPEC-452 — the host's `{{hook_data.…}}` payload for this step, if any.
+                        hostDataContext: configOverrides[step.id]?.dataContext,
                         performInteraction: { blockId, action, value, iv in
                             await performInteraction(blockId: blockId, action: action, value: value, inputValues: iv)
                         },
@@ -1287,6 +1293,22 @@ struct OnboardingStepRouter: View {
     var totalSteps: Int = 1
     /// Previously saved responses for this step (for input retention on back navigation).
     var savedResponses: [String: Any]? = nil
+    /// 🔴 Accumulated responses across ALL prior steps — NOT the same thing as `savedResponses`,
+    /// which is only this step's own values for input retention.
+    ///
+    /// Without this, every block-level `{{responses.x}}`, every `bindings` entry pointing at
+    /// `responses.…`, and every block `visibility_condition` testing a PRIOR step's answer resolved
+    /// against an empty map, because `ThreeZoneStepLayout.responses` took its `[:]` default. Android
+    /// has passed the real map since SPEC-401-A R11 (`accumulatedResponses = responses.toMap()`); iOS
+    /// never got the same wiring, so this was a silent one-platform divergence.
+    ///
+    /// Step TITLES were unaffected and still interpolated, which is why it went unnoticed: they go
+    /// through `loc()` → `TemplateEngine` → `SessionDataStore`, a different resolver with different
+    /// roots than the block-level one.
+    var accumulatedResponses: [String: Any] = [:]
+    /// SPEC-452 — host data for this step from `StepConfigOverride.dataContext`, addressable as
+    /// `{{hook_data.…}}` and as a `bindings` target. Nil until a host returns one.
+    var hostDataContext: [String: Any]? = nil
     /// SPEC-419 STEP-2 — bridge to the flow host's delegate round-trip for interactive elements.
     var performInteraction: (String, String, String?, [String: Any]) async -> AppliedInteraction? = { _, _, _, _ in nil }
     /// SPEC-421 — flow host delegate + analytics tracker, needed for the permission pipeline
@@ -1308,7 +1330,7 @@ struct OnboardingStepRouter: View {
     /// render time on top of the resolved block; empty = zero change.
     @State private var fieldConfigOverrides: [String: [String: Any]] = [:]
 
-    init(step: OnboardingStep, effectiveConfig: StepConfig, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, performInteraction: @escaping (String, String, String?, [String: Any]) async -> AppliedInteraction? = { _, _, _, _ in nil }, delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil) {
+    init(step: OnboardingStep, effectiveConfig: StepConfig, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], hostDataContext: [String: Any]? = nil, performInteraction: @escaping (String, String, String?, [String: Any]) async -> AppliedInteraction? = { _, _, _, _ in nil }, delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil) {
         self.step = step
         self.effectiveConfig = effectiveConfig
         self.onNext = onNext
@@ -1317,6 +1339,8 @@ struct OnboardingStepRouter: View {
         self.currentStepIndex = currentStepIndex
         self.totalSteps = totalSteps
         self.savedResponses = savedResponses
+        self.accumulatedResponses = accumulatedResponses
+        self.hostDataContext = hostDataContext
         self.performInteraction = performInteraction
         self.delegate = delegate
         self.eventTracker = eventTracker
@@ -1443,6 +1467,10 @@ struct OnboardingStepRouter: View {
             onAction: handleBlockAction,
             toggleValues: $toggleValues,
             loc: loc,
+            // Both of these defaulted to empty/nil here, which made every `{{responses.x}}` and
+            // every `{{hook_data.x}}` below this point resolve to nothing.
+            responses: accumulatedResponses,
+            hookData: hostDataContext,
             inputValues: $inputValues,
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,

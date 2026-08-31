@@ -640,6 +640,25 @@ public struct StepConfigOverride {
     /// `[blockId: [InputOption]]`. A block not named here keeps its authored options.
     public var fieldOptions: [String: [InputOption]]?
 
+    /// SPEC-452 — the host's data for THIS step, addressable from the console as `{{hook_data.…}}`.
+    ///
+    /// This is not another override: nothing here replaces a field. It is a read-only namespace the
+    /// renderer's existing resolver reads, so the AUTHOR decides what is dynamic (by typing
+    /// `{{hook_data.tour.price}}` in the console, or setting a block `binding` to `hook_data.…`) and
+    /// the host only supplies the values. That is why it is not the `layoutOverrides` mistake
+    /// documented below — an unbounded bag that can overwrite any part of a step. The reachable
+    /// surface is exactly the resolver's whitelist, and a path no author referenced does nothing.
+    ///
+    /// It exists because a screen that must show live data ON ARRIVAL — a recommendation card, a
+    /// booking summary, an audio preview — has no interaction to trigger
+    /// `ElementInteractionResult.fieldConfigPatches`, which fires only after a tap. `hook_data` was
+    /// designed for this (it is one of the six roots `resolveDotPath` accepts) and had no producer:
+    /// every `{{hook_data.x}}` in every flow resolved to nothing on both platforms.
+    ///
+    /// Values are plain JSON-ish (`String`, number, `Bool`, arrays, nested dictionaries); paths walk
+    /// dictionaries and index arrays, so `hook_data.recommendations.0.imageUrl` works.
+    public var dataContext: [String: Any]?
+
     /// SPEC-448 §B — `layoutOverrides` was REMOVED here.
     ///
     /// It was declared on all four SDKs and bridged by the wrappers, and no renderer ever read it:
@@ -654,13 +673,15 @@ public struct StepConfigOverride {
         title: String? = nil,
         subtitle: String? = nil,
         ctaText: String? = nil,
-        fieldOptions: [String: [InputOption]]? = nil
+        fieldOptions: [String: [InputOption]]? = nil,
+        dataContext: [String: Any]? = nil
     ) {
         self.fieldDefaults = fieldDefaults
         self.title = title
         self.subtitle = subtitle
         self.ctaText = ctaText
         self.fieldOptions = fieldOptions
+        self.dataContext = dataContext
     }
 }
 

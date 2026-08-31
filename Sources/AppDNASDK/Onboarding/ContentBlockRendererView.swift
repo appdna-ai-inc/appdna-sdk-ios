@@ -2666,6 +2666,42 @@ func resolveBlockTemplates(
             json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses, stepInputs: stepInputs)
         }
 
+        // SPEC-452 — RECURSE into container children.
+        //
+        // 🔴 Children never reached this resolver. `body` resolves each top-level block and then
+        // hands it to `renderBlock`, but a container's children are rendered by `renderBlock(child)`
+        // straight from `block.children`/`block.stack_children` — bypassing resolution entirely.
+        // Resolving the container did not help either: everything above rewrites the container's OWN
+        // top-level keys and never descended.
+        //
+        // So a `{{…}}` token or a `bindings` entry on a card INSIDE a row rendered unresolved, while
+        // the identical block one level up resolved fine — and that is the ordinary recommendation-
+        // card shape (image + title + subtitle nested in a `row`), i.e. exactly where per-item host
+        // data lives. Android had the same gap, so no symmetric fixture could see it.
+        //
+        // Done here, rather than at each container's child-render site, because this is the one place
+        // every container type passes through: row, stack, carousel, section_background and anything
+        // added later all get it for free, and iOS/Android stay reachable-surface-identical.
+        for key in ["children", "stack_children"] {
+            guard let rawChildren = json[key] as? [[String: Any]] else { continue }
+            let resolvedChildren: [[String: Any]] = rawChildren.map { childJSON in
+                guard let childData = try? JSONSerialization.data(withJSONObject: childJSON),
+                      let child = try? JSONDecoder().decode(ContentBlock.self, from: childData) else {
+                    // Undecodable child: hand back the authored JSON untouched rather than dropping it.
+                    return childJSON
+                }
+                let resolved = resolveBlockTemplates(
+                    child, hookData: hookData, responses: responses, stepInputs: stepInputs
+                )
+                guard let outData = try? JSONEncoder().encode(resolved),
+                      let out = try? JSONSerialization.jsonObject(with: outData) as? [String: Any] else {
+                    return childJSON
+                }
+                return out
+            }
+            json[key] = resolvedChildren
+        }
+
         // Decode back to ContentBlock
         if let updatedData = try? JSONSerialization.data(withJSONObject: json),
            let resolved = try? JSONDecoder().decode(ContentBlock.self, from: updatedData) {
@@ -2701,6 +2737,13 @@ func blockContainsTemplates(_ block: ContentBlock) -> Bool {
                     if let s = stat[key] as? String, s.contains("{{") { return true }
                 }
             }
+        }
+        // SPEC-452 — a CONTAINER whose own keys hold no tokens but whose CHILDREN do must not
+        // short-circuit, or the recursion added to the resolver never runs. This is the same trap
+        // the note above this function warns about: every key the resolver handles has to be
+        // represented here, and the resolver now handles children.
+        for child in (block.children ?? []) + (block.stack_children ?? []) {
+            if child.bindings != nil || blockContainsTemplates(child) { return true }
         }
         return false
 }

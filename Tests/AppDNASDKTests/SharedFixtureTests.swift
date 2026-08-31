@@ -1506,6 +1506,9 @@ final class SharedFixtureTests: XCTestCase {
 
             let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
             let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
+            // SPEC-452 — the host's `{{hook_data.…}}` payload. This runner hardcoded `hookData: nil`,
+            // so no fixture could exercise the `hook_data` root at all, on either platform.
+            let fixtureHookData = (sess["hook_data"]?.objectValue ?? [:]).mapValues { $0.foundation }
             // SPEC-448 — seed the selected-option store so `{{selected.…}}` has something to
             // resolve. It is a process-lifetime singleton, so it is reset first: a value left over
             // from an earlier fixture would make this one pass for the wrong reason.
@@ -1516,9 +1519,11 @@ final class SharedFixtureTests: XCTestCase {
                 }
             }
 
-            if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty || sess["selected"] != nil {
+            if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty || sess["selected"] != nil
+                || !fixtureHookData.isEmpty {
                 let r = resolveBlockTemplates(
-                    block, hookData: nil, responses: fixtureResponses, stepInputs: fixtureStepInputs)
+                    block, hookData: fixtureHookData.isEmpty ? nil : fixtureHookData,
+                    responses: fixtureResponses, stepInputs: fixtureStepInputs)
                 h.state["resolved_text"] = r.text ?? ""
                 h.state["resolved_option_label"] = (r.field_options ?? []).first?.label ?? ""
                 let rawStats = (r.field_config?["summary_stats"]?.value as? [Any]) ?? []
@@ -1528,6 +1533,15 @@ final class SharedFixtureTests: XCTestCase {
                 // what proves the raw token never reaches a renderer.
                 h.state["resolved_stat_count"] = rawStats.count
                 h.state["resolved_stat0_label"] = (firstStat?["label"] as? String) ?? ""
+                // SPEC-452 — the resolved CHILD of a container. Children bypassed resolution
+                // entirely, and a fixture that only reads the container's own keys cannot see that:
+                // it is green whether or not the recursion exists.
+                let resolvedKids = (r.children ?? []) + (r.stack_children ?? [])
+                h.state["resolved_child0_text"] = resolvedKids.first?.text ?? ""
+                h.state["resolved_child0_image_url"] = resolvedKids.first?.image_url ?? ""
+                if resolvedKids.count > 1 {
+                    h.state["resolved_child1_text"] = resolvedKids[1].text ?? ""
+                }
                 // #558 — a stat BOUND to an earlier answer that also hosts a control must open on the
                 // RESOLVED value, not the authored default. Read off `r`, not the raw block: the first
                 // version read the unresolved `{{responses.group_size}}`, found it non-numeric, fell
