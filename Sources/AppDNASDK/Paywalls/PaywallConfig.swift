@@ -215,6 +215,14 @@ struct PaywallSectionData: Codable {
     /// `style.elements.item_text.text_style.color`. Exposed in the console
     /// Content tab so users don't have to drop into the Style tab.
     let itemTextColor: String?
+    /// #591 — the feature subtitle's own type, and the shape an item image is clipped to. Section-
+    /// level for the same reason `itemTextColor` is: one setting keeps every subtitle in a paywall
+    /// looking alike, which is the concern that got subtitles removed from these items in April.
+    let itemSubtitleColor: String?
+    let itemSubtitleFontSize: CGFloat?
+    let itemImageShape: String?
+    /// The cross drawn on an EXCLUDED feature item. Authorable — a fixed red is unreadable on a red paywall.
+    let itemExcludedColor: String?
     let iconBgColor: String?       // Circle bg behind feature icons (screenshot 10)
     let iconBgOpacity: CGFloat?    // Circle opacity (default 0.15)
     let iconBgSize: CGFloat?       // Circle diameter (default 32)
@@ -387,6 +395,10 @@ struct PaywallSectionData: Codable {
         case iconSize = "icon_size"
         case iconColor = "icon_color"
         case itemTextColor = "item_text_color"
+        case itemSubtitleColor = "item_subtitle_color"
+        case itemSubtitleFontSize = "item_subtitle_font_size"
+        case itemImageShape = "item_image_shape"
+        case itemExcludedColor = "item_excluded_color"
         case iconBgColor = "icon_bg_color"
         case iconBgOpacity = "icon_bg_opacity"
         case iconBgSize = "icon_bg_size"

@@ -536,6 +536,10 @@ struct PaywallRenderer: View {
                 sectionStyle: section.style,
                 iconColorOverride: section.data?.iconColor,
                 itemTextColorOverride: section.data?.itemTextColor,
+                subtitleColorOverride: section.data?.itemSubtitleColor,
+                subtitleFontSize: section.data?.itemSubtitleFontSize,
+                itemImageShape: section.data?.itemImageShape,
+                itemExcludedColor: section.data?.itemExcludedColor,
                 iconBgColor: section.data?.iconBgColor,
                 iconBgOpacity: section.data?.iconBgOpacity ?? 0.15,
                 iconBgSize: section.data?.iconBgSize ?? 32)
