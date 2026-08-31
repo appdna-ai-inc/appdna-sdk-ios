@@ -513,6 +513,21 @@ struct PaywallPlan: Codable, Identifiable {
     let price_total_display: String?
     /// SPEC-438 (#544) — render `description` as a coloured pill instead of plain text.
     let description_badge: PaywallDescriptionBadge?
+    /// #588 — this plan's price colour. Beats the section's `elements.price` style and the
+    /// selected/unselected text colour, because the whole point is to make ONE tier's price stand
+    /// out from the others; anything that could override it would defeat it.
+    let price_color: String?
+    /// #587 — this plan's subtitle type. Section-level `elements.description` styles every plan
+    /// identically, which is the opposite of what an author wants when one tier should read
+    /// differently.
+    let subtitle_color: String?
+    let subtitle_font_size: Double?
+    let subtitle_align: String?
+    /// #589 — `card` (default) or `text_only`: name and price on one centred line, with no border,
+    /// background, badge, subtitle or selection control. Still selectable — it is a plan.
+    let display_mode: String?
+    let text_only_font_size: Double?
+    let text_only_color: String?
 
     /// Display name — try label first (Firestore), then name (legacy)
     var displayName: String { label ?? name ?? "" }
@@ -533,6 +548,8 @@ struct PaywallPlan: Codable, Identifiable {
         case original_price_display
         case price_total_display
         case description_badge
+        case price_color, subtitle_color, subtitle_font_size, subtitle_align
+        case display_mode, text_only_font_size, text_only_color
         case productId = "product_id"
         case trialDuration = "trial_duration"
         case isDefault = "is_default"
@@ -573,6 +590,27 @@ struct PaywallPlan: Codable, Identifiable {
         // Same defensive stance as every other optional here: a malformed badge object
         // must cost the author their pill, never the whole paywall.
         self.description_badge = try? c.decodeIfPresent(PaywallDescriptionBadge.self, forKey: .description_badge)
+        // #587 / #588 / #589 — per-plan presentation. `try?` throughout for the same reason as the
+        // badge above: a malformed override must cost the author that override, never the paywall.
+        self.price_color = try? c.decodeIfPresent(String.self, forKey: .price_color)
+        self.subtitle_color = try? c.decodeIfPresent(String.self, forKey: .subtitle_color)
+        self.subtitle_font_size = PaywallPlan.looseDouble(c, .subtitle_font_size)
+        self.subtitle_align = try? c.decodeIfPresent(String.self, forKey: .subtitle_align)
+        self.display_mode = try? c.decodeIfPresent(String.self, forKey: .display_mode)
+        self.text_only_font_size = PaywallPlan.looseDouble(c, .text_only_font_size)
+        self.text_only_color = try? c.decodeIfPresent(String.self, forKey: .text_only_color)
+    }
+
+    /// A JSON number, or a numeric string rendered as one — the console writes sizes through a
+    /// slider, but an imported or AI-generated paywall can carry `"13"`. Same defensive stance as
+    /// `looseString`: never throws, so one stringly-typed size cannot nil the whole paywall.
+    private static func looseDouble(
+        _ c: KeyedDecodingContainer<CodingKeys>,
+        _ key: CodingKeys
+    ) -> Double? {
+        if let d = try? c.decodeIfPresent(Double.self, forKey: key) { return d }
+        if let s = try? c.decodeIfPresent(String.self, forKey: key) { return Double(s) }
+        return nil
     }
 
     /// A JSON string, or a number rendered as one. Nil when absent (never throws — the caller has
