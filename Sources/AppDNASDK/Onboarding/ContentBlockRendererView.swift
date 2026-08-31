@@ -689,9 +689,27 @@ struct ContentBlockRendererView: View {
                         EmptyView()
                     }
                 }
+                // #594 — the button-specific `text_color` beats the generic Typography colour.
+                // 
+                // It was the other way round: `block.style.color` was applied last and silently won, so the "Text"
+                // picker sitting right beside "Background" did nothing whenever a Typography colour was also set —
+                // "only the separate Color setting works", exactly as reported.
+                // 
+                // Specificity decides, the same rule used everywhere else here (a per-plan price colour beats the
+                // section's price style). Only an EXPLICITLY set `text_color` wins; unset leaves Typography in
+                // charge, so a flow that styles its buttons through Typography alone is untouched.
+                // 
+                // ⚠️ A flow with BOTH set changes appearance — it now shows the button's own colour instead of the
+                // typography one. That is the point of the fix, and it is why the override is gated on the field
+                // being set rather than on its non-nil default.
+                //
+                // `applyTextStyle` BAKES a colour into the Text when the style sets one, so a later
+                // `.foregroundColor` on the wrapping stack is a no-op — the override has to be
+                // applied to the Text itself, after the style.
                 Text(labelText)
                     .font(.body.weight(.semibold))
                     .applyTextStyle(block.style)
+                    .foregroundColor(block.text_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) })
             }
             .foregroundColor(fgColor)
             // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
@@ -974,7 +992,16 @@ struct ContentBlockRendererView: View {
         // bg_color = card bg, text_color = headline + label, summary_align = headline align,
         // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
         let cardBg = Color(hex: block.bg_color ?? "#1F2937")
+        // 🔴 #595 — "renders completely blank". `text_color` serves TWO surfaces and defaulted to
+        // white for both. Inside a stat card that is right: `cardBg` defaults to #1F2937. The
+        // HEADLINE sits on the step background, which is light by default — so white-on-white, and
+        // a summary screen with a headline and no stats was genuinely invisible.
+        //
+        // An authored `text_color` still wins for both. Only the DEFAULT splits: the headline falls
+        // back to `.primary`, which adapts to the step's colour scheme the way every other
+        // top-level text block here does, and card text keeps contrasting with the card.
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        let headlineColor: Color = block.text_color.map { Color(hex: $0) } ?? .primary
         let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
         let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
@@ -984,7 +1011,7 @@ struct ContentBlockRendererView: View {
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
-                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(textColor)
+                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(headlineColor)
                     .multilineTextAlignment(headlineTextAlign)
                     .frame(maxWidth: .infinity, alignment: headlineAlign)
             }

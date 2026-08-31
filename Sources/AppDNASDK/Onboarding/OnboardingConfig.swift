@@ -564,6 +564,18 @@ public struct FormField: Codable, Identifiable {
     public let validation: FormFieldValidation?
     public let options: [FormFieldOption]?
     public let config: FormFieldConfig?
+    /// #596 — the SAME `config` object, kept raw.
+    ///
+    /// `FormFieldConfig` is a typed struct, so every key it does not declare is dropped at decode.
+    /// The console's Select field offers six display styles and roughly twenty option-styling keys;
+    /// none of them are declared here, so `display_style: "image_tiles"` never survived parsing and
+    /// the field always fell through to a `.menu` Picker — "a small list, only visible when
+    /// press-and-holding the label", as reported.
+    ///
+    /// Keeping the raw dict lets a form Select render through the same engine the `input_select`
+    /// CONTENT block uses, rather than growing a second implementation of six layouts that would
+    /// diverge from the first.
+    public let config_raw: [String: AnyCodable]?
     public let depends_on: FormFieldDependency?
     public let style: FormFieldStyle?
 
@@ -578,6 +590,9 @@ public struct FormField: Codable, Identifiable {
         self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
         self.placeholder = try c.decodeIfPresent(String.self, forKey: .placeholder)
         self.required = try c.decodeIfPresent(Bool.self, forKey: .required) ?? false
+        // Decoded from the same key as `config`; `try?` so a shape the typed struct rejects costs
+        // the raw copy only, never the field.
+        self.config_raw = try? c.decodeIfPresent([String: AnyCodable].self, forKey: .config)
         self.validation = try c.decodeIfPresent(FormFieldValidation.self, forKey: .validation)
         self.options = try c.decodeIfPresent([FormFieldOption].self, forKey: .options)
         self.config = try c.decodeIfPresent(FormFieldConfig.self, forKey: .config)
