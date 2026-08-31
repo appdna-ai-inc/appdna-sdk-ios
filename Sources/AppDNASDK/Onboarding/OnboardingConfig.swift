@@ -649,18 +649,90 @@ public struct StepConfigOverride {
     ///
     /// Removing a public field is normally breaking; here nothing ever read it, so no host can
     /// depend on its behaviour.
+    /// SPEC-451 — the route a `map` block draws, supplied by the HOST APP, keyed by block id.
+    ///
+    /// The third and last route source, and the only one that can answer "where is this delivery
+    /// right now": authored stops are fixed at publish time, and a template variable can only carry
+    /// what the flow already knows. The app calls its own routing service with its own client and
+    /// hands the result over. No network, no credentials and no map-provider SDK inside ours.
+    ///
+    /// Typed rather than a free-form `field_config` patch on purpose — see the `layoutOverrides`
+    /// note above. A route has a shape, so it gets a type.
+    ///
+    /// `[blockId: MapRouteOverride]`. A block not named here keeps its authored route.
+    public var mapRoutes: [String: MapRouteOverride]?
+
     public init(
         fieldDefaults: [String: Any]? = nil,
         title: String? = nil,
         subtitle: String? = nil,
         ctaText: String? = nil,
-        fieldOptions: [String: [InputOption]]? = nil
+        fieldOptions: [String: [InputOption]]? = nil,
+        mapRoutes: [String: MapRouteOverride]? = nil
     ) {
         self.fieldDefaults = fieldDefaults
         self.title = title
         self.subtitle = subtitle
         self.ctaText = ctaText
         self.fieldOptions = fieldOptions
+        self.mapRoutes = mapRoutes
+    }
+
+    /// SPEC-451 — the one public way to turn a wrapper bridge's raw `[blockId: [polyline, stops]]`
+    /// into typed route overrides.
+    ///
+    /// Public and in the core for the same reason `decodeFieldOptions` is: a second decoder written
+    /// inside a wrapper would compile happily while quietly diverging from this one.
+    ///
+    /// Returns nil for anything unusable, so a malformed bridge payload leaves the block's authored
+    /// route standing rather than blanking the map.
+    public static func decodeMapRoutes(_ raw: Any?) -> [String: MapRouteOverride]? {
+        guard let byBlock = raw as? [String: Any] else { return nil }
+        var out: [String: MapRouteOverride] = [:]
+        for (blockId, value) in byBlock {
+            guard let route = value as? [String: Any] else { continue }
+            let stops: [MapRouteStop] = ((route["stops"] as? [Any]) ?? []).compactMap { s in
+                guard let stop = s as? [String: Any] else { return nil }
+                let lat = (stop["lat"] as? Double) ?? (stop["lat"] as? Int).map(Double.init)
+                let lng = (stop["lng"] as? Double) ?? (stop["lng"] as? Int).map(Double.init)
+                guard let la = lat, let ln = lng, la.isFinite, ln.isFinite else { return nil }
+                return MapRouteStop(lat: la, lng: ln, title: stop["title"] as? String)
+            }
+            let polyline = (route["polyline"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // Neither a line nor a place is not a route — drop it rather than blanking the map.
+            if polyline == nil && stops.isEmpty { continue }
+            out[blockId] = MapRouteOverride(polyline: polyline, stops: stops)
+        }
+        return out.isEmpty ? nil : out
+    }
+}
+
+/// SPEC-451 — a route handed to a `map` block at runtime.
+///
+/// `polyline` is Google's encoded-polyline format, which is what every routing service returns and
+/// what Mapbox's `path` overlay takes. Supplying it draws the real road geometry; supplying only
+/// `stops` draws straight lines between them. Both together is the normal case: the line follows
+/// the roads and the pins mark the stops.
+public struct MapRouteOverride {
+    public let polyline: String?
+    public let stops: [MapRouteStop]
+
+    public init(polyline: String? = nil, stops: [MapRouteStop] = []) {
+        self.polyline = polyline
+        self.stops = stops
+    }
+}
+
+/// One point on a host-supplied route.
+public struct MapRouteStop {
+    public let lat: Double
+    public let lng: Double
+    public let title: String?
+
+    public init(lat: Double, lng: Double, title: String? = nil) {
+        self.lat = lat
+        self.lng = lng
+        self.title = title
     }
 }
 

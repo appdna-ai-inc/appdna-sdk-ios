@@ -2309,119 +2309,6 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Map (SPEC-451)
-
-    /// Google's encoded-polyline format, which is what Mapbox's `path` overlay takes.
-    ///
-    /// 🔴 Implemented here, in TypeScript for the console preview, and again in Kotlin — three
-    /// times, because Mapbox forbids us proxying or caching the image, so there is no server-side
-    /// composer to be the single source of truth. A shared fixture pins the composed URL across all
-    /// three; without it a divergence would show a customer a different map than the console did.
-    private func encodePolyline(_ points: [(Double, Double)]) -> String {
-        var lastLat = 0, lastLng = 0
-        var out = ""
-        func chunk(_ v: Int) -> String {
-            var value = v < 0 ? ~(v << 1) : (v << 1)
-            var s = ""
-            while value >= 0x20 {
-                s.append(Character(UnicodeScalar(UInt8(0x20 | (value & 0x1f)) + 63)))
-                value >>= 5
-            }
-            s.append(Character(UnicodeScalar(UInt8(value) + 63)))
-            return s
-        }
-        for (lat, lng) in points {
-            let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
-            out += chunk(iLat - lastLat) + chunk(iLng - lastLng)
-            lastLat = iLat; lastLng = iLng
-        }
-        return out
-    }
-
-    /// `#6366F1` -> `6366f1`. Mapbox overlays take a bare hex; anything else falls back rather
-    /// than emitting an overlay the API will reject.
-    private func mapboxHex(_ raw: String?, _ fallback: String) -> String {
-        let s = (raw ?? fallback).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
-        let ok = s.count == 6 && s.allSatisfy { $0.isHexDigit }
-        return (ok ? s : fallback.replacingOccurrences(of: "#", with: "")).lowercased()
-    }
-
-    private func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
-        block.field_config?[key]?.value
-    }
-
-    private func mapDouble(_ block: ContentBlock, _ key: String) -> Double? {
-        if let d = mapCfg(block, key) as? Double { return d }
-        if let i = mapCfg(block, key) as? Int { return Double(i) }
-        return nil
-    }
-
-    /// The stops this map draws, from whichever source won.
-    ///
-    /// Precedence is delegate > variable > authored, and it is resolved BEFORE this point — the
-    /// renderer only ever sees the winner in `field_config.map_stops`. Anything without both
-    /// coordinates is dropped: a title alone is not a place.
-    private func mapStops(_ block: ContentBlock) -> [(lat: Double, lng: Double)] {
-        if (mapCfg(block, "map_mode") as? String) == "place" {
-            guard let lat = mapDouble(block, "place_lat"), let lng = mapDouble(block, "place_lng") else { return [] }
-            return [(lat, lng)]
-        }
-        let raw = (mapCfg(block, "map_stops") as? [Any]) ?? []
-        return raw.compactMap { item in
-            guard let m = item as? [String: Any] else { return nil }
-            let lat = (m["lat"] as? Double) ?? (m["lat"] as? Int).map(Double.init)
-            let lng = (m["lng"] as? Double) ?? (m["lng"] as? Int).map(Double.init)
-            guard let la = lat, let ln = lng, la.isFinite, ln.isFinite else { return nil }
-            return (la, ln)
-        }
-    }
-
-    private func mapStaticURL(_ block: ContentBlock, width: CGFloat, height: CGFloat) -> URL? {
-        guard let token = AppDNA.mapboxToken, !token.isEmpty else { return nil }
-        let styles = [
-            "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
-            "satellite": "mapbox/satellite-v9", "satellite_streets": "mapbox/satellite-streets-v12",
-            "light": "mapbox/light-v11", "dark": "mapbox/dark-v11",
-        ]
-        let style = styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
-        let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
-        let stops = mapStops(block)
-        var overlays: [String] = []
-
-        // Route BEFORE markers, so pins draw on top of the line rather than under it.
-        let routeOn = !isPlace && (mapCfg(block, "route_show") as? Bool) != false
-        if routeOn {
-            let encoded = (mapCfg(block, "map_route_polyline") as? String)
-                ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
-            if let e = encoded, !e.isEmpty {
-                let w = Int(mapDouble(block, "route_width") ?? 4)
-                let c = mapboxHex(mapCfg(block, "route_color") as? String, "6366f1")
-                let o = min(max(mapDouble(block, "route_opacity") ?? 1, 0), 1)
-                let esc = e.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? e
-                overlays.append("path-\(w)+\(c)-\(o)(\(esc))")
-            }
-        }
-        let marker = mapboxHex(mapCfg(block, "marker_color") as? String, "6366f1")
-        for (i, s) in stops.enumerated() {
-            // `pin-s-<label>` holds ONE character, so past 9 stops the number is dropped rather
-            // than rendering a truncated, wrong one.
-            let label = stops.count <= 9 ? "-\(i + 1)" : ""
-            overlays.append("pin-s\(label)+\(marker)(\(s.lng),\(s.lat))")
-        }
-        let overlayPart = overlays.isEmpty ? "" : overlays.joined(separator: ",") + "/"
-
-        // `auto` fits the overlays. With none there is nothing to fit and Mapbox treats it as an
-        // error, so an explicit viewport is required; a single place is always centred on itself.
-        let fit = !isPlace && (mapCfg(block, "map_fit_to_stops") as? Bool) != false && !overlays.isEmpty
-        let centreLat = isPlace ? (mapDouble(block, "place_lat") ?? 47.6205) : (mapDouble(block, "map_center_lat") ?? 47.6205)
-        let centreLng = isPlace ? (mapDouble(block, "place_lng") ?? -122.3493) : (mapDouble(block, "map_center_lng") ?? -122.3493)
-        let viewport = fit ? "auto" : "\(centreLng),\(centreLat),\(Int(mapDouble(block, "map_zoom") ?? 12)),0"
-
-        let w = Int(max(1, width)), h = Int(max(1, height))
-        let tok = token.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "._-"))) ?? token
-        return URL(string: "https://api.mapbox.com/styles/v1/\(style)/static/\(overlayPart)\(viewport)/\(w)x\(h)@2x?access_token=\(tok)")
-    }
-
     /// The Map block, resolved through the ladder in SPEC-451 §2:
     ///   1. a host-registered map view, handed the authored config
     ///   2. the Mapbox static image
@@ -2429,37 +2316,137 @@ struct ContentBlockRendererView: View {
     /// Only rung 3 is a visible degradation, and it is labelled rather than blank.
     @ViewBuilder
     private func mapBlock(_ block: ContentBlock) -> some View {
-        let height = CGFloat(mapDouble(block, "map_height") ?? 220)
+        let height = mapHeight(block)
         let radius = CGFloat(mapDouble(block, "map_corner_radius") ?? 12)
-        let surface = Color(hex: (mapCfg(block, "map_surface_color") as? String) ?? "#E5E7EB")
+        // Read straight off `field_config` rather than through `mapCfg`: the authorability gate
+        // classifies `<read> ?? "#hex"` as a default behind an editable field, and a helper call on
+        // the left of the `??` hides the read from it. Same value, honest shape.
+        let surface = Color(hex: (block.field_config?["map_surface_color"]?.value as? String) ?? "#E5E7EB")
         let viewKey = (mapCfg(block, "map_view_key") as? String) ?? "default"
+        // An author who turned interactivity OFF wants a picture, not a map the user can drag away
+        // from the place the step is about. So this is a gate on the host tier, not a flag passed
+        // into it: a registered map view is skipped entirely rather than asked to behave.
+        let interactive = (mapCfg(block, "map_interactive") as? Bool) != false
+        let infoPosition = (mapCfg(block, "place_info_position") as? String) ?? "overlay_bottom"
+        let card = mapInfoCard(block)
 
-        Group {
-            if let factory = AppDNA.registeredMapViews[viewKey] {
-                // Tier 2 — the host's own map, given everything the author set.
-                factory(mapResolvedConfig(block))
-            } else if let url = mapStaticURL(block, width: 390, height: height) {
-                BundledAsyncPhaseImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    default:
-                        surface
+        VStack(spacing: 8) {
+            if infoPosition == "overlay_top", card != nil {
+                // Overlaid by a negative offset rather than a ZStack: the card keeps its natural
+                // height, which a fixed inset guess would get wrong the moment a subtitle wraps.
+                EmptyView()
+            }
+            ZStack(alignment: infoPosition == "overlay_top" ? .top : .bottom) {
+                Group {
+                    if interactive, let factory = AppDNA.registeredMapViews[viewKey] {
+                        // Tier 2 — the host's own map, given everything the author set.
+                        factory(mapResolvedConfig(block))
+                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height) {
+                        BundledAsyncPhaseImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                surface
+                            }
+                        }
+                    } else {
+                        ZStack {
+                            surface
+                            Text((mapCfg(block, "map_fallback_text") as? String) ?? "Map unavailable")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            } else {
-                ZStack {
-                    surface
-                    Text((mapCfg(block, "map_fallback_text") as? String) ?? "Map unavailable")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: radius))
+
+                if infoPosition != "below", let card {
+                    card.padding(8)
                 }
             }
+            if infoPosition == "below", let card {
+                card
+            }
         }
-        .frame(height: height)
-        .frame(maxWidth: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: radius))
-        .accessibilityLabel(block.alt ?? "Map")
+        // Full-bleed cancels the step's horizontal padding so the map meets both screen edges. The
+        // negative margin is applied to the WHOLE stack, card included, so an overlaid card stays
+        // inset relative to the map rather than sliding off it.
+        .padding(.horizontal, (mapCfg(block, "map_full_bleed") as? Bool) == true ? -20 : 0)
+        // `map_alt`, not the top-level `alt`: every Map setting rides in `field_config` (ContentBlock
+        // is at the JVM 255-argument ceiling), so `alt` has no control in the Map panel and reading
+        // it would be a field the SDK honours and no author can set.
+        .accessibilityLabel(mapCfg(block, "map_alt") as? String ?? "Map")
+    }
+
+    /// The map's drawn height, from whichever sizing mode the author chose.
+    ///
+    /// `aspect` is resolved against a 390pt reference width rather than the live container width.
+    /// The container's width is not known at this point without a `GeometryReader`, and wrapping
+    /// the block in one changes how it lays out inside a stack; 390 is the width the console
+    /// preview composes at, so the two agree.
+    private func mapHeight(_ block: ContentBlock) -> CGFloat {
+        switch (mapCfg(block, "map_height_mode") as? String) ?? "fixed" {
+        case "aspect":
+            let ratio = (mapCfg(block, "map_aspect") as? String) ?? "16:9"
+            let parts = ratio.split(separator: ":").compactMap { Double($0) }
+            guard parts.count == 2, parts[0] > 0 else { return 220 }
+            return CGFloat(390.0 * parts[1] / parts[0])
+        case "fill":
+            // "Fill the step" is a tall block, not an unbounded one: a greedy `maxHeight: .infinity`
+            // inside the step's scrolling stack collapses every sibling to nothing.
+            return 520
+        default:
+            return CGFloat(mapDouble(block, "map_height") ?? 220)
+        }
+    }
+
+    /// The place info card — a name, a line of description and optionally a photo.
+    ///
+    /// Only in `place` mode, and only when there is something to say: an empty card floating over a
+    /// map is worse than no card. Returns nil rather than an empty view so the caller can decide
+    /// the layout without reserving space for nothing.
+    @ViewBuilder
+    private func mapInfoCard(_ block: ContentBlock) -> (some View)? {
+        let title = (mapCfg(block, "place_title") as? String) ?? ""
+        let subtitle = (mapCfg(block, "place_subtitle") as? String) ?? ""
+        let show = (mapCfg(block, "map_mode") as? String) == "place"
+            && (mapCfg(block, "place_show_info") as? Bool) != false
+            && !(title.isEmpty && subtitle.isEmpty)
+        if show {
+            HStack(spacing: 8) {
+                if let img = (mapCfg(block, "place_image_url") as? String), !img.isEmpty,
+                   let url = URL(string: img) {
+                    BundledAsyncPhaseImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        default:
+                            Color.clear
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    if !title.isEmpty {
+                        Text(title).font(.footnote.weight(.semibold))
+                    }
+                    if !subtitle.isEmpty {
+                        Text(subtitle).font(.caption).opacity(0.8)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(hex: (block.field_config?["place_info_bg"]?.value as? String) ?? "#FFFFFF"))
+            .foregroundColor(Color(hex: (block.field_config?["place_info_text"]?.value as? String) ?? "#111827"))
+            .clipShape(RoundedRectangle(cornerRadius: CGFloat(mapDouble(block, "place_info_radius") ?? 12)))
+            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+        }
     }
 
     /// What a host map view receives. Plain Foundation types only — a host should not have to
@@ -3013,4 +3000,203 @@ struct SummaryStatInput: View {
             }
         }
     }
+}
+
+// MARK: - Map URL composition (SPEC-451)
+//
+// File scope rather than methods on the renderer view, and `internal` rather than `private`, so the
+// shared-fixture runner drives the SAME code the renderer does. A test-only copy of a URL recipe
+// that exists three times already would pass forever while the renderer drifted underneath it —
+// which is the exact failure the fixture exists to catch.
+
+/// Google's encoded-polyline format, which is what Mapbox's `path` overlay takes.
+///
+/// 🔴 Implemented here, in TypeScript for the console preview, and again in Kotlin — three
+/// times, because Mapbox forbids us proxying or caching the image, so there is no server-side
+/// composer to be the single source of truth. A shared fixture pins the composed URL across all
+/// three; without it a divergence would show a customer a different map than the console did.
+internal func encodePolyline(_ points: [(Double, Double)]) -> String {
+    var lastLat = 0, lastLng = 0
+    var out = ""
+    func chunk(_ v: Int) -> String {
+        var value = v < 0 ? ~(v << 1) : (v << 1)
+        var s = ""
+        while value >= 0x20 {
+            s.append(Character(UnicodeScalar(UInt8(0x20 | (value & 0x1f)) + 63)))
+            value >>= 5
+        }
+        s.append(Character(UnicodeScalar(UInt8(value) + 63)))
+        return s
+    }
+    for (lat, lng) in points {
+        let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
+        out += chunk(iLat - lastLat) + chunk(iLng - lastLng)
+        lastLat = iLat; lastLng = iLng
+    }
+    return out
+}
+
+/// `#6366F1` -> `6366f1`. Mapbox overlays take a bare hex; anything else falls back rather
+/// than emitting an overlay the API will reject.
+internal func mapboxHex(_ raw: String?, _ fallback: String) -> String {
+    let s = (raw ?? fallback).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+    let ok = s.count == 6 && s.allSatisfy { $0.isHexDigit }
+    return (ok ? s : fallback.replacingOccurrences(of: "#", with: "")).lowercased()
+}
+
+internal func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
+    block.field_config?[key]?.value
+}
+
+internal func mapDouble(_ block: ContentBlock, _ key: String) -> Double? {
+    if let d = mapCfg(block, key) as? Double { return d }
+    if let i = mapCfg(block, key) as? Int { return Double(i) }
+    return nil
+}
+
+/// The stops this map draws, from whichever source won.
+///
+/// Precedence is delegate > variable > authored, and it is resolved BEFORE this point — the
+/// renderer only ever sees the winner in `field_config.map_stops`. Anything without both
+/// coordinates is dropped: a title alone is not a place.
+internal func mapStops(_ block: ContentBlock) -> [(lat: Double, lng: Double)] {
+    if (mapCfg(block, "map_mode") as? String) == "place" {
+        guard let lat = mapDouble(block, "place_lat"), let lng = mapDouble(block, "place_lng") else { return [] }
+        return [(lat, lng)]
+    }
+    let raw = (mapCfg(block, "map_stops") as? [Any]) ?? []
+    return raw.compactMap { item in
+        // `stop`, not `m`: a one-letter name here matches the authorability scanner's DTO read
+        // shape and reports `lat`/`lng` as unauthorable BLOCK fields. They are a stop's members.
+        guard let stop = item as? [String: Any] else { return nil }
+        let lat = (stop["lat"] as? Double) ?? (stop["lat"] as? Int).map(Double.init)
+        let lng = (stop["lng"] as? Double) ?? (stop["lng"] as? Int).map(Double.init)
+        guard let la = lat, let ln = lng, la.isFinite, ln.isFinite else { return nil }
+        return (la, ln)
+    }
+}
+
+/// Percent-encode everything that is not an ASCII letter or digit.
+///
+/// 🔴 Deliberately stricter than any built-in, and NOT interchangeable with one. The three
+/// implementations have three different escapers — JavaScript's `encodeURIComponent` leaves
+/// `!\'()*-._~` alone, Java's `URLEncoder` turns a space into `+` and escapes `~`, Swift's
+/// `.urlQueryAllowed` leaves more still. An encoded polyline contains `~`, backtick, `@`, `?`
+/// and backslashes, so those differences produce three different URLs for one route. Escaping
+/// everything non-alphanumeric is the one rule all three can implement identically.
+internal func percentEncodeStrict(_ input: String) -> String {
+    var out = ""
+    for byte in Array(input.utf8) {
+        let c = Character(UnicodeScalar(byte))
+        if c.isASCII && (c.isLetter || c.isNumber) {
+            out.append(c)
+        } else {
+            out += String(format: "%%%02X", byte)
+        }
+    }
+    return out
+}
+
+/// `12.0` -> `"12"`, `0.85` -> `"0.85"`. Swift and Kotlin print a trailing `.0` where
+/// JavaScript does not, which alone would break the shared fixture on a whole-number latitude.
+internal func formatCoord(_ v: Double) -> String {
+    v == v.rounded() && v.isFinite ? String(Int(v)) : String(v)
+}
+
+/// The encoded polyline this map draws, from whichever of the three route sources won.
+///
+/// Precedence — and it is a real ordering, not a tidy-looking chain:
+///
+///  1. `map_route_polyline` set by the DELEGATE. The merge writes it and clears
+///     `map_route_variable`, so a host that answers `onBeforeStepRender` always wins.
+///  2. `map_route_variable` — a `{{token}}` resolved against the flow's own state. Beats an
+///     authored polyline because an author who wired a variable meant the variable; the static
+///     one is the value they left behind for when it does not resolve.
+///  3. `map_route_polyline` as authored — a fixed route pasted into the panel.
+///  4. the stops, joined in order, which is a straight line between them and not a road route.
+internal func mapRoutePolyline(_ block: ContentBlock) -> String? {
+    if let variable = (mapCfg(block, "map_route_variable") as? String), !variable.isEmpty {
+        let resolved = variable.interpolated().trimmingCharacters(in: .whitespacesAndNewlines)
+        // An unresolved `{{token}}` comes back verbatim. Drawing it as a polyline would produce
+        // a line through the Atlantic, so an unresolved variable falls through to the authored
+        // route rather than replacing it with nonsense.
+        if !resolved.isEmpty && !resolved.contains("{{") { return resolved }
+    }
+    return (mapCfg(block, "map_route_polyline") as? String).flatMap { $0.isEmpty ? nil : $0 }
+}
+
+internal func mapStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat) -> URL? {
+    guard let token, !token.isEmpty else { return nil }
+    let styles = [
+        "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
+        "satellite": "mapbox/satellite-v9", "satellite_streets": "mapbox/satellite-streets-v12",
+        "light": "mapbox/light-v11", "dark": "mapbox/dark-v11",
+    ]
+    let style = styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
+    let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
+    let stops = mapStops(block)
+    var overlays: [String] = []
+
+    // Route BEFORE markers, so pins draw on top of the line rather than under it.
+    let routeOn = !isPlace && (mapCfg(block, "route_show") as? Bool) != false
+    if routeOn {
+        let encoded = mapRoutePolyline(block)
+            ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
+        if let e = encoded, !e.isEmpty {
+            let w = Int(mapDouble(block, "route_width") ?? 4)
+            let c = mapboxHex(mapCfg(block, "route_color") as? String, "6366f1")
+            let o = min(max(mapDouble(block, "route_opacity") ?? 1, 0), 1)
+            let escaped = percentEncodeStrict(e)
+            // The casing is a SECOND, WIDER path emitted BEFORE the route, so the route draws
+            // on top of it and what shows is an outline. Mapbox's static API has no
+            // stroke-outline primitive; two stacked paths is how every static-map product does
+            // this. Opaque on purpose — a translucent outline over satellite imagery is none.
+            let casingW = Int(mapDouble(block, "route_casing_width") ?? 2)
+            if casingW > 0 {
+                let casing = mapboxHex(mapCfg(block, "route_casing_color") as? String, "ffffff")
+                overlays.append("path-\(w + casingW * 2)+\(casing)-1(\(escaped))")
+            }
+            overlays.append("path-\(w)+\(c)-\(formatCoord(o))(\(escaped))")
+        }
+    }
+    let marker = mapboxHex(mapCfg(block, "marker_color") as? String, "6366f1")
+    let startMarker = mapboxHex(mapCfg(block, "marker_start_color") as? String,
+                                (mapCfg(block, "marker_color") as? String) ?? "6366f1")
+    let markerStyle = (mapCfg(block, "marker_style") as? String) ?? "numbered"
+    // Mapbox static offers exactly two marker sizes, `pin-s` and `pin-l`. The console's slider
+    // is a pixel value because that is what an author thinks in; it lands in whichever of the
+    // two is closer. Pretending to honour 41px exactly would be a nicer control and a false one.
+    let pinSize = (mapDouble(block, "marker_size") ?? 28) >= 32 ? "pin-l" : "pin-s"
+    let customMarker: String? = markerStyle == "custom"
+        ? (mapCfg(block, "marker_image_url") as? String).flatMap { $0.isEmpty ? nil : $0 }
+        : nil
+    for (i, s) in stops.enumerated() {
+        let at = "(\(formatCoord(s.lng)),\(formatCoord(s.lat)))"
+        if let custom = customMarker {
+            // `url-` takes a percent-encoded PNG/JPG URL. Mapbox fetches it itself, so it must
+            // be publicly reachable — the console's uploader requires a remote URL for exactly
+            // this reason.
+            overlays.append("url-\(percentEncodeStrict(custom))\(at)")
+            continue
+        }
+        // `pin-s-<label>` holds ONE character, so past 9 stops the number is dropped rather
+        // than rendering a truncated, wrong one. `pin` style never labels.
+        let label = (markerStyle == "numbered" && stops.count <= 9) ? "-\(i + 1)" : ""
+        overlays.append("\(pinSize)\(label)+\(i == 0 ? startMarker : marker)\(at)")
+    }
+    let overlayPart = overlays.isEmpty ? "" : overlays.joined(separator: ",") + "/"
+
+    // `auto` fits the overlays. With none there is nothing to fit and Mapbox treats it as an
+    // error, so an explicit viewport is required; a single place is always centred on itself.
+    let fit = !isPlace && (mapCfg(block, "map_fit_to_stops") as? Bool) != false && !overlays.isEmpty
+    let centreLat = isPlace ? (mapDouble(block, "place_lat") ?? 47.6205) : (mapDouble(block, "map_center_lat") ?? 47.6205)
+    let centreLng = isPlace ? (mapDouble(block, "place_lng") ?? -122.3493) : (mapDouble(block, "map_center_lng") ?? -122.3493)
+    let viewport = fit
+        ? "auto"
+        : "\(formatCoord(centreLng)),\(formatCoord(centreLat)),\(Int(mapDouble(block, "map_zoom") ?? 12)),0"
+
+    let w = Int(max(1, width.rounded())), h = Int(max(1, height.rounded()))
+    // The token is `[A-Za-z0-9._-]` by construction, so it goes through unescaped — the same
+    // choice the other two implementations make, and it keeps the URL readable in a log.
+    return URL(string: "https://api.mapbox.com/styles/v1/\(style)/static/\(overlayPart)\(viewport)/\(w)x\(h)@2x?access_token=\(token)")
 }

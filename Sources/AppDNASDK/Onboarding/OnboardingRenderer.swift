@@ -2365,12 +2365,38 @@ enum StepConfigOverrideMerger {
         // sibling block untouched. A merge that rebuilt the array from only the named blocks would
         // silently delete the rest of the step — invisible until an author noticed a missing block,
         // which is exactly why the fixture asserts the untouched siblings survive.
-        if let fieldOptions = override.fieldOptions, !fieldOptions.isEmpty,
-           let blocks = merged.content_blocks {
+        //
+        // SPEC-451 adds a second block-level override in the same pass. They compose: a step may
+        // legitimately have host-supplied options on one block and a host-supplied route on
+        // another, so this applies both rather than choosing between them.
+        let hasBlockOverrides = !(override.fieldOptions?.isEmpty ?? true) || !(override.mapRoutes?.isEmpty ?? true)
+        if hasBlockOverrides, let blocks = merged.content_blocks {
             merged.content_blocks = blocks.map { block in
-                guard let replacement = fieldOptions[block.id] else { return block }
                 var copy = block
-                copy.field_options = replacement
+                if let replacement = override.fieldOptions?[block.id] {
+                    copy.field_options = replacement
+                }
+                // SPEC-451 — the host's route is written into `field_config` under the SAME keys
+                // the console authors, so the renderer has exactly one code path and a delegate
+                // route cannot render differently from an authored one.
+                if let route = override.mapRoutes?[block.id] {
+                    var cfg = copy.field_config ?? [:]
+                    if let polyline = route.polyline {
+                        cfg["map_route_polyline"] = AnyCodable(polyline)
+                        // A host that answered with a route outranks a `{{token}}` the author wired
+                        // as the fallback. Clearing it here is what makes that ordering true —
+                        // leaving it would let a stale variable win over a live answer.
+                        cfg["map_route_variable"] = AnyCodable("")
+                    }
+                    if !route.stops.isEmpty {
+                        cfg["map_stops"] = AnyCodable(route.stops.map { s -> [String: Any] in
+                            var m: [String: Any] = ["lat": s.lat, "lng": s.lng]
+                            if let t = s.title { m["title"] = t }
+                            return m
+                        })
+                    }
+                    copy.field_config = cfg
+                }
                 return copy
             }
         }

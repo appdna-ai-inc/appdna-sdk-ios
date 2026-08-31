@@ -456,6 +456,7 @@ final class SharedFixtureTests: XCTestCase {
         case "pick_measurement":               await runPickMeasurement(fixture, harness)
         case "fetch_remote_config":            runFetchRemoteConfig(fixture, harness)
         case "merge_step_override":            runMergeStepOverride(fixture, harness)
+        case "compose_map_url":                runComposeMapUrl(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
@@ -1317,13 +1318,19 @@ final class SharedFixtureTests: XCTestCase {
     /// assertion about the named block would still pass.
     private func runMergeStepOverride(_ fixture: Fixture, _ h: Harness) {
         let sess = fixture.setup.session_data?.objectValue ?? [:]
-        guard let hostOptions = sess["host_field_options"]?.objectValue else {
-            XCTFail("[\(fixture.id)] merge_step_override needs setup.session_data.host_field_options")
+        let hostOptions = sess["host_field_options"]?.objectValue
+        let hostRoutes = sess["host_map_routes"]?.foundation
+        if hostOptions == nil && hostRoutes == nil {
+            XCTFail("[\(fixture.id)] merge_step_override needs setup.session_data.host_field_options or host_map_routes")
             return
         }
 
+        // SPEC-451 — through the SAME public decoder the wrapper bridges call, so a divergence
+        // between what Flutter/RN send and what the core accepts fails here rather than on a device.
+        let mapRoutes = StepConfigOverride.decodeMapRoutes(hostRoutes)
+
         var byBlock: [String: [InputOption]] = [:]
-        for (blockId, arr) in hostOptions {
+        for (blockId, arr) in (hostOptions ?? [:]) {
             guard let raw = arr.foundation as? [[String: Any]],
                   let data = try? JSONSerialization.data(withJSONObject: raw),
                   let opts = try? JSONDecoder().decode([InputOption].self, from: data)
@@ -1342,7 +1349,8 @@ final class SharedFixtureTests: XCTestCase {
         }
 
         let merged = StepConfigOverrideMerger.apply(
-            StepConfigOverride(fieldOptions: byBlock), to: stepCfg
+            StepConfigOverride(fieldOptions: byBlock.isEmpty ? nil : byBlock, mapRoutes: mapRoutes),
+            to: stepCfg
         )
         let blocks = merged.content_blocks ?? []
         h.state["merged_block_count"] = blocks.count
@@ -1354,7 +1362,53 @@ final class SharedFixtureTests: XCTestCase {
         if let untouched = blocks.first(where: { $0.id == "other_select" }) {
             h.state["merged_untouched_option_value"] = (untouched.field_options ?? []).first?.resolvedValue
         }
+        if let target = blocks.first(where: { $0.id == "delivery_map" }) {
+            let cfg = target.field_config ?? [:]
+            h.state["merged_map_polyline"] = SharedFixtureTests.orNull(cfg["map_route_polyline"]?.value as? String)
+            h.state["merged_map_route_variable"] = SharedFixtureTests.orNull(cfg["map_route_variable"]?.value as? String)
+            let stops = (cfg["map_stops"]?.value as? [Any]) ?? []
+            h.state["merged_map_stop_count"] = stops.count
+            h.state["merged_map_first_stop_lat"] =
+                SharedFixtureTests.orNull((stops.first as? [String: Any])?["lat"] as? Double)
+        }
+        if let untouched = blocks.first(where: { $0.id == "other_map" }) {
+            h.state["merged_untouched_map_mode"] =
+                SharedFixtureTests.orNull(untouched.field_config?["map_mode"]?.value as? String)
+        }
         h.state["merged_heading_text"] = blocks.first(where: { $0.id == "intro_heading" })?.text
+    }
+
+    // MARK: - Driver: compose_map_url (SPEC-451)
+    //
+    // REAL: `mapStaticURL` — the same free function `ContentBlockRendererView` calls. It is at file
+    // scope and `internal` for exactly this reason: the fixture's whole point is cross-LANGUAGE
+    // agreement on one string, and a runner-local copy of the recipe would agree with the fixture
+    // forever while the renderer drifted underneath it.
+    //
+    // The token comes from the fixture rather than `AppDNA.mapboxToken`, so the expected URL is
+    // deterministic and the test needs no configured SDK.
+    private func runComposeMapUrl(_ f: Fixture, _ h: Harness) {
+        let sess = f.setup.session_data?.objectValue ?? [:]
+        let blockId = f.action.raw["block_id"]?.stringValue ?? ""
+
+        // Decoded through StepConfig's own Codable, so the block is the shape the renderer receives
+        // — the decoder is part of what this fixture pins.
+        guard let cfgJSON = f.setup.config?.foundation,
+              let cfgData = try? JSONSerialization.data(withJSONObject: cfgJSON),
+              let stepCfg = try? JSONDecoder().decode(StepConfig.self, from: cfgData),
+              let block = (stepCfg.content_blocks ?? []).first(where: { $0.id == blockId })
+        else {
+            XCTFail("[\(f.id)] compose_map_url: no block with id=\(blockId) in setup.config")
+            return
+        }
+
+        let url = mapStaticURL(
+            block,
+            token: sess["map_token"]?.stringValue,
+            width: CGFloat(sess["map_width"]?.doubleValue ?? 390),
+            height: CGFloat(sess["map_height"]?.doubleValue ?? 240)
+        )
+        h.state["map_url"] = SharedFixtureTests.orNull(url?.absoluteString)
     }
 
     private func runFetchRemoteConfig(_ f: Fixture, _ h: Harness) {

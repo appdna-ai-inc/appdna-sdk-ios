@@ -1323,8 +1323,12 @@ public struct ContentBlock: Codable, Identifiable {
     /// the exact bug `StepConfigOverrideMerger` documents having shipped once already.
     public var field_options: [InputOption]?
     public let multi_select: Bool?
-    // Form input specific config
-    public let field_config: [String: AnyCodable]?
+    // Form input specific config.
+    //
+    // `var` for the same reason `field_options` above is: SPEC-451 lets a host supply a map block's
+    // route at runtime, and the merge writes it into this dictionary under the keys the console
+    // authors, so the renderer keeps a single code path for authored and delegate-supplied routes.
+    public var field_config: [String: AnyCodable]?
 
     // SPEC-089d §6.3: Visibility condition
     public let visibility_condition: VisibilityCondition?
