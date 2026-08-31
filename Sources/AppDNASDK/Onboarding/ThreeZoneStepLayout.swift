@@ -32,13 +32,31 @@ struct ThreeZoneStepLayout: View {
 
         Group {
             if onlyCenterContent {
-                // Only center content (e.g. loading spinner) — vertically center it
-                VStack {
-                    Spacer()
-                    zoneRenderer(blocks: centerBlocks)
-                    Spacer()
+                // Only center content — vertically centre it WHEN IT FITS, and scroll from the top
+                // when it does not.
+                //
+                // 🔴 #598 — this branch was a bare `VStack { Spacer(); content; Spacer() }` at
+                // `maxHeight: .infinity`, with no ScrollView. It was written for the small case the
+                // comment names (a loading spinner), and it is correct for that. But a step whose
+                // blocks all sit in the CENTER zone takes this branch too — a cross-sell screen,
+                // for instance — and once that content is taller than the viewport the Spacers push
+                // its top off-screen with nothing to scroll: "half the screen's content offset
+                // toward the bottom", on every path that reaches the screen.
+                //
+                // `minHeight: geo.size.height` inside a ScrollView is the standard SwiftUI shape
+                // for this: short content still centres exactly as before (the VStack is stretched
+                // to the viewport and the Spacers split the slack), and tall content grows past it
+                // and scrolls from the top instead of being centred into the void.
+                GeometryReader { geo in
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            zoneRenderer(blocks: centerBlocks)
+                            Spacer(minLength: 0)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                    }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 // Normal: top content scrollable, center below it
                 ScrollView(showsIndicators: false) {
