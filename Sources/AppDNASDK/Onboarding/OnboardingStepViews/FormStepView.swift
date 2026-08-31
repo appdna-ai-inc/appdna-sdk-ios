@@ -393,13 +393,64 @@ struct FormStepView: View {
 
     // MARK: - Select
 
+    /// #596 — a form Select renders through the SAME engine the `input_select` CONTENT block uses
+    /// whenever the author picked a layout other than the dropdown.
+    ///
+    /// The console offers six display styles on a form Select. iOS honoured NONE of them: this
+    /// always produced a `.menu` Picker, which on device is "a small list, only visible when
+    /// press-and-holding the label" — exactly the report. Android's form renderer never read
+    /// `display_style` either, so the control was dead on both platforms while the console preview
+    /// drew the tiles it promised.
+    ///
+    /// Delegating rather than reimplementing is the point. Six layouts, category chips, option
+    /// sets, bottom sheets and twenty styling keys already exist in `FormInputSelectBlock`; a
+    /// second copy here would diverge from it by the next release.
+    ///
+    /// `dropdown` (the default, and every flow that never touched the setting) keeps the native
+    /// Picker, so nothing that renders correctly today changes.
     @ViewBuilder
     private func selectField(_ field: FormField) -> some View {
-        if field.config?.multi_select == true {
+        let style = (field.config_raw?["display_style"]?.value as? String) ?? "dropdown"
+        if style != "dropdown", let block = Self.selectBlock(from: field) {
+            FormInputSelectBlock(block: block, inputValues: $values)
+        } else if field.config?.multi_select == true {
             multiSelectField(field)
         } else {
             singleSelectField(field)
         }
+    }
+
+    /// A synthetic `input_select` ContentBlock carrying this field's options and raw config.
+    ///
+    /// Built by round-tripping through the REAL `ContentBlock` decoder rather than a hand-written
+    /// initializer: the type has ~245 properties and a custom `init(from:)`, so any by-hand
+    /// construction would be a second parser to keep in step with the first.
+    private static func selectBlock(from field: FormField) -> ContentBlock? {
+        var dict: [String: Any] = [
+            "id": field.id,
+            "type": "input_select",
+            "field_id": field.id,
+            "field_label": field.label,
+            "field_required": field.required,
+        ]
+        if let placeholder = field.placeholder { dict["field_placeholder"] = placeholder }
+        if let raw = field.config_raw {
+            dict["field_config"] = raw.mapValues { $0.value }
+        }
+        if let opts = field.options {
+            dict["field_options"] = opts.map { opt -> [String: Any] in
+                var o: [String: Any] = ["id": opt.id ?? (opt.label ?? "")]
+                if let label = opt.label { o["label"] = label }
+                if let icon = opt.icon { o["icon"] = icon }
+                if let value = opt.value?.value { o["value"] = value }
+                return o
+            }
+        }
+        guard JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict),
+              let block = try? JSONDecoder().decode(ContentBlock.self, from: data)
+        else { return nil }
+        return block
     }
 
     private func singleSelectField(_ field: FormField) -> some View {

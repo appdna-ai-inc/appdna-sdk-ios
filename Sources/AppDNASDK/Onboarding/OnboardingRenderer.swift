@@ -1827,6 +1827,29 @@ enum RequiredFieldGate {
             }
         }
 
+        // #585 — a MINIMUM selection count gates the CTA.
+        //
+        // 🔴 `min_selections` has been in the Zod schema since EPIC-5, with a console control on
+        // form fields, and NOTHING on any platform ever read it. An author could set "Min
+        // selections: 3", publish, and the CTA advanced on zero — a control that lied. This branch
+        // is what makes it true.
+        //
+        // Deliberately INDEPENDENT of `field_required`: setting a minimum IS the requirement, and
+        // making an author tick a separate box to arm it is the same trap one layer up. A missing
+        // or non-array value counts as zero selections rather than passing, so a step whose control
+        // has not been touched yet blocks rather than advances.
+        //
+        // `min_selections <= 0` is not a gate — the console writes 0 for "no minimum", and treating
+        // that as "at least zero, always satisfied" is both correct and what an author means.
+        for block in blocks {
+            guard let raw = block.field_config?["min_selections"]?.value else { continue }
+            let minimum = (raw as? Int) ?? (raw as? Double).map { Int($0) } ?? 0
+            guard minimum > 0 else { continue }
+            let fieldId = block.field_id ?? block.id
+            let count = (inputValues[fieldId] as? [Any])?.count ?? 0
+            if count < minimum { return (false, fieldId) }
+        }
+
         for block in blocks where block.field_required == true {
             if block.type == .summary_screen { continue } // see above — per-stat, never block-level
             let fieldId = block.field_id ?? block.id
@@ -2393,12 +2416,38 @@ enum StepConfigOverrideMerger {
         // sibling block untouched. A merge that rebuilt the array from only the named blocks would
         // silently delete the rest of the step — invisible until an author noticed a missing block,
         // which is exactly why the fixture asserts the untouched siblings survive.
-        if let fieldOptions = override.fieldOptions, !fieldOptions.isEmpty,
-           let blocks = merged.content_blocks {
+        //
+        // SPEC-451 adds a second block-level override in the same pass. They compose: a step may
+        // legitimately have host-supplied options on one block and a host-supplied route on
+        // another, so this applies both rather than choosing between them.
+        let hasBlockOverrides = !(override.fieldOptions?.isEmpty ?? true) || !(override.mapRoutes?.isEmpty ?? true)
+        if hasBlockOverrides, let blocks = merged.content_blocks {
             merged.content_blocks = blocks.map { block in
-                guard let replacement = fieldOptions[block.id] else { return block }
                 var copy = block
-                copy.field_options = replacement
+                if let replacement = override.fieldOptions?[block.id] {
+                    copy.field_options = replacement
+                }
+                // SPEC-451 — the host's route is written into `field_config` under the SAME keys
+                // the console authors, so the renderer has exactly one code path and a delegate
+                // route cannot render differently from an authored one.
+                if let route = override.mapRoutes?[block.id] {
+                    var cfg = copy.field_config ?? [:]
+                    if let polyline = route.polyline {
+                        cfg["map_route_polyline"] = AnyCodable(polyline)
+                        // A host that answered with a route outranks a `{{token}}` the author wired
+                        // as the fallback. Clearing it here is what makes that ordering true —
+                        // leaving it would let a stale variable win over a live answer.
+                        cfg["map_route_variable"] = AnyCodable("")
+                    }
+                    if !route.stops.isEmpty {
+                        cfg["map_stops"] = AnyCodable(route.stops.map { s -> [String: Any] in
+                            var m: [String: Any] = ["lat": s.lat, "lng": s.lng]
+                            if let t = s.title { m["title"] = t }
+                            return m
+                        })
+                    }
+                    copy.field_config = cfg
+                }
                 return copy
             }
         }

@@ -68,7 +68,37 @@ struct PlanCard: View {
     private var badgeBg: Color { Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) }
     private var badgeFg: Color { Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF") }
 
+    /// #589 — everything the card gives a plan, deliberately absent: no border, no background, no
+    /// badge, no subtitle, no selection control. Just the name and price on one centred line.
+    ///
+    /// Still a Button, and still calls `onSelect` — the layout this exists for is one prominent
+    /// card with "or £4.99/month, cancel anytime" beneath it, and a caption you cannot pick would
+    /// be a different thing entirely. Selection is shown by weight rather than a control, because a
+    /// radio circle is the card treatment this mode exists to remove.
+    @ViewBuilder
+    private var textOnlyBody: some View {
+        Button(action: onSelect) {
+            Text("\(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName) · \(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)")
+                .font(.system(size: plan.text_only_font_size ?? 13,
+                              weight: isSelected ? .semibold : .regular))
+                .foregroundColor(Color(hex: plan.text_only_color ?? "#9CA3AF"))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
+        if (plan.display_mode ?? "card") == "text_only" {
+            textOnlyBody
+        } else {
+            cardBody
+        }
+    }
+
+    @ViewBuilder
+    private var cardBody: some View {
         Button(action: {
             print("[PlanCard] Tapped plan: \(plan.id ?? "nil")")
             onSelect()
@@ -267,16 +297,24 @@ struct PlanCard: View {
         }
     }
 
+    /// #588 — this plan's own price colour, which beats BOTH the section's `elements.price` style
+    /// and the selected/unselected text colour. Section styling paints every plan the same; the
+    /// point of this field is to make one tier's price stand out from the others, so anything that
+    /// could override it would defeat it.
+    private var planPriceColor: Color? {
+        plan.price_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
+    }
+
     @ViewBuilder
     private var currentPriceView: some View {
         if let ts = priceTextStyle {
             Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                 .applyTextStyle(ts)
-                .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                .foregroundColor(planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
         } else {
             Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                 .font(.subheadline.bold())
-                .foregroundColor(effectiveTextColor)
+                .foregroundColor(planPriceColor ?? effectiveTextColor)
         }
     }
 
@@ -332,10 +370,39 @@ struct PlanCard: View {
                 .cornerRadius(badge.corner_radius ?? 6)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
+            // #587 — the plan's own subtitle type wins over the section style, for the same reason
+            // the price colour does. `fixedSize(vertical:)` is what lets it WRAP to its two lines
+            // rather than truncate: `lineLimit(2)` alone caps the count, it does not grant the
+            // height, and in a tight card the second line was being clipped away.
             Text(text)
-                .font(.caption)
-                .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
+                .font(plan.subtitle_font_size.map { Font.system(size: $0) } ?? .caption)
+                .foregroundColor(
+                    plan.subtitle_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
+                        ?? (isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
+                )
+                .multilineTextAlignment(subtitleAlignment)
+                .frame(maxWidth: .infinity, alignment: subtitleFrameAlignment)
                 .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// `subtitle_align` for both the text's own wrapping and the frame it sits in. Setting only
+    /// `multilineTextAlignment` centres the SECOND line under the first while the block stays
+    /// left-hugging, which reads as a bug rather than a centred subtitle.
+    private var subtitleAlignment: TextAlignment {
+        switch plan.subtitle_align {
+        case "center": return .center
+        case "right": return .trailing
+        default: return .leading
+        }
+    }
+
+    private var subtitleFrameAlignment: Alignment {
+        switch plan.subtitle_align {
+        case "center": return .center
+        case "right": return .trailing
+        default: return .leading
         }
     }
 

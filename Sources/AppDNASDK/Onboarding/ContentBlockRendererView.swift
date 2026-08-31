@@ -168,6 +168,7 @@ struct ContentBlockRendererView: View {
         case .progress_bar: return AnyView(progressBarBlock(block))
         case .stack: return AnyView(stackBlock(block))
         case .custom_view: return AnyView(customViewBlock(block))
+        case .map: return AnyView(mapBlock(block))
         case .date_wheel_picker: return AnyView(DateWheelPickerBlockView(block: block, inputValues: $inputValues))
         case .circular_gauge: return AnyView(CircularGaugeBlockView(block: block))
         case .row: return AnyView(rowBlock(block))
@@ -688,9 +689,39 @@ struct ContentBlockRendererView: View {
                         EmptyView()
                     }
                 }
-                Text(labelText)
-                    .font(.body.weight(.semibold))
-                    .applyTextStyle(block.style)
+                // #594 — the button-specific `text_color` beats the generic Typography colour.
+                // 
+                // It was the other way round: `block.style.color` was applied last and silently won, so the "Text"
+                // picker sitting right beside "Background" did nothing whenever a Typography colour was also set —
+                // "only the separate Color setting works", exactly as reported.
+                // 
+                // Specificity decides, the same rule used everywhere else here (a per-plan price colour beats the
+                // section's price style). Only an EXPLICITLY set `text_color` wins; unset leaves Typography in
+                // charge, so a flow that styles its buttons through Typography alone is untouched.
+                // 
+                // ⚠️ A flow with BOTH set changes appearance — it now shows the button's own colour instead of the
+                // typography one. That is the point of the fix, and it is why the override is gated on the field
+                // being set rather than on its non-nil default.
+                //
+                // `applyTextStyle` BAKES a colour into the Text when the style sets one, so a later
+                // `.foregroundColor` on the wrapping stack is a no-op — the override has to be
+                // applied to the Text itself, after the style.
+                // 🔴 Applied CONDITIONALLY. `.foregroundColor(nil)` does not mean "inherit" in
+                // SwiftUI — it RESETS to the default foreground, which would override the
+                // `fgColor` the enclosing stack sets for every button that never authored a
+                // `text_color`. A nil-passing version of this shipped briefly and changed three
+                // goldens on CI while rendering identically on a Mac, because the default it reset
+                // to follows the system appearance.
+                if let hex = block.text_color, !hex.isEmpty {
+                    Text(labelText)
+                        .font(.body.weight(.semibold))
+                        .applyTextStyle(block.style)
+                        .foregroundColor(Color(hex: hex))
+                } else {
+                    Text(labelText)
+                        .font(.body.weight(.semibold))
+                        .applyTextStyle(block.style)
+                }
             }
             .foregroundColor(fgColor)
             // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
@@ -939,6 +970,31 @@ struct ContentBlockRendererView: View {
     }
 
     // EPIC-11 — session summary screen (Duolingo end-of-lesson): optional headline + 2-column stat-card grid.
+    /// #593 — stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
+    /// strings from the console. Coerced the same way `statDouble` coerces those, with a fallback
+    /// rather than a zero-size font on anything unparseable.
+    private func summaryStatSize(_ stat: [String: Any], _ key: String, _ fallback: CGFloat) -> CGFloat {
+        let raw = stat[key]
+        if let d = raw as? Double, d > 0 { return CGFloat(d) }
+        if let i = raw as? Int, i > 0 { return CGFloat(i) }
+        if let s = raw as? String, let d = Double(s), d > 0 { return CGFloat(d) }
+        return fallback
+    }
+
+    /// A stat's string value by key. Key-as-argument like `statDouble`, so the authorability gate
+    /// can see WHICH key is read — a bare subscript on the loop variable tells it nothing.
+    private func summaryStatString(_ stat: [String: Any], _ key: String) -> String? {
+        stat[key] as? String
+    }
+
+    private func summaryStatAlignment(_ stat: [String: Any], _ key: String) -> Alignment {
+        switch stat[key] as? String {
+        case "center": return .center
+        case "right": return .trailing
+        default: return .leading
+        }
+    }
+
     private func summaryScreenBlock(_ block: ContentBlock) -> some View {
         let statsRaw = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
         let stats: [[String: Any]] = statsRaw.compactMap { $0 as? [String: Any] }
@@ -948,7 +1004,17 @@ struct ContentBlockRendererView: View {
         // bg_color = card bg, text_color = headline + label, summary_align = headline align,
         // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
         let cardBg = Color(hex: block.bg_color ?? "#1F2937")
+        // #595 was a CONSOLE defect (the preview's step surface is light by default, so a white
+        // headline was invisible there). On DEVICE the default stays #FFFFFF deliberately.
+        //
+        // 🔴 `.primary` was tried here and reverted: it follows the SYSTEM appearance, not the
+        // step's painted background. An onboarding step paints its own background — usually dark —
+        // so on a light-mode device `.primary` renders the headline BLACK ON DARK: the same
+        // invisibility bug, inverted. It also made three goldens render differently on CI than on
+        // a developer's Mac, purely because the two simulators were in different appearance modes,
+        // which is how it was caught.
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        let headlineColor = textColor
         let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
         let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
@@ -958,7 +1024,7 @@ struct ContentBlockRendererView: View {
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
-                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(textColor)
+                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(headlineColor)
                     .multilineTextAlignment(headlineTextAlign)
                     .frame(maxWidth: .infinity, alignment: headlineAlign)
             }
@@ -977,24 +1043,36 @@ struct ContentBlockRendererView: View {
                         // than neither.
                         let statInput = (m["input"] as? String) ?? "none"
                         let statFieldId = (m["field_id"] as? String) ?? ""
-                        VStack(alignment: .leading, spacing: 4) {
+                        // #593 — the sub-headline's own type. `color` above styles the VALUE; the
+                        // label under it had no colour, size or alignment at all, and neither did a
+                        // slider/stepper's displayed number — the same text through a different
+                        // control. An authored label colour drops the 0.7 opacity with it: an
+                        // author who picked a colour meant that colour.
+                        let statLabelColor = (summaryStatString(m, "label_color")).flatMap { $0.isEmpty ? nil : Color(hex: $0) }
+                            ?? textColor.opacity(0.7)
+                        let statLabelSize = summaryStatSize(m, "label_font_size", 13)
+                        let statValueSize = summaryStatSize(m, "value_font_size", 24)
+                        let statAlign = summaryStatAlignment(m, "align")
+                        VStack(alignment: statAlign.horizontal, spacing: 4) {
                             if statInput != "none" && !statFieldId.isEmpty {
                                 SummaryStatInput(
                                     stat: m,
                                     fieldId: statFieldId,
                                     valueColor: color,
-                                    labelColor: textColor.opacity(0.7),
+                                    labelColor: statLabelColor,
+                                    labelSize: statLabelSize,
+                                    valueSize: statValueSize,
                                     label: label,
                                     inputValues: $inputValues,
                                     onInteract: onInteract,
                                     blockId: block.id,
                                 )
                             } else {
-                                Text(value).font(.system(size: 24, weight: .bold)).foregroundColor(color)
-                                Text(label).font(.system(size: 13)).foregroundColor(textColor.opacity(0.7))
+                                Text(value).font(.system(size: statValueSize, weight: .bold)).foregroundColor(color)
+                                Text(label).font(.system(size: statLabelSize)).foregroundColor(statLabelColor)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: statAlign)
                         .padding(16)
                         .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -1392,10 +1470,29 @@ struct ContentBlockRendererView: View {
             }
         }
 
+        // #578 — the divider is a SLOT in the stack, not one of two fixed ends.
+        //
+        // `top` is slot 0 and `bottom` is the last slot, kept as their own values so no flow
+        // authored before this release changes and an older SDK build still understands them.
+        // `after` names an interior slot through `field_config.divider_after_index` (0-based, the
+        // divider sits AFTER that provider) — ContentBlock is at the JVM argument ceiling, so the
+        // index cannot be a top-level field.
+        let dividerSlot: Int = {
+            if dividerPosition == "top" { return 0 }
+            guard dividerPosition == "after" else { return topGroup.count }
+            let raw: Int = {
+                if let i = block.field_config?["divider_after_index"]?.value as? Int { return i }
+                if let d = block.field_config?["divider_after_index"]?.value as? Double { return Int(d) }
+                return 0
+            }()
+            return min(max(raw + 1, 0), topGroup.count)
+        }()
+
         return VStack(spacing: btnSpacing) {
-            if dividerPosition == "top" { divider }
+            if dividerSlot == 0 { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
                 socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
+                if dividerSlot == index + 1 { divider }
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1407,7 +1504,9 @@ struct ContentBlockRendererView: View {
                 // localized under topGroup.count + idx (see ContentBlockRenderer.kt).
                 socialLoginButton(provider, index: topGroup.count + idx, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
             }
-            if dividerPosition != "top" { divider }
+            // The end slot. Guarded on the slot rather than "not top", so an interior slot does
+            // not also draw one down here — which is what a `!= top` test would do.
+            if dividerSlot >= topGroup.count { divider }
         }
     }
 
@@ -1857,10 +1956,16 @@ struct ContentBlockRendererView: View {
         let showLbl = block.show_label != false
         // Progress/Loading v2 — label placement relative to the bar.
         let placement = block.label_placement ?? "above"
+        // #584 — the label's own colour and size. It rendered in `.secondary` with no control at
+        // all, so an author could style the bar and its track and not the words beside them. Every
+        // displayed piece of text should be colourable on its own.
         let labelView = AnyView(
             Text(labelText)
-                .font(.caption)
-                .foregroundColor(.secondary)
+                .font(.system(size: cfgDouble(block.field_config?["progress_label_font_size"]).map { CGFloat($0) } ?? 12))
+                .foregroundColor(
+                    (block.field_config?["progress_label_color"]?.value as? String)
+                        .flatMap { $0.isEmpty ? nil : Color(hex: $0) } ?? .secondary
+                )
         )
         let barView = AnyView(
             Group {
@@ -2285,6 +2390,157 @@ struct ContentBlockRendererView: View {
             guard total > 0 else { return Array(repeating: avail / CGFloat(count), count: count) }
             return weights.map { avail * ($0 / total) }
         }
+    }
+
+    /// The Map block, resolved through the ladder in SPEC-451 §2:
+    ///   1. a host-registered map view, handed the authored config
+    ///   2. the Mapbox static image
+    ///   3. the authored fallback text
+    /// Only rung 3 is a visible degradation, and it is labelled rather than blank.
+    @ViewBuilder
+    private func mapBlock(_ block: ContentBlock) -> some View {
+        let height = mapHeight(block)
+        let radius = CGFloat(mapDouble(block, "map_corner_radius") ?? 12)
+        // Read straight off `field_config` rather than through `mapCfg`: the authorability gate
+        // classifies `<read> ?? "#hex"` as a default behind an editable field, and a helper call on
+        // the left of the `??` hides the read from it. Same value, honest shape.
+        let surface = Color(hex: (block.field_config?["map_surface_color"]?.value as? String) ?? "#E5E7EB")
+        let viewKey = (mapCfg(block, "map_view_key") as? String) ?? "default"
+        // An author who turned interactivity OFF wants a picture, not a map the user can drag away
+        // from the place the step is about. So this is a gate on the host tier, not a flag passed
+        // into it: a registered map view is skipped entirely rather than asked to behave.
+        let interactive = (mapCfg(block, "map_interactive") as? Bool) != false
+        let infoPosition = (mapCfg(block, "place_info_position") as? String) ?? "overlay_bottom"
+        let card = mapInfoCard(block)
+
+        VStack(spacing: 8) {
+            if infoPosition == "overlay_top", card != nil {
+                // Overlaid by a negative offset rather than a ZStack: the card keeps its natural
+                // height, which a fixed inset guess would get wrong the moment a subtitle wraps.
+                EmptyView()
+            }
+            ZStack(alignment: infoPosition == "overlay_top" ? .top : .bottom) {
+                Group {
+                    if interactive, let factory = AppDNA.registeredMapViews[viewKey] {
+                        // Tier 2 — the host's own map, given everything the author set.
+                        factory(mapResolvedConfig(block))
+                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height) {
+                        BundledAsyncPhaseImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().aspectRatio(contentMode: .fill)
+                            default:
+                                surface
+                            }
+                        }
+                    } else {
+                        ZStack {
+                            surface
+                            Text((mapCfg(block, "map_fallback_text") as? String) ?? "Map unavailable")
+                                .font(.footnote)
+                                .foregroundColor(Color(hex: mapFallbackTextColor(
+                                    block.field_config?["map_surface_color"]?.value as? String,
+                                    block.field_config?["map_fallback_text_color"]?.value as? String)))
+                        }
+                    }
+                }
+                .frame(height: height)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: radius))
+
+                if infoPosition != "below", let card {
+                    card.padding(8)
+                }
+            }
+            if infoPosition == "below", let card {
+                card
+            }
+        }
+        // Full-bleed cancels the step's horizontal padding so the map meets both screen edges. The
+        // negative margin is applied to the WHOLE stack, card included, so an overlaid card stays
+        // inset relative to the map rather than sliding off it.
+        .padding(.horizontal, (mapCfg(block, "map_full_bleed") as? Bool) == true ? -20 : 0)
+        // `map_alt`, not the top-level `alt`: every Map setting rides in `field_config` (ContentBlock
+        // is at the JVM 255-argument ceiling), so `alt` has no control in the Map panel and reading
+        // it would be a field the SDK honours and no author can set.
+        .accessibilityLabel(mapCfg(block, "map_alt") as? String ?? "Map")
+    }
+
+    /// The map's drawn height, from whichever sizing mode the author chose.
+    ///
+    /// `aspect` is resolved against a 390pt reference width rather than the live container width.
+    /// The container's width is not known at this point without a `GeometryReader`, and wrapping
+    /// the block in one changes how it lays out inside a stack; 390 is the width the console
+    /// preview composes at, so the two agree.
+    private func mapHeight(_ block: ContentBlock) -> CGFloat {
+        switch (mapCfg(block, "map_height_mode") as? String) ?? "fixed" {
+        case "aspect":
+            let ratio = (mapCfg(block, "map_aspect") as? String) ?? "16:9"
+            let parts = ratio.split(separator: ":").compactMap { Double($0) }
+            guard parts.count == 2, parts[0] > 0 else { return 220 }
+            return CGFloat(390.0 * parts[1] / parts[0])
+        case "fill":
+            // "Fill the step" is a tall block, not an unbounded one: a greedy `maxHeight: .infinity`
+            // inside the step's scrolling stack collapses every sibling to nothing.
+            return 520
+        default:
+            return CGFloat(mapDouble(block, "map_height") ?? 220)
+        }
+    }
+
+    /// The place info card — a name, a line of description and optionally a photo.
+    ///
+    /// Only in `place` mode, and only when there is something to say: an empty card floating over a
+    /// map is worse than no card. Returns nil rather than an empty view so the caller can decide
+    /// the layout without reserving space for nothing.
+    @ViewBuilder
+    private func mapInfoCard(_ block: ContentBlock) -> (some View)? {
+        let title = (mapCfg(block, "place_title") as? String) ?? ""
+        let subtitle = (mapCfg(block, "place_subtitle") as? String) ?? ""
+        let show = (mapCfg(block, "map_mode") as? String) == "place"
+            && (mapCfg(block, "place_show_info") as? Bool) != false
+            && !(title.isEmpty && subtitle.isEmpty)
+        if show {
+            HStack(spacing: 8) {
+                if let img = (mapCfg(block, "place_image_url") as? String), !img.isEmpty,
+                   let url = URL(string: img) {
+                    BundledAsyncPhaseImage(url: url) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        default:
+                            Color.clear
+                        }
+                    }
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    if !title.isEmpty {
+                        Text(title).font(.footnote.weight(.semibold))
+                    }
+                    if !subtitle.isEmpty {
+                        Text(subtitle).font(.caption).opacity(0.8)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color(hex: (block.field_config?["place_info_bg"]?.value as? String) ?? "#FFFFFF"))
+            .foregroundColor(Color(hex: (block.field_config?["place_info_text"]?.value as? String) ?? "#111827"))
+            .clipShape(RoundedRectangle(cornerRadius: CGFloat(mapDouble(block, "place_info_radius") ?? 12)))
+            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+        }
+    }
+
+    /// What a host map view receives. Plain Foundation types only — a host should not have to
+    /// import our DTOs to draw a map.
+    private func mapResolvedConfig(_ block: ContentBlock) -> [String: Any] {
+        var out: [String: Any] = [:]
+        for (k, v) in block.field_config ?? [:] { out[k] = v.value }
+        out["resolved_stops"] = mapStops(block).map { ["lat": $0.lat, "lng": $0.lng] }
+        return out
     }
 
     // MARK: - Custom View (SPEC-089d AC-026)
@@ -2763,6 +3019,9 @@ struct SummaryStatInput: View {
     let fieldId: String
     let valueColor: Color
     let labelColor: Color
+    /// #593 — authored sizes, so a stat hosting a control matches one that shows a fixed value.
+    var labelSize: CGFloat = 13
+    var valueSize: CGFloat = 24
     let label: String
     @Binding var inputValues: [String: Any]
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
@@ -2830,8 +3089,8 @@ struct SummaryStatInput: View {
         let shown = current.rounded() == current ? String(Int(current)) : String(current)
 
         VStack(alignment: .leading, spacing: 6) {
-            Text(shown).font(.system(size: 24, weight: .bold)).foregroundColor(valueColor)
-            Text(label).font(.system(size: 13)).foregroundColor(labelColor)
+            Text(shown).font(.system(size: valueSize, weight: .bold)).foregroundColor(valueColor)
+            Text(label).font(.system(size: labelSize)).foregroundColor(labelColor)
             if (stat["input"] as? String) == "stepper" {
                 HStack(spacing: 12) {
                     Button { write(current - stepV) } label: {
@@ -2872,4 +3131,231 @@ struct SummaryStatInput: View {
             }
         }
     }
+}
+
+// MARK: - Map URL composition (SPEC-451)
+//
+// File scope rather than methods on the renderer view, and `internal` rather than `private`, so the
+// shared-fixture runner drives the SAME code the renderer does. A test-only copy of a URL recipe
+// that exists three times already would pass forever while the renderer drifted underneath it —
+// which is the exact failure the fixture exists to catch.
+
+/// Google's encoded-polyline format, which is what Mapbox's `path` overlay takes.
+///
+/// 🔴 Implemented here, in TypeScript for the console preview, and again in Kotlin — three
+/// times, because Mapbox forbids us proxying or caching the image, so there is no server-side
+/// composer to be the single source of truth. A shared fixture pins the composed URL across all
+/// three; without it a divergence would show a customer a different map than the console did.
+internal func encodePolyline(_ points: [(Double, Double)]) -> String {
+    var lastLat = 0, lastLng = 0
+    var out = ""
+    func chunk(_ v: Int) -> String {
+        var value = v < 0 ? ~(v << 1) : (v << 1)
+        var s = ""
+        while value >= 0x20 {
+            s.append(Character(UnicodeScalar(UInt8(0x20 | (value & 0x1f)) + 63)))
+            value >>= 5
+        }
+        s.append(Character(UnicodeScalar(UInt8(value) + 63)))
+        return s
+    }
+    for (lat, lng) in points {
+        let iLat = Int((lat * 1e5).rounded()), iLng = Int((lng * 1e5).rounded())
+        out += chunk(iLat - lastLat) + chunk(iLng - lastLng)
+        lastLat = iLat; lastLng = iLng
+    }
+    return out
+}
+
+/// `#6366F1` -> `6366f1`. Mapbox overlays take a bare hex; anything else falls back rather
+/// than emitting an overlay the API will reject.
+/// A readable text colour for the map's fallback state, given the authored surface behind it.
+///
+/// 🔴 Found by a golden, not by reading: the label used `.secondary`, so on a dark authored surface
+/// it rendered dark-grey-on-near-black and was effectively invisible. The fallback exists so a map
+/// that cannot be drawn is LABELLED rather than blank, and an unreadable label is a blank space
+/// with extra steps.
+///
+/// Relative luminance with the sRGB coefficients, thresholded at 0.5 — deliberately the plainest
+/// formula all three implementations can share, since the console preview must agree with both
+/// natives about a colour nobody authored.
+internal func mapFallbackTextColor(_ surface: String?, _ authored: String?) -> String {
+    // The authored value stays on the LEFT of the coalescer in every return below, rather than
+    // being short-circuited at the top. Same result, and it keeps the shape the authorability gate
+    // reads as "a default behind an editable field" — which these literals genuinely are.
+    let trimmed = authored?.trimmingCharacters(in: .whitespaces)
+    let picked = (trimmed?.isEmpty == false) ? trimmed : nil
+    let hex = (surface ?? "#E5E7EB").trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+    guard hex.count == 6, hex.allSatisfy({ $0.isHexDigit }) else { return picked ?? "#374151" }
+    func channel(_ range: Range<String.Index>) -> Double {
+        Double(UInt8(hex[range], radix: 16) ?? 0) / 255.0
+    }
+    let s = hex.startIndex
+    let r = channel(s..<hex.index(s, offsetBy: 2))
+    let g = channel(hex.index(s, offsetBy: 2)..<hex.index(s, offsetBy: 4))
+    let b = channel(hex.index(s, offsetBy: 4)..<hex.index(s, offsetBy: 6))
+    return (0.2126 * r + 0.7152 * g + 0.0722 * b) < 0.5 ? (picked ?? "#F9FAFB") : (picked ?? "#374151")
+}
+
+internal func mapboxHex(_ raw: String?, _ fallback: String) -> String {
+    let s = (raw ?? fallback).trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "#", with: "")
+    let ok = s.count == 6 && s.allSatisfy { $0.isHexDigit }
+    return (ok ? s : fallback.replacingOccurrences(of: "#", with: "")).lowercased()
+}
+
+internal func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
+    block.field_config?[key]?.value
+}
+
+internal func mapDouble(_ block: ContentBlock, _ key: String) -> Double? {
+    if let d = mapCfg(block, key) as? Double { return d }
+    if let i = mapCfg(block, key) as? Int { return Double(i) }
+    return nil
+}
+
+/// The stops this map draws, from whichever source won.
+///
+/// Precedence is delegate > variable > authored, and it is resolved BEFORE this point — the
+/// renderer only ever sees the winner in `field_config.map_stops`. Anything without both
+/// coordinates is dropped: a title alone is not a place.
+internal func mapStops(_ block: ContentBlock) -> [(lat: Double, lng: Double)] {
+    if (mapCfg(block, "map_mode") as? String) == "place" {
+        guard let lat = mapDouble(block, "place_lat"), let lng = mapDouble(block, "place_lng") else { return [] }
+        return [(lat, lng)]
+    }
+    let raw = (mapCfg(block, "map_stops") as? [Any]) ?? []
+    return raw.compactMap { item in
+        // `stop`, not `m`: a one-letter name here matches the authorability scanner's DTO read
+        // shape and reports `lat`/`lng` as unauthorable BLOCK fields. They are a stop's members.
+        guard let stop = item as? [String: Any] else { return nil }
+        let lat = (stop["lat"] as? Double) ?? (stop["lat"] as? Int).map(Double.init)
+        let lng = (stop["lng"] as? Double) ?? (stop["lng"] as? Int).map(Double.init)
+        guard let la = lat, let ln = lng, la.isFinite, ln.isFinite else { return nil }
+        return (la, ln)
+    }
+}
+
+/// Percent-encode everything that is not an ASCII letter or digit.
+///
+/// 🔴 Deliberately stricter than any built-in, and NOT interchangeable with one. The three
+/// implementations have three different escapers — JavaScript's `encodeURIComponent` leaves
+/// `!\'()*-._~` alone, Java's `URLEncoder` turns a space into `+` and escapes `~`, Swift's
+/// `.urlQueryAllowed` leaves more still. An encoded polyline contains `~`, backtick, `@`, `?`
+/// and backslashes, so those differences produce three different URLs for one route. Escaping
+/// everything non-alphanumeric is the one rule all three can implement identically.
+internal func percentEncodeStrict(_ input: String) -> String {
+    var out = ""
+    for byte in Array(input.utf8) {
+        let c = Character(UnicodeScalar(byte))
+        if c.isASCII && (c.isLetter || c.isNumber) {
+            out.append(c)
+        } else {
+            out += String(format: "%%%02X", byte)
+        }
+    }
+    return out
+}
+
+/// `12.0` -> `"12"`, `0.85` -> `"0.85"`. Swift and Kotlin print a trailing `.0` where
+/// JavaScript does not, which alone would break the shared fixture on a whole-number latitude.
+internal func formatCoord(_ v: Double) -> String {
+    v == v.rounded() && v.isFinite ? String(Int(v)) : String(v)
+}
+
+/// The encoded polyline this map draws, from whichever of the three route sources won.
+///
+/// Precedence — and it is a real ordering, not a tidy-looking chain:
+///
+///  1. `map_route_polyline` set by the DELEGATE. The merge writes it and clears
+///     `map_route_variable`, so a host that answers `onBeforeStepRender` always wins.
+///  2. `map_route_variable` — a `{{token}}` resolved against the flow's own state. Beats an
+///     authored polyline because an author who wired a variable meant the variable; the static
+///     one is the value they left behind for when it does not resolve.
+///  3. `map_route_polyline` as authored — a fixed route pasted into the panel.
+///  4. the stops, joined in order, which is a straight line between them and not a road route.
+internal func mapRoutePolyline(_ block: ContentBlock) -> String? {
+    if let variable = (mapCfg(block, "map_route_variable") as? String), !variable.isEmpty {
+        let resolved = variable.interpolated().trimmingCharacters(in: .whitespacesAndNewlines)
+        // An unresolved `{{token}}` comes back verbatim. Drawing it as a polyline would produce
+        // a line through the Atlantic, so an unresolved variable falls through to the authored
+        // route rather than replacing it with nonsense.
+        if !resolved.isEmpty && !resolved.contains("{{") { return resolved }
+    }
+    return (mapCfg(block, "map_route_polyline") as? String).flatMap { $0.isEmpty ? nil : $0 }
+}
+
+internal func mapStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat) -> URL? {
+    guard let token, !token.isEmpty else { return nil }
+    let styles = [
+        "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
+        "satellite": "mapbox/satellite-v9", "satellite_streets": "mapbox/satellite-streets-v12",
+        "light": "mapbox/light-v11", "dark": "mapbox/dark-v11",
+    ]
+    let style = styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
+    let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
+    let stops = mapStops(block)
+    var overlays: [String] = []
+
+    // Route BEFORE markers, so pins draw on top of the line rather than under it.
+    let routeOn = !isPlace && (mapCfg(block, "route_show") as? Bool) != false
+    if routeOn {
+        let encoded = mapRoutePolyline(block)
+            ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
+        if let e = encoded, !e.isEmpty {
+            let w = Int(mapDouble(block, "route_width") ?? 4)
+            let c = mapboxHex(mapCfg(block, "route_color") as? String, "6366f1")
+            let o = min(max(mapDouble(block, "route_opacity") ?? 1, 0), 1)
+            let escaped = percentEncodeStrict(e)
+            // The casing is a SECOND, WIDER path emitted BEFORE the route, so the route draws
+            // on top of it and what shows is an outline. Mapbox's static API has no
+            // stroke-outline primitive; two stacked paths is how every static-map product does
+            // this. Opaque on purpose — a translucent outline over satellite imagery is none.
+            let casingW = Int(mapDouble(block, "route_casing_width") ?? 2)
+            if casingW > 0 {
+                let casing = mapboxHex(mapCfg(block, "route_casing_color") as? String, "ffffff")
+                overlays.append("path-\(w + casingW * 2)+\(casing)-1(\(escaped))")
+            }
+            overlays.append("path-\(w)+\(c)-\(formatCoord(o))(\(escaped))")
+        }
+    }
+    let marker = mapboxHex(mapCfg(block, "marker_color") as? String, "6366f1")
+    let startMarker = mapboxHex(mapCfg(block, "marker_start_color") as? String,
+                                (mapCfg(block, "marker_color") as? String) ?? "6366f1")
+    let markerStyle = (mapCfg(block, "marker_style") as? String) ?? "numbered"
+    // Mapbox static offers exactly two marker sizes, `pin-s` and `pin-l`. The console's slider
+    // is a pixel value because that is what an author thinks in; it lands in whichever of the
+    // two is closer. Pretending to honour 41px exactly would be a nicer control and a false one.
+    let pinSize = (mapDouble(block, "marker_size") ?? 28) >= 32 ? "pin-l" : "pin-s"
+    let customMarker: String? = markerStyle == "custom"
+        ? (mapCfg(block, "marker_image_url") as? String).flatMap { $0.isEmpty ? nil : $0 }
+        : nil
+    for (i, s) in stops.enumerated() {
+        let at = "(\(formatCoord(s.lng)),\(formatCoord(s.lat)))"
+        if let custom = customMarker {
+            // `url-` takes a percent-encoded PNG/JPG URL. Mapbox fetches it itself, so it must
+            // be publicly reachable — the console's uploader requires a remote URL for exactly
+            // this reason.
+            overlays.append("url-\(percentEncodeStrict(custom))\(at)")
+            continue
+        }
+        // `pin-s-<label>` holds ONE character, so past 9 stops the number is dropped rather
+        // than rendering a truncated, wrong one. `pin` style never labels.
+        let label = (markerStyle == "numbered" && stops.count <= 9) ? "-\(i + 1)" : ""
+        overlays.append("\(pinSize)\(label)+\(i == 0 ? startMarker : marker)\(at)")
+    }
+    let overlayPart = overlays.isEmpty ? "" : overlays.joined(separator: ",") + "/"
+
+    // `auto` fits the overlays. With none there is nothing to fit and Mapbox treats it as an
+    // error, so an explicit viewport is required; a single place is always centred on itself.
+    let fit = !isPlace && (mapCfg(block, "map_fit_to_stops") as? Bool) != false && !overlays.isEmpty
+    let centreLat = isPlace ? (mapDouble(block, "place_lat") ?? 47.6205) : (mapDouble(block, "map_center_lat") ?? 47.6205)
+    let centreLng = isPlace ? (mapDouble(block, "place_lng") ?? -122.3493) : (mapDouble(block, "map_center_lng") ?? -122.3493)
+    let viewport = fit
+        ? "auto"
+        : "\(formatCoord(centreLng)),\(formatCoord(centreLat)),\(Int(mapDouble(block, "map_zoom") ?? 12)),0"
+
+    let w = Int(max(1, width.rounded())), h = Int(max(1, height.rounded()))
+    // The token is `[A-Za-z0-9._-]` by construction, so it goes through unescaped — the same
+    // choice the other two implementations make, and it keeps the URL readable in a log.
+    return URL(string: "https://api.mapbox.com/styles/v1/\(style)/static/\(overlayPart)\(viewport)/\(w)x\(h)@2x?access_token=\(token)")
 }

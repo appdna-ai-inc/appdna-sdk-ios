@@ -14,6 +14,8 @@ public enum ContentBlockType: String, Codable {
     case rating, rich_text, progress_bar
     // SPEC-089d Phase F: Container & advanced block types
     case stack, custom_view, date_wheel_picker, circular_gauge, row
+    // SPEC-451 — map with an optional route. Every setting rides in `field_config`.
+    case map
     // SPEC-089d Nurrai
     case pricing_card
     // EPIC-3 — media gallery (horizontal row of image tiles)
@@ -1321,8 +1323,12 @@ public struct ContentBlock: Codable, Identifiable {
     /// the exact bug `StepConfigOverrideMerger` documents having shipped once already.
     public var field_options: [InputOption]?
     public let multi_select: Bool?
-    // Form input specific config
-    public let field_config: [String: AnyCodable]?
+    // Form input specific config.
+    //
+    // `var` for the same reason `field_options` above is: SPEC-451 lets a host supply a map block's
+    // route at runtime, and the merge writes it into this dictionary under the keys the console
+    // authors, so the renderer keeps a single code path for authored and delegate-supplied routes.
+    public var field_config: [String: AnyCodable]?
 
     // SPEC-089d §6.3: Visibility condition
     public let visibility_condition: VisibilityCondition?
