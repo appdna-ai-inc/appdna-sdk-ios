@@ -829,6 +829,20 @@ final class SharedFixtureTests: XCTestCase {
             applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
                          responses: responses, result: .proceed, hookRan: false)
 
+        // (d3) link_on_complete CTA — records where to go and advances. Drives the REAL
+        // `PendingCompletionRoute` and the REAL advance machine, which proves the two halves the
+        // feature promises: the destination survives, AND the flow still goes where it would have
+        // gone — a CTA that opened on tap would leave every step behind it unvisited.
+        //
+        // `take()` rather than a peek, deliberately: reading it here is the same single-shot read
+        // the completion performs, so the fixture also proves the route is CONSUMED. A helper that
+        // only peeked would let a route leak into the next flow and still pass.
+        case PendingCompletionRoute.actionName:
+            PendingCompletionRoute.shared.record(buttonValue)
+            applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
+                         responses: sessionResponses(f), result: .proceed, hookRan: false)
+            h.state["pending_completion_route"] = PendingCompletionRoute.shared.take() ?? NSNull()
+
         default:
             XCTFail("[\(f.id)] no iOS driver for button action='\(buttonAction)'.")
         }

@@ -1628,6 +1628,27 @@ struct OnboardingStepRouter: View {
                 }
             }
             // Don't advance — user will return from in-app browser
+        case PendingCompletionRoute.actionName:
+            // Record the destination and advance exactly like `next` — same required-field gate,
+            // same step data, same next-step rules. `OnboardingCompletion` opens it once the flow
+            // is finished.
+            //
+            // Advancing is the whole point: this exists for a cross-sell the user meets BEFORE the
+            // end ("book a tasting"), and opening it on tap would abandon the rest of the flow.
+            // `link` already covers "open it now" for a terms or privacy URL.
+            if actionValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
+                // An author chose "Open link after onboarding" and left the URL blank. Advancing is
+                // the honest behaviour — a button that does nothing at all reads as broken. A LOG,
+                // not `reportInitDegraded`: this is an authoring slip, not a dead subsystem, and it
+                // fires on every tap. Android logs the same line at the same point.
+                Log.warning(
+                    "A CTA is configured to open a link after onboarding but has no URL; " +
+                    "it will advance without recording a destination."
+                )
+            } else {
+                PendingCompletionRoute.shared.record(actionValue)
+            }
+            advanceCollectingStepData()
         case "social_login":
             // Social login: pass provider info via onNext but mark as social_login.
             // The flow host's handleStepCompleted will fire onBeforeStepAdvance hook.

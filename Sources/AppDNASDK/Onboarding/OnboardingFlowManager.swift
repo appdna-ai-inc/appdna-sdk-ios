@@ -44,6 +44,11 @@ final class OnboardingFlowManager {
             flow = treatment
         }
 
+        // Drop any after-onboarding destination left over from a flow the user ABANDONED. Without
+        // this the SDK would open it when the NEXT flow completed, and the app would navigate
+        // somewhere the user never asked to go.
+        PendingCompletionRoute.shared.clear()
+
         // Track flow started
         eventTracker.track(event: "onboarding_flow_started", properties: [
             "flow_id": flow.id,

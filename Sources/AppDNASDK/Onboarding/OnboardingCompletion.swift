@@ -69,5 +69,16 @@ enum OnboardingCompletion {
         // SPEC-088: persist onboarding responses for cross-module access.
         SessionDataStore.shared.setOnboardingResponses(responses)
         delegate?.onOnboardingCompleted(flowId: flowId, responses: responses)
+        // A `link_on_complete` CTA asked to go somewhere once the flow finished. Opened AFTER the
+        // delegate, so the host's own completion work — dismissing the flow, persisting, its own
+        // navigation — runs first; opening before it would race our navigation against theirs.
+        //
+        // Through `URLSafety`, like every other config-driven open: the string comes from remote
+        // config, and a tested guard nothing calls is not a guard.
+        if let route = PendingCompletionRoute.shared.take() {
+            if !URLSafety.open(route) {
+                Log.warning("A CTA's after-onboarding link was refused: '\(route)'")
+            }
+        }
     }
 }
