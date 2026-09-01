@@ -1536,8 +1536,18 @@ final class SharedFixtureTests: XCTestCase {
 
             // SPEC-446 §3 — the gate, exercised in BOTH directions plus the deadlock case.
             if block.type == .summary_screen {
-                let statFieldIds: [String] = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
-                    .compactMap { ($0 as? [String: Any])?["field_id"] as? String }
+                // #595 — derived through the SDK's OWN `summaryStatFieldId`, not by reading
+                // `field_id` directly. A stat that carries an `input` but no `field_id` used to be
+                // invisible here exactly as it was invisible to the renderer and the gate, so the
+                // empty-card bug could never have been caught by this driver. The exact derived
+                // string is exposed below so a fixture pins the FORMULA: if the renderer and the
+                // gate ever derive it differently, the gate blocks on a key nothing writes.
+                let stats = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
+                    .compactMap { $0 as? [String: Any] }
+                let statFieldIds: [String] = stats.enumerated().map { index, stat in
+                    summaryStatFieldId(blockId: block.id, index: index, stat: stat)
+                }
+                h.state["parsed_stat_field_ids"] = statFieldIds
                 let unanswered = RequiredFieldGate.evaluate(blocks: [block], inputValues: [:])
                 var answered: [String: Any] = [:]
                 for id in statFieldIds { answered[id] = "5" }
