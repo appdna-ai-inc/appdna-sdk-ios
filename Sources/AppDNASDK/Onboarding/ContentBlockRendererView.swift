@@ -197,7 +197,17 @@ struct ContentBlockRendererView: View {
         case .input_signature: return AnyView(FormInputSignatureBlock(block: block, inputValues: $inputValues))
         // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement (checkbox + rich links → Bool).
         case .agreement: return AnyView(AgreementBlock(block: block, inputValues: $inputValues))
-        case .unknown: return AnyView(EmptyView())
+        // A block type this SDK version does not know. It still renders as nothing in RELEASE — a
+        // customer must never see SDK diagnostics on their onboarding — but a DEBUG build draws a
+        // marker, because "the console preview shows a card stack and the device shows a gap" is
+        // otherwise indistinguishable from a layout bug. The type itself is named on the console
+        // side of the log line: `AppDNAInitError.unsupportedBlockType`, reported at decode.
+        case .unknown:
+            #if DEBUG
+            return AnyView(UnsupportedBlockPlaceholder(blockId: block.id))
+            #else
+            return AnyView(EmptyView())
+            #endif
         }
     }
 
@@ -1019,8 +1029,13 @@ struct ContentBlockRendererView: View {
         let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let perRow = (block.field_config?["stats_layout"]?.value as? String) == "vertical" ? 1 : 2
-        let rows: [[[String: Any]]] = stride(from: 0, to: stats.count, by: perRow).map {
-            Array(stats[$0..<min($0 + perRow, stats.count)])
+        // Chunked WITH the stat's position in the block, because a stat's fallback input key is
+        // derived from that position (`summaryStatFieldId`). Chunking the bare dictionaries loses it:
+        // the inner ForEach offset is the index within the ROW, not within the block, so a stat in
+        // the second column would derive a key that collides with the first column of the next row.
+        let indexedStats = Array(stats.enumerated())
+        let rows: [[(offset: Int, element: [String: Any])]] = stride(from: 0, to: indexedStats.count, by: perRow).map {
+            Array(indexedStats[$0..<min($0 + perRow, indexedStats.count)])
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
@@ -1030,7 +1045,7 @@ struct ContentBlockRendererView: View {
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, rowStats in
                 HStack(spacing: 12) {
-                    ForEach(Array(rowStats.enumerated()), id: \.offset) { _, m in
+                    ForEach(rowStats, id: \.offset) { statIndex, m in
                         // Coerce — a numeric stat value (Int/Double) cast `as? String` would blank the card.
                         let value = (m["value"] as? String) ?? (m["value"]).map { "\($0)" } ?? ""
                         let label = (m["label"] as? String) ?? (m["label"]).map { "\($0)" } ?? ""
@@ -1042,7 +1057,11 @@ struct ContentBlockRendererView: View {
                         // could not be advanced at all. A gate for a control that does not exist is worse
                         // than neither.
                         let statInput = (m["input"] as? String) ?? "none"
-                        let statFieldId = (m["field_id"] as? String) ?? ""
+                        // #595 — an author who set an `input` but no `field_id` got an EMPTY CARD:
+                        // the control was skipped on the blank id and the else-branch drew this stat's
+                        // (also blank) value and label. Fall back to a stable derived key so the
+                        // control renders. `RequiredFieldGate` derives the SAME key.
+                        let statFieldId = summaryStatFieldId(blockId: block.id, index: statIndex, stat: m)
                         // #593 — the sub-headline's own type. `color` above styles the VALUE; the
                         // label under it had no colour, size or alignment at all, and neither did a
                         // slider/stepper's displayed number — the same text through a different
@@ -1054,7 +1073,7 @@ struct ContentBlockRendererView: View {
                         let statValueSize = summaryStatSize(m, "value_font_size", 24)
                         let statAlign = summaryStatAlignment(m, "align")
                         VStack(alignment: statAlign.horizontal, spacing: 4) {
-                            if statInput != "none" && !statFieldId.isEmpty {
+                            if statInput != "none" {
                                 SummaryStatInput(
                                     stat: m,
                                     fieldId: statFieldId,
@@ -3003,6 +3022,27 @@ func blockContainsTemplates(_ block: ContentBlock) -> Bool {
         }
         return false
 }
+
+#if DEBUG
+/// DEBUG-only marker for a block this SDK version cannot render. Never compiled into a release
+/// build, so it cannot reach a customer.
+struct UnsupportedBlockPlaceholder: View {
+    let blockId: String
+    var body: some View {
+        VStack(spacing: 4) {
+            Text("Unsupported block").font(.system(size: 13, weight: .semibold))
+            Text("\(blockId) — update the AppDNA SDK").font(.system(size: 11))
+        }
+        .foregroundColor(Color.orange)
+        .frame(maxWidth: .infinity)
+        .padding(12)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(Color.orange.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+    }
+}
+#endif
 
 /// SPEC-446 §3 — the control a Summary Screen stat can host.
 ///

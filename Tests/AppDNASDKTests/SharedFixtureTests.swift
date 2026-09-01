@@ -765,7 +765,10 @@ final class SharedFixtureTests: XCTestCase {
         let buttonAction = action["action"]?.stringValue
             ?? button?["action"]?.stringValue
             ?? ""
-        let buttonValue = button?["value"]?.stringValue
+        // The action's own `value` first: a CTA authored as a CONTENT BLOCK (which is how a flag CTA
+        // is authored — `applyTo` scans `content_blocks`) has no `primary_button` to read from.
+        // Absent, this is nil and every existing fixture keeps reading `primary_button` as before.
+        let buttonValue = action["value"]?.stringValue ?? button?["value"]?.stringValue
         let formData = (action["form_data"]?.objectValue ?? [:]).mapValues { $0.foundation }
 
         switch buttonAction {
@@ -809,6 +812,22 @@ final class SharedFixtureTests: XCTestCase {
         case "next", "complete", "":
             applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
                          responses: sessionResponses(f), result: .proceed, hookRan: false)
+
+        // (d2) flag CTA — records one key and advances. Drives the REAL `OnboardingCTAFlag` (parse
+        // plus the config-scanned `applyTo` fold) and then the REAL advance machine, which is what
+        // proves the two halves the feature promises: the flag reaches the host's completion
+        // responses, AND the flow goes exactly where it would have gone without it. Reimplementing
+        // either half here would let the fixture pass with the SDK's copy deleted.
+        case OnboardingCTAFlag.actionName:
+            var merged = formData
+            if let flag = OnboardingCTAFlag.parse(buttonValue) {
+                merged[flag.key] = flag.value
+            }
+            var responses = sessionResponses(f)
+            responses[step.id] = merged
+            responses = OnboardingCTAFlag.applyTo(responses: responses, step: step, stepData: merged)
+            applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
+                         responses: responses, result: .proceed, hookRan: false)
 
         default:
             XCTFail("[\(f.id)] no iOS driver for button action='\(buttonAction)'.")
@@ -1517,8 +1536,18 @@ final class SharedFixtureTests: XCTestCase {
 
             // SPEC-446 §3 — the gate, exercised in BOTH directions plus the deadlock case.
             if block.type == .summary_screen {
-                let statFieldIds: [String] = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
-                    .compactMap { ($0 as? [String: Any])?["field_id"] as? String }
+                // #595 — derived through the SDK's OWN `summaryStatFieldId`, not by reading
+                // `field_id` directly. A stat that carries an `input` but no `field_id` used to be
+                // invisible here exactly as it was invisible to the renderer and the gate, so the
+                // empty-card bug could never have been caught by this driver. The exact derived
+                // string is exposed below so a fixture pins the FORMULA: if the renderer and the
+                // gate ever derive it differently, the gate blocks on a key nothing writes.
+                let stats = ((block.field_config?["summary_stats"]?.value as? [Any]) ?? [])
+                    .compactMap { $0 as? [String: Any] }
+                let statFieldIds: [String] = stats.enumerated().map { index, stat in
+                    summaryStatFieldId(blockId: block.id, index: index, stat: stat)
+                }
+                h.state["parsed_stat_field_ids"] = statFieldIds
                 let unanswered = RequiredFieldGate.evaluate(blocks: [block], inputValues: [:])
                 var answered: [String: Any] = [:]
                 for id in statFieldIds { answered[id] = "5" }
