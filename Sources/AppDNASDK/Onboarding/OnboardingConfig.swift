@@ -155,6 +155,13 @@ public struct NextStepRule: Codable {
 /// A single step within a flow.
 public struct OnboardingStep: Codable, Identifiable {
     public let id: String
+    /// The step's authored name ("Screen path 1").
+    ///
+    /// Decoded solely so a cross-step `answer_key` can name its source step the way the console
+    /// writes it. `mapStepsForFirestore` deep-clones the whole step, so this has always been on
+    /// the wire — it was simply never decoded, and every name-keyed navigation rule silently
+    /// resolved to nil as a result.
+    public let name: String?
     public let type: StepType
     public let config: StepConfig
     public let hook: StepHookConfig?
@@ -165,7 +172,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public let hide_back: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case id, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
+        case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
     }
 
     /// `hide_progress` / `hide_back` are authored per-step but the console publishes them INSIDE the
@@ -177,6 +184,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.name = try c.decodeIfPresent(String.self, forKey: .name)
         self.type = try c.decodeIfPresent(StepType.self, forKey: .type) ?? .custom
         self.hook = try c.decodeIfPresent(StepHookConfig.self, forKey: .hook)
         // Step-root first (legacy path), then the layout object where the console actually writes them.
@@ -218,6 +226,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(id, forKey: .id)
+        try c.encodeIfPresent(name, forKey: .name)
         try c.encode(type, forKey: .type)
         try c.encode(config, forKey: .config)
         try c.encodeIfPresent(hook, forKey: .hook)
@@ -226,8 +235,9 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
     }
 
-    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil) {
+    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil) {
         self.id = id
+        self.name = name
         self.type = type
         self.config = config
         self.hook = hook

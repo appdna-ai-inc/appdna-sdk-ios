@@ -418,7 +418,8 @@ enum OnboardingAdvance {
                 matches = condStr == "always"
             } else if let condDict = cond as? [String: Any] {
                 matches = evaluateCondition(
-                    condDict, responses: stepResponses, step: step, previousStepId: previousStepId
+                    condDict, responses: stepResponses, step: step, previousStepId: previousStepId,
+                    allResponses: responses, flow: flow
                 )
             } else {
                 matches = true
@@ -432,15 +433,73 @@ enum OnboardingAdvance {
     }
 
     /// Evaluate a single condition dict against a step's responses.
+    /// Where a condition reads its answer from: the leaf field id, that step's response map, and
+    /// the step whose options define the id↔value aliases.
+    struct ConditionScope {
+        let field: String
+        let responses: [String: Any]
+        let step: OnboardingStep?
+    }
+
+    /// Resolve a possibly cross-step `answer_key` ("Screen path 1.select_path", "step1.select_path")
+    /// to the step that actually owns the answer.
+    ///
+    /// Conditions used to read `responses[stepId]` — the CURRENT step's answers — and nothing else,
+    /// so a rule branching on an earlier screen's choice could never match. It did not fail loudly:
+    /// the lookup returned nil, every rule evaluated false, and advance fell through to plain
+    /// sequential order, which routinely IS the first rule's target. A dead branch therefore looked
+    /// exactly like "it always picks the first option".
+    ///
+    /// The console has offered these keys the whole time (`StepLogicEditor.tsx` builds them from
+    /// previous steps as "<StepLabel>.<field_id>"), so this resolves by authored name as well as by
+    /// step id — flows already in production are keyed by name and must keep working untouched.
+    static func resolveConditionScope(
+        field rawField: String,
+        stepResponses: [String: Any],
+        allResponses: [String: Any],
+        currentStep: OnboardingStep?,
+        flow: OnboardingFlowConfig?
+    ) -> ConditionScope {
+        let own = ConditionScope(field: rawField, responses: stepResponses, step: currentStep)
+        // A key the current step actually answered always wins: a field_id may legitimately contain
+        // a dot, and this keeps every pre-existing rule byte-identical.
+        if stepResponses[rawField] != nil { return own }
+        guard let flow = flow, let dot = rawField.lastIndex(of: ".") else { return own }
+        let stepRef = String(rawField[rawField.startIndex..<dot])
+        let leaf = String(rawField[rawField.index(after: dot)...])
+        guard !stepRef.isEmpty, !leaf.isEmpty else { return own }
+        // Id first, then authored name — an id is unambiguous, a name is what the console writes.
+        guard let source = flow.steps.first(where: { $0.id == stepRef })
+            ?? flow.steps.first(where: { $0.name == stepRef }) else { return own }
+        return ConditionScope(
+            field: leaf,
+            responses: allResponses[source.id] as? [String: Any] ?? [:],
+            step: source
+        )
+    }
+
     static func evaluateCondition(
         _ cond: [String: Any],
-        responses: [String: Any],
-        step: OnboardingStep?,
-        previousStepId: String?
+        responses stepResponses: [String: Any],
+        step currentStep: OnboardingStep?,
+        previousStepId: String?,
+        allResponses: [String: Any] = [:],
+        flow: OnboardingFlowConfig? = nil
     ) -> Bool {
         guard let type = cond["type"] as? String else { return true }
         // Console saves "answer_key"; the SDK also accepts "field" for backward compat.
-        let field = cond["answer_key"] as? String ?? cond["field"] as? String ?? ""
+        let rawField = cond["answer_key"] as? String ?? cond["field"] as? String ?? ""
+
+        // Re-bound to the original local names so every operator below is unchanged. `step` matters
+        // as much as `responses`: the aliases that map an authored "opt_1" onto the stored
+        // "wine_tasting" come from the SOURCE step's options, not the step being left.
+        let scope = resolveConditionScope(
+            field: rawField, stepResponses: stepResponses, allResponses: allResponses,
+            currentStep: currentStep, flow: flow
+        )
+        let field = scope.field
+        let responses = scope.responses
+        let step = scope.step
 
         func aliasesForField() -> (idToValue: [String: String], valueToId: [String: String]) {
             optionAliases(forField: field, in: step)
