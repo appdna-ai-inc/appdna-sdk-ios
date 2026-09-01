@@ -199,12 +199,22 @@ public enum AppDNAInitError: Error, LocalizedError, Equatable {
     case bootstrapFailed(String)
     /// One subsystem failed to start. The others — analytics above all — are unaffected.
     case subsystemFailed(name: String, message: String)
+    /// A published content block whose `type` this SDK version does not know. It renders as
+    /// NOTHING — the step draws with a hole where the block belongs — which is indistinguishable
+    /// from a layout bug unless the SDK says so. Ship the SDK version that introduced the type.
+    ///
+    /// This case exists because that silence cost a full investigation: a summary step drew its
+    /// heading, both CTAs and its footnote while the card stack in the middle was simply absent,
+    /// and nothing anywhere — no log, no delegate, no placeholder — named the reason.
+    case unsupportedBlockType(String)
 
     public var errorDescription: String? {
         switch self {
         case .firebaseConfigMissing(let detail): return "Firebase configuration missing: \(detail)"
         case .bootstrapFailed(let detail): return "Bootstrap failed: \(detail)"
         case .subsystemFailed(let name, let message): return "Subsystem '\(name)' failed to initialize: \(message)"
+        case .unsupportedBlockType(let type):
+            return "Content block type '\(type)' is not supported by AppDNA SDK \(AppDNA.sdkVersion) and will render as nothing. Update the SDK."
         }
     }
 }

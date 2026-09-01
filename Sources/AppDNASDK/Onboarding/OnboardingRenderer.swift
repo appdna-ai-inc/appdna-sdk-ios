@@ -639,6 +639,16 @@ struct OnboardingFlowHost: View {
         let safeData = AuthSecretRedactor.redact(data, in: step)
         if let safeData {
             responses[step.id] = safeData
+            // A flag CTA's key is ALSO collected flat under `responses["flags"]`, so a host routing
+            // after `onOnboardingCompleted` reads one bucket instead of walking every step of the
+            // flow looking for it. The step's own copy above is untouched — `next_step_rules` and
+            // `{{responses.*}}` still find the flag exactly where they find every other answer.
+            //
+            // Which keys count as flags comes from the step's own CTA CONFIG, not from the data map.
+            // Reading the map would let a form field named `flags` — or a field whose id happened to
+            // match a flag key — write into the bucket the host makes routing decisions on. Same
+            // structural discipline as `AuthSecretRedactor` one block up, and for the same reason.
+            responses = OnboardingCTAFlag.applyTo(responses: responses, step: step, stepData: safeData)
         }
         // SPEC-087: Persist responses incrementally so TemplateEngine has fresh data for next step.
         // The persist stays here even for a hook step: the hook is HANDED `responses`, and if it blocks
@@ -1537,6 +1547,35 @@ struct OnboardingStepRouter: View {
         }
     }
 
+    /// The advance every CTA shares: gate on required fields, collect the step's answers, hand them
+    /// up. `extra` is merged last so a flag CTA cannot be silently overwritten by a form field.
+    ///
+    /// Extracted so `next` and `flag` cannot drift. They did drift in an earlier draft of this: the
+    /// flag path skipped `canAdvance`, which let a CTA advance past an unanswered required field
+    /// purely because it also set a flag.
+    private func advanceCollectingStepData(extra: [String: Any] = [:]) {
+        guard canAdvance else {
+            withAnimation { showValidationToast = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                withAnimation { showValidationToast = false }
+            }
+            return
+        }
+        // Collect toggle values and input values into response
+        var data: [String: Any] = [:]
+        for (key, value) in toggleValues {
+            data["toggle_\(key)"] = value
+        }
+        // SPEC-089d Phase 3: Include form input values in step response
+        for (key, value) in inputValues {
+            data[key] = value
+        }
+        for (key, value) in extra {
+            data[key] = value
+        }
+        onNext(data.isEmpty ? nil : data)
+    }
+
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
         switch action {
         case "next":
@@ -1550,24 +1589,36 @@ struct OnboardingStepRouter: View {
                 runPermissionPipeline(nextPermissionType)
                 return
             }
-            // Validate required fields before advancing
-            guard canAdvance else {
-                withAnimation { showValidationToast = true }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                    withAnimation { showValidationToast = false }
-                }
+            advanceCollectingStepData()
+        case OnboardingCTAFlag.actionName:
+            // A CTA that RECORDS A CHOICE and continues.
+            //
+            // The case it exists for: a summary step offers an upsell ("book a tasting", "go
+            // premium"). Routing to that destination DURING onboarding tears the user out of a flow
+            // they are halfway through, and every host that tried it ended up rebuilding the flow
+            // state by hand on the way back. So the CTA writes one key and advances exactly like
+            // `next` — same required-field gate, same step data, same next-step rules. Where the
+            // user goes is the host's decision, made once, at `onOnboardingCompleted`.
+            //
+            // Deliberately NOT a branch: a flag must not change which step comes next. An author who
+            // wants the flow itself to fork already has `next_step_rules`, which can read the very
+            // key this writes.
+            guard let flag = OnboardingCTAFlag.parse(actionValue) else {
+                // An author selected "Flag & continue" and left the key blank. Advancing without
+                // recording anything is the honest behaviour — silently doing nothing at all would
+                // look like a dead button.
+                //
+                // A LOG, not `reportInitDegraded`: this fires on every tap, and the degraded-init
+                // delegate is for "a subsystem will not work", not for an authoring slip. Android
+                // logs the same line at the same point.
+                Log.warning(
+                    "A CTA is configured to set a flag but has no flag key; " +
+                    "it will advance without recording one."
+                )
+                advanceCollectingStepData()
                 return
             }
-            // Collect toggle values and input values into response
-            var data: [String: Any] = [:]
-            for (key, value) in toggleValues {
-                data["toggle_\(key)"] = value
-            }
-            // SPEC-089d Phase 3: Include form input values in step response
-            for (key, value) in inputValues {
-                data[key] = value
-            }
-            onNext(data.isEmpty ? nil : data)
+            advanceCollectingStepData(extra: [flag.key: flag.value])
         case "skip":
             onSkip()
         case "link":
@@ -1808,12 +1859,16 @@ enum RequiredFieldGate {
         // summary_screen is ignored rather than honoured.
         for block in blocks where block.type == .summary_screen {
             let stats = (block.field_config?["summary_stats"]?.value as? [Any]) ?? []
-            for entry in stats {
+            for (statIndex, entry) in stats.enumerated() {
                 guard let stat = entry as? [String: Any],
                       let input = stat["input"] as? String, input != "none",
-                      String(describing: stat["required"] ?? "") == "true",
-                      let fieldId = stat["field_id"] as? String, !fieldId.isEmpty
+                      String(describing: stat["required"] ?? "") == "true"
                 else { continue }
+                // #595 — a stat with no authored `field_id` used to be skipped here, so `required`
+                // was silently dropped. It now falls back to the same derived key the renderer's
+                // control writes; deriving it anywhere but `summaryStatFieldId` would gate on a key
+                // nothing writes.
+                let fieldId = summaryStatFieldId(blockId: block.id, index: statIndex, stat: stat)
                 // An authored `default` SATISFIES the requirement, and is checked here rather than
                 // relying on the control having seeded it. The control seeds on appear, so a summary
                 // block below the fold in a scrolling step has not run that code yet — the value

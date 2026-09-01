@@ -765,7 +765,10 @@ final class SharedFixtureTests: XCTestCase {
         let buttonAction = action["action"]?.stringValue
             ?? button?["action"]?.stringValue
             ?? ""
-        let buttonValue = button?["value"]?.stringValue
+        // The action's own `value` first: a CTA authored as a CONTENT BLOCK (which is how a flag CTA
+        // is authored — `applyTo` scans `content_blocks`) has no `primary_button` to read from.
+        // Absent, this is nil and every existing fixture keeps reading `primary_button` as before.
+        let buttonValue = action["value"]?.stringValue ?? button?["value"]?.stringValue
         let formData = (action["form_data"]?.objectValue ?? [:]).mapValues { $0.foundation }
 
         switch buttonAction {
@@ -809,6 +812,22 @@ final class SharedFixtureTests: XCTestCase {
         case "next", "complete", "":
             applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
                          responses: sessionResponses(f), result: .proceed, hookRan: false)
+
+        // (d2) flag CTA — records one key and advances. Drives the REAL `OnboardingCTAFlag` (parse
+        // plus the config-scanned `applyTo` fold) and then the REAL advance machine, which is what
+        // proves the two halves the feature promises: the flag reaches the host's completion
+        // responses, AND the flow goes exactly where it would have gone without it. Reimplementing
+        // either half here would let the fixture pass with the SDK's copy deleted.
+        case OnboardingCTAFlag.actionName:
+            var merged = formData
+            if let flag = OnboardingCTAFlag.parse(buttonValue) {
+                merged[flag.key] = flag.value
+            }
+            var responses = sessionResponses(f)
+            responses[step.id] = merged
+            responses = OnboardingCTAFlag.applyTo(responses: responses, step: step, stepData: merged)
+            applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
+                         responses: responses, result: .proceed, hookRan: false)
 
         default:
             XCTFail("[\(f.id)] no iOS driver for button action='\(buttonAction)'.")

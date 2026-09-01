@@ -589,6 +589,78 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// #595 — a published summary step decoded and composed the way the DEVICE does it: the whole
+    /// step JSON through `OnboardingStep` (not a hand-written block through the renderer), then
+    /// `ThreeZoneStepLayout`. The reported symptom was a step whose heading, buttons and footnote
+    /// all drew but whose summary card stack was simply absent.
+    ///
+    /// The shape here is copied verbatim from a published `config/onboarding_index/flows/*` doc —
+    /// zones, `element_*`, `stats_layout`, the per-stat keys and the stat that carries `input`
+    /// without a `field_id`. Only the human-readable strings are replaced; changing any KEY makes
+    /// this test stop reproducing what shipped.
+    ///
+    /// WHAT THE GOLDEN PINS, card by card: the heading and both zoned CTAs land in the right zones;
+    /// cards 1, 2 and 4 draw their value and label; and **card 3 draws a STEPPER**. Card 3 is the
+    /// stat with an `input` and no `field_id` — it used to render as an empty box on both natives
+    /// while the console preview drew the control, which is the preview/device divergence the
+    /// reporter photographed. If card 3 goes blank again, `summaryStatFieldId` has been bypassed.
+    func testSummaryScreenStepAsPublished() throws {
+        let json = """
+        {
+          "id": "step9",
+          "type": "custom",
+          "layout": {
+            "content_blocks": [
+              { "id": "block_1", "text": "Complete your reservation", "type": "heading", "level": 1,
+                "style": { "color": "#EAE9E5", "alignment": "center", "font_size": 22, "font_weight": 700 },
+                "horizontal_align": "center" },
+              { "id": "block_5", "text": "", "type": "summary_screen", "zone": "top",
+                "bg_color": "#232F43", "text_color": "#EAE9E5",
+                "field_config": {
+                  "stats_layout": "vertical",
+                  "summary_stats": [
+                    { "color": "#EAE9E5", "label": "photo", "value": "Hillside Vineyard Estate" },
+                    { "color": "#FFD700", "label": "Old Town - 12 min away", "value": "Today - 4:30 PM" },
+                    { "color": "#EAE9E5", "input": "stepper", "label": "", "value": "", "required": "true" },
+                    { "color": "#EAE9E5", "label": "Total Due Now: $45", "value": "Tour Price" }
+                  ]
+                },
+                "element_width": "100%", "element_height": "auto",
+                "vertical_align": "top", "vertical_offset": 0, "horizontal_align": "center" },
+              { "id": "block_2", "text": "Pay with Credit Card", "type": "button", "zone": "bottom",
+                "style": { "color": "#000000", "alignment": "center", "font_size": 16, "font_weight": 600 },
+                "action": "next", "variant": "primary", "bg_color": "#ffffff", "text_color": "#000000",
+                "element_width": "fill", "vertical_align": "bottom", "vertical_offset": 0,
+                "horizontal_align": "center", "button_corner_radius": 24 },
+              { "id": "block_6", "text": "Confirm Reservation", "type": "button", "zone": "bottom",
+                "style": { "color": "#192334", "alignment": "center", "font_size": 16, "font_weight": 600 },
+                "action": "link", "variant": "primary", "bg_color": "#FFD700", "text_color": "#192334",
+                "element_width": "fill", "vertical_align": "bottom", "vertical_offset": 0,
+                "horizontal_align": "center", "button_corner_radius": 24 },
+              { "id": "block_3", "text": "Free cancellation up to 24 hours.", "type": "text", "zone": "bottom",
+                "style": { "color": "#A0A4A7", "alignment": "center", "font_size": 16, "font_weight": 400 },
+                "vertical_align": "bottom", "vertical_offset": 0, "horizontal_align": "center" }
+            ]
+          }
+        }
+        """
+        let step = try JSONDecoder().decode(OnboardingStep.self, from: Data(json.utf8))
+        let blocks = step.config.content_blocks ?? []
+        XCTAssertEqual(blocks.count, 5, "the step decoder dropped blocks")
+        XCTAssertTrue(
+            blocks.contains { $0.type == .summary_screen },
+            "summary_screen decoded as .unknown — an SDK that does not know a block type renders it as nothing at all, which is exactly the reported symptom"
+        )
+        let view = ThreeZoneStepLayout(
+            blocks: blocks,
+            onAction: { _, _ in },
+            toggleValues: .constant([:]),
+            inputValues: .constant([:])
+        )
+        .frame(width: 390, height: 844)
+        .background(Color(hex: "#141B2B"))
+        withSnapshotTesting(record: recordMode) { assertSnapshot(of: view, as: .image(layout: .sizeThatFits)) }
+    }
     func testSelect_imageTiles_contained() throws {
         let view = try render(Self.tilesJSON("""
         "tile_image_layout": "contained", "tile_strip_ratio": 0.7, "tile_surface_color": "#1F2937",

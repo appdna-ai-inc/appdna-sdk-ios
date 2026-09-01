@@ -54,7 +54,38 @@ public enum ContentBlockType: String, Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let rawValue = try container.decode(String.self)
-        self = ContentBlockType(rawValue: rawValue) ?? .unknown
+        if let known = ContentBlockType(rawValue: rawValue) {
+            self = known
+        } else {
+            // Decoding still SUCCEEDS — one unknown block must never cost the whole step. But it no
+            // longer happens in silence: `.unknown` renders as EmptyView, so without this report a
+            // host sees a step with a hole in it and nothing to explain it.
+            UnsupportedBlockTypes.note(rawValue)
+            self = .unknown
+        }
+    }
+}
+
+/// Every block `type` seen during decode that this SDK version does not know.
+///
+/// Reported ONCE per distinct type: a flow with twenty steps carrying the same unsupported block
+/// would otherwise fire the host's delegate twenty times and drown the signal it exists to give.
+enum UnsupportedBlockTypes {
+    private static let lock = NSLock()
+    private static var reported = Set<String>()
+
+    static func note(_ rawType: String) {
+        lock.lock()
+        let isNew = reported.insert(rawType).inserted
+        lock.unlock()
+        guard isNew else { return }
+        AppDNA.reportInitDegraded(AppDNAInitError.unsupportedBlockType(rawType))
+    }
+
+    /// Test seam — the set is process-global, so a test that asserts on the first report needs to
+    /// clear what an earlier test already recorded.
+    static func resetForTesting() {
+        lock.lock(); reported.removeAll(); lock.unlock()
     }
 }
 
@@ -196,6 +227,22 @@ public struct VisibilityCondition: Codable {
 }
 
 /// Evaluates a visibility condition against the current data context.
+/// The input key a Summary Screen stat reads and writes.
+///
+/// A stat authored with an `input` but no `field_id` used to render as an EMPTY CARD, and its
+/// `required` was silently dropped with it: the renderer and `RequiredFieldGate` both skipped the
+/// stat on the missing id, so the author saw a blank box where a control belonged and a
+/// requirement that gated nothing. Deriving a stable id from the block and the stat's position
+/// makes the control appear and the requirement real.
+///
+/// 🔴 The renderer and the gate MUST derive this identically. If they drift, the gate blocks on a
+/// key nothing writes and the step cannot be advanced at all — the exact failure the gate's own
+/// history records fixing twice.
+func summaryStatFieldId(blockId: String, index: Int, stat: [String: Any]) -> String {
+    if let authored = stat["field_id"] as? String, !authored.isEmpty { return authored }
+    return "\(blockId)_stat_\(index)"
+}
+
 func evaluateVisibilityCondition(
     _ condition: VisibilityCondition?,
     responses: [String: Any],
