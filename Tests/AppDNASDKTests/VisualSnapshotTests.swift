@@ -1356,6 +1356,32 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-483 (#610) — "the device mockup stretches vertically only, distorting the image".
+    ///
+    /// It did: the screen was the authored `height` tall by a HARDCODED 260 wide, so at the default
+    /// height of 200 the "phone" was a 260×200 LANDSCAPE box, and changing Height only changed one
+    /// side. The screen now takes a 9:19.5 aspect and the height scales the whole device.
+    ///
+    /// Both frames at the same height must come out the SAME SHAPE — thin vs thick differs only by
+    /// bezel padding and the two radii. A landscape result here is the bug returning.
+    func testSpec483_deviceMockupIsProportional() throws {
+        let view = try renderMany([
+            """
+            {"id": "m1", "type": "image", "image_url": "https://example.com/a.png",
+             "image_frame": "phone", "height": 200}
+            """,
+            """
+            {"id": "m2", "type": "image", "image_url": "https://example.com/b.png",
+             "image_frame": "phone_thin", "height": 260}
+            """,
+        ])
+        let recordMode: SnapshotTestingConfiguration.Record =
+            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// SPEC-482 (#609) — "no way to arrange 3 buttons 2-then-1 with its own background container".
     ///
     /// There is: a Row is also a COLUMN (`row_direction: "vertical"`) and Rows NEST, so the grid is

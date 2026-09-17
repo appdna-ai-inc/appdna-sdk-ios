@@ -539,7 +539,7 @@ struct ContentBlockRendererView: View {
         return Group {
             if block.image_frame == "phone" || block.image_frame == "phone_thin",
                let urlString = block.image_url, let url = URL(string: urlString) {
-                phoneMockup(url: url, height: imgHeight, alt: block.alt, thin: block.image_frame == "phone_thin")
+                phoneMockup(url: url, height: imgHeight, alt: block.alt, thin: block.image_frame == "phone_thin", fit: imageFit)
             } else if block.image_frame == "glow" || block.image_frame == "color_frame",
                       let urlString = block.image_url, let url = URL(string: urlString) {
                 // #581 — effects on the plain image rather than mockups. Settings come from
@@ -616,30 +616,49 @@ struct ContentBlockRendererView: View {
     /// #581 — `thin: true` is the same mockup with a narrower bezel. One function rather than two,
     /// because everything except the padding and the two radii is identical, and a copy is how the
     /// notch or the width cap ends up different between them.
-    private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false) -> some View {
+    private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false, fit: String = "cover") -> some View {
         let pad: CGFloat = thin ? 4 : 10
         let outerR: CGFloat = thin ? 32 : 40
         let innerR: CGFloat = thin ? 28 : 30
+        // #610 — the screen was `height` tall by a HARDCODED 260 wide, so Height changed only the
+        // height: at the default 200 the "phone" was LANDSCAPE (260×200) and every other height was
+        // some other arbitrary shape. A phone has a FIXED shape, so the screen takes a 9:19.5 aspect
+        // (modern iPhone) and the authored height scales the whole device proportionally. The 260
+        // cap is kept, but it now clamps the device rather than only its width.
+        let screenAspect: CGFloat = 9.0 / 19.5
+        let maxScreenW: CGFloat = 260 - pad * 2
+        let screenW = min(max(height, 1) * screenAspect, maxScreenW)
+        let screenH = screenW / screenAspect
+        // Proportional too: a fixed 96pt notch overflowed a narrow phone.
+        let notchW = min(96, screenW * 0.42)
         return ZStack(alignment: .top) {
             BundledAsyncPhaseImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
+                    // #610 — image_fit is honored INSIDE the mockup. It was hardcoded to .fill,
+                    // which is why the reporter's "Fit" attempt did nothing. Same semantics as
+                    // styledImage: none → intrinsic, fill → stretch, contain/fit → .fit, else cover.
+                    if fit == "none" {
+                        image
+                    } else if fit == "fill" {
+                        image.resizable()
+                    } else {
+                        image.resizable()
+                            .aspectRatio(contentMode: (fit == "contain" || fit == "fit") ? .fit : .fill)
+                    }
                 default:
                     Color(hex: "#2A2A2E")
                 }
             }
-            .frame(height: height)
-            .frame(maxWidth: .infinity)
+            .frame(width: screenW, height: screenH)
             .clipShape(RoundedRectangle(cornerRadius: innerR))
             Capsule()
                 .fill(Color.black)
-                .frame(width: 96, height: 26)
+                .frame(width: notchW, height: 26)
                 .padding(.top, 8)
         }
         .padding(pad)
         .background(RoundedRectangle(cornerRadius: outerR).fill(Color(hex: "#101012")))
-        .frame(maxWidth: 260)
         .accessibilityLabel(alt ?? "Image")
     }
 
