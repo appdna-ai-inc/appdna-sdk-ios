@@ -337,7 +337,7 @@ struct PaywallRenderer: View {
                     // SPEC-491 (#652) — a chevron that LEAVES the paywall, which returns the user to
                     // whatever was presented before it (a previous paywall, an onboarding step, a
                     // screen module). On a single-view paywall that is the same operation as close;
-                    // what differs is the glyph and the reason the host is told. Navigating between
+                    // what differs is the GLYPH. Navigating between
                     // views INSIDE one paywall is a separate feature — "FR · Console · Multi-view
                     // paywalls" — deliberately not built here.
                     backButton
