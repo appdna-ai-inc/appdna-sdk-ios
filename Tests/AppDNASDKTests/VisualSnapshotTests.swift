@@ -1356,6 +1356,46 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-482 (#609) — "no way to arrange 3 buttons 2-then-1 with its own background container".
+    ///
+    /// There is: a Row is also a COLUMN (`row_direction: "vertical"`) and Rows NEST, so the grid is
+    /// an outer vertical Row holding a horizontal Row of two buttons plus a third button, with the
+    /// outer Row's `block_style` as the group's background. Nothing in the SDKs or the console
+    /// needed to change — the BlockPicker just called it "Horizontal row layout", so an author
+    /// hunting for a grid never tried it.
+    ///
+    /// This test exists because that claim is worthless unless it actually renders. If a future
+    /// change breaks nesting or vertical direction, the documented recipe silently stops working.
+    func testSpec482_threeButtonGridWithBackground() throws {
+        let view = try render("""
+        {
+          "id": "grp", "type": "row", "row_direction": "vertical", "spacing": 8,
+          "block_style": {
+            "background_color": "#1F2937", "border_radius": 16,
+            "padding_top": 12, "padding_bottom": 12, "padding_left": 12, "padding_right": 12
+          },
+          "stack_children": [
+            {
+              "id": "r1", "type": "row", "row_direction": "horizontal", "spacing": 8,
+              "stack_children": [
+                {"id": "b1", "type": "button", "text": "Skip", "variant": "secondary",
+                 "bg_color": "#374151", "text_color": "#F9FAFB", "element_width": "fill"},
+                {"id": "b2", "type": "button", "text": "Maybe later", "variant": "secondary",
+                 "bg_color": "#374151", "text_color": "#F9FAFB", "element_width": "fill"}
+              ]
+            },
+            {"id": "b3", "type": "button", "text": "Continue", "variant": "primary",
+             "bg_color": "#6366F1", "text_color": "#FFFFFF", "element_width": "fill"}
+          ]
+        }
+        """)
+        let recordMode: SnapshotTestingConfiguration.Record =
+            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// EPIC-11 — password-strength meter: weak (1/4) / good (3/4) / strong (4/4). Parity with Android.
     func testEpic11_passwordStrength() throws {
         let view = try renderMany([
