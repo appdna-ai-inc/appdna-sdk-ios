@@ -144,7 +144,7 @@ struct ContentBlockRendererView: View {
         case .memory_match: return AnyView(MemoryMatchBlockView(block: block, onInteract: onInteract))
         case .calendar_month: return AnyView(CalendarMonthBlockView(block: block, inputValues: $inputValues, onInteract: onInteract))
         case .button: return AnyView(buttonBlock(block))
-        // Mrozu (Duolingo s20/s22) — CTA-style button that plays `audio_url` on tap.
+        // Device QA (s20/s22) — CTA-style button that plays `audio_url` on tap.
         case .sound_button: return AnyView(soundButtonBlock(block))
         case .spacer: return AnyView(Spacer().frame(height: CGFloat(block.spacer_height ?? 24))) // SPEC-419 pass-14 #11 — unset default 24 to match editor+preview (was 16)
         case .list: return AnyView(listBlock(block))
@@ -195,7 +195,7 @@ struct ContentBlockRendererView: View {
         case .input_image_picker: return AnyView(FormInputImagePickerPlaceholderBlock(block: block, inputValues: $inputValues))
         case .input_color: return AnyView(FormInputColorBlock(block: block, inputValues: $inputValues))
         case .input_signature: return AnyView(FormInputSignatureBlock(block: block, inputValues: $inputValues))
-        // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement (checkbox + rich links → Bool).
+        // Device QA (2026-08-04, s1) — standalone consent/agreement (checkbox + rich links → Bool).
         case .agreement: return AnyView(AgreementBlock(block: block, inputValues: $inputValues))
         // A block type this SDK version does not know. It still renders as nothing in RELEASE — a
         // customer must never see SDK diagnostics on their onboarding — but a DEBUG build draws a
@@ -288,7 +288,7 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Text
 
-    // Mrozu QA — trailing animated ellipsis ("", ".", "..", "...") for loading-style text
+    // Device QA — trailing animated ellipsis ("", ".", "..", "...") for loading-style text
     // (text block with field_config.show_trailing_dots). Parity with Android AnimatedTrailingDots
     // + console preview's pulsing-dots span.
     private struct AnimatedTrailingDots: View {
@@ -408,7 +408,7 @@ struct ContentBlockRendererView: View {
     }
 
     // EPIC-3 — media_gallery: horizontal scrollable row of image tiles (rounded, fixed size, placeholder bg).
-    // Media-gallery v2 (Mrozu QA): gallery_fill = full-width edge-to-edge cover tiles; gallery_autoscroll =
+    // Media-gallery v2 (Device QA): gallery_fill = full-width edge-to-edge cover tiles; gallery_autoscroll =
     // seamless marquee loop (gallery_autoscroll_speed = seconds per full cycle, default 20). Both default
     // off → identical to the existing static tile row (no timer/animation cost when off — non-breaking).
     @ViewBuilder
@@ -421,7 +421,7 @@ struct ContentBlockRendererView: View {
         let fill = block.gallery_fill ?? false
         let autoscroll = block.gallery_autoscroll ?? false
         let cycle = block.gallery_autoscroll_speed ?? 20
-        // Mrozu QA (2026-08-04) — alarmy selectable gallery: gallery_preview_on_select opens a full-screen
+        // Device QA (2026-08-04) — selectable gallery: gallery_preview_on_select opens a full-screen
         // enlarged overlay of the tapped image. Default off → the existing static/marquee row (non-breaking).
         // Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
         let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
@@ -674,7 +674,7 @@ struct ContentBlockRendererView: View {
     private func buttonBlock(_ block: ContentBlock, onTapOverride: (() -> Void)? = nil) -> some View {
         let btnVariant = block.variant ?? "primary"
         let radius = CGFloat(block.button_corner_radius ?? 12)
-        // Mrozu QA (2026-08-04) — Flo consent CTA: `cta_enabled_bg_color` / `cta_disabled_bg_color` drive the
+        // Device QA (2026-08-04) — consent CTA: `cta_enabled_bg_color` / `cta_disabled_bg_color` drive the
         // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
         // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
         // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
@@ -768,7 +768,7 @@ struct ContentBlockRendererView: View {
         .applyPressedStyle(block.pressed_style)
     }
 
-    // MARK: - Sound Button (Mrozu Duolingo s20/s22)
+    // MARK: - Sound Button (Device QA — s20/s22)
 
     /// A CTA-style button that plays an uploaded/remote audio clip (mp3/wav/aac)
     /// from `block.audio_url` on tap — reuses ALL button styling fields via
@@ -862,7 +862,7 @@ struct ContentBlockRendererView: View {
         let accent = Color(hex: block.active_color ?? accentHex)
         let icon = (block.field_config?["banner_icon"]?.value as? String) ?? defaultIcon
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
-        // Mrozu QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
+        // Device QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
         // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
         let bgOverride = block.bg_color.map { Color(hex: $0) }
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
@@ -941,7 +941,7 @@ struct ContentBlockRendererView: View {
         let bubbleColor = Color(hex: block.bg_color ?? "#FFFFFF")
         let textColor = Color(hex: block.text_color ?? "#111827")
         let tailPos = (block.field_config?["bubble_tail"]?.value as? String) ?? "left"
-        // Mrozu QA — bubble interior font family (bubble_font_family; nil → system) + tail geometry
+        // Device QA — bubble interior font family (bubble_font_family; nil → system) + tail geometry
         // (tail_width/tail_length; default 18×9). Parity w/ Android SpeechBubbleBlock + console preview.
         let bubbleFont = FontResolver.font(
             family: block.field_config?["bubble_font_family"]?.value as? String,
@@ -976,7 +976,7 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // EPIC-11 — quiz feedback panel (Duolingo correct/wrong): tinted panel + circled icon + headline + detail.
+    // EPIC-11 — quiz feedback panel (correct/wrong): tinted panel + circled icon + headline + detail.
     private func feedbackPanelBlock(_ block: ContentBlock) -> some View {
         let state = (block.field_config?["feedback_state"]?.value as? String) ?? "correct"
         let accentHex: String
@@ -988,7 +988,7 @@ struct ContentBlockRendererView: View {
         default: accentHex = "#10B981"; icon = "✓"; defHead = "Great job!"
         }
         let accent = Color(hex: block.active_color ?? accentHex)
-        // Mrozu QA (2026-08-04) — duolingo above-CTA feedback: `feedback_bg_color` overrides the tinted
+        // Device QA (2026-08-04) — above-CTA feedback: `feedback_bg_color` overrides the tinted
         // panel background; `feedback_graphic_url` swaps the built-in ✓/✗ glyph for a custom image. Both
         // default nil → identical to the existing accent-tinted glyph panel (non-breaking). The runtime
         // correct/wrong EVENT that flips `feedback_state` is a host-driven behavioral concern (deferred);
@@ -1024,7 +1024,7 @@ struct ContentBlockRendererView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    // EPIC-11 — session summary screen (Duolingo end-of-lesson): optional headline + 2-column stat-card grid.
+    // EPIC-11 — session summary screen (end-of-lesson): optional headline + 2-column stat-card grid.
     /// #593 — stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
     /// strings from the console. Coerced the same way `statDouble` coerces those, with a fallback
     /// rather than a zero-size font on anything unparseable.
@@ -1055,7 +1055,7 @@ struct ContentBlockRendererView: View {
         let stats: [[String: Any]] = statsRaw.compactMap { $0 as? [String: Any] }
         let headline = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         let defaultAccent = AppDNA.brandAccentHex ?? "#6366F1"
-        // Mrozu QA (2026-08-04): cards/headline were hardcoded (#1F2937 bg, white text, center, 2-col).
+        // Device QA (2026-08-04): cards/headline were hardcoded (#1F2937 bg, white text, center, 2-col).
         // bg_color = card bg, text_color = headline + label, summary_align = headline align,
         // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
         let cardBg = Color(hex: block.bg_color ?? "#1F2937")
@@ -1982,7 +1982,7 @@ struct ContentBlockRendererView: View {
         }()
         // Progress/Loading v2 — clamp to the console slider max (24) so an
         // out-of-range published value can't render a giant bar the editor
-        // can't reproduce (duolingo s7). Default 8 matches editor+preview.
+        // can't reproduce (s7). Default 8 matches editor+preview.
         let barH = min(CGFloat(block.bar_height ?? 8), 24)
         let barRadius = CGFloat(block.corner_radius ?? 3)
         let fillColor = Color(hex: block.bar_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
@@ -2132,7 +2132,7 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func rowBlock(_ block: ContentBlock) -> some View {
-        // Mrozu QA: `row.wrap == true` must flow children onto multiple lines
+        // Device QA: `row.wrap == true` must flow children onto multiple lines
         // (chips/badges) instead of a single clipped HStack. iOS 16+ Layout;
         // pre-16 falls back to the normal HStack. Parity with Android FlowRow.
         if block.wrap == true, (block.row_direction ?? "horizontal") == "horizontal",
@@ -2674,7 +2674,7 @@ enum SocialLoginActionDispatcher {
     }
 }
 
-// MARK: - WrapLayout (Mrozu QA: row.wrap == true → FlowRow parity)
+// MARK: - WrapLayout (Device QA: row.wrap == true → FlowRow parity)
 
 /// Flow layout that lays subviews left-to-right and wraps to the next line when
 /// the available width is exceeded (chip/badge behavior). Mirrors Android
@@ -2726,7 +2726,7 @@ struct PageDotTriangle: Shape {
     }
 }
 
-// Media-gallery v2 (Mrozu QA) — continuous auto-scroll marquee. The image track is duplicated and
+// Media-gallery v2 (Device QA) — continuous auto-scroll marquee. The image track is duplicated and
 // offset by exactly one copy-width per cycle, so the loop wraps seamlessly (no jump). Only instantiated
 // when gallery_autoscroll == true; a static gallery pays zero animation cost.
 struct MediaGalleryAutoScrollRow: View {
@@ -2780,7 +2780,7 @@ struct MediaGalleryAutoScrollRow: View {
     }
 }
 
-/// Mrozu QA (2026-08-04) — alarmy selectable gallery: the same static tile row as `mediaGalleryBlock`, but each
+/// Device QA (2026-08-04) — selectable gallery: the same static tile row as `mediaGalleryBlock`, but each
 /// tile is tappable and opens a full-screen enlarged overlay of the selected image (`gallery_preview_on_select`).
 /// Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
 struct MediaGalleryPreviewRow: View {

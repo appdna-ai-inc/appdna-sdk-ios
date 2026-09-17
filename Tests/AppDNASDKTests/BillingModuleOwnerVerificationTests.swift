@@ -12,7 +12,7 @@ import XCTest
 ///
 /// We can't unit-test the StoreKit-bound bridge implementation itself
 /// (`Product.purchase(options:)` is not mockable in SwiftPM tests — it's
-/// covered by the Mac build + Bogdan's manual reproducer); but the bridge
+/// covered by the Mac build + a manual device reproducer); but the bridge
 /// PROTOCOL is mockable, and the BillingModule sits above it. If the
 /// BillingModule threads the wrong token, the rest of the defence collapses.
 final class BillingModuleOwnerVerificationTests: XCTestCase {
@@ -154,7 +154,7 @@ final class BillingModuleOwnerVerificationTests: XCTestCase {
 
     // MARK: - Cross-account-leak surface: simulated reproducer
 
-    /// Bogdan's reproducer encoded against the BillingModule layer. We
+    /// The QA reproducer encoded against the BillingModule layer. We
     /// can't run StoreKit in a unit test, but we CAN model the device-level
     /// transaction store as "what the bridge returns" — and pin that:
     ///   1. User A purchases → bridge.purchase is called with token A.

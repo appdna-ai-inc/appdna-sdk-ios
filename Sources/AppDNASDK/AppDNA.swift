@@ -930,7 +930,7 @@ public final class AppDNA: @unchecked Sendable {
     /// compiles in the HOST app's configuration, so guarding it made every Flutter customer's
     /// Release archive fail to compile (`type 'AppDNA' has no member 'debugAppliedConfigVersion'`)
     /// — the identical failure `previewScreen` above already hit. CI can't catch it because
-    /// nothing builds a wrapper in Release. Keep it unguarded. (Issue #527 — Wine Trails.)
+    /// nothing builds a wrapper in Release. Keep it unguarded. (Issue #527.)
     public static func debugAppliedConfigVersion(flowId: String? = nil) -> Int? {
         shared.remoteConfigManager?.debugAppliedOnboardingVersion(flowId: flowId)
     }

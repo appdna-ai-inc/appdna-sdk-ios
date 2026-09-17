@@ -531,7 +531,7 @@ struct FormInputDateBlock: View {
                     inputValues[fieldId] = nil
                     return
                 }
-                // Mrozu QA — also enforce block.min_date / block.max_date on the form-input date
+                // Device QA — also enforce block.min_date / block.max_date on the form-input date
                 // variant (the editor's Min/Max Date controls). Previously only the standalone
                 // date_wheel_picker honored these; input_date/time/datetime silently dropped them.
                 // Parsed with the same helper the standalone picker uses (relative + ISO forms).
@@ -1164,9 +1164,9 @@ struct FormInputSelectBlock: View {
         let fillCol = Color(hex: accentHex)
         // Select v2 — option card corner: `option_corner_radius` wins, else legacy `corner_radius`, else 10.
         let cornerR = CGFloat(block.field_style?.option_corner_radius ?? block.field_style?.corner_radius ?? 10)
-        // Select v2 — per-option styling extras (Mrozu QA).
+        // Select v2 — per-option styling extras (Device QA).
         let optionFontFamily = block.field_style?.option_font_family
-        // Default TRUE = full wrap (preserves prior native behavior + the Mrozu ask
+        // Default TRUE = full wrap (preserves prior native behavior + the QA ask
         // that long option text stays fully visible). Authors opt into single-line
         // truncation by setting option_text_wrap=false.
         let optionTextWrap = block.field_style?.option_text_wrap ?? true
@@ -1854,7 +1854,7 @@ struct FormInputSliderBlock: View {
         let maxVal = max(rawMax, minVal + stepVal)
         let showValue = (block.field_config?["show_value"]?.value as? Bool) ?? true
         let unitStr = block.unit ?? ""
-        // Mrozu QA: custom slider so track_color (inactive/max track) + thumb_color
+        // Device QA: custom slider so track_color (inactive/max track) + thumb_color
         // are honored — the native SwiftUI Slider's `.tint` colors only the
         // active/min track + thumb. The custom track keeps step-snapping, min/max
         // clamping and the value binding, with a Slider a11y proxy for VoiceOver.
@@ -1945,7 +1945,7 @@ struct FormInputToggleBlock: View {
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let onColor = Color(hex: block.field_style?.toggle_on_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        // Mrozu QA (2026-08-03): toggle_off_color + thumb_color were decoded but the native
+        // Device QA (2026-08-03): toggle_off_color + thumb_color were decoded but the native
         // SwiftUI Toggle only exposes `.tint` (the on-track). Use a custom capsule toggle so all
         // three colors apply, with `.accessibilityRepresentation` preserving the native Switch a11y.
         // Parity with Android SwitchDefaults.colors(checked/unchecked track+thumb).
@@ -1983,7 +1983,7 @@ struct FormInputToggleBlock: View {
     }
 }
 
-/// Mrozu QA (2026-08-04, Flo s1) — standalone consent / agreement element: a tappable checkbox +
+/// Device QA (2026-08-04, s1) — standalone consent / agreement element: a tappable checkbox +
 /// a rich label whose `[terms](url)` / `[privacy](url)` markdown links open natively (SwiftUI
 /// `Text(AttributedString)` renders `.link` runs tappable). Persists a Bool to `inputValues[field_id]`;
 /// when `field_required` is set, `RequiredFieldGate` gates the CTA until the box is checked.
@@ -2251,7 +2251,7 @@ struct FormInputRangeSliderBlock: View {
         let stepVal: Double = { let s = block.step_value ?? cfgDouble(block.field_config?["step"]) ?? 1; return s > 0 ? s : 1 }()
         let unitStr = block.unit ?? ""
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        // Mrozu QA — custom track so track_color (inactive track) + thumb_color are honored on the
+        // Device QA — custom track so track_color (inactive track) + thumb_color are honored on the
         // range slider too (native Slider().tint only colors the active/min track + thumb). Parity
         // with the single FormInputSliderBlock + Android's range slider track_color + the editor's
         // Track/Fill/Thumb controls for input_range_slider.

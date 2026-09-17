@@ -480,14 +480,14 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.text, "Hello")
     }
 
-    // MARK: - Full Nurrai-style flow step with multiple blocks
+    // MARK: - Full customer-style flow step with multiple blocks
 
-    func testDecodeNurraiWelcomeStep() throws {
+    func testDecodeCustomerWelcomeStep() throws {
         let json = """
         {
             "id": "welcome",
             "type": "heading",
-            "text": "Welcome to Nurrai",
+            "text": "Welcome to Acme",
             "level": 1,
             "style": { "font_size": 32, "font_weight": 800, "color": "#ffffff", "alignment": "center" },
             "block_style": {
@@ -507,7 +507,7 @@ final class ContentBlockDecodingTests: XCTestCase {
 
         let block = try JSONDecoder().decode(ContentBlock.self, from: json)
         XCTAssertEqual(block.type, .heading)
-        XCTAssertEqual(block.text, "Welcome to Nurrai")
+        XCTAssertEqual(block.text, "Welcome to Acme")
         XCTAssertEqual(block.style?.font_size, 32)
         XCTAssertEqual(block.style?.alignment, "center")
         XCTAssertEqual(block.block_style?.margin_top, 40)

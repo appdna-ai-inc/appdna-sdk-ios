@@ -80,7 +80,7 @@ public struct OnboardingSettings: Codable {
     // EPIC-2 — thin sizing (custom height) + multiple colors at once (gradient).
     public let progress_height: CGFloat?
     public let progress_gradient_colors: [String]?
-    // EPIC-2 — optional "Skip" link beside the progress bar (Flo).
+    // EPIC-2 — optional "Skip" link beside the progress bar.
     public let progress_skip_label: String?
     // EPIC-2 — dynamic color flash on step-advance (the progress fill briefly animates to this color).
     public let progress_flash_color: String?

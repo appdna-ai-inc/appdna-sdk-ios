@@ -52,7 +52,7 @@ enum EntitlementOwnershipDecision: Equatable {
 /// SDK-driven onboarding flows where the paywall fires before the host's
 /// `identify(...)` call, the resulting transaction is ALWAYS untagged — so
 /// every other-user restore on the same device inherited it (the
-/// cross-account leak Bogdan reproduced). Scoping the untagged-grant to the
+/// cross-account leak QA reproduced). Scoping the untagged-grant to the
 /// first userId ever identified on this device keeps the legacy migration
 /// path intact while denying cross-account inheritance for everyone else.
 ///

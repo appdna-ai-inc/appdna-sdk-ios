@@ -72,7 +72,7 @@ public final class PermissionManager {
             return "NSCalendarsUsageDescription"
         case "notification":
             return nil
-        // Mrozu (alarmy s4.1, 2026-08-04) — iOS has NO dedicated "exact alarm" permission (the
+        // Device QA (s4.1, 2026-08-04) — iOS has NO dedicated "exact alarm" permission (the
         // Android `SCHEDULE_EXACT_ALARM` concept). Exact-time reminders on iOS are delivered as local
         // notifications, so an `alarm` CTA maps to the notification permission — which, like
         // notification, requires no Info.plist usage string.
@@ -89,13 +89,13 @@ public final class PermissionManager {
         switch type {
         case "notification", "att", "location", "camera",
              "microphone", "photos", "contacts", "calendar",
-             // Mrozu (alarmy s4.1) — `alarm` is a console-authorable permission_type. iOS has no
+             // Device QA (s4.1) — `alarm` is a console-authorable permission_type. iOS has no
              // exact-alarm permission, so it maps to the notification prompt (see status/request +
              // requiredInfoPlistKey). Supported here so the CTA runs the pipeline rather than falling
              // to the safe-advance fallback. Mirrors Android PermissionManager.isSupported.
              "alarm":
             return true
-        // Mrozu QA (2026-08-04, Flo s26) — `health` (HealthKit connect) is a console-authorable
+        // Device QA (2026-08-04, s26) — `health` (HealthKit connect) is a console-authorable
         // permission_type that already ROUTES through this manager (resolvePermissionType → here),
         // but the native HealthKit authorization request is DEFERRED (needs the HealthKit entitlement
         // + a per-app read/share type set, which is host infra). It falls to the `default` safe path
@@ -156,7 +156,7 @@ public final class PermissionManager {
 
         switch type {
         // `alarm` has no iOS equivalent — reminders ride on local notifications, so its authorization
-        // state IS the notification authorization state (Mrozu alarmy s4.1).
+        // state IS the notification authorization state (Device QA — s4.1).
         case "notification", "alarm":
             let settings = await UNUserNotificationCenter.current().notificationSettings()
             switch settings.authorizationStatus {
@@ -237,7 +237,7 @@ public final class PermissionManager {
         if guardStatus(type) != nil { return false }
 
         switch type {
-        // `alarm` → request the notification prompt (iOS has no exact-alarm permission; Mrozu alarmy s4.1).
+        // `alarm` → request the notification prompt (iOS has no exact-alarm permission; Device QA — s4.1).
         case "notification", "alarm":
             return await requestNotification()
 

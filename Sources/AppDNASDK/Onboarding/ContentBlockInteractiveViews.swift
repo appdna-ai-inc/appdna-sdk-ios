@@ -47,7 +47,7 @@ struct OTPInputBlockView: View {
         let fieldId = block.field_id ?? block.id
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let boxBg = Color(hex: block.bg_color ?? "#1F2937")
-        // Mrozu QA (2026-08-04): box border/text were hardcoded (accent/gray + white). When set,
+        // Device QA (2026-08-04): box border/text were hardcoded (accent/gray + white). When set,
         // border_color overrides the resting border (active box keeps the accent focus ring);
         // text_color overrides the digit. Parity w/ Android.
         let borderOverride = block.border_color.map { Color(hex: $0) }
@@ -126,7 +126,7 @@ struct PressHoldConfirmBlockView: View {
 
     var body: some View {
         let accent = Color(hex: block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        // Mrozu QA — track background (bg_color; default #1F2937), the filled-state label (confirm_text;
+        // Device QA — track background (bg_color; default #1F2937), the filled-state label (confirm_text;
         // default "✓"), and optional above/below labels (label_above/label_below) in text_color (default
         // #111827). Parity w/ Android PressHoldConfirmBlock + console preview.
         let track = Color(hex: block.bg_color ?? "#1F2937")
@@ -295,7 +295,7 @@ private struct CalendarMonthDesc {
     let today: Int          // today's day for this month, -1 if none
 }
 
-/// Month calendar (Flo). Renders `months_shown` (default 1) consecutive month grids stacked vertically.
+/// Month calendar. Renders `months_shown` (default 1) consecutive month grids stacked vertically.
 /// SINGLE mode (`range_selectable` false): tapping an in-month day highlights it. For a single displayed
 /// month this preserves the legacy contract — `inputValues[fid] = day` (Int) and `("day_selected", String(day))`
 /// — and `selected_days`/`today` seed the first month. For multi-month single-select it writes the ISO date.

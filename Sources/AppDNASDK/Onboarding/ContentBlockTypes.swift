@@ -16,7 +16,7 @@ public enum ContentBlockType: String, Codable {
     case stack, custom_view, date_wheel_picker, circular_gauge, row
     // SPEC-451 — map with an optional route. Every setting rides in `field_config`.
     case map
-    // SPEC-089d Nurrai
+    // SPEC-089d
     case pricing_card
     // EPIC-3 — media gallery (horizontal row of image tiles)
     case media_gallery
@@ -35,10 +35,10 @@ public enum ContentBlockType: String, Codable {
     case settings_footer
     case memory_match
     case calendar_month
-    // Mrozu (Duolingo s20/s22) — CTA-style button that plays an audio clip
+    // Device QA (s20/s22) — CTA-style button that plays an audio clip
     // (mp3/wav/aac) from `audio_url` on tap; reuses all button styling fields.
     case sound_button
-    // Mrozu QA (2026-08-04, Flo s1) — standalone consent/agreement: a tappable checkbox + a
+    // Device QA (2026-08-04, s1) — standalone consent/agreement: a tappable checkbox + a
     // rich label with [terms](url)/[privacy](url) links, persisting a Bool to inputValues; its
     // `field_required` gates the CTA via RequiredFieldGate.
     case agreement
@@ -362,7 +362,7 @@ public struct EntranceAnimation: Codable {
     public let delay_ms: Int?     // 0-5000
     public let easing: String?    // linear, ease, ease_in, ease_out, ease_in_out, spring
     public let spring_damping: Double? // 0.1-1.0
-    // Sequenced animation (Mrozu Duolingo s14 / Asana): per-block stagger + ordering.
+    // Sequenced animation (Device QA — s14): per-block stagger + ordering.
     // animation_delay_ms is ADDED to delay_ms to sequence blocks; animation_order is
     // authored ordering metadata (lower plays first, full timeline engine deferred).
     public let animation_delay_ms: Int? // 0-5000
@@ -411,7 +411,7 @@ public struct FormFieldBlockStyle: Codable {
     public let thumb_color: String?
     public let toggle_on_color: String?
     public let toggle_off_color: String?
-    // Select v2 (Mrozu QA) — per-option styling extras applied by the select renderers.
+    // Select v2 (Device QA) — per-option styling extras applied by the select renderers.
     public let option_font_family: String?      // font family for option title/subtitle/labels
     public let option_corner_radius: Double?    // option card corner radius (falls back to corner_radius ?? 10)
     public let option_text_wrap: Bool?          // true → option text wraps fully; false → single-line truncate
@@ -1242,7 +1242,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let gallery_corner_radius: Double?
     public let gallery_spacing: Double?
     public let gallery_align: String?  // "start" | "center" | "end" (default "center")
-    // Media-gallery v2 (Mrozu QA): gallery_fill = edge-to-edge cover tiles (full container width);
+    // Media-gallery v2 (Device QA): gallery_fill = edge-to-edge cover tiles (full container width);
     // gallery_autoscroll = continuous loop; gallery_autoscroll_speed = seconds per full cycle (default 20).
     // All default off → identical to the existing static tile row (non-breaking).
     public let gallery_fill: Bool?
@@ -1332,7 +1332,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let particle_color: String?
     public let particle_opacity: Double?
     public let particle_speed: String?     // slow, medium, fast (editor key; falls back to `speed`)
-    // Mrozu QA (2026-08-04): confetti multicolor — cycle a fixed palette instead of primary/secondary.
+    // Device QA (2026-08-04): confetti multicolor — cycle a fixed palette instead of primary/secondary.
     // Defaults on when particle_type == "confetti".
     public let particle_multicolor: Bool?
 
@@ -1355,7 +1355,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let border_width: Double?
     public let border_color: String?
 
-    // SPEC-089d Nurrai: pricing_card fields
+    // SPEC-089d: pricing_card fields
     public let pricing_plans: [PricingPlanConfig]?
     public let pricing_layout: String?     // stack, side_by_side
 

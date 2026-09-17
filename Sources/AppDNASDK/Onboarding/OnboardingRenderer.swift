@@ -260,7 +260,7 @@ struct OnboardingFlowHost: View {
         let gradCols = (flow.settings.progress_gradient_colors ?? []).map { Color(hex: $0) }
         let progressSkipLabel = flow.settings.progress_skip_label
 
-        // EPIC-2 — optional "Skip" link beside the progress (Flo): Group(progress).frame(maxWidth:.infinity) | Skip.
+        // EPIC-2 — optional "Skip" link beside the progress: Group(progress).frame(maxWidth:.infinity) | Skip.
         HStack(spacing: 0) {
             Group {
             switch style {
@@ -1937,7 +1937,7 @@ enum RequiredFieldGate {
             // must NOT satisfy a required field. Android's ContentBlockRenderer already blocks empty lists;
             // iOS lacked this branch and advanced past a required question with zero selections.
             if let arr = value as? [Any], arr.isEmpty { return (false, fieldId) }
-            // Mrozu QA (2026-08-04, Flo s1) — a required `agreement`/consent checkbox is satisfied
+            // Device QA (2026-08-04, s1) — a required `agreement`/consent checkbox is satisfied
             // ONLY when checked; an unchecked box reports a non-nil `false` that would otherwise slip
             // past the gate. Scoped to `.agreement` so pre-existing required `input_toggle`/`toggle`
             // fields keep their behavior. Parity with Android's `is Boolean` branch.

@@ -1,8 +1,8 @@
 import Foundation
 import AVFoundation
 
-/// Shared audio player for the `sound_button` content block (Mrozu Duolingo
-/// s20/s22). Streams a remote audio clip (mp3/wav/aac) from a URL and plays it
+/// Shared audio player for the `sound_button` content block (Device QA
+/// scenario s20/s22). Streams a remote audio clip (mp3/wav/aac) from a URL and plays it
 /// on tap / autoplay. Uses `AVPlayer` so remote URLs stream without a manual
 /// download step. A single shared instance retains the current player (an
 /// `AVPlayer` that goes out of scope stops immediately) and replaces it on each
@@ -28,7 +28,7 @@ final class AudioPlayer {
         // Route to the playback category so the clip is audible even when the
         // device is on silent (matches typical onboarding "listen" affordances).
         // Use `.mixWithOthers` so an onboarding sound does NOT permanently
-        // interrupt the host app's own audio or a background app (Spotify /
+        // interrupt the host app's own audio or a background app (music /
         // podcast) — parity with Android's MediaPlayer path, which mixes and
         // never grabs audio focus.
         let session = AVAudioSession.sharedInstance()

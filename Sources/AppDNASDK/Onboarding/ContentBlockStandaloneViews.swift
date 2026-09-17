@@ -443,7 +443,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "ring":
-            // EPIC-3 — large radial % ring (Duolingo/Flo "loading N%"): big ring + prominent %.
+            // EPIC-3 — large radial % ring ("loading N%"): big ring + prominent %.
             let ringProgress = block.progress_value.map { CGFloat($0 > 1 ? $0 / 100 : $0) } ?? overallProgress
             return AnyView(
                 ZStack {
@@ -462,7 +462,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "cog":
-            // EPIC-3 — cog/gear spinner (Asana settings-style loader): thick ring + 8 flat teeth, rotating.
+            // EPIC-3 — cog/gear spinner (settings-style loader): thick ring + 8 flat teeth, rotating.
             return AnyView(
                 Canvas { ctx, size in
                     let cx = size.width / 2
@@ -2197,10 +2197,10 @@ struct StarBackgroundBlockView: View {
         let color = Color(hex: block.particle_color ?? block.active_color ?? block.text_color ?? "#FFFFFF")
         // SPEC-419 pass-15 #27 — secondary_color tints 1/3 of particles (matches editor + preview)
         let secondaryColor = block.secondary_color.map { Color(hex: $0) } ?? color
-        // Mrozu QA (2026-08-03): particle_type was decoded but the Canvas always drew a
+        // Device QA (2026-08-03): particle_type was decoded but the Canvas always drew a
         // circle, so stars/sparkles/snow all looked identical. Render the actual shape.
         let particleType = block.particle_type ?? "stars"  // match console/preview default (element is star_background)
-        // Mrozu QA (2026-08-04): confetti = falling multicolor rounded rects. `particle_multicolor`
+        // Device QA (2026-08-04): confetti = falling multicolor rounded rects. `particle_multicolor`
         // cycles a fixed palette per-particle (defaults ON for confetti). Parity with Android.
         let useMulticolor = block.particle_multicolor ?? (particleType == "confetti")
         let opacity = block.particle_opacity ?? block.block_style?.opacity ?? 0.8
@@ -2236,7 +2236,7 @@ struct StarBackgroundBlockView: View {
                         height: particle.size
                     )
                     context.opacity = particle.opacity * opacity
-                    // Mrozu QA (2026-08-04): multicolor confetti cycles the palette; otherwise every
+                    // Device QA (2026-08-04): multicolor confetti cycles the palette; otherwise every
                     // 3rd particle uses secondary_color (SPEC-419 pass-15 #27).
                     let fillColor = useMulticolor
                         ? Self.confettiPalette[i % Self.confettiPalette.count]
@@ -2287,7 +2287,7 @@ struct StarBackgroundBlockView: View {
         }
     }
 
-    // Mrozu QA (2026-08-03): render the configured particle_type. `dots`/`bokeh`
+    // Device QA (2026-08-03): render the configured particle_type. `dots`/`bokeh`
     // stay round; `stars`/`sparkles`/`snow` draw an N-point star polygon so the
     // shape selector is no longer a no-op. Parity with Android drawParticle().
     static func particlePath(for type: String, in rect: CGRect) -> Path {
@@ -2295,13 +2295,13 @@ struct StarBackgroundBlockView: View {
         case "stars":    return starPath(points: 5, innerRatio: 0.42, in: rect)
         case "sparkles": return starPath(points: 4, innerRatio: 0.30, in: rect)
         case "snow":     return starPath(points: 6, innerRatio: 0.50, in: rect)
-        // Mrozu QA (2026-08-04): confetti = small rounded rect (parity w/ Android drawRoundRect).
+        // Device QA (2026-08-04): confetti = small rounded rect (parity w/ Android drawRoundRect).
         case "confetti": return Path(roundedRect: rect, cornerSize: CGSize(width: rect.width * 0.3, height: rect.height * 0.3))
         default:         return Path(ellipseIn: rect) // dots, bokeh
         }
     }
 
-    // Mrozu QA (2026-08-04): fixed confetti palette — MUST stay byte-identical to Android confettiPalette.
+    // Device QA (2026-08-04): fixed confetti palette — MUST stay byte-identical to Android confettiPalette.
     static let confettiPalette: [Color] = [
         Color(hex: "#EF4444"), Color(hex: "#F59E0B"), Color(hex: "#FCD34D"), Color(hex: "#10B981"),
         Color(hex: "#3B82F6"), Color(hex: "#8B5CF6"), Color(hex: "#EC4899"),
@@ -2325,7 +2325,7 @@ struct StarBackgroundBlockView: View {
     }
 }
 
-// MARK: - Pricing Card Block View (SPEC-089d Nurrai)
+// MARK: - Pricing Card Block View (SPEC-089d)
 
 /// Renders pricing plan cards in stack or side-by-side layout.
 struct PricingCardBlockView: View {

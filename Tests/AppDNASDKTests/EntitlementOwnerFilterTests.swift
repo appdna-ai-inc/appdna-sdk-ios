@@ -3,7 +3,7 @@ import XCTest
 
 /// Pure unit tests for the cross-account-leak ownership filter — the single
 /// source of truth for the decision matrix that defends every site reading
-/// `Transaction.currentEntitlements`. Bogdan's reproducer (User A buys → User
+/// `Transaction.currentEntitlements`. The QA reproducer (User A buys → User
 /// B signs in → B sees A's subscription) lives or dies on this decision
 /// table being correct; if any case here flips wrong, the whole defence
 /// silently breaks.
@@ -88,7 +88,7 @@ final class EntitlementOwnerFilterTests: XCTestCase {
     }
 
     func testUntaggedHistorical_deniedToLaterIdentifier() {
-        // THE FIX — Bogdan's repro. User B identifies on a device where
+        // THE FIX — the QA repro. User B identifies on a device where
         // user A is the first-identifier. An untagged transaction (most
         // commonly the SDK-paywall onboarding purchase made BEFORE A
         // identified) MUST NOT be inherited by B.
@@ -123,7 +123,7 @@ final class EntitlementOwnerFilterTests: XCTestCase {
         XCTAssertEqual(denyCases.count, 2, "Exactly two decision cases deny — tagged-mismatch and untagged-other-user")
     }
 
-    // MARK: - Bogdan's reproducer at the decision-table level
+    // MARK: - The QA reproducer at the decision-table level
 
     /// End-to-end repro encoded against the filter only. Simulates the
     /// SDK-paywall onboarding flow (anonymous purchase) → user A

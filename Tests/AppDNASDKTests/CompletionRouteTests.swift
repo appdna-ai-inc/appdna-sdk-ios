@@ -22,12 +22,12 @@ final class CompletionRouteTests: XCTestCase {
         opened = []
         realOpener = URLSafety.opener
         URLSafety.opener = { [weak self] url in self?.opened.append(url) }
-        // Stand in for a host that registered `winetrails://`. Under XCTest `Bundle.main` is the
+        // Stand in for a host that registered `hostapp://`. Under XCTest `Bundle.main` is the
         // test runner and declares no CFBundleURLTypes, so without this a real deep link is refused
         // on POLICY and the test would fail for a reason that never occurs in a shipped app —
         // which `URLSafety` documents as the reason this property is a `var`.
         realHostSchemes = URLSafety.hostSchemes
-        URLSafety.hostSchemes = ["winetrails"]
+        URLSafety.hostSchemes = ["hostapp"]
         // The store is a shared single-shot; a route left by another test would make these pass for
         // the wrong reason.
         PendingCompletionRoute.shared.clear()
@@ -52,9 +52,9 @@ final class CompletionRouteTests: XCTestCase {
     }
 
     func testCompletionOpensTheDestinationTheCtaRecorded() {
-        PendingCompletionRoute.shared.record("winetrails://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
         complete()
-        XCTAssertEqual(opened.map(\.absoluteString), ["winetrails://booking/tasting"])
+        XCTAssertEqual(opened.map(\.absoluteString), ["hostapp://booking/tasting"])
     }
 
     func testCompletionOpensNothingWhenNoCtaAskedForOne() {
@@ -65,7 +65,7 @@ final class CompletionRouteTests: XCTestCase {
     func testTheDestinationIsConsumedSoASecondCompletionOpensNothing() {
         // The abandoned-flow bug: without consuming, finishing ANY later flow would navigate the
         // user somewhere they never asked to go.
-        PendingCompletionRoute.shared.record("winetrails://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
         complete()
         XCTAssertEqual(opened.count, 1)
         complete()
@@ -78,7 +78,7 @@ final class CompletionRouteTests: XCTestCase {
         var order: [String] = []
         URLSafety.opener = { _ in order.append("open") }
         let delegate = OrderRecordingDelegate { order.append("delegate") }
-        PendingCompletionRoute.shared.record("winetrails://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
         complete(delegate: delegate)
         XCTAssertEqual(order, ["delegate", "open"])
     }
@@ -88,7 +88,7 @@ final class CompletionRouteTests: XCTestCase {
         // declares the scheme. This is why the manual tells the customer they must own the
         // destination — an unregistered scheme is silently refused, not opened.
         URLSafety.hostSchemes = []
-        PendingCompletionRoute.shared.record("winetrails://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
         complete()
         XCTAssertTrue(opened.isEmpty)
     }
@@ -108,10 +108,10 @@ final class CompletionRouteTests: XCTestCase {
     }
 
     func testALaterTapReplacesAnEarlierDestination() {
-        PendingCompletionRoute.shared.record("winetrails://booking/tasting")
-        PendingCompletionRoute.shared.record("winetrails://audio/pass")
+        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://audio/pass")
         complete()
-        XCTAssertEqual(opened.map(\.absoluteString), ["winetrails://audio/pass"])
+        XCTAssertEqual(opened.map(\.absoluteString), ["hostapp://audio/pass"])
     }
 }
 
