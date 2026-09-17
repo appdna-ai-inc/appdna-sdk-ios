@@ -333,6 +333,14 @@ struct PaywallRenderer: View {
                         }
                         .padding(.bottom, 24)
                     }
+                case "back_button":
+                    // SPEC-491 (#652) — a chevron that LEAVES the paywall, which returns the user to
+                    // whatever was presented before it (a previous paywall, an onboarding step, a
+                    // screen module). On a single-view paywall that is the same operation as close;
+                    // what differs is the glyph and the reason the host is told. Navigating between
+                    // views INSIDE one paywall is a separate feature — "FR · Console · Multi-view
+                    // paywalls" — deliberately not built here.
+                    backButton
                 case "swipe_down":
                     VStack {
                         Capsule()
@@ -489,18 +497,31 @@ struct PaywallRenderer: View {
         }
     }
 
-    private var dismissButton: some View {
-        Button {
+    private var dismissButton: some View { dismissGlyph("xmark") }
+
+    /// SPEC-491 (#652) — the back chevron. Same button, same dismissal; a different glyph.
+    private var backButton: some View { dismissGlyph("chevron.left") }
+
+    /// SPEC-491 (#652) — ONE builder for both, so an authored size, colour or position cannot be
+    /// applied to the X and forgotten on the chevron. Unset reproduces the previous hardcoded
+    /// 16pt / `.primary` / 32×32 circle exactly.
+    private func dismissGlyph(_ systemName: String) -> some View {
+        let glyphSize: CGFloat = config.dismiss?.size ?? 16
+        let glyphColor: Color = config.dismiss?.color.map { Color(hex: $0) } ?? .primary
+        return Button {
             triggerDismiss()
         } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.primary)
-                .frame(width: 32, height: 32)
+            Image(systemName: systemName)
+                .font(.system(size: glyphSize, weight: .semibold))
+                .foregroundColor(glyphColor)
+                .frame(width: glyphSize * 2, height: glyphSize * 2)
                 .background(Color.black.opacity(0.3))
                 .clipShape(Circle())
         }
         .padding(16)
+        // SPEC-491 (#652) — the authored side. The enclosing ZStack is `.topTrailing`, so a
+        // full-width frame with an explicit alignment is what lets the glyph move to the left.
+        .frame(maxWidth: .infinity, alignment: (config.dismiss?.position ?? "top_right") == "top_left" ? .leading : .trailing)
         .transition(.opacity)
     }
 

@@ -725,6 +725,14 @@ struct PaywallDismiss: Codable {
     private let _type: String?   // Legacy "type" fallback
     let delaySeconds: Int?
     let text: String?
+    /// SPEC-491 (#652) — placement, colour and size for the X / back chevron. Unset keeps the
+    /// previous hardcoded top-right, `.primary` and 16pt.
+    private let _position: String?
+    let color: String?
+    let size: CGFloat?
+
+    /// "top_left" | "top_right" (default).
+    var position: String { _position ?? "top_right" }
 
     /// Dismiss style — server writes "style", legacy used "type". Accept both.
     var style: String { _style ?? _type ?? "x_button" }
@@ -732,8 +740,9 @@ struct PaywallDismiss: Codable {
     var isAllowed: Bool { allowed ?? true }
 
     enum CodingKeys: String, CodingKey {
-        case allowed, text
+        case allowed, text, color, size
         case _style = "style"
+        case _position = "position"
         case _type = "type"
         case delaySeconds = "delay_seconds"
     }
