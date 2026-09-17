@@ -1154,6 +1154,29 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-479 (#605) — `++underline++` and a link together.
+    ///
+    /// `testRichText_inlineStyles` above covers bold/italic/link but NOT the AppDNA-specific `++underline++`
+    /// marker, which is applied by `applyUnderlineMarkers` AFTER the native markdown parse. That post-processing
+    /// step had no test at all, and #605 reports "linked and underlined Markdown content doesn't render".
+    /// This pins both in one render: the link must be coloured and underlined, the `++` markers must be GONE,
+    /// and the word between them must be underlined.
+    func testRichText_underlineAndLink() throws {
+        let view = try render("""
+        {
+          "id": "rtu", "type": "rich_text",
+          "markdown_content": "Plain, ++underlined++, and a [link](https://appdna.ai).",
+          "base_style": { "color": "#E5E7EB" },
+          "link_color": "#A5B4FC"
+        }
+        """)
+        let recordMode: SnapshotTestingConfiguration.Record =
+            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// EPIC-7 — social login provider buttons (Apple / Google / Email) brand defaults. Parity with Android.
     func testSocial_providers() throws {
         let view = try render("""
