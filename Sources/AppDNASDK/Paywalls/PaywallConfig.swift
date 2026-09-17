@@ -116,6 +116,12 @@ struct PaywallSectionData: Codable {
     /// hardcoded `VStack(spacing: 8)` here, `Spacer(8.dp)` on Android and `mt-2` in the preview,
     /// with no way to author it. Unset keeps 8 on every surface.
     let restoreGap: CGFloat?
+    /// SPEC-492 (#651 item 4) — what the CTA and the restore link DO. Unset keeps today's
+    /// behaviour exactly: the CTA purchases, the restore link restores.
+    let ctaAction: String?
+    let restoreAction: String?
+    /// SPEC-492 (#651 item 2) — additional buttons, rendered under the CTA in order.
+    let extraButtons: [PaywallExtraButton]?
     let restoreFontSize: Double?    // CTA section: restore link font size
 
     // Guarantee
@@ -334,6 +340,9 @@ struct PaywallSectionData: Codable {
         case restorePosition = "restore_position"
         case restoreTextColor = "restore_text_color"
         case restoreGap = "restore_gap"
+        case ctaAction = "cta_action"
+        case restoreAction = "restore_action"
+        case extraButtons = "extra_buttons"
         case restoreFontSize = "restore_font_size"
         case title_style, subtitle_style
         case imageUrl = "image_url"
@@ -717,6 +726,23 @@ struct PaywallCTA: Codable {
         case height, font_size, padding_vertical
         case styleObj = "style"
     }
+}
+
+/// SPEC-492 (#651 item 2) — an extra button in the CTA section, beyond the CTA and the restore link.
+struct PaywallExtraButton: Codable, Identifiable {
+    let text: String?
+    /// purchase | restore | dismiss | link. `dismiss` leaves the paywall, which returns the user to
+    /// the previous screen — there is deliberately no separate `back`.
+    let action: String?
+    let url: String?
+    let bg_color: String?
+    let text_color: String?
+    let font_size: Double?
+    /// `filled` (default) draws a button; `text` draws a tappable label like the restore link.
+    let style: String?
+
+    /// Identifiable for ForEach without requiring the console to mint ids.
+    var id: String { "\(text ?? "")|\(action ?? "")|\(url ?? "")" }
 }
 
 struct PaywallDismiss: Codable {

@@ -176,7 +176,8 @@ struct PaywallRenderer: View {
                             textColor: ctaSec.data?.restoreTextColor,
                             fontSize: ctaSec.data?.restoreFontSize.map { CGFloat($0) },
                             style: ctaSec.style?.elements?["restore_text"]?.textStyle,
-                            onRestore: onRestore
+                            // SPEC-492 (#651 item 4) — the restore link's action is authorable too; unset restores.
+                            onRestore: { performButtonAction(ctaSec.data?.restoreAction, url: nil, default: "restore") }
                         )
                         // SPEC-490 (#651 item 1) — the CTA↔Restore gap on the path where the restore link is
                         // rendered OUTSIDE the CTA button. Hoisted into a typed local: inlining
@@ -191,7 +192,8 @@ struct PaywallRenderer: View {
                             CTAButton(
                                 cta: config.cta,
                                 isPurchasing: isPurchasing,
-                                onTap: handleCTATap,
+                                // SPEC-492 (#651 item 4) — the CTA's action is authorable; unset still purchases.
+                                onTap: { performButtonAction(ctaSec.data?.ctaAction, url: nil, default: "purchase") },
                                 loc: loc,
                                 sectionStyle: ctaSec.style,
                                 ctaGradient: ctaSec.data?.ctaGradient,
@@ -204,6 +206,10 @@ struct PaywallRenderer: View {
                             )
                             .ctaAnimation(config.animation?.cta_animation)
                             .applyContainerStyle(ctaSec.style?.container)
+                            // SPEC-492 (#651 item 2) — extra buttons sit between the CTA and the restore link.
+                            if let extras = ctaSec.data?.extraButtons, !extras.isEmpty {
+                                extraButtonsView(extras)
+                            }
                             if showRestore && restorePosition != "above" {
                                 restoreView
                             }
@@ -485,6 +491,58 @@ struct PaywallRenderer: View {
     }
 
     // MARK: - Dismiss helpers
+
+    /// SPEC-492 (#651 item 2) — extra buttons under the CTA, in authored order.
+    ///
+    /// This is what lifts the "two buttons, one of them restore" cap: a second restore, a
+    /// "Maybe later", or a terms link are all just entries here. `filled` draws a button, `text`
+    /// draws a tappable label like the restore link.
+    @ViewBuilder
+    private func extraButtonsView(_ buttons: [PaywallExtraButton]) -> some View {
+        ForEach(buttons) { button in
+            Button {
+                performButtonAction(button.action, url: button.url, default: "dismiss")
+            } label: {
+                let size = CGFloat(button.font_size ?? 16)
+                if (button.style ?? "filled") == "text" {
+                    Text(loc("cta.extra.\(button.id)", button.text ?? ""))
+                        .font(.system(size: size, weight: .medium))
+                        .foregroundColor(button.text_color.map { Color(hex: $0) } ?? .secondary)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                } else {
+                    Text(loc("cta.extra.\(button.id)", button.text ?? ""))
+                        .font(.system(size: size, weight: .semibold))
+                        .foregroundColor(button.text_color.map { Color(hex: $0) } ?? .white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(button.bg_color.map { Color(hex: $0) } ?? Color.secondary.opacity(0.25))
+                        .clipShape(RoundedRectangle(cornerRadius: CGFloat(config.cta?.resolvedCornerRadius ?? 12)))
+                }
+            }
+        }
+    }
+
+    /// SPEC-492 (#651 item 4) — the ONE place an authored button action is dispatched.
+    ///
+    /// These are the four things a paywall can actually do. `dismiss` leaves the paywall, which
+    /// returns the user to the previous screen — so "back" needs no separate action. `nil` falls
+    /// back to the caller's default, which keeps an unauthored CTA purchasing and an unauthored
+    /// restore link restoring.
+    private func performButtonAction(_ action: String?, url: String?, default defaultAction: String) {
+        switch action ?? defaultAction {
+        case "restore":
+            onRestore()
+        case "dismiss":
+            triggerDismiss()
+        case "link":
+            if let raw = url, let parsed = URL(string: raw) {
+                InAppBrowser.present(url: parsed)
+            }
+        default: // purchase
+            handleCTATap()
+        }
+    }
 
     private func triggerDismiss() {
         if config.animation?.dismiss_animation != nil {
