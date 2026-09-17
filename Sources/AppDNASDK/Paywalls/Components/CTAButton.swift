@@ -42,6 +42,8 @@ struct CTAButton: View {
     var restoreTextColor: String? = nil
     /// Direct font size override for the restore link
     var restoreFontSize: CGFloat? = nil
+    /// SPEC-490 (#651 item 1) — the CTA↔Restore gap. Unset keeps the previous hardcoded 8.
+    var restoreGap: CGFloat? = nil
     /// Restore action
     var onRestore: (() -> Void)? = nil
 
@@ -146,7 +148,7 @@ struct CTAButton: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: restoreGap ?? 8) {
             if restorePosition == "above" {
                 restoreButton
                 subscribeButton

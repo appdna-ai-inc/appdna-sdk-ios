@@ -178,7 +178,13 @@ struct PaywallRenderer: View {
                             style: ctaSec.style?.elements?["restore_text"]?.textStyle,
                             onRestore: onRestore
                         )
-                        VStack(spacing: 8) {
+                        // SPEC-490 (#651 item 1) — the CTA↔Restore gap on the path where the restore link is
+                        // rendered OUTSIDE the CTA button. Hoisted into a typed local: inlining
+                        // `ctaSec.data?.restoreGap ?? 8` here made the whole `body` exceed Swift's type-check
+                        // budget ("unable to type-check this expression in reasonable time"), which is the same
+                        // reason this file already type-erases its 45-case section switch with AnyView.
+                        let restoreGapOuter: CGFloat = ctaSec.data?.restoreGap ?? 8
+                        VStack(spacing: restoreGapOuter) {
                             if showRestore && restorePosition == "above" {
                                 restoreView
                             }
@@ -569,7 +575,8 @@ struct PaywallRenderer: View {
                 showRestore: section.data?.showRestore ?? false,
                 restorePosition: section.data?.restorePosition ?? "below",
                 restoreTextColor: section.data?.restoreTextColor,
-                restoreFontSize: section.data?.restoreFontSize.map { CGFloat($0) }
+                restoreFontSize: section.data?.restoreFontSize.map { CGFloat($0) },
+                restoreGap: section.data?.restoreGap
             )
             .ctaAnimation(config.animation?.cta_animation)
             .applyContainerStyle(section.style?.container))

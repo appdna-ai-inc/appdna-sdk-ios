@@ -111,7 +111,11 @@ struct PaywallSectionData: Codable {
     let restoreText: String?        // CTA section: restore purchase text
     let showRestore: Bool?          // CTA section: show restore button
     let restorePosition: String?    // CTA section: "above" | "below" (default: "below")
-    let restoreTextColor: String?   // CTA section: restore link text color (hex)
+    let restoreTextColor: String?   // CTA section: restore link text color
+    /// SPEC-490 (#651 item 1) — the gap between the CTA button and the Restore link. Was a
+    /// hardcoded `VStack(spacing: 8)` here, `Spacer(8.dp)` on Android and `mt-2` in the preview,
+    /// with no way to author it. Unset keeps 8 on every surface.
+    let restoreGap: CGFloat?
     let restoreFontSize: Double?    // CTA section: restore link font size
 
     // Guarantee
@@ -329,6 +333,7 @@ struct PaywallSectionData: Codable {
         case showRestore = "show_restore"
         case restorePosition = "restore_position"
         case restoreTextColor = "restore_text_color"
+        case restoreGap = "restore_gap"
         case restoreFontSize = "restore_font_size"
         case title_style, subtitle_style
         case imageUrl = "image_url"
