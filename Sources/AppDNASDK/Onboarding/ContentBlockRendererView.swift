@@ -1511,7 +1511,12 @@ struct ContentBlockRendererView: View {
             if dividerSlot == 0 { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
                 socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
-                if dividerSlot == index + 1 { divider }
+                // SPEC-478 (#615) — `&& dividerSlot < topGroup.count` is load-bearing. "bottom" is the DEFAULT and
+                // resolves to `topGroup.count`, so without it this fires on the last provider AND the end slot
+                // below fires too: two dividers on every default-configured block, confirmed on a simulator and
+                // two physical iPhones. Android (ContentBlockRenderer.kt:4465) and the console preview
+                // (OnboardingStepPreview.tsx:1870) have always carried this guard; only iOS lacked it.
+                if dividerSlot == index + 1 && dividerSlot < topGroup.count { divider }
             }
             if placement == "below_inputs" && !topGroup.isEmpty && !bottomGroup.isEmpty {
                 // Subtract the VStack's own spacing so the visual gap between the
@@ -1525,7 +1530,10 @@ struct ContentBlockRendererView: View {
             }
             // The end slot. Guarded on the slot rather than "not top", so an interior slot does
             // not also draw one down here — which is what a `!= top` test would do.
-            if dividerSlot >= topGroup.count { divider }
+            //
+            // SPEC-478 — `topGroup.count > 0` closes the other overlap: with NO providers, "bottom" also resolves
+            // to slot 0, so the head slot above and this one both fired. Head owns the empty case.
+            if dividerSlot >= topGroup.count && topGroup.count > 0 { divider }
         }
     }
 
