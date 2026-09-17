@@ -1497,6 +1497,19 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_frame_color"] = SharedFixtureTests.orNull(block.field_config?["frame_color"]?.value as? String)
             h.state["parsed_frame_glow_color"] = SharedFixtureTests.orNull(block.field_config?["frame_glow_color"]?.value as? String)
             // #580 — the Sound Button's authored icon.
+            // SPEC-481 (#601) — the warning banner's subtitle, alignment, own chrome and per-role
+            // typography. All in `field_config` because Android's ContentBlock is at 245 of the
+            // JVM's 255-param ceiling, so these could not become top-level fields at any price.
+            h.state["parsed_banner_variant"] = SharedFixtureTests.orNull(block.field_config?["banner_variant"]?.value as? String)
+            h.state["parsed_banner_icon"] = SharedFixtureTests.orNull(block.field_config?["banner_icon"]?.value as? String)
+            h.state["parsed_banner_subtitle"] = SharedFixtureTests.orNull(block.field_config?["banner_subtitle"]?.value as? String)
+            h.state["parsed_banner_text_align"] = SharedFixtureTests.orNull(block.field_config?["banner_text_align"]?.value as? String)
+            h.state["parsed_banner_border_color"] = SharedFixtureTests.orNull(block.field_config?["banner_border_color"]?.value as? String)
+            h.state["parsed_banner_font_family"] = SharedFixtureTests.orNull(block.field_config?["banner_font_family"]?.value as? String)
+            h.state["parsed_banner_border_width"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_border_width"]))
+            h.state["parsed_banner_corner_radius"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_corner_radius"]))
+            h.state["parsed_banner_title_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_title_size"]))
+            h.state["parsed_banner_subtitle_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_subtitle_size"]))
             h.state["parsed_sound_icon"] = SharedFixtureTests.orNull(block.field_config?["sound_icon"]?.value as? String)
             h.state["parsed_sound_icon_color"] = SharedFixtureTests.orNull(block.field_config?["sound_icon_color"]?.value as? String)
             h.state["parsed_sound_icon_size"] = SharedFixtureTests.orNull(
@@ -1742,6 +1755,24 @@ final class SharedFixtureTests: XCTestCase {
             // unauthored paywall rendering exactly as it did before.
             h.state["parsed_plan1_price_total_display"] = SharedFixtureTests.orNull(p1?.price_total_display)
             h.state["parsed_plan1_badge_enabled"] = SharedFixtureTests.orNull(p1?.description_badge?.enabled)
+            // SPEC-485 (#649) — the legal section. The text must arrive with its markdown INTACT
+            // (parsing is the SDK's job), and the link colour must arrive as `accent_color`, the key
+            // both natives read and the one the console's `link_color` is mapped onto at the wire
+            // boundary — nothing used to map between them, so the authored colour never reached a
+            // device at all.
+            let legalSection = paywall.sections.first { $0.type == "legal" }
+            h.state["parsed_legal_text"] = SharedFixtureTests.orNull(legalSection?.data?.text)
+            h.state["parsed_legal_accent_color"] = SharedFixtureTests.orNull(legalSection?.data?.accentColor)
+            h.state["parsed_legal_font_size"] = SharedFixtureTests.orNull(legalSection?.data?.fontSize)
+            h.state["parsed_legal_alignment"] = SharedFixtureTests.orNull(legalSection?.data?.alignment)
+            if let legalText = legalSection?.data?.text {
+                // REAL: the shipped parser BOTH legal renderers call.
+                let parsed = legalMarkdownLinks(legalText)
+                let urls = parsed.runs.compactMap { $0.link }
+                h.state["parsed_legal_rendered_text"] = String(parsed.characters)
+                h.state["parsed_legal_link_count"] = urls.count
+                h.state["parsed_legal_first_link_url"] = SharedFixtureTests.orNull(urls.first?.absoluteString)
+            }
             return
         }
 
