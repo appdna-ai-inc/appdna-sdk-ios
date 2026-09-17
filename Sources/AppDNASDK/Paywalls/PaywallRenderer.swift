@@ -1138,9 +1138,14 @@ struct PaywallRenderer: View {
 
             // Legal text
             if let legalText = data?.legalText {
+                // SPEC-487 (#648) — the size and colour are now authored. Unset keeps the previous
+                // hardcoded 10pt / `.secondary`, so a published paywall is unchanged. This is what
+                // made #648 look like a Legal-section bug: the footer Subtitle was pinned at 10pt
+                // while the Legal SECTION honoured its authored size, so a 13pt legal paragraph
+                // genuinely rendered larger than this line — which the author had sized to 16.
                 Text(loc("sticky_footer.legal", legalText))
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: data?.legalFontSize ?? 10))
+                    .foregroundColor(data?.legalTextColor.map { Color(hex: $0) } ?? .secondary)
                     .multilineTextAlignment(.center)
             }
         }

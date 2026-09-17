@@ -186,6 +186,13 @@ struct PaywallSectionData: Codable {
     let secondaryAction: String?   // restore | link
     let secondaryUrl: String?
     let legalText: String?
+    /// SPEC-487 (#648) — the sticky footer's Subtitle was drawn at a HARDCODED 10pt on both
+    /// natives and in the preview, honouring no authored size or colour. The console's
+    /// "Subtitle Style" controls had been removed with a note to re-add them "once natives+preview
+    /// support per-legal typography" — this is that support. Unset keeps 10pt / `.secondary`, so
+    /// no published paywall changes.
+    let legalFontSize: CGFloat?
+    let legalTextColor: String?
     let blurBackground: Bool?
     let padding: CGFloat?
 
@@ -378,6 +385,8 @@ struct PaywallSectionData: Codable {
         case secondaryAction = "secondary_action"
         case secondaryUrl = "secondary_url"
         case legalText = "legal_text"
+        case legalFontSize = "legal_font_size"
+        case legalTextColor = "legal_text_color"
         case blurBackground = "blur_background"
         case padding, pages
         case autoScroll = "auto_scroll"
