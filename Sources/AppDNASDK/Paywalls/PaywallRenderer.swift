@@ -1036,35 +1036,10 @@ struct PaywallRenderer: View {
         }
     }
 
+    /// SPEC-485 (#649) — forwards to the shared parser in `LegalMarkdownLinks.swift`, so the
+    /// Screens/Sections legal renderer uses the SAME one instead of a plain-Text copy.
     private func parseMarkdownLinks(_ text: String) -> AttributedString {
-        var result = AttributedString(text)
-        // Simple markdown link parser: [label](url)
-        let pattern = "\\[([^\\]]+)\\]\\(([^)]+)\\)"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return result }
-        // Reconstruct attributed string with links
-        var attrStr = AttributedString()
-        var remaining = text
-        while let match = regex.firstMatch(in: remaining, range: NSRange(remaining.startIndex..., in: remaining)) {
-            guard let labelRange = Range(match.range(at: 1), in: remaining),
-                  let urlRange = Range(match.range(at: 2), in: remaining),
-                  let fullRange = Range(match.range, in: remaining) else { break }
-            // Add text before the match
-            let beforeText = String(remaining[remaining.startIndex..<fullRange.lowerBound])
-            attrStr.append(AttributedString(beforeText))
-            // Add the link
-            let label = String(remaining[labelRange])
-            let urlString = String(remaining[urlRange])
-            var linkAttr = AttributedString(label)
-            if let url = URL(string: urlString) {
-                linkAttr.link = url
-            }
-            attrStr.append(linkAttr)
-            remaining = String(remaining[fullRange.upperBound...])
-        }
-        if !remaining.isEmpty {
-            attrStr.append(AttributedString(remaining))
-        }
-        return attrStr.characters.isEmpty ? result : attrStr
+        legalMarkdownLinks(text)
     }
 
     // MARK: - SPEC-089d: Divider section (AC-030)

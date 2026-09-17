@@ -369,10 +369,15 @@ private struct LegalSectionView: View {
         }()
         VStack(spacing: 8) {
             if let text = data?.text {
-                Text(text)
+                // SPEC-485 (#649) — inline `[label](url)` links, via the SAME parser
+                // PaywallRenderer uses. This was a plain `Text(text)`, so a legal line reading
+                // "see our [Terms](https://…)" showed the literal brackets on this path while
+                // rendering correctly on the other one.
+                Text(legalMarkdownLinks(text))
                     .font(.system(size: size))
                     .foregroundColor(textColor)
                     .multilineTextAlignment(align)
+                    .tint(linkColor)
             }
             if let links = data?.links, !links.isEmpty {
                 HStack(spacing: 16) {
