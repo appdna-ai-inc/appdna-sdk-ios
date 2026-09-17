@@ -1324,6 +1324,38 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
+    /// SPEC-481 (#601) — the warning banner's new authoring surface, all five in one render:
+    /// a chosen icon, a subtitle under the message, centre alignment, the banner's own border
+    /// width/colour/corner-radius, independent message + subtitle sizes, and a font family.
+    ///
+    /// `testEpic11_warningBanner` above is the OTHER half of this proof: it is deliberately left
+    /// untouched, so if any SPEC-481 default drifted from the pre-SPEC-481 render its committed
+    /// reference would stop matching. New capability here, no regression there.
+    func testSpec481_warningBannerSubtitleAndChrome() throws {
+        let view = try renderMany([
+            """
+            {"id": "b1", "type": "warning_banner", "text": "Your trial ends soon",
+             "field_config": {"banner_variant": "info", "banner_icon": "\u{1F514}",
+                              "banner_subtitle": "Renew before Friday to keep your streak.",
+                              "banner_text_align": "center", "banner_border_width": 2,
+                              "banner_border_color": "#2563EB", "banner_corner_radius": 20,
+                              "banner_title_size": 17, "banner_subtitle_size": 12,
+                              "banner_font_family": "Georgia"}}
+            """,
+            """
+            {"id": "b2", "type": "warning_banner", "text": "Storage almost full",
+             "field_config": {"banner_subtitle": "Free up space to keep syncing.",
+                              "banner_text_align": "trailing", "banner_corner_radius": 0,
+                              "banner_border_width": 0}}
+            """,
+        ])
+        let recordMode: SnapshotTestingConfiguration.Record =
+            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+        }
+    }
+
     /// EPIC-11 — password-strength meter: weak (1/4) / good (3/4) / strong (4/4). Parity with Android.
     func testEpic11_passwordStrength() throws {
         let view = try renderMany([

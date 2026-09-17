@@ -847,17 +847,43 @@ struct ContentBlockRendererView: View {
         // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
         let bgOverride = block.bg_color.map { Color(hex: $0) }
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        // SPEC-481 (#601) — subtitle + alignment, own border/radius, per-role font size, font family.
+        // EVERY default below reproduces the pre-SPEC-481 render (14/medium, radius 12, 1pt accent@0.45,
+        // leading), so an already-published banner is pixel-identical until an author changes something.
+        // Chrome is deliberately NOT routed through `block_style`: that wrapper clips at
+        // `border_radius ?? 0` and strokes on top, so it would square these corners and double the border.
+        let fc = block.field_config
+        let rawSubtitle = (fc?["banner_subtitle"]?.value as? String) ?? ""
+        let subtitle = rawSubtitle.isEmpty
+            ? ""
+            : (loc?("block.\(block.id).banner_subtitle", rawSubtitle) ?? rawSubtitle)
+        let align = (fc?["banner_text_align"]?.value as? String) ?? "leading"
+        let hAlign: HorizontalAlignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
+        let tAlign: TextAlignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
+        let fAlign: Alignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
+        let radius = CGFloat(cfgDouble(fc?["banner_corner_radius"]) ?? 12)
+        let borderWidth = CGFloat(cfgDouble(fc?["banner_border_width"]) ?? 1)
+        let borderColor = (fc?["banner_border_color"]?.value as? String).map { Color(hex: $0) }
+            ?? accent.opacity(0.45)
+        let family = fc?["banner_font_family"]?.value as? String
+        let titleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_title_size"]) ?? 14, weight: 500)
+        let subtitleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_subtitle_size"]) ?? 13, weight: 400)
         return HStack(spacing: 10) {
             Text(icon).font(.system(size: 18))
-            Text(text).font(.system(size: 14, weight: .medium)).foregroundColor(textColor)
-            Spacer(minLength: 0)
+            VStack(alignment: hAlign, spacing: 2) {
+                Text(text).font(titleFont).foregroundColor(textColor).multilineTextAlignment(tAlign)
+                if !subtitle.isEmpty {
+                    Text(subtitle).font(subtitleFont).foregroundColor(textColor).multilineTextAlignment(tAlign)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: fAlign)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(bgOverride ?? accent.opacity(0.14))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(accent.opacity(0.45), lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: radius))
+        .overlay(RoundedRectangle(cornerRadius: radius).stroke(borderColor, lineWidth: borderWidth))
     }
 
     // EPIC-11 — password-strength meter: 4 segment bars + label, red→amber→yellow→green ramp. Parity w/ Android.
