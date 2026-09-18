@@ -130,7 +130,7 @@ final class EntitlementOwnerFilterTests: XCTestCase {
     /// identifies → user B identifies → B taps Restore. Pins that B sees
     /// nothing because the untagged transaction is scoped to A (the
     /// device's first identifier).
-    func testBogdanReproducer_decisionTable() {
+    func testQAReproducer_decisionTable() {
         // 1. SDK paywall purchase happens during onboarding before
         //    AppDNA.identify(...). transactionToken = nil (untagged).
         let untaggedTransaction: UUID? = nil
