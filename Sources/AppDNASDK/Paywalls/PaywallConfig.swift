@@ -112,6 +112,9 @@ struct PaywallSectionData: Codable {
     let showRestore: Bool?          // CTA section: show restore button
     let restorePosition: String?    // CTA section: "above" | "below" (default: "below")
     let restoreTextColor: String?   // CTA section: restore link text color
+    /// #651 — Restore's own fill + radius, the pair the CTA already has.
+    let restoreBgColor: String?
+    let restoreCornerRadius: Double?
     /// SPEC-490 (#651 item 1) — the gap between the CTA button and the Restore link. Was a
     /// hardcoded `VStack(spacing: 8)` here, `Spacer(8.dp)` on Android and `mt-2` in the preview,
     /// with no way to author it. Unset keeps 8 on every surface.
@@ -339,6 +342,8 @@ struct PaywallSectionData: Codable {
         case showRestore = "show_restore"
         case restorePosition = "restore_position"
         case restoreTextColor = "restore_text_color"
+        case restoreBgColor = "restore_bg_color"
+        case restoreCornerRadius = "restore_corner_radius"
         case restoreGap = "restore_gap"
         case ctaAction = "cta_action"
         case restoreAction = "restore_action"
@@ -740,6 +745,8 @@ struct PaywallExtraButton: Codable, Identifiable {
     let font_size: Double?
     /// `filled` (default) draws a button; `text` draws a tappable label like the restore link.
     let style: String?
+    /// #651 — its own radius; unset inherits the CTA's.
+    let corner_radius: Double?
 
     /// Identifiable for ForEach without requiring the console to mint ids.
     var id: String { "\(text ?? "")|\(action ?? "")|\(url ?? "")" }
@@ -765,11 +772,40 @@ struct PaywallDismiss: Codable {
     /// Whether dismiss is allowed — defaults to true for backward compat.
     var isAllowed: Bool { allowed ?? true }
 
+    /// #652 (round 2) — the Back button is its OWN control, not a style of the close button. A
+    /// paywall can want both at once, each with its own placement, colour, size and delay.
+    let back: PaywallBackButton?
+
     enum CodingKeys: String, CodingKey {
-        case allowed, text, color, size
+        case allowed, text, color, size, back
         case _style = "style"
         case _position = "position"
         case _type = "type"
+        case delaySeconds = "delay_seconds"
+    }
+}
+
+/// #652 (round 2) — the second dismissal affordance, configured independently of the close button.
+struct PaywallBackButton: Codable {
+    let enabled: Bool?
+    /// `chevron` (default) | `arrow` | `text_link`.
+    let style: String?
+    private let _position: String?
+    let color: String?
+    let size: CGFloat?
+    let delaySeconds: Int?
+    /// Label for `text_link`; ignored by the glyph styles.
+    let text: String?
+
+    var isEnabled: Bool { enabled ?? false }
+    /// Back defaults to the LEFT — the side a back affordance is expected on, and the side the
+    /// close button is not, so both can be shown without overlapping.
+    var position: String { _position ?? "top_left" }
+    var resolvedStyle: String { style ?? "chevron" }
+
+    enum CodingKeys: String, CodingKey {
+        case enabled, style, color, size, text
+        case _position = "position"
         case delaySeconds = "delay_seconds"
     }
 }

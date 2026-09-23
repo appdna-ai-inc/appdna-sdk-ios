@@ -456,6 +456,8 @@ final class SharedFixtureTests: XCTestCase {
         case "pick_measurement":               await runPickMeasurement(fixture, harness)
         case "fetch_remote_config":            runFetchRemoteConfig(fixture, harness)
         case "merge_step_override":            runMergeStepOverride(fixture, harness)
+        case "refresh_step_interaction":       runRefreshStepInteraction(fixture, harness)
+        case "multi_buttons_layout":           runMultiButtonsLayout(fixture, harness)
         case "compose_map_url":                runComposeMapUrl(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
@@ -1349,6 +1351,94 @@ final class SharedFixtureTests: XCTestCase {
     /// and the thing under test is what the merge leaves ALONE. A merge that rebuilt the block
     /// array from only the named blocks would delete the heading and the button, and every
     /// assertion about the named block would still pass.
+    /// #657 — a refresh button's interaction, driven through the REAL public functions: the result
+    /// type the bridges build, the pure applier, and the same read-time option override the renderer
+    /// uses. Nothing here reimplements the behaviour, which is the only way this fixture can fail
+    /// when the behaviour regresses. Mirrors Android `runRefreshStepInteraction`.
+    /// #609 — the Multi-buttons arrangement, through the real decoder and the real row-plan rule.
+    private func runMultiButtonsLayout(_ fixture: Fixture, _ h: Harness) {
+        guard let cfgJSON = fixture.setup.config?.foundation,
+              let cfgData = try? JSONSerialization.data(withJSONObject: cfgJSON),
+              let stepCfg = try? JSONDecoder().decode(StepConfig.self, from: cfgData)
+        else {
+            XCTFail("[\(fixture.id)] setup.config did not decode as a StepConfig")
+            return
+        }
+        let blockId = fixture.action.raw["block_id"]?.stringValue ?? ""
+        guard let group = (stepCfg.content_blocks ?? []).first(where: { $0.id == blockId }) else {
+            XCTFail("[\(fixture.id)] no block \(blockId) in setup.config")
+            return
+        }
+        let children = group.children ?? group.stack_children ?? []
+        let perRow = min(3, max(1, Int((group.field_config?["buttons_per_row"]?.value as? Double) ?? 2)))
+        let plan = multiButtonRowPlan(childCount: children.count, perRow: perRow)
+
+        h.state["child_count"] = children.count
+        h.state["buttons_per_row"] = perRow
+        h.state["row_plan"] = plan
+        h.state["last_row_is_full"] = !plan.isEmpty && plan.last == perRow
+        h.state["last_row_centered"] =
+            ((group.field_config?["last_row"]?.value as? String) ?? "center") == "center"
+            && !plan.isEmpty && plan.last != perRow
+        h.state["group_background"] = group.block_style?.background_color ?? ""
+    }
+
+    private func runRefreshStepInteraction(_ fixture: Fixture, _ h: Harness) {
+        let sess = fixture.setup.session_data?.objectValue ?? [:]
+        let blockId = fixture.action.raw["block_id"]?.stringValue ?? ""
+        let targetId = fixture.action.raw["target_block_id"]?.stringValue ?? ""
+
+        guard let cfgJSON = fixture.setup.config?.foundation,
+              let cfgData = try? JSONSerialization.data(withJSONObject: cfgJSON),
+              let stepCfg = try? JSONDecoder().decode(StepConfig.self, from: cfgData)
+        else {
+            XCTFail("[\(fixture.id)] setup.config did not decode as a StepConfig")
+            return
+        }
+        let blocks = stepCfg.content_blocks ?? []
+        guard let button = blocks.first(where: { $0.id == blockId }) else {
+            XCTFail("[\(fixture.id)] no block \(blockId) in setup.config")
+            return
+        }
+        // The authored action is what routes the tap into the interaction hook at all.
+        XCTAssertEqual(button.action, "refresh_step", "[\(fixture.id)] button is not a refresh_step")
+        h.state["interaction_action"] = "refresh"
+        h.state["interaction_block_id"] = button.id
+
+        guard let hostOptions = sess["host_field_options"]?.objectValue else {
+            XCTFail("[\(fixture.id)] refresh_step_interaction needs setup.session_data.host_field_options")
+            return
+        }
+        var byBlock: [String: [InputOption]] = [:]
+        for (id, arr) in hostOptions {
+            guard let raw = arr.foundation as? [[String: Any]],
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let opts = try? JSONDecoder().decode([InputOption].self, from: data)
+            else { continue }
+            byBlock[id] = opts
+        }
+
+        let result = ElementInteractionResult(
+            fieldOptions: byBlock,
+            advance: (sess["host_advance"]?.foundation as? Bool) ?? false
+        )
+        let applied = applyInteractionResult(result, inputValues: [:])
+        h.state["advance"] = applied.advance
+
+        if let target = blocks.first(where: { $0.id == targetId }) {
+            let refreshed = resolvedFieldOptions(target, applied.fieldOptionsOverrides)
+            h.state["refreshed_option_count"] = (refreshed.field_options ?? []).count
+            h.state["refreshed_option0_value"] = (refreshed.field_options ?? []).first?.value ?? ""
+            h.state["refreshed_option0_label"] = (refreshed.field_options ?? []).first?.label ?? ""
+        }
+        // A block the host did NOT name keeps every authored option — the override is targeted.
+        if let untouched = blocks.first(where: { $0.id != targetId && $0.type == .input_select }) {
+            let kept = resolvedFieldOptions(untouched, applied.fieldOptionsOverrides)
+            h.state["untouched_option_count"] = (kept.field_options ?? []).count
+            h.state["untouched_option0_label"] = (kept.field_options ?? []).first?.label ?? ""
+        }
+    }
+
     private func runMergeStepOverride(_ fixture: Fixture, _ h: Harness) {
         let sess = fixture.setup.session_data?.objectValue ?? [:]
         let hostOptions = sess["host_field_options"]?.objectValue
@@ -1671,10 +1761,16 @@ final class SharedFixtureTests: XCTestCase {
                 let rawStats = (r.field_config?["summary_stats"]?.value as? [Any]) ?? []
                 let firstStat = rawStats.first as? [String: Any]
                 h.state["resolved_stat0_value"] = (firstStat?["value"] as? String) ?? ""
-                // A stat that could not resolve and had no `| fallback` is DROPPED, so the count is
-                // what proves the raw token never reaches a renderer.
+                // #660 — a stat that cannot resolve and has a usable LABEL keeps its place and shows
+                // a placeholder; one with nothing to say is still dropped. The count plus the
+                // per-index values prove no raw token reaches a renderer either way.
                 h.state["resolved_stat_count"] = rawStats.count
                 h.state["resolved_stat0_label"] = (firstStat?["label"] as? String) ?? ""
+                for (i, entry) in rawStats.enumerated() {
+                    guard let st = entry as? [String: Any] else { continue }
+                    h.state["resolved_stat\(i)_value"] = (st["value"] as? String) ?? ""
+                    h.state["resolved_stat\(i)_label"] = (st["label"] as? String) ?? ""
+                }
                 // SPEC-452 — the resolved CHILD of a container. Children bypassed resolution
                 // entirely, and a fixture that only reads the container's own keys cannot see that:
                 // it is green whether or not the recursion exists.

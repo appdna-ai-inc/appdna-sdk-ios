@@ -14,6 +14,8 @@ public enum ContentBlockType: String, Codable {
     case rating, rich_text, progress_bar
     // SPEC-089d Phase F: Container & advanced block types
     case stack, custom_view, date_wheel_picker, circular_gauge, row
+    /// #609 — several CTAs laid out N per row on one shared background.
+    case multi_buttons
     // SPEC-451 — map with an optional route. Every setting rides in `field_config`.
     case map
     // SPEC-089d
@@ -835,6 +837,56 @@ extension View {
 
 // MARK: - Relative Sizing ViewModifier (SPEC-089d §6.7)
 
+/// The width of the container a block is being laid out in, published by whoever lays it out.
+///
+/// #663 — a percentage `element_width` used to resolve against `UIScreen.main.bounds` minus an
+/// ASSUMED global padding. Android resolves it against the real container (`fillMaxWidth(fraction)`)
+/// and so does the console preview (CSS `width: 75%`), so iOS was the one surface disagreeing: the
+/// same authored `75%` came out a different width on iOS than the canvas the author designed on,
+/// and a different width again on a different-sized phone.
+///
+/// 0 means "nobody measured" — the modifier then falls back to the old screen approximation, which
+/// keeps any surface that has not adopted this working exactly as it did.
+private struct ContainerWidthKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
+extension EnvironmentValues {
+    var appdnaContainerWidth: CGFloat {
+        get { self[ContainerWidthKey.self] }
+        set { self[ContainerWidthKey.self] = newValue }
+    }
+}
+
+/// #663 — what a fractional `element_width` actually resolves to.
+///
+/// Pure so the rule is asserted by a test rather than by eye. `container` is the measured width of
+/// whatever the block sits in; 0 means nobody measured, and the fallback is the historical
+/// screen-minus-assumed-padding approximation so an unmeasured surface behaves exactly as before
+/// rather than collapsing to zero.
+func relativeWidth(_ fraction: CGFloat, container: CGFloat) -> CGFloat {
+    if container > 0 { return container * fraction }
+    let screen = UIScreen.main.bounds.width
+    return (screen - (max(24, screen * 0.08) * 2)) * fraction
+}
+
+/// #654 / #659 — does this block need an outer full-width box to align inside?
+///
+/// Mirrors Android `needsOuterAlignmentBox`, and iOS needed it for the same reason Android did:
+/// `BlockPositionModifier` applies `.frame(maxWidth: .infinity, alignment:)` INSIDE the sizing
+/// frame, so once the sizing frame constrains the block to 300pt the alignment is resolving inside
+/// 300pt and has nowhere to move. The VStack then centres the result, which is why a block authored
+/// `right` and one authored `center` rendered in the SAME position.
+///
+/// Only a width-CONSTRAINED block needs it: an unconstrained one is already full-width, so its
+/// inner alignment has the whole row and wrapping it again would change nothing but the layout
+/// tree.
+func needsOuterAlignmentBox(elementWidth: String?, horizontalAlign: String?) -> Bool {
+    guard let align = horizontalAlign, !align.isEmpty else { return false }
+    guard let width = elementWidth, !width.isEmpty, width != "auto", width != "fill" else { return false }
+    return width.hasSuffix("%") || width.hasSuffix("px")
+}
+
 /// Applies relative sizing (element_width, element_height) to a content block.
 struct RelativeSizingModifier: ViewModifier {
     let width: String?
@@ -849,6 +901,10 @@ struct RelativeSizingModifier: ViewModifier {
 
     struct WidthModifier: ViewModifier {
         let size: SizeValue?
+        // NB: the SDK defines a public `enum Environment` (Configuration.swift) that shadows
+        // SwiftUI's `@Environment` property wrapper here — fully qualify it.
+        @SwiftUI.Environment(\.appdnaContainerWidth) private var containerWidth
+
         func body(content: Content) -> some View {
             switch size {
             case .fill:
@@ -860,9 +916,7 @@ struct RelativeSizingModifier: ViewModifier {
                     // 100% = fill available space (respect parent padding)
                     content.frame(maxWidth: .infinity)
                 } else {
-                    // <100% = fraction of parent width (approximate using screen width minus global padding)
-                    let availableWidth = UIScreen.main.bounds.width - (max(24, UIScreen.main.bounds.width * 0.08) * 2)
-                    content.frame(width: availableWidth * fraction)
+                    content.frame(width: relativeWidth(fraction, container: containerWidth))
                 }
             case .auto_, .none:
                 content

@@ -1,9 +1,152 @@
 import SwiftUI
 import MapKit
 import PhotosUI
+
+/// #609 — how a Multi-buttons group splits its children into rows.
+///
+/// Pure so the layout rule is asserted by a test and a shared fixture rather than by eye: the bugs
+/// this element exists to fix (#654/#659) were all layout rules only a screenshot could check.
+/// Returns the number of buttons on each row, in order. Mirrors Android `multiButtonRowPlan`.
+func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
+    if childCount <= 0 { return [] }
+    let n = min(3, max(1, perRow))
+    let full = childCount / n
+    let rest = childCount % n
+    return Array(repeating: n, count: full) + (rest > 0 ? [rest] : [])
+}
+
+/// #609 — how much EMPTY column a short last row puts on each side of itself.
+///
+/// A short row cannot be centred by spacers alone while its children are free to grow: a button
+/// takes the width it is offered, so a lone child in an `HStack` with `Spacer()`s still spans the
+/// whole row and "center" renders identically to "stretch". Android's Roborazzi golden caught
+/// exactly that — two settings, one image — so both platforms now pin the child to ONE COLUMN and
+/// let the spacers centre it, which also lines the short row up UNDER the buttons above it.
+///
+/// Returns the weight for ONE side (half the missing columns), or 0 when the row is full or the
+/// author asked for stretch. Mirrors Android `multiButtonFillerWeight`.
+func multiButtonFillerWeight(rowSize: Int, perRow: Int, stretchLastRow: Bool) -> CGFloat {
+    let n = min(3, max(1, perRow))
+    if stretchLastRow || rowSize >= n || rowSize <= 0 { return 0 }
+    return CGFloat(n - rowSize) / 2
+}
+
+/// Placeholder shown where a summary stat's value could not be resolved (#660).
+let unresolvedStatPlaceholder = "\u{2014}"
+
+/// One summary stat, made safe to render (#660, SPEC-446 AC).
+///
+/// Returns nil only when the card would say nothing at all. Mirrors Android
+/// `sanitizeSummaryStat` in ContentBlockRenderer.kt — the two must agree, because a stat that
+/// renders on one platform and vanishes on the other is exactly the class of bug this came from.
+func sanitizeSummaryStat(_ stat: [String: Any]) -> [String: Any]? {
+    let valueUnresolved = (stat["value"] as? String)?.contains("{{") == true
+    let labelUnresolved = (stat["label"] as? String)?.contains("{{") == true
+    let hasLabel = !((stat["label"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
+    if valueUnresolved && (labelUnresolved || !hasLabel) { return nil }
+    if !valueUnresolved && !labelUnresolved { return stat }
+    var next = stat
+    if valueUnresolved { next["value"] = unresolvedStatPlaceholder }
+    if labelUnresolved { next.removeValue(forKey: "label") }
+    return next
+}
+
+/// #609 — the rows of a Multi-buttons group.
+///
+/// Its own view because it needs ONE piece of state: the group's width. A short last row is centred
+/// by pinning its children to a single column and letting the spacers take the rest, and a column
+/// is `(width - gap * (perRow - 1)) / perRow` — which nothing can know until the group is laid out.
+/// Free-growing children with spacers do NOT centre: the button takes the whole row and "center"
+/// becomes pixel-identical to "stretch", which is the bug Android's golden caught.
+///
+/// Before the first measurement every child falls back to `maxWidth: .infinity`, so the group is
+/// never narrower than it should be for a frame — it just is not column-aligned for that one pass.
+struct MultiButtonsRows<Cell: View>: View {
+    let rows: [[ContentBlock]]
+    let perRow: Int
+    let gap: CGFloat
+    let stretchLastRow: Bool
+    @ViewBuilder let cell: (ContentBlock) -> Cell
+
+    @State private var groupWidth: CGFloat = 0
+
+    private var columnWidth: CGFloat {
+        guard groupWidth > 0, perRow > 0 else { return 0 }
+        return max(0, (groupWidth - gap * CGFloat(perRow - 1)) / CGFloat(perRow))
+    }
+
+    var body: some View {
+        VStack(spacing: gap) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, rowChildren in
+                let pinToColumn = multiButtonFillerWeight(
+                    rowSize: rowChildren.count, perRow: perRow, stretchLastRow: stretchLastRow
+                ) > 0 && columnWidth > 0
+                HStack(spacing: gap) {
+                    if pinToColumn { Spacer(minLength: 0) }
+                    ForEach(rowChildren) { child in
+                        if pinToColumn {
+                            cell(child).frame(width: columnWidth)
+                        } else {
+                            cell(child).frame(maxWidth: .infinity)
+                        }
+                    }
+                    if pinToColumn { Spacer(minLength: 0) }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: MultiButtonsWidthKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(MultiButtonsWidthKey.self) { groupWidth = $0 }
+    }
+}
+
+private struct MultiButtonsWidthKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// #663 — carries the measured container width up from the renderer's own layout.
+private struct ContainerWidthPrefKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+/// #654 / #659 — the outer full-width box a width-constrained block aligns inside.
+///
+/// Applied OUTSIDE the sizing frame, which is the whole point: `BlockPositionModifier` runs inside
+/// it, where a block already constrained to 300pt has no room left to move. Only wraps when the
+/// block is both width-constrained and names an alignment, so nothing else changes shape.
+struct OuterAlignmentBoxModifier: ViewModifier {
+    let elementWidth: String?
+    let horizontalAlign: String?
+
+    func body(content: Content) -> some View {
+        if needsOuterAlignmentBox(elementWidth: elementWidth, horizontalAlign: horizontalAlign) {
+            content.frame(maxWidth: .infinity, alignment: outerAlignment(horizontalAlign))
+        } else {
+            content
+        }
+    }
+
+    private func outerAlignment(_ align: String?) -> Alignment {
+        switch align {
+        case "left", "leading": return .leading
+        case "right", "trailing": return .trailing
+        default: return .center
+        }
+    }
+}
+
 // MARK: - Content Block Renderer
 
 struct ContentBlockRendererView: View {
+    /// #663 — the width this renderer is laid out in, measured once and handed to every child.
+    @State private var measuredContainerWidth: CGFloat = 0
+
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
     @Binding var toggleValues: [String: Bool]
@@ -28,6 +171,8 @@ struct ContentBlockRendererView: View {
     /// SPEC-419 STEP-2 — per-block field_config overrides (from `ElementInteractionResult.fieldConfigPatches`),
     /// folded onto the resolved block at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
+    /// #657 — per-block replacement options from a refresh interaction, layered at read time.
+    var fieldOptionsOverrides: [String: [InputOption]] = [:]
 
     var body: some View {
         let visibleBlocks = blocks.filter { block in
@@ -55,9 +200,12 @@ struct ContentBlockRendererView: View {
                 // SPEC-419 STEP-2 — fold any host-pushed field_config overrides onto the resolved block
                 // UNCONDITIONALLY (resolveBlockBindings early-returns raw blocks with no bindings/templates —
                 // which is every EPIC-11 element — so the merge cannot live inside it). Empty overrides = no-op.
-                let resolvedBlock = resolvedFieldConfig(
-                    resolveBlockBindings(block, hookData: hookData, responses: responses),
-                    fieldConfigOverrides
+                let resolvedBlock = resolvedFieldOptions(
+                    resolvedFieldConfig(
+                        resolveBlockBindings(block, hookData: hookData, responses: responses),
+                        fieldConfigOverrides
+                    ),
+                    fieldOptionsOverrides
                 )
                 let shouldCollapse = resolvedBlock.collapse_on_scroll == true
                 // Collapse threshold: how many points of scroll before this block hides
@@ -76,6 +224,14 @@ struct ContentBlockRendererView: View {
                 renderBlock(resolvedBlock, animate: shouldAnimate)
                     .applyRelativeSizing(width: resolvedBlock.element_width, height: effectiveHeight, useMinHeight: isExpandableBlock)
                     .applyBlockContainerStyle(resolvedBlock)
+                    // #654/#659 — a width-constrained block needs a full-width box OUTSIDE its
+                    // sizing frame to align within; the inner `BlockPositionModifier` is resolving
+                    // inside the constrained width and has nowhere to move. Same fix, same shape as
+                    // Android's `BlockSizingBox`.
+                    .modifier(OuterAlignmentBoxModifier(
+                        elementWidth: resolvedBlock.element_width,
+                        horizontalAlign: resolvedBlock.horizontal_align
+                    ))
                     // Sprint 7: Scroll-collapse — ONLY applied to blocks with collapse_on_scroll.
                     // .clipped() and .frame(maxHeight:) must NOT touch non-collapsible blocks
                     // because they clip dropdowns, overlays, and overflow content.
@@ -88,6 +244,17 @@ struct ContentBlockRendererView: View {
                     }
             }
         }
+        // #663 — publish the width blocks are actually being laid out in, so a percentage
+        // `element_width` is a fraction of THIS, not of the device screen. Android has always used
+        // the real container (`fillMaxWidth(fraction)`) and so has the console preview; measuring
+        // here is what makes the third surface agree with the other two.
+        .background(
+            GeometryReader { geo in
+                Color.clear.preference(key: ContainerWidthPrefKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(ContainerWidthPrefKey.self) { measuredContainerWidth = $0 }
+        .environment(\.appdnaContainerWidth, measuredContainerWidth)
     }
 
     @ViewBuilder
@@ -172,6 +339,7 @@ struct ContentBlockRendererView: View {
         case .date_wheel_picker: return AnyView(DateWheelPickerBlockView(block: block, inputValues: $inputValues))
         case .circular_gauge: return AnyView(CircularGaugeBlockView(block: block))
         case .row: return AnyView(rowBlock(block))
+        case .multi_buttons: return AnyView(multiButtonsBlock(block))
         case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction, inputValues: $inputValues))
         case .input_text: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .default))
         case .input_textarea: return AnyView(FormInputTextAreaBlock(block: block, inputValues: $inputValues))
@@ -693,6 +861,13 @@ struct ContentBlockRendererView: View {
         return Button {
             if let onTapOverride {
                 onTapOverride()
+            } else if (block.action ?? "next") == "refresh_step" {
+                // #657 — refresh the step in place. Until now `onElementInteraction` could only be
+                // fired by a fixed set of interactive blocks (OTP, press-hold, the pickers…), never
+                // by a button, so "Show 4 more" / "Regenerate results" had no way to ask the host
+                // for new content without ALSO advancing — which sent the user to the next screen.
+                // The host returns `advance: false` (the default) and the step re-renders.
+                onInteract(block.id, "refresh", block.action_value)
             } else {
                 onAction(block.action ?? "next", block.action_value)
             }
@@ -1510,6 +1685,19 @@ struct ContentBlockRendererView: View {
             if let hex = block.divider_color, !hex.isEmpty { return Color(hex: hex) }
             return Color.gray.opacity(0.3)
         }()
+        // #615 — the LINE took `divider_color` and the TEXT between the segments was pinned to
+        // `.secondary`, so "or continue with email" could not be themed at all: on a dark step it
+        // read as unstyled grey next to lines the author had coloured. Unset keeps `.secondary`, so
+        // every existing flow renders byte-identically.
+        // Read from `field_config`, matching Android: `ContentBlock` there is one constructor
+        // parameter away from the JVM's 255-argument ceiling, so this key cannot be a top-level
+        // field on both platforms — and one wire location is the point.
+        let dividerTextColor: Color? = {
+            if let hex = block.field_config?["divider_text_color"]?.value as? String, !hex.isEmpty {
+                return Color(hex: hex)
+            }
+            return nil
+        }()
         let dividerPosition = block.divider_position ?? "bottom"
         let (topGroup, bottomGroup): ([SocialProviderConfig], [SocialProviderConfig]) = {
             if placement == "below_inputs", let emailIdx = providerList.firstIndex(where: { ($0.type ?? "") == "email" }) {
@@ -1528,7 +1716,7 @@ struct ContentBlockRendererView: View {
                     Rectangle().fill(dividerColor).frame(height: 1)
                     Text(loc?("block.\(block.id).divider", block.divider_text ?? "or") ?? block.divider_text ?? "or")
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(dividerTextColor ?? .secondary)
                     Rectangle().fill(dividerColor).frame(height: 1)
                 }
             }
@@ -2129,6 +2317,36 @@ struct ContentBlockRendererView: View {
     }
 
     // MARK: - Row (HStack container — SPEC-089d AC-025)
+
+    /// #609 — the Multi-buttons element: several CTAs laid out N per row, on one shared background.
+    ///
+    /// The answer to "use a Row" was rejected for a good reason: these have to BE buttons, with
+    /// every Button setting, because each one triggers a different thing in the host app. So the
+    /// children are real `button` blocks rendered through `renderBlock`, and this element only owns
+    /// the arrangement — which means any styling or action a Button gains later works here for free.
+    ///
+    /// An incomplete last row (the 3rd button under two) centres at natural width by default, which
+    /// is the layout that was asked for; `last_row: "stretch"` makes it fill instead.
+    @ViewBuilder
+    private func multiButtonsBlock(_ block: ContentBlock) -> some View {
+        let children = block.children ?? block.stack_children ?? []
+        let perRow = max(1, min(3, Int(cfgDouble(block.field_config?["buttons_per_row"]) ?? 2)))
+        let gap = CGFloat(block.spacing ?? block.gap ?? 12)
+        let stretchLastRow = (block.field_config?["last_row"]?.value as? String) == "stretch"
+        // The row split is a pure, tested rule (multiButtonRowPlan), not an inline stride.
+        let rows: [[ContentBlock]] = {
+            var out: [[ContentBlock]] = []
+            var cursor = 0
+            for size in multiButtonRowPlan(childCount: children.count, perRow: perRow) {
+                out.append(Array(children[cursor..<(cursor + size)]))
+                cursor += size
+            }
+            return out
+        }()
+        MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
+            renderBlock(child)
+        }
+    }
 
     @ViewBuilder
     private func rowBlock(_ block: ContentBlock) -> some View {
@@ -2978,13 +3196,16 @@ func resolveBlockTemplates(
             // in the big colored number on a summary card. Dropping the stat here rather than in the
             // renderer means no current or future renderer can leak it, and a fixture can see it as a
             // count. A stat whose LABEL alone is unresolved keeps its value and loses the caption.
-            let safeStats: [[String: Any]] = resolvedStats.compactMap { stat in
-                if let v = stat["value"] as? String, v.contains("{{") { return nil }
-                if let l = stat["label"] as? String, l.contains("{{") {
-                    var next = stat; next.removeValue(forKey: "label"); return next
-                }
-                return stat
-            }
+            //
+            // 🔴 #660 — dropping the stat was too much. WineTrails' booking summary is five stats,
+            // all bound to `hook_data.booking.*`. Until the host supplies them EVERY card vanished,
+            // so the screen read as "the Summary Screen does not render at all" on both platforms —
+            // and an author had no way to tell a mis-typed path from a host that sent nothing.
+            //
+            // A card with a resolved LABEL still has something true to show, so it keeps its shape
+            // and shows a placeholder where the value goes. A card with neither is still dropped.
+            // Either way no raw `{{token}}` reaches the screen, which is the point of the rule.
+            let safeStats: [[String: Any]] = resolvedStats.compactMap { sanitizeSummaryStat($0) }
             if changed || safeStats.count != resolvedStats.count {
                 cfg["summary_stats"] = safeStats
                 json["field_config"] = cfg

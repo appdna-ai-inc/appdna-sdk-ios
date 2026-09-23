@@ -19,6 +19,8 @@ struct ThreeZoneStepLayout: View {
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
     /// SPEC-419 STEP-2 — per-block field_config overrides pushed by the host delegate, layered at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
+    /// #657 — per-block replacement options from a refresh interaction, threaded to the renderer.
+    var fieldOptionsOverrides: [String: [InputOption]] = [:]
 
     /// Scroll offset tracked for collapse_on_scroll blocks (Sprint 7).
     @State private var scrollOffset: CGFloat = 0
@@ -124,7 +126,8 @@ struct ThreeZoneStepLayout: View {
             isZoneManaged: true,
             scrollOffset: scrollOffset,
             onInteract: onInteract,
-            fieldConfigOverrides: fieldConfigOverrides
+            fieldConfigOverrides: fieldConfigOverrides,
+            fieldOptionsOverrides: fieldOptionsOverrides
         )
         // Use ~8% of screen width for responsive margins across all devices
         .padding(.horizontal, max(24, UIScreen.main.bounds.width * 0.08))

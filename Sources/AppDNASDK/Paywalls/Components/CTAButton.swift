@@ -44,6 +44,10 @@ struct CTAButton: View {
     var restoreFontSize: CGFloat? = nil
     /// SPEC-490 (#651 item 1) — the CTA↔Restore gap. Unset keeps the previous hardcoded 8.
     var restoreGap: CGFloat? = nil
+    /// #651 — Restore's own fill. Unset renders the plain link exactly as before.
+    var restoreBgColor: String? = nil
+    /// #651 — radius for that fill; only meaningful with `restoreBgColor`.
+    var restoreCornerRadius: CGFloat? = nil
     /// Restore action
     var onRestore: (() -> Void)? = nil
 
@@ -112,10 +116,26 @@ struct CTAButton: View {
         .padding(.horizontal)
     }
 
+    /// #651 — Restore could be recoloured and resized but never FILLED, so it could not be made to
+    /// look like a second button beside the CTA. Applied to the composed label so all three styling
+    /// branches below get it, and a nil `restoreBgColor` leaves the view tree byte-identical.
+    @ViewBuilder
+    private func restoreFill(_ view: some View) -> some View {
+        if let hex = restoreBgColor, !hex.isEmpty {
+            view
+                .frame(maxWidth: .infinity)
+                .background(Color(hex: hex))
+                .clipShape(RoundedRectangle(cornerRadius: restoreCornerRadius ?? 0))
+        } else {
+            view
+        }
+    }
+
     @ViewBuilder
     private var restoreButton: some View {
         if showRestore, let text = restoreText, !text.isEmpty {
             Button(action: { onRestore?() }) {
+              restoreFill(Group {
                 // Priority order:
                 // 1. Direct restoreTextColor/restoreFontSize from section data (console Content tab)
                 // 2. restore_text element style (console Style tab)
@@ -143,6 +163,7 @@ struct CTAButton: View {
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
                 }
+              })
             }
         }
     }
@@ -169,11 +190,29 @@ struct RestoreLinkView: View {
     var textColor: String? = nil
     var fontSize: CGFloat? = nil
     var style: TextStyleConfig? = nil
+    /// #651 — Restore's own fill + radius, the pair the CTA already has. Unset = the plain link.
+    var bgColor: String? = nil
+    var cornerRadius: CGFloat? = nil
     let onRestore: (() -> Void)?
+
+    /// Mirrors `CTAButton.restoreFill` — the two restore renderers must agree, because the console
+    /// has one control and a host sees whichever path its layout happens to take.
+    @ViewBuilder
+    private func restoreFill(_ view: some View) -> some View {
+        if let hex = bgColor, !hex.isEmpty {
+            view
+                .frame(maxWidth: .infinity)
+                .background(Color(hex: hex))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius ?? 0))
+        } else {
+            view
+        }
+    }
 
     var body: some View {
         if show, let text = text, !text.isEmpty {
             Button(action: { onRestore?() }) {
+              restoreFill(Group {
                 let directColor: Color? = textColor.map { Color(hex: $0) }
                 let directFont: Font = fontSize.map { .system(size: $0) } ?? .subheadline
                 if let directColor = directColor {
@@ -197,6 +236,7 @@ struct RestoreLinkView: View {
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
                 }
+              })
             }
         }
     }

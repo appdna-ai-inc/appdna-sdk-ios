@@ -53,16 +53,34 @@ final class ResetClearsSessionDataTests: XCTestCase {
     /// waits on the OBSERVABLE EFFECT rather than on an internal — which is the right thing to wait on
     /// anyway: it is exactly what a host would see.
     ///
-    /// It deliberately does NOT assert here. If the clear never happens, this returns after the timeout
-    /// and the real assertions below fail with a message about the leak — not with "timed out", which
-    /// would say nothing about the bug.
-    private func resetAndWait(timeout: TimeInterval = 2.0) {
+    /// It used to give up after 2 seconds and deliberately NOT assert, on the reasoning that "timed out"
+    /// says nothing about the bug while the assertions below name it. That reasoning had it backwards,
+    /// and CI proved it: on a runner also doing a Debug build, a Release build and 900 other tests, the
+    /// clear had not landed inside 2s and the test reported *"user B can read user A's onboarding
+    /// answers"* — a data-leak message for what was only a slow machine. The scariest message in the
+    /// file, for a non-bug, while passing every time locally.
+    ///
+    /// So it now waits long enough for a loaded runner AND fails explicitly when it does not land. A
+    /// real hang is still caught — it just gets named for what it is, and the leak assertions below
+    /// keep their meaning because they only ever run once the reset has actually happened.
+    private func resetAndWait(
+        timeout: TimeInterval = 10.0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         AppDNA.reset()
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if store.onboardingResponses.isEmpty && store.computedData.isEmpty { return }
             RunLoop.current.run(until: Date().addingTimeInterval(0.02))
         }
+        XCTFail(
+            "AppDNA.reset() did not clear the store within \(timeout)s. This is a TIMEOUT, not a leak: "
+            + "the assertions below would have reported user A's data as readable by user B, when the "
+            + "truth is the reset had not finished yet.",
+            file: file,
+            line: line
+        )
     }
 
     func testResetClearsEveryBucketSoUserBCannotReadUserAsAnswers() {

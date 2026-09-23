@@ -791,16 +791,26 @@ public struct ElementInteractionResult {
     public var fieldConfigPatches: [String: [String: Any]]?
     /// Patches to merge into the step's `inputValues` (keyed by field_id).
     public var inputValuePatches: [String: Any]?
+    /// #657 — replacement options, keyed by blockId. The same shape `StepConfigOverride.fieldOptions`
+    /// takes at render time.
+    ///
+    /// Without this the refresh action could not change the thing it exists to change: a select's
+    /// options live in `block.field_options`, and `fieldConfigPatches` merges into `field_config` —
+    /// a different field the renderer never reads for options. A "Show 4 more" button could fire the
+    /// hook and then have nothing to hand back.
+    public var fieldOptions: [String: [InputOption]]?
     /// When true, advance to the next step after handling this interaction.
     public var advance: Bool
 
     public init(
         fieldConfigPatches: [String: [String: Any]]? = nil,
         inputValuePatches: [String: Any]? = nil,
+        fieldOptions: [String: [InputOption]]? = nil,
         advance: Bool = false
     ) {
         self.fieldConfigPatches = fieldConfigPatches
         self.inputValuePatches = inputValuePatches
+        self.fieldOptions = fieldOptions
         self.advance = advance
     }
 }
@@ -809,6 +819,9 @@ public struct ElementInteractionResult {
 public struct AppliedInteraction {
     public let inputValues: [String: Any]
     public let fieldConfigOverrides: [String: [String: Any]]
+    /// #657 — per-block replacement options the renderer layers at read time, like the config
+    /// overrides beside it.
+    public let fieldOptionsOverrides: [String: [InputOption]]
     public let advance: Bool
 }
 
@@ -824,6 +837,7 @@ public func applyInteractionResult(_ result: ElementInteractionResult, inputValu
     return AppliedInteraction(
         inputValues: iv,
         fieldConfigOverrides: result.fieldConfigPatches ?? [:],
+        fieldOptionsOverrides: result.fieldOptions ?? [:],
         advance: result.advance
     )
 }

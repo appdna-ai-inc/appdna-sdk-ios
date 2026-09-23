@@ -1570,4 +1570,72 @@ final class VisualSnapshotTests: XCTestCase {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
     }
+
+    // MARK: - WineTrails #609 / #654 / #659 — the layout rules that only pixels can settle
+
+    private static func multiButtonsJSON(_ lastRow: String, perRow: Int = 2) -> String {
+        """
+        {
+          "id": "group", "type": "multi_buttons", "spacing": 12,
+          "field_config": { "buttons_per_row": \(perRow), "last_row": "\(lastRow)" },
+          "block_style": { "background_color": "#1F2937", "border_radius": 16 },
+          "stack_children": [
+            { "id": "b1", "type": "button", "text": "Book a tasting", "action": "next" },
+            { "id": "b2", "type": "button", "text": "Audio tour", "action": "next" },
+            { "id": "b3", "type": "button", "text": "Guided tour", "action": "next" }
+          ]
+        }
+        """
+    }
+
+    /// #609 — three buttons at two per row: 2 then 1, the short row ONE COLUMN wide and centred.
+    ///
+    /// The Android golden for this exact config caught the bug these two tests exist for: a button
+    /// takes the width it is offered, so a lone child with spacers either side still spanned the
+    /// whole row and `center` rendered pixel-identical to `stretch`. Two settings, one image. The
+    /// pair below must therefore never match each other.
+    func testMultiButtons_twoThenOne_centered() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.multiButtonsJSON("center")), as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testMultiButtons_twoThenOne_stretched() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.multiButtonsJSON("stretch")), as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// #654 / #659 — a width-constrained block must honour `horizontal_align`.
+    ///
+    /// The reported screen was a **75%**-wide button authored `center` that rendered hard left,
+    /// because the sizing frame was applied before the alignment and there was no room left to move
+    /// in. These pin the fix with a **point** width instead, and that substitution is deliberate:
+    /// `applyRelativeSizing` resolves a percentage against `UIScreen.main.bounds`, so a %-width
+    /// golden silently encodes the SCREEN of whatever simulator recorded it. Recorded on an
+    /// iPhone 17 Pro (402pt) it failed on CI's iPhone 16 (393pt) — a real failure that says nothing
+    /// about the code under test.
+    ///
+    /// A point width takes the identical constrained-width + alignment path, so the same regression
+    /// is caught, and the image is the same on every device. The percentage branch is covered by
+    /// the `needsOuterAlignmentBox` unit tests, which is where a rule belongs anyway.
+    func testConstrainedWidthButton_centered() throws {
+        let json = """
+        {"id": "cta", "type": "button", "text": "Regenerate Results", "action": "next",
+         "element_width": "300px", "horizontal_align": "center"}
+        """
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testConstrainedWidthButton_right() throws {
+        let json = """
+        {"id": "cta", "type": "button", "text": "Audio Preview", "action": "next",
+         "element_width": "300px", "horizontal_align": "right"}
+        """
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits))
+        }
+    }
 }

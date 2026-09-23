@@ -11,7 +11,7 @@ import FirebaseFirestore
 public final class AppDNA: @unchecked Sendable {
 
     /// SDK version string.
-    public static let sdkVersion = "1.0.78"
+    public static let sdkVersion = "1.0.79"
 
     /// Firestore instance used by the SDK.
     /// Uses a secondary Firebase app ("appdna") if GoogleService-Info-AppDNA.plist is found,

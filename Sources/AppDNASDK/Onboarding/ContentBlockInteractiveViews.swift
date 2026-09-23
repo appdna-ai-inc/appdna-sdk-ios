@@ -28,6 +28,26 @@ func resolvedFieldConfig(_ block: ContentBlock, _ overrides: [String: [String: A
     return resolved
 }
 
+/// #657 — replace a block's `field_options` with host-supplied ones from a refresh interaction.
+///
+/// Separate from `resolvedFieldConfig` because options are a SIBLING of `field_config`, not a key
+/// inside it: merging them into `field_config` would compile, do nothing visible, and look fixed.
+func resolvedFieldOptions(_ block: ContentBlock, _ overrides: [String: [InputOption]]) -> ContentBlock {
+    guard let replacement = overrides[block.id] else { return block }
+    guard let data = try? JSONEncoder().encode(block),
+          var json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let optData = try? JSONEncoder().encode(replacement),
+          let optJson = try? JSONSerialization.jsonObject(with: optData) as? [[String: Any]] else {
+        return block
+    }
+    json["field_options"] = optJson
+    guard let updated = try? JSONSerialization.data(withJSONObject: json),
+          let resolved = try? JSONDecoder().decode(ContentBlock.self, from: updated) else {
+        return block
+    }
+    return resolved
+}
+
 // MARK: - OTP / code input
 
 /// EPIC-11 — OTP boxes backed by a hidden numeric TextField. Tapping focuses the field; on reaching

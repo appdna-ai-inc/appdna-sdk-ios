@@ -1339,6 +1339,9 @@ struct OnboardingStepRouter: View {
     /// (`ElementInteractionResult.fieldConfigPatches`). Keyed by blockId → (key → value). Layered at
     /// render time on top of the resolved block; empty = zero change.
     @State private var fieldConfigOverrides: [String: [String: Any]] = [:]
+    /// #657 — per-block replacement options pushed back by a refresh interaction. Layered at read
+    /// time like `fieldConfigOverrides`, because `ContentBlock` is immutable.
+    @State private var fieldOptionsOverrides: [String: [InputOption]] = [:]
 
     init(step: OnboardingStep, effectiveConfig: StepConfig, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], hostDataContext: [String: Any]? = nil, performInteraction: @escaping (String, String, String?, [String: Any]) async -> AppliedInteraction? = { _, _, _, _ in nil }, delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil) {
         self.step = step
@@ -1485,7 +1488,8 @@ struct OnboardingStepRouter: View {
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
-            fieldConfigOverrides: fieldConfigOverrides
+            fieldConfigOverrides: fieldConfigOverrides,
+            fieldOptionsOverrides: fieldOptionsOverrides
         )
     }
 
@@ -1540,6 +1544,11 @@ struct OnboardingStepRouter: View {
                 guard let applied else { return }
                 inputValues = applied.inputValues
                 fieldConfigOverrides = mergeFieldConfigOverrides(fieldConfigOverrides, with: applied.fieldConfigOverrides)
+                // #657 — a later refresh replaces a block's options wholesale; blocks the host did
+                // not name keep whatever they had.
+                for (blockId, options) in applied.fieldOptionsOverrides {
+                    fieldOptionsOverrides[blockId] = options
+                }
                 if applied.advance {
                     handleBlockAction("next", nil)
                 }

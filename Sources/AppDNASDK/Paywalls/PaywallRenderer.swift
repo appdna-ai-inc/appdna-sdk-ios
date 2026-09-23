@@ -11,6 +11,8 @@ struct PaywallRenderer: View {
 
     @State private var selectedPlanId: String?
     @State private var showDismiss = false
+    /// #652 (round 2) — the Back button has its OWN delay, so it cannot ride on `showDismiss`.
+    @State private var showBack = false
     @State private var isPurchasing = false
     @State private var isDismissing = false
     @State private var dragOffset: CGFloat = 0
@@ -176,6 +178,9 @@ struct PaywallRenderer: View {
                             textColor: ctaSec.data?.restoreTextColor,
                             fontSize: ctaSec.data?.restoreFontSize.map { CGFloat($0) },
                             style: ctaSec.style?.elements?["restore_text"]?.textStyle,
+                            // #651 — Restore's own fill + radius.
+                            bgColor: ctaSec.data?.restoreBgColor,
+                            cornerRadius: ctaSec.data?.restoreCornerRadius.map { CGFloat($0) },
                             // SPEC-492 (#651 item 4) — the restore link's action is authorable too; unset restores.
                             onRestore: { performButtonAction(ctaSec.data?.restoreAction, url: nil, default: "restore") }
                         )
@@ -318,6 +323,16 @@ struct PaywallRenderer: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            // #652 (round 2) — the Back button, rendered INDEPENDENTLY of the close control.
+            //
+            // The first pass made "back" a dismiss STYLE, so a paywall could have a chevron or an X
+            // but never both, and the two shared one position/colour/size. They are two buttons.
+            // `back.allowed` deliberately does not exist: a back affordance that cannot be tapped is
+            // not a thing anyone asked for — `enabled` is the whole switch.
+            if let back = config.dismiss?.back, back.isEnabled, showBack {
+                backAffordance(back)
+            }
+
             // Dismiss control — show by default when config.dismiss is nil (not in Firestore).
             // SPEC-419 — `delay_seconds > 0` REVEALS the dismiss after N seconds and must win
             // even when allowed=false (the winback pattern: force engagement for N seconds, THEN
@@ -371,6 +386,15 @@ struct PaywallRenderer: View {
             }
 
             // Handle dismiss delay — always show dismiss when config.dismiss is nil (default behavior)
+            // #652 (round 2) — the Back button's own delay, independent of the close button's.
+            let backDelay = config.dismiss?.back?.delaySeconds ?? 0
+            if backDelay > 0 {
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(backDelay)) {
+                    withAnimation { showBack = true }
+                }
+            } else {
+                withAnimation { showBack = true }
+            }
             let dismissDelay = config.dismiss?.delaySeconds ?? 0
             if dismissDelay > 0 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(dismissDelay)) {
@@ -517,7 +541,10 @@ struct PaywallRenderer: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(button.bg_color.map { Color(hex: $0) } ?? Color.secondary.opacity(0.25))
-                        .clipShape(RoundedRectangle(cornerRadius: CGFloat(config.cta?.resolvedCornerRadius ?? 12)))
+                        // #651 — an extra button had a Background but always inherited the CTA's
+                        // radius, so a pill CTA forced every extra button to be a pill. Unset still
+                        // inherits, so existing paywalls are untouched.
+                        .clipShape(RoundedRectangle(cornerRadius: CGFloat(button.corner_radius ?? config.cta?.resolvedCornerRadius ?? 12)))
                 }
             }
         }
@@ -556,6 +583,39 @@ struct PaywallRenderer: View {
     }
 
     private var dismissButton: some View { dismissGlyph("xmark") }
+
+    /// #652 (round 2) — the standalone Back control. Its own glyph, side, colour, size and delay.
+    @ViewBuilder
+    private func backAffordance(_ back: PaywallBackButton) -> some View {
+        let glyphSize: CGFloat = back.size ?? 16
+        let glyphColor: Color = back.color.map { Color(hex: $0) } ?? .primary
+        switch back.resolvedStyle {
+        case "text_link":
+            VStack {
+                Button { triggerDismiss() } label: {
+                    Text(loc("back.text", back.text ?? "Back"))
+                        .font(.system(size: glyphSize))
+                        .foregroundColor(glyphColor)
+                }
+                .padding(16)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity, alignment: back.position == "top_right" ? .trailing : .leading)
+            .transition(.opacity)
+        default:
+            Button { triggerDismiss() } label: {
+                Image(systemName: back.resolvedStyle == "arrow" ? "arrow.left" : "chevron.left")
+                    .font(.system(size: glyphSize, weight: .semibold))
+                    .foregroundColor(glyphColor)
+                    .frame(width: glyphSize * 2, height: glyphSize * 2)
+                    .background(Color.black.opacity(0.3))
+                    .clipShape(Circle())
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: back.position == "top_right" ? .trailing : .leading)
+            .transition(.opacity)
+        }
+    }
 
     /// SPEC-491 (#652) — the back chevron. Same button, same dismissal; a different glyph.
     private var backButton: some View { dismissGlyph("chevron.left") }
@@ -655,7 +715,12 @@ struct PaywallRenderer: View {
                 restorePosition: section.data?.restorePosition ?? "below",
                 restoreTextColor: section.data?.restoreTextColor,
                 restoreFontSize: section.data?.restoreFontSize.map { CGFloat($0) },
-                restoreGap: section.data?.restoreGap
+                restoreGap: section.data?.restoreGap,
+                // #651 — the other CTA path (a paywall whose restore link is drawn INSIDE the CTA
+                // component) has to honour the same pair, or the control would work on one layout
+                // and silently do nothing on the other.
+                restoreBgColor: section.data?.restoreBgColor,
+                restoreCornerRadius: section.data?.restoreCornerRadius.map { CGFloat($0) }
             )
             .ctaAnimation(config.animation?.cta_animation)
             .applyContainerStyle(section.style?.container))
