@@ -144,6 +144,25 @@ public struct LocalizationConfig: Codable {
 // MARK: - SwiftUI View extensions for applying design tokens
 
 extension View {
+    /// #609 — a button's OWN authored font size, applied after `applyTextStyle` so it wins.
+    ///
+    /// Same specificity rule as the button's `text_color`, and for the same reason: the control sits
+    /// on the button panel beside Height, so it has to beat the generic Typography size rather than
+    /// be silently beaten by it. Nothing read this field on any surface, so the input did nothing.
+    ///
+    /// 🔴 Applied CONDITIONALLY. `.font(nil)` does not mean "inherit" in SwiftUI — it resets to the
+    /// default font, which would drop the `.semibold` every unauthored button relies on. The same
+    /// trap `foregroundColor(nil)` set for `text_color`, where a nil-passing version changed three
+    /// goldens on CI while rendering identically on a Mac.
+    @ViewBuilder
+    func applyButtonFontSize(_ size: Double?, weight: Font.Weight = .semibold) -> some View {
+        if let size, size > 0 {
+            self.font(.system(size: CGFloat(size), weight: weight))
+        } else {
+            self
+        }
+    }
+
     /// Apply TextStyleConfig to a Text-like view.
     func applyTextStyle(_ style: TextStyleConfig?) -> some View {
         guard let s = style else { return AnyView(self) }

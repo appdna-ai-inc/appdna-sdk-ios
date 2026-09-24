@@ -945,11 +945,13 @@ struct ContentBlockRendererView: View {
                     Text(labelText)
                         .font(.body.weight(.semibold))
                         .applyTextStyle(block.style)
+                        .applyButtonFontSize(block.font_size)
                         .foregroundColor(Color(hex: hex))
                 } else {
                     Text(labelText)
                         .font(.body.weight(.semibold))
                         .applyTextStyle(block.style)
+                        .applyButtonFontSize(block.font_size)
                 }
             }
             .foregroundColor(fgColor)

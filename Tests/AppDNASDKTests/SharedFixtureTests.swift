@@ -1391,6 +1391,8 @@ final class SharedFixtureTests: XCTestCase {
         h.state["child_border_colors"] = children.map { authoredButtonBorderColorHex($0.border_color) ?? "" }
         h.state["child_icon_emojis"] = children.map { $0.icon_emoji ?? "" }
         h.state["child_image_urls"] = children.map { $0.image_url ?? "" }
+        // The third dead control, found by sweeping the panel rather than from a report.
+        h.state["child_font_sizes"] = children.map { $0.font_size ?? 0 }
     }
 
     private func runRefreshStepInteraction(_ fixture: Fixture, _ h: Harness) {
