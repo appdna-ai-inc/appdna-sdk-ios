@@ -70,6 +70,41 @@ final class VisualSnapshotTests: XCTestCase {
     }
     """
 
+    // MARK: - #654 / #659 / #663 — a button could be SIZED or ALIGNED, never both
+
+    /*
+     * The pure helper (`buttonFillsWidth`) is asserted in WineTrailsRenderGatesTests. These two
+     * prove the RENDERER actually uses it, which is the half that was broken: `element_width` was
+     * read, parsed and then ignored by a hardcoded `.frame(maxWidth: .infinity)`. A unit test on
+     * the helper alone would have passed against the bug.
+     *
+     * `.sizeThatFits` is what makes this an assertion rather than decoration: the auto golden is as
+     * wide as its label, the fill golden spans the container, and the two images cannot be equal
+     * unless the width is genuinely being honoured.
+     */
+
+    private static let autoWidthButtonJSON = """
+    {"id":"b_auto","type":"button","text":"Show 4 More Options","action":"next",
+     "element_width":"auto","horizontal_align":"center","bg_color":"#6366F1"}
+    """
+
+    private static let fillWidthButtonJSON = """
+    {"id":"b_fill","type":"button","text":"Show 4 More Options","action":"next",
+     "element_width":"fill","horizontal_align":"center","bg_color":"#6366F1"}
+    """
+
+    func testButtonElementWidthAuto_sizesToItsLabel() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.autoWidthButtonJSON), as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    func testButtonElementWidthFill_spansTheRow() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.fillWidthButtonJSON), as: .image(layout: .sizeThatFits))
+        }
+    }
+
     func testSelectCategoryChips_firstChipActive() throws {
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: try! render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits))
