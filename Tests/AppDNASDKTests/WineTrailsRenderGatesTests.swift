@@ -32,6 +32,30 @@ final class WineTrailsRenderGatesTests: XCTestCase {
         XCTAssertEqual(multiButtonRowPlan(childCount: 0, perRow: 2), [])
     }
 
+    // MARK: - #654 / #659 / #663 — a button could be SIZED or ALIGNED, never both
+
+    /*
+     * Three reports, one defect. The button hardcoded `.frame(maxWidth: .infinity)`, so
+     * `element_width: "auto"` — the one value meaning "be as wide as your label" — was ignored.
+     * WineTrails' "Show 4 More Options" is authored `auto` + `center` and rendered edge-to-edge.
+     * Same table as Android's.
+     */
+
+    func testAutoIsTheOnlyWidthThatStopsAButtonFillingItsRow() {
+        XCTAssertFalse(buttonFillsWidth("auto"))
+    }
+
+    func testUnsetAndFillStillFillSoNoPublishedCTAChanges() {
+        XCTAssertTrue(buttonFillsWidth(nil))
+        XCTAssertTrue(buttonFillsWidth("fill"))
+        XCTAssertTrue(buttonFillsWidth("100%"))
+    }
+
+    func testAPercentageStillFillsBecauseTheFrameIsWhatConstrainsIt() {
+        XCTAssertTrue(buttonFillsWidth("75%"))
+        XCTAssertTrue(buttonFillsWidth("240px"))
+    }
+
     // MARK: - #609 — the per-child button border that nothing read
 
     /*

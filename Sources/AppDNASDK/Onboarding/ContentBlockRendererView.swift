@@ -15,6 +15,20 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
     return Array(repeating: n, count: full) + (rest > 0 ? [rest] : [])
 }
 
+/// #654 / #659 / #663 — whether a button should stretch to the width it is offered.
+///
+/// A button hardcoded `.frame(maxWidth: .infinity)` on iOS, `fillMaxWidth()` on Android and
+/// `w-full` in the console preview, so `element_width: "auto"` — the one value that means "be as
+/// wide as your label" — was ignored on all three. The author could size a button OR centre it,
+/// never both: at a fixed width the block was constrained, and at `auto` it silently filled the row.
+/// "Show 4 More Options" is authored `auto` + `center` and rendered edge-to-edge.
+///
+/// `auto` is the ONLY value that stops the fill. Unset keeps filling (every published CTA relies on
+/// it), `fill`/`100%` obviously fill, and a px/% width has already constrained the parent, so
+/// filling THAT is what makes the button exactly as wide as authored. Mirrors Android
+/// `buttonFillsWidth`.
+func buttonFillsWidth(_ elementWidth: String?) -> Bool { elementWidth != "auto" }
+
 /// #609 — the width of a button's AUTHORED border, in points.
 ///
 /// Pure because the bug was a hardcoded constant nobody could see: all three surfaces stroked a
@@ -957,7 +971,10 @@ struct ContentBlockRendererView: View {
             .foregroundColor(fgColor)
             // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
             .padding(.vertical, block.button_height == nil ? 14 : 0)
-            .frame(maxWidth: .infinity)
+            // #654/#659/#663 — `element_width: "auto"` means "as wide as the label"; this was an
+            // unconditional `.infinity`, so an auto-width button still spanned the row. `nil` here
+            // means unconstrained, which is exactly the content width SwiftUI would pick anyway.
+            .frame(maxWidth: buttonFillsWidth(block.element_width) ? .infinity : nil)
             .frame(height: block.button_height.map { CGFloat($0) })
             .background(buttonBackground(block: block, btnVariant: btnVariant, bgColor: bgColor))
             .clipShape(RoundedRectangle(cornerRadius: radius))
