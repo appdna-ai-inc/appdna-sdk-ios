@@ -15,6 +15,28 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
     return Array(repeating: n, count: full) + (rest > 0 ? [rest] : [])
 }
 
+/// #609 — the width of a button's AUTHORED border, in points.
+///
+/// Pure because the bug was a hardcoded constant nobody could see: all three surfaces stroked a
+/// fixed 1.5 of the BACKGROUND colour, and only for `outline`. A filled button with border width 40
+/// and a yellow border therefore drew nothing, and the two controls looked broken because they were
+/// never read. Returning 0 means "no ring", which is what an unauthored non-outline button gets —
+/// so no already-published flow changes. Mirrors Android `authoredButtonBorderWidth`.
+func authoredButtonBorderWidth(_ authored: Double?, variant: String?) -> Double {
+    if let authored { return max(0, authored) }
+    return variant == "outline" ? 1.5 : 0
+}
+
+/// #609 — the hex of a button's authored border colour, or nil to fall back to its own colour.
+///
+/// Blank counts as unset: the console's ColorPicker writes an empty string for "transparent", and
+/// treating that as a real colour would stroke a ring in nothing and hide the fill's own outline.
+/// Mirrors Android `authoredButtonBorderColorHex`.
+func authoredButtonBorderColorHex(_ authored: String?) -> String? {
+    guard let authored, !authored.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+    return authored
+}
+
 /// #609 — how much EMPTY column a short last row puts on each side of itself.
 ///
 /// A short row cannot be centred by spacers alone while its children are free to grow: a button
@@ -855,6 +877,9 @@ struct ContentBlockRendererView: View {
             return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
         }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
+        // #609 — authored width/colour win; the outline default is the fallback, not the rule.
+        let borderWidth = CGFloat(authoredButtonBorderWidth(block.border_width, variant: btnVariant))
+        let borderColor = authoredButtonBorderColorHex(block.border_color).map { Color(hex: $0) } ?? bgColor
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
 
@@ -934,9 +959,16 @@ struct ContentBlockRendererView: View {
             .frame(height: block.button_height.map { CGFloat($0) })
             .background(buttonBackground(block: block, btnVariant: btnVariant, bgColor: bgColor))
             .clipShape(RoundedRectangle(cornerRadius: radius))
+            // #609 — the AUTHORED border. "Border color" and "Border width" sit on every button
+            // panel and on every multi-buttons child, and this overlay read neither: it stroked the
+            // BACKGROUND colour at a hardcoded 1.5, and only for `outline`. A filled button with a
+            // yellow border at width 40 therefore drew nothing, which is what was reported.
+            //
+            // Unset is unchanged: `outline` still rings itself at 1.5 and every other variant still
+            // has no border, so no published flow shifts. Only an authored width draws a new ring.
             .overlay(
-                btnVariant == "outline"
-                    ? RoundedRectangle(cornerRadius: radius).stroke(bgColor, lineWidth: 1.5)
+                borderWidth > 0
+                    ? RoundedRectangle(cornerRadius: radius).stroke(borderColor, lineWidth: borderWidth)
                     : nil
             )
         }

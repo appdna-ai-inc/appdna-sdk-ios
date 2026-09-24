@@ -32,6 +32,44 @@ final class WineTrailsRenderGatesTests: XCTestCase {
         XCTAssertEqual(multiButtonRowPlan(childCount: 0, perRow: 2), [])
     }
 
+    // MARK: - #609 — the per-child button border that nothing read
+
+    /*
+     * Reported after the element itself passed: "Border color doesn't apply — the border never
+     * renders in that color, on device or in preview". True on ALL THREE surfaces: every one stroked
+     * a hardcoded 1.5pt ring in the BACKGROUND colour, and only for `variant: outline`, so a filled
+     * button with border width 40 and a yellow border drew nothing at all. Same table as Android's.
+     */
+
+    func testAnAuthoredWidthDrawsARingOnAFilledButton() {
+        // The exact case from the issue screenshot: a filled button at width 40 drew nothing.
+        XCTAssertEqual(authoredButtonBorderWidth(40, variant: "primary"), 40)
+        XCTAssertEqual(authoredButtonBorderWidth(3, variant: nil), 3)
+    }
+
+    func testAnUnauthoredButtonKeepsExactlyTheBorderItHadBefore() {
+        // Non-outline had no ring and must not grow one, or every published flow shifts.
+        XCTAssertEqual(authoredButtonBorderWidth(nil, variant: "primary"), 0)
+        XCTAssertEqual(authoredButtonBorderWidth(nil, variant: "text"), 0)
+        // Outline rings itself at 1.5 — the long-standing default, kept.
+        XCTAssertEqual(authoredButtonBorderWidth(nil, variant: "outline"), 1.5)
+    }
+
+    func testAnAuthoredZeroRemovesTheRingIncludingFromAnOutlineButton() {
+        // "No border" has to be expressible, otherwise outline can never lose its ring.
+        XCTAssertEqual(authoredButtonBorderWidth(0, variant: "outline"), 0)
+        // A negative is nonsense rather than an inverted ring; clamp it here.
+        XCTAssertEqual(authoredButtonBorderWidth(-5, variant: "primary"), 0)
+    }
+
+    func testABlankColourCountsAsUnsetSoTheRingFallsBackToTheButtonColour() {
+        // The console ColorPicker writes "" for transparent; stroking "nothing" would hide the edge.
+        XCTAssertNil(authoredButtonBorderColorHex(""))
+        XCTAssertNil(authoredButtonBorderColorHex("   "))
+        XCTAssertNil(authoredButtonBorderColorHex(nil))
+        XCTAssertEqual(authoredButtonBorderColorHex("#f9ff00"), "#f9ff00")
+    }
+
     func testAShortLastRowReservesHalfTheMissingColumnsOnEachSide() {
         // 3 buttons at 2 per row: the lone last button is ONE column wide with half a column either
         // side, so it lines up under the two above it. Same table as Android's.

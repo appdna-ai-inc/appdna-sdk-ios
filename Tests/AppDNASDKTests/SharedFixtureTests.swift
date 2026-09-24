@@ -1381,6 +1381,16 @@ final class SharedFixtureTests: XCTestCase {
             ((group.field_config?["last_row"]?.value as? String) ?? "center") == "center"
             && !plan.isEmpty && plan.last != perRow
         h.state["group_background"] = group.block_style?.background_color ?? ""
+
+        // #609 follow-up — the per-child settings that shipped on the panel and nothing read.
+        // "Border color doesn't apply … on device or in preview" was true on all three surfaces:
+        // each hardcoded a 1.5 ring in the BACKGROUND colour and drew it only for `outline`, so a
+        // filled button at width 40 drew nothing. Resolved through the SAME pure helpers the
+        // renderer uses, so a fixture cannot pass while the screen stays wrong.
+        h.state["child_border_widths"] = children.map { authoredButtonBorderWidth($0.border_width, variant: $0.variant) }
+        h.state["child_border_colors"] = children.map { authoredButtonBorderColorHex($0.border_color) ?? "" }
+        h.state["child_icon_emojis"] = children.map { $0.icon_emoji ?? "" }
+        h.state["child_image_urls"] = children.map { $0.image_url ?? "" }
     }
 
     private func runRefreshStepInteraction(_ fixture: Fixture, _ h: Harness) {
