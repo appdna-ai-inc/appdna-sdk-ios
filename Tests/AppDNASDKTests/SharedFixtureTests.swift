@@ -1541,9 +1541,17 @@ final class SharedFixtureTests: XCTestCase {
             block,
             token: sess["map_token"]?.stringValue,
             width: CGFloat(sess["map_width"]?.doubleValue ?? 390),
-            height: CGFloat(sess["map_height"]?.doubleValue ?? 240)
+            height: CGFloat(sess["map_height"]?.doubleValue ?? 240),
+            // SPEC-495 §A — the provider is read off the block, so one driver covers both.
+            googleKey: sess["map_google_key"]?.stringValue
         )
         h.state["map_url"] = SharedFixtureTests.orNull(url?.absoluteString)
+        // SPEC-495 §C — sizing and placement, from the REAL functions the renderer and the step
+        // layout call. Both are a switch over authored strings written three times in three
+        // languages, which is the exact shape that drifts silently: every version keeps returning a
+        // perfectly good number, just not the same one.
+        h.state["map_resolved_height"] = Double(mapResolvedHeight(block))
+        h.state["map_placement"] = mapPlacementOf(block).rawValue
     }
 
     private func runFetchRemoteConfig(_ f: Fixture, _ h: Harness) {

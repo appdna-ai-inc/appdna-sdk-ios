@@ -1436,42 +1436,127 @@ struct OnboardingStepRouter: View {
     private func blockBasedStepView(blocks: [ContentBlock]) -> some View {
         let variant = effectiveConfig.layout_variant ?? "no_image"
 
-        switch variant {
-        case "image_fullscreen":
-            // image_fullscreen: background image is rendered in parent ZStack via step.background.
-            // The layout_variant image_url is a legacy field — skip it here to avoid double-rendering.
-            // Just use the three-zone layout which fills the parent ZStack.
-            threeZoneLayout(blocks: blocks)
+        /*
+         SPEC-495 §C — the two map placements that are NOT blocks in the column.
 
-        case "image_split":
-            // 40/60 image-to-content split (SPEC-084 Gap #15)
-            GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    if let url = effectiveConfig.image_url {
-                        BundledAsyncPhaseImage(url: URL(string: url)) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().aspectRatio(contentMode: .fill)
+         A `fullscreen` map is the step's BACKGROUND, and a `top`/`bottom` anchored map is pinned to
+         a step edge with the content flowing past it. Neither can be rendered from inside the
+         three-zone layout, which lays its children out in a scrolling stack — so they are lifted out
+         here and the zones render what is left.
+
+         🔴 Lifted, not COPIED. The filter below removes them, or a fullscreen map would be drawn
+         twice: once behind the content and once as an 844pt block inside it.
+
+         Only the FIRST of each is honoured. Two backgrounds is not a thing an author can mean, and
+         silently stacking them is how you get a map nobody can explain. Mirrors the Android hoist in
+         `BlockBasedStepView`.
+         */
+        let backdropMap = blocks.first { $0.type == .map && mapPlacementOf($0) == .backdrop }
+        let topMap = blocks.first { $0.type == .map && mapPlacementOf($0) == .anchorTop }
+        let bottomMap = blocks.first { $0.type == .map && mapPlacementOf($0) == .anchorBottom }
+        let hoisted = [backdropMap?.id, topMap?.id, bottomMap?.id].compactMap { $0 }
+        let blocks = hoisted.isEmpty ? blocks : blocks.filter { !hoisted.contains($0.id) }
+
+        stepMapFrame(backdrop: backdropMap, top: topMap, bottom: bottomMap) {
+            switch variant {
+            case "image_fullscreen":
+                // image_fullscreen: background image is rendered in parent ZStack via step.background.
+                // The layout_variant image_url is a legacy field — skip it here to avoid double-rendering.
+                // Just use the three-zone layout which fills the parent ZStack.
+                threeZoneLayout(blocks: blocks)
+
+            case "image_split":
+                // 40/60 image-to-content split (SPEC-084 Gap #15)
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        if let url = effectiveConfig.image_url {
+                            BundledAsyncPhaseImage(url: URL(string: url)) { phase in
+                                if case .success(let image) = phase {
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                }
                             }
+                            .frame(width: geometry.size.width * 0.4)
+                            .clipped()
                         }
-                        .frame(width: geometry.size.width * 0.4)
-                        .clipped()
+                        threeZoneLayout(blocks: blocks)
+                            .frame(width: geometry.size.width * 0.6)
                     }
-                    threeZoneLayout(blocks: blocks)
-                        .frame(width: geometry.size.width * 0.6)
                 }
+
+            case "image_bottom", "image_top":
+                // image_top/image_bottom: background images rendered by parent ZStack.
+                // layout_variant image_url is legacy — background.image_url is the source of truth.
+                threeZoneLayout(blocks: blocks)
+
+            default: // no_image
+                threeZoneLayout(blocks: blocks)
             }
-
-        case "image_bottom", "image_top":
-            // image_top/image_bottom: background images rendered by parent ZStack.
-            // layout_variant image_url is legacy — background.image_url is the source of truth.
-            threeZoneLayout(blocks: blocks)
-
-        default: // no_image
-            threeZoneLayout(blocks: blocks)
         }
     }
 
     // MARK: - Three-zone layout helper
+
+    /**
+     SPEC-495 §C — the step, with its map placements around it.
+
+     🔴 THE CONTENT SLOT IS `maxHeight: .infinity`, AND THAT IS THE WHOLE POINT.
+
+     SPEC-495 §C says a fullscreen or anchored map must not break scrolling. A map that ate the
+     available height and left the content unbounded would do exactly that — and #671 was a map that
+     only LOOKED like it had broken scrolling, so the real version is not a subtle bug to ship on top
+     of it. The content keeps the whole remaining height; the anchored strips take their own.
+
+     With no placements at all this is the identity function — no ZStack, no VStack, no layout change
+     on the overwhelming majority of steps that have no map.
+     */
+    @ViewBuilder
+    private func stepMapFrame<Content: View>(
+        backdrop: ContentBlock?,
+        top: ContentBlock?,
+        bottom: ContentBlock?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if backdrop == nil, top == nil, bottom == nil {
+            content()
+        } else {
+            ZStack {
+                if let backdrop {
+                    mapPlacementView(backdrop, .backdrop)
+                }
+                VStack(spacing: 0) {
+                    if let top {
+                        mapPlacementView(top, .anchorTop)
+                    }
+                    content()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if let bottom {
+                        mapPlacementView(bottom, .anchorBottom)
+                    }
+                }
+            }
+        }
+    }
+
+    /// One map block, rendered through the SAME renderer the column uses — placement is the only
+    /// difference. A second copy of the map's 70 lines is exactly the drift the parity gates exist
+    /// to catch, so there isn't one.
+    private func mapPlacementView(_ block: ContentBlock, _ placement: MapPlacement) -> some View {
+        ContentBlockRendererView(
+            blocks: [block],
+            onAction: handleBlockAction,
+            toggleValues: $toggleValues,
+            loc: loc,
+            responses: accumulatedResponses,
+            hookData: hostDataContext,
+            inputValues: $inputValues,
+            currentStepIndex: currentStepIndex,
+            totalSteps: totalSteps,
+            onInteract: handleInteract,
+            fieldConfigOverrides: fieldConfigOverrides,
+            fieldOptionsOverrides: fieldOptionsOverrides,
+            mapPlacement: placement
+        )
+    }
 
     @ViewBuilder
     private func threeZoneLayout(blocks: [ContentBlock]) -> some View {

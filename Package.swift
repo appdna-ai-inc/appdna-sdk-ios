@@ -13,6 +13,21 @@ let package = Package(
         // SPEC-070-0 §3.4 — visual snapshot harness (iOS leg).
         // PNG goldens live in Tests/__Snapshots__/ and are committed; reviewed during PR.
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
+        // SPEC-495 — the bundled interactive map tier (Google).
+        //
+        // 🔴 9.4.0, AND THE VERSION IS THE WHOLE FIX. 8.4.0 publishes FOUR products
+        // (GoogleMaps / Base / Core / M4B), each a `GMSEmpty.m` shim that says `@import GoogleMaps;`
+        // while depending only on its own binary. As a transitive SwiftPM dependency that cannot be
+        // built reliably in either direction: linking the one product fails with
+        // "Module 'GoogleMapsBase' not found", and linking all three fails with the mirror image,
+        // "Module 'GoogleMaps' not found", in the Base and Core shims. A warm module cache hides it
+        // — the Mac bridge went green on a second build and CI, which is always cold, did not.
+        // 9.x collapses it to ONE product and one binary target. 9.4.0 rather than the newest
+        // (11.2.0) because CocoaPods only publishes GoogleMaps up to 9.4.0: pinning SPM higher would
+        // ship a DIFFERENT MAJOR VERSION to SPM consumers than to CocoaPods ones — and the wrappers
+        // are CocoaPods consumers, so the platform this whole spec is for would be the one running
+        // the version nothing was tested against.
+        .package(url: "https://github.com/googlemaps/ios-maps-sdk.git", from: "9.4.0"),
         // Optional billing providers (conditionally imported)
         // .package(url: "https://github.com/adaptyteam/AdaptySDK-iOS.git", from: "2.0.0"),
         // .package(url: "https://github.com/RevenueCat/purchases-ios.git", from: "4.0.0"),
@@ -23,6 +38,10 @@ let package = Package(
             dependencies: [
                 "KeychainAccess",
                 .product(name: "FirebaseFirestore", package: "firebase-ios-sdk"),
+                // One product, because 9.x publishes exactly one. See the note above the
+                // dependency: the three-product spelling this replaced was a workaround for 8.4.0's
+                // split package, and it only ever built against a warm module cache.
+                .product(name: "GoogleMaps", package: "ios-maps-sdk"),
             ],
             resources: [
                 .copy("PrivacyInfo.xcprivacy")

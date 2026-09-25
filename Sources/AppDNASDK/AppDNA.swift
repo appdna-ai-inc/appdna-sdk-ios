@@ -11,7 +11,7 @@ import FirebaseFirestore
 public final class AppDNA: @unchecked Sendable {
 
     /// SDK version string.
-    public static let sdkVersion = "1.0.81"
+    public static let sdkVersion = "1.0.82"
 
     /// Firestore instance used by the SDK.
     /// Uses a secondary Firebase app ("appdna") if GoogleService-Info-AppDNA.plist is found,
@@ -179,6 +179,29 @@ public final class AppDNA: @unchecked Sendable {
 
     private static var hostMapboxToken: String?
     private static var remoteMapboxToken: String?
+    /// SPEC-495 §B — the customer's Google Maps key, delivered exactly like the Mapbox token.
+    ///
+    /// 🔴 Always the CUSTOMER's key, never ours: Google bills per static request and per interactive
+    /// session, so the device fetches directly and the request bills to whoever owns the key. A host
+    /// key set here wins over the bootstrap value forever, matching `mapboxToken`.
+    ///
+    /// Server-delivered rather than host-set is what lets a Flutter or React Native app use Google
+    /// maps with no extra wiring: the wrapper never has to expose a setter.
+    public static var googleMapsApiKey: String? {
+        get { hostGoogleKey ?? remoteGoogleKey ?? UserDefaults.standard.string(forKey: googleKeyDefaultsKey) }
+        set { hostGoogleKey = newValue }
+    }
+
+    private static var hostGoogleKey: String?
+    private static var remoteGoogleKey: String?
+    private static let googleKeyDefaultsKey = "appdna.google_maps_api_key"
+
+    internal static func applyRemoteGoogleMapsKey(_ key: String?) {
+        remoteGoogleKey = key
+        if let key, !key.isEmpty { UserDefaults.standard.set(key, forKey: googleKeyDefaultsKey) }
+        else { UserDefaults.standard.removeObject(forKey: googleKeyDefaultsKey) }
+    }
+
     private static let mapboxTokenDefaultsKey = "appdna.mapbox_token"
 
     /// Cached across launches so the very first onboarding of a cold, offline start still draws a
@@ -1558,6 +1581,8 @@ public final class AppDNA: @unchecked Sendable {
             // Repeated bootstraps in the same state are a no-op for delegate
             // notification.
             AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
+            // SPEC-495 §B — same path, same ownership rules, for the Google provider.
+            AppDNA.applyRemoteGoogleMapsKey(data.settings.googleMapsApiKey)
 
             let previousLock = AppDNA.runtimeLock
             let currentLock = data.runtime_lock
@@ -1994,6 +2019,9 @@ struct BootstrapSettings: Codable {
     /// SPEC-451 — the customer's own Mapbox token, set once in the console. Optional so every
     /// pre-451 backend response still decodes.
     let mapboxToken: String?
+    /// SPEC-495 §B — the customer's Google Maps key, same delivery path and same optionality so a
+    /// backend that has not shipped the field yet still decodes.
+    let googleMapsApiKey: String?
 }
 
 struct BootstrapGeo: Codable {

@@ -40,6 +40,64 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
+    /**
+     SPEC-495 — one map, rendered through the PLACEMENT the step layout would give it.
+
+     🔴 The Android version of this golden was first recorded through the ordinary block path, which
+     renders inside a padded column — so it drew the map INLINE, with rounded corners and a gutter,
+     under a test named `meetsBothEdges`. The picture disproved its own name. A golden whose name
+     describes something the pixels do not show is worse than no golden: it is a false witness that
+     outlives whoever recorded it.
+
+     No padding here, because the whole claim is that a placed map has none.
+     */
+    private func renderPlaced(_ json: String, _ placement: MapPlacement) throws -> some View {
+        let block = try JSONDecoder().decode(ContentBlock.self, from: Data(json.utf8))
+        return ContentBlockRendererView(
+            blocks: [block],
+            onAction: { _, _ in },
+            toggleValues: .constant([:]),
+            inputValues: .constant([:]),
+            mapPlacement: placement
+        )
+            .frame(width: 390)
+            .background(Color(hex: "#0F1117"))
+    }
+
+    // MARK: - SPEC-495 — map sizing and placement
+    //
+    // No token and no key on purpose: the runner has neither, so these capture the FALLBACK state —
+    // surface colour, corner radius, labelled text, and above all the GEOMETRY. Geometry is the part
+    // that broke in #671, and the part a numeric assertion cannot see. Deliberately the same configs
+    // as the Android goldens so the two are directly comparable.
+
+    private static let anchoredMapJSON = """
+    {"id":"map1","type":"map","field_config":{
+      "map_anchor":"bottom","map_height_mode":"aspect","map_aspect":"16:9",
+      "map_fallback_text":"Map unavailable"}}
+    """
+
+    private static let themedMapJSON = """
+    {"id":"map1","type":"map","field_config":{
+      "map_provider":"google","map_theme":"dark","map_theme_water_color":"#0B1F3A",
+      "map_surface_color":"#1D2C4D","map_fallback_text":"Map unavailable",
+      "map_fallback_text_color":"#8EC3B9","map_height":160,"map_corner_radius":20}}
+    """
+
+    /// Pinned to an edge: full width, square corners, no gutter on either side.
+    func testMapAnchoredBottom_meetsBothEdges() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! renderPlaced(Self.anchoredMapJSON, .anchorBottom), as: .image(layout: .sizeThatFits))
+        }
+    }
+
+    /// The authored theme colours on the surface a keyless host actually ships.
+    func testMapThemedFallback_usesAuthoredSurface() throws {
+        withSnapshotTesting(record: recordMode) {
+            assertSnapshot(of: try! render(Self.themedMapJSON), as: .image(layout: .sizeThatFits))
+        }
+    }
+
     // MARK: - SPEC-441 (#541) — category chips on a Select
 
     /// The screen the reporter sent: a scrollable chip row above the options, the active chip

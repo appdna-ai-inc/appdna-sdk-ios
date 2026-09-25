@@ -179,6 +179,78 @@ struct OuterAlignmentBoxModifier: ViewModifier {
 
 // MARK: - Content Block Renderer
 
+/**
+ SPEC-495 §C — where in the step this map is being drawn.
+
+ The same block renders in three places and two of them are NOT inside the step's padded column, so
+ two of its decisions move with the placement rather than being read off the block:
+
+ - **full-bleed** cancels the step's horizontal padding. In an anchored strip or behind the content
+   there is no padding to cancel, so applying it would push the map 20pt OFF each edge — the same
+   negative-inset shape that crashed the whole step on Android in #671.
+ - **corner radius** defaults to 12 for a card in a column and to 0 for a map meant to meet the
+   screen edges. An author who set a radius still gets it; only the default moves.
+
+ Mirrors `MapPlacement` in ContentBlockRenderer.kt case for case.
+ */
+enum MapPlacement: String {
+    case inline
+    case backdrop
+    case anchorTop = "anchor_top"
+    case anchorBottom = "anchor_bottom"
+}
+
+/**
+ Where in the step this map sits, from the block alone.
+
+ `fullscreen` WINS over `map_anchor` rather than combining with it — a map cannot be both the
+ background and a strip at one edge, and picking one is better than drawing two. Mirrored by
+ `mapPlacement()` (Kotlin) and `mapPlacementOf` (TypeScript), and pinned by the shared fixtures so
+ the three cannot drift.
+ */
+internal func mapPlacementOf(_ block: ContentBlock) -> MapPlacement {
+    if (mapCfg(block, "map_height_mode") as? String) == "fullscreen" { return .backdrop }
+    switch mapCfg(block, "map_anchor") as? String {
+    case "top": return .anchorTop
+    case "bottom": return .anchorBottom
+    default: return .inline
+    }
+}
+
+/**
+ The map's drawn height, from whichever sizing mode the author chose.
+
+ At file scope and `internal` so the shared-fixture runner drives THIS function rather than a copy
+ of the switch: a runner-local copy would agree with the fixture forever while the renderer drifted
+ underneath it, which is precisely the failure the fixtures exist to catch.
+
+ `aspect` resolves against a 390pt reference width rather than the live container width, which is
+ not known here without a `GeometryReader` that would change how the block lays out inside the step.
+ 390 is the width the console previews at and the width Android uses, so all three agree.
+
+ Mirrored by `mapHeightPx` (Kotlin) and `resolveMapHeight` (TypeScript).
+ */
+internal func mapResolvedHeight(_ block: ContentBlock) -> CGFloat {
+    switch (mapCfg(block, "map_height_mode") as? String) ?? "fixed" {
+    case "aspect":
+        let ratio = (mapCfg(block, "map_aspect") as? String) ?? "16:9"
+        let parts = ratio.split(separator: ":").compactMap { Double($0) }
+        guard parts.count == 2, parts[0] > 0 else { return 220 }
+        return CGFloat(390.0 * parts[1] / parts[0])
+    case "fill":
+        // "Fill the step" is a tall block, not an unbounded one: a greedy `maxHeight: .infinity`
+        // inside the step's scrolling stack collapses every sibling to nothing.
+        return 520
+    case "fullscreen":
+        // SPEC-495 §C — the height the BACKDROP static image is requested at, not the height it
+        // is laid out at (the layout fills the step). 844 is the logical height of the reference
+        // device the console previews at, so all three implementations ask for the same picture.
+        return 844
+    default:
+        return CGFloat(mapDouble(block, "map_height") ?? 220)
+    }
+}
+
 struct ContentBlockRendererView: View {
     /// #663 — the width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
@@ -209,6 +281,8 @@ struct ContentBlockRendererView: View {
     var fieldConfigOverrides: [String: [String: Any]] = [:]
     /// #657 — per-block replacement options from a refresh interaction, layered at read time.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
+    /// SPEC-495 §C — where in the step a Map block is being drawn. See `MapPlacement`.
+    var mapPlacement: MapPlacement = .inline
 
     var body: some View {
         let visibleBlocks = blocks.filter { block in
@@ -2741,7 +2815,7 @@ struct ContentBlockRendererView: View {
     @ViewBuilder
     private func mapBlock(_ block: ContentBlock) -> some View {
         let height = mapHeight(block)
-        let radius = CGFloat(mapDouble(block, "map_corner_radius") ?? 12)
+        let radius = CGFloat(mapDouble(block, "map_corner_radius") ?? (mapPlacement == .inline ? 12 : 0))
         // Read straight off `field_config` rather than through `mapCfg`: the authorability gate
         // classifies `<read> ?? "#hex"` as a default behind an editable field, and a helper call on
         // the left of the `??` hides the read from it. Same value, honest shape.
@@ -2762,10 +2836,20 @@ struct ContentBlockRendererView: View {
             }
             ZStack(alignment: infoPosition == "overlay_top" ? .top : .bottom) {
                 Group {
+                    // SPEC-495 §A — tier precedence, highest first. A host that registered its own
+                    // view still wins: an app already shipping a map must not end up running two
+                    // engines just because AppDNA now bundles one.
                     if interactive, let factory = AppDNA.registeredMapViews[viewKey] {
-                        // Tier 2 — the host's own map, given everything the author set.
+                        // Tier 1 — the host's own map, given everything the author set.
                         factory(mapResolvedConfig(block))
-                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height) {
+                    } else if interactive, mapProviderOf(block) == "google", GoogleMapsBootstrap.ready() {
+                        // Tier 2 — a real pannable map from the bundled SDK, which on iOS needs
+                        // nothing from the host: the key arrives in the bootstrap payload and
+                        // `GMSServices.provideAPIKey` takes it at runtime. `ready()` is what keeps a
+                        // keyless app on the static tier instead of constructing a GMSMapView that
+                        // would raise.
+                        GoogleInteractiveMap(block: block)
+                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height, googleKey: AppDNA.googleMapsApiKey) {
                         BundledAsyncPhaseImage(url: url) { phase in
                             switch phase {
                             case .success(let image):
@@ -2785,8 +2869,12 @@ struct ContentBlockRendererView: View {
                         }
                     }
                 }
-                .frame(height: height)
-                .frame(maxWidth: .infinity)
+                // A backdrop takes the step's real height rather than the 844pt reference the
+                // static image is REQUESTED at: the request needs a number, the layout must not be
+                // one, or the map falls short of the bottom edge on a tall phone and is clipped on
+                // a short one.
+                .frame(maxWidth: .infinity, maxHeight: mapPlacement == .backdrop ? .infinity : nil)
+                .frame(height: mapPlacement == .backdrop ? nil : height)
                 .clipShape(RoundedRectangle(cornerRadius: radius))
 
                 if infoPosition != "below", let card {
@@ -2800,7 +2888,7 @@ struct ContentBlockRendererView: View {
         // Full-bleed cancels the step's horizontal padding so the map meets both screen edges. The
         // negative margin is applied to the WHOLE stack, card included, so an overlaid card stays
         // inset relative to the map rather than sliding off it.
-        .padding(.horizontal, (mapCfg(block, "map_full_bleed") as? Bool) == true ? -20 : 0)
+        .padding(.horizontal, (mapCfg(block, "map_full_bleed") as? Bool) == true && mapPlacement == .inline ? -20 : 0)
         // `map_alt`, not the top-level `alt`: every Map setting rides in `field_config` (ContentBlock
         // is at the JVM 255-argument ceiling), so `alt` has no control in the Map panel and reading
         // it would be a field the SDK honours and no author can set.
@@ -2813,21 +2901,7 @@ struct ContentBlockRendererView: View {
     /// The container's width is not known at this point without a `GeometryReader`, and wrapping
     /// the block in one changes how it lays out inside a stack; 390 is the width the console
     /// preview composes at, so the two agree.
-    private func mapHeight(_ block: ContentBlock) -> CGFloat {
-        switch (mapCfg(block, "map_height_mode") as? String) ?? "fixed" {
-        case "aspect":
-            let ratio = (mapCfg(block, "map_aspect") as? String) ?? "16:9"
-            let parts = ratio.split(separator: ":").compactMap { Double($0) }
-            guard parts.count == 2, parts[0] > 0 else { return 220 }
-            return CGFloat(390.0 * parts[1] / parts[0])
-        case "fill":
-            // "Fill the step" is a tall block, not an unbounded one: a greedy `maxHeight: .infinity`
-            // inside the step's scrolling stack collapses every sibling to nothing.
-            return 520
-        default:
-            return CGFloat(mapDouble(block, "map_height") ?? 220)
-        }
-    }
+    private func mapHeight(_ block: ContentBlock) -> CGFloat { mapResolvedHeight(block) }
 
     /// The place info card — a name, a line of description and optionally a photo.
     ///
@@ -3572,9 +3646,18 @@ internal func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
     block.field_config?[key]?.value
 }
 
+/// SPEC-495 E1 — a map number, accepting the STRING the console actually publishes.
+///
+/// 🔴 EVERY NUMERIC MAP SETTING WAS BEING SILENTLY DROPPED. The published WineTrails block carries
+/// `map_height: "220"`, `map_zoom: "12"`, `marker_size: "28"`, `route_width: "4"` — strings. This
+/// accepted only Double/Int, so each fell back to its default and the author's styling did nothing.
+/// Android had the identical accessor, so it was consistent rather than divergent, which is why it
+/// went unnoticed. Coercing on read fixes every already-published flow at next launch, with no
+/// republish. A non-numeric string still yields nil, so "auto" cannot be mistaken for a number.
 internal func mapDouble(_ block: ContentBlock, _ key: String) -> Double? {
     if let d = mapCfg(block, key) as? Double { return d }
     if let i = mapCfg(block, key) as? Int { return Double(i) }
+    if let s = mapCfg(block, key) as? String { return Double(s.trimmingCharacters(in: .whitespaces)) }
     return nil
 }
 
@@ -3649,14 +3732,221 @@ internal func mapRoutePolyline(_ block: ContentBlock) -> String? {
     return (mapCfg(block, "map_route_polyline") as? String).flatMap { $0.isEmpty ? nil : $0 }
 }
 
-internal func mapStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat) -> URL? {
+/// SPEC-495 §D — the Mapbox style this map draws with, after the two overrides.
+///
+/// Precedence: an explicit Studio URL beats everything, then the theme (which only speaks when it is
+/// not `auto`), then the named style. A Studio URL arrives as `mapbox://styles/user/id` and the
+/// static API wants `user/id`, so the scheme is stripped rather than sent and silently 404'd.
+internal func resolveMapboxStyle(_ block: ContentBlock, _ styles: [String: String]) -> String {
+    if let url = (mapCfg(block, "map_style_url") as? String)?.trimmingCharacters(in: .whitespaces), !url.isEmpty {
+        return url.replacingOccurrences(of: "mapbox://styles/", with: "")
+    }
+    switch (mapCfg(block, "map_theme") as? String) ?? "auto" {
+    case "light": return styles["light"]!
+    case "dark": return styles["dark"]!
+    default: return styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
+    }
+}
+
+/**
+ The styled-map JSON for a theme, with every colour the author actually chose.
+
+ 🔴 DEFAULTS, NOT CONSTANTS. These four hexes used to live as bare literals inside a JSON blob, and
+ `check:authorability` was right to call every one an orphan: a person could see them and nobody
+ could change them. Under Critical Rule 8 a colour a person sees is a colour a person can set, so
+ each is now the default behind an authored field with its own ColorPicker. A theme is a starting
+ point, not a cage — pick `dark`, then push the water bluer.
+
+ Nil for `auto` (and anything unrecognised): `auto` means "leave Google's own styling alone", and
+ inventing a palette for it would make the one theme that promises not to restyle the map the one
+ that does. An author who pasted their own `map_style_json` still wins outright, upstream of this.
+ */
+internal func googleThemeJson(_ block: ContentBlock) -> String? {
+    let theme = (mapCfg(block, "map_theme") as? String) ?? "auto"
+    guard theme == "dark" || theme == "light" else { return nil }
+    let dark = theme == "dark"
+    // Read straight off `field_config` rather than through `mapCfg` — the same choice, and the same
+    // reason, as `map_surface_color` above. `mapCfg` IS `block.field_config?[key]?.value`, but
+    // `check:authorability` credits `<read> ?? "#hex"` as a default behind an editable field by
+    // looking for a member access to the left of the coalescer, and a free-function call hides it.
+    // The gate is doing its job; this is the shape that lets it see one.
+    let geometry = (block.field_config?["map_theme_geometry_color"]?.value as? String) ?? (dark ? "#1d2c4d" : "#f5f5f5")
+    let label = (block.field_config?["map_theme_label_color"]?.value as? String) ?? (dark ? "#8ec3b9" : "#616161")
+    let stroke = (block.field_config?["map_theme_label_stroke_color"]?.value as? String) ?? (dark ? "#1a3646" : "#ffffff")
+    let water = (block.field_config?["map_theme_water_color"]?.value as? String) ?? (dark ? "#0e1626" : "#c9dced")
+    return "[{\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"\(geometry)\"}]},"
+        + "{\"elementType\":\"labels.text.fill\",\"stylers\":[{\"color\":\"\(label)\"}]},"
+        + "{\"elementType\":\"labels.text.stroke\",\"stylers\":[{\"color\":\"\(stroke)\"}]},"
+        + "{\"featureType\":\"water\",\"elementType\":\"geometry\",\"stylers\":[{\"color\":\"\(water)\"}]}]"
+}
+
+/// The style JSON a Google map should use: the author's if they gave one, else the theme's.
+internal func googleStyleJsonOf(_ block: ContentBlock) -> String? {
+    if let authored = (mapCfg(block, "map_style_json") as? String), !authored.isEmpty { return authored }
+    return googleThemeJson(block)
+}
+
+/// SPEC-495 §A — which provider draws this map, defaulting to the one every published flow uses.
+///
+/// Pure, so the tier decision is asserted by a test and a shared fixture rather than inferred from
+/// a screenshot. An unknown value falls back to mapbox: a typo in a provider name must not blank
+/// the map. Mirrors Android `mapProviderOf`.
+internal func mapProviderOf(_ block: ContentBlock) -> String {
+    ((mapCfg(block, "map_provider") as? String)?.lowercased() == "google") ? "google" : "mapbox"
+}
+
+/// SPEC-495 §A — the static image URL for whichever provider the author chose.
+///
+/// Returns nil when that provider has no key, which drops the render to tier 4 (the labelled
+/// surface). Tier 4 must stay reachable: a map with no key degrades to a caption, never a blank box.
+internal func mapStaticURL(
+    _ block: ContentBlock,
+    token: String?,
+    width: CGFloat,
+    height: CGFloat,
+    googleKey: String? = nil
+) -> URL? {
+    mapProviderOf(block) == "google"
+        ? googleStaticURL(block, key: googleKey, width: width, height: height)
+        : mapboxStaticURL(block, token: token, width: width, height: height)
+}
+
+/// SPEC-495 §D — our style vocabulary mapped onto Google's four map types. Mirrors Android.
+internal func googleMapType(_ style: String?) -> String {
+    switch style {
+    case "satellite": return "satellite"
+    case "satellite_streets": return "hybrid"
+    case "outdoors": return "terrain"
+    default: return "roadmap"   // streets / light / dark — tone comes from style JSON
+    }
+}
+
+/// SPEC-495 §D — a hex colour for Google, which wants `0xRRGGBB` or `0xRRGGBBAA`.
+///
+/// Opacity rides in the alpha byte because Google's static API has no opacity parameter, whereas
+/// Mapbox takes it as a path suffix. Same authored `route_opacity`, two grammars. Mirrors Android.
+internal func googleHex(_ value: String?, _ fallback: String, _ opacity: Double) -> String {
+    let raw = (value ?? fallback).replacingOccurrences(of: "#", with: "").trimmingCharacters(in: .whitespaces)
+    let fb = fallback.replacingOccurrences(of: "#", with: "")
+    let rgb = raw.count >= 6 ? String(raw.prefix(6)) : fb
+    if opacity >= 1.0 { return rgb }
+    let a = Int((min(max(opacity, 0), 1) * 255).rounded())
+    return rgb + String(format: "%02x", a)
+}
+
+/// SPEC-495 §D — Google styled-map JSON to repeated `style=` parameters.
+///
+/// Google's static API does not take the JSON array its own interactive SDK takes; it takes one
+/// `style=` parameter per rule. Converting here means an author can paste the SAME JSON they would
+/// use in the interactive map, and it works on both tiers. Malformed JSON yields NO style params
+/// rather than a broken request. Mirrors Android `googleStyleParams`.
+internal func googleStyleParams(_ json: String?) -> [String] {
+    guard let json, !json.trimmingCharacters(in: .whitespaces).isEmpty,
+          let data = json.data(using: .utf8),
+          let arr = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
+    return arr.compactMap { rule in
+        var bits: [String] = []
+        if let f = rule["featureType"] as? String, !f.isEmpty { bits.append("feature:\(f)") }
+        if let e = rule["elementType"] as? String, !e.isEmpty { bits.append("element:\(e)") }
+        if let stylers = rule["stylers"] as? [[String: Any]] {
+            for st in stylers {
+                for (k, v) in st {
+                    let sv = String(describing: v)
+                    bits.append("\(k):" + (sv.hasPrefix("#") ? "0x" + sv.dropFirst() : sv))
+                }
+            }
+        }
+        return bits.isEmpty ? nil : "style=" + bits.joined(separator: "%7C")
+    }
+}
+
+/// SPEC-495 §A/§D — the Google Static Maps URL, with the SAME semantics as the Mapbox builder.
+///
+/// Same route-then-markers ordering (pins over the line), the same two-stacked-paths casing, the
+/// same "one label character, only up to 9 stops" rule, the same fit behaviour. Two providers that
+/// agree on everything except URL grammar is the point: switching provider should change the map's
+/// look, not its design. Google auto-fits when centre/zoom are OMITTED.
+internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloat, height: CGFloat) -> URL? {
+    guard let key, !key.isEmpty else { return nil }
+    let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
+    let stops = mapStops(block)
+    var parts: [String] = []
+
+    let w = Int(max(1, width.rounded())), h = Int(max(1, height.rounded()))
+    parts.append("size=\(w)x\(h)")
+    if (mapCfg(block, "map_retina") as? Bool) != false { parts.append("scale=2") }
+
+    // A Cloud map ID carries its own styling, so it REPLACES maptype + style: Google ignores
+    // `style` when `map_id` is present, and silently, which would look like our styling vanishing.
+    if let cloudId = (mapCfg(block, "map_cloud_map_id") as? String), !cloudId.isEmpty {
+        parts.append("map_id=\(cloudId)")
+    } else {
+        parts.append("maptype=\(googleMapType(mapCfg(block, "map_style") as? String))")
+        parts.append(contentsOf: googleStyleParams(googleStyleJsonOf(block)))
+    }
+
+    // Route BEFORE markers, matching Mapbox: Google draws parameters in order.
+    if !isPlace, (mapCfg(block, "route_show") as? Bool) != false {
+        let encoded = mapRoutePolyline(block) ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
+        if let encoded, !encoded.isEmpty {
+            let routeW = Int(mapDouble(block, "route_width") ?? 4)
+            let opacity = min(max(mapDouble(block, "route_opacity") ?? 1.0, 0), 1)
+            let casingW = Int(mapDouble(block, "route_casing_width") ?? 2)
+            let enc = percentEncodeStrict(encoded)
+            if casingW > 0 {
+                let casing = googleHex(mapCfg(block, "route_casing_color") as? String, "ffffff", 1.0)
+                parts.append("path=color:0x\(casing)%7Cweight:\(routeW + casingW * 2)%7Cenc:\(enc)")
+            }
+            let routeC = googleHex(mapCfg(block, "route_color") as? String, "6366f1", opacity)
+            parts.append("path=color:0x\(routeC)%7Cweight:\(routeW)%7Cenc:\(enc)")
+        }
+    }
+
+    let markerStyle = (mapCfg(block, "marker_style") as? String) ?? "numbered"
+    let custom: String? = (markerStyle == "custom" || markerStyle == "image")
+        ? ((mapCfg(block, "marker_image_url") as? String).flatMap { $0.isEmpty ? nil : $0 })
+        : nil
+    let markerColor = googleHex(mapCfg(block, "marker_color") as? String, "6366f1", 1.0)
+    let startColor = googleHex(
+        mapCfg(block, "marker_start_color") as? String,
+        (mapCfg(block, "marker_color") as? String) ?? "6366f1", 1.0)
+    // Google's `size:` is a token, not a pixel value, so the console's pixel slider lands in the
+    // nearer of the two the API offers — the same honest approximation pin-s/pin-l makes.
+    let sizeTok = (mapDouble(block, "marker_size") ?? 28) >= 32 ? "mid" : "small"
+    for (i, st) in stops.enumerated() {
+        let at = "\(formatCoord(st.lat)),\(formatCoord(st.lng))"
+        if let custom {
+            parts.append("markers=icon:\(percentEncodeStrict(custom))%7C\(at)")
+            continue
+        }
+        // One uppercase character or digit, so past 9 stops the label is dropped rather than
+        // rendered wrong — identical to the Mapbox rule so the two agree stop for stop.
+        let label = (markerStyle == "numbered" && stops.count <= 9) ? "%7Clabel:\(i + 1)" : ""
+        let colour = i == 0 ? startColor : markerColor
+        parts.append("markers=color:0x\(colour)%7Csize:\(sizeTok)\(label)%7C\(at)")
+    }
+
+    // Omitting centre+zoom is how Google is told to fit; with nothing to fit it needs an explicit
+    // viewport or the request is an error — the same trap as Mapbox's `auto`.
+    let fit = !isPlace && (mapCfg(block, "map_fit_to_stops") as? Bool) != false && !stops.isEmpty
+    if !fit {
+        let lat = isPlace ? (mapDouble(block, "place_lat") ?? 47.6205) : (mapDouble(block, "map_center_lat") ?? 47.6205)
+        let lng = isPlace ? (mapDouble(block, "place_lng") ?? -122.3493) : (mapDouble(block, "map_center_lng") ?? -122.3493)
+        parts.append("center=\(formatCoord(lat)),\(formatCoord(lng))")
+        parts.append("zoom=\(Int(mapDouble(block, "map_zoom") ?? 12))")
+    }
+    parts.append("key=\(key)")
+    return URL(string: "https://maps.googleapis.com/maps/api/staticmap?" + parts.joined(separator: "&"))
+}
+
+internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat) -> URL? {
     guard let token, !token.isEmpty else { return nil }
     let styles = [
         "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
         "satellite": "mapbox/satellite-v9", "satellite_streets": "mapbox/satellite-streets-v12",
         "light": "mapbox/light-v11", "dark": "mapbox/dark-v11",
     ]
-    let style = styles[(mapCfg(block, "map_style") as? String) ?? "streets"] ?? styles["streets"]!
+    let style = resolveMapboxStyle(block, styles)
     let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
     let stops = mapStops(block)
     var overlays: [String] = []
