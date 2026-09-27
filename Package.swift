@@ -52,6 +52,12 @@ let package = Package(
             dependencies: [
                 "AppDNASDK",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
+                // SPEC-495 — the test target links GoogleMaps directly so the interactive-tier proof
+                // can hold a real `GMSMapView` and assert on it. `AppDNASDK` linking it is not
+                // enough: a Swift module does not re-export its dependencies, so without this the
+                // test cannot `import GoogleMaps` and the only thing left to check would be that
+                // our own code did not throw — which is exactly the kind of proof #671 slipped past.
+                .product(name: "GoogleMaps", package: "ios-maps-sdk"),
             ]
         )
     ]

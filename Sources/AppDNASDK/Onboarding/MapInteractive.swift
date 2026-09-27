@@ -19,6 +19,8 @@ import GoogleMaps
  */
 enum GoogleMapsBootstrap {
     private static var provided = false
+    /// Tried once and only once — a raising `provideAPIKey` must not be re-entered on every render.
+    private static var attempted = false
     private static let lock = NSLock()
 
     /// Hands the customer's key to the Maps SDK exactly once, and reports whether a map can be drawn.
@@ -32,13 +34,44 @@ enum GoogleMapsBootstrap {
         guard let key = AppDNA.googleMapsApiKey, !key.isEmpty else { return false }
         lock.lock()
         defer { lock.unlock() }
+        if attempted { return provided }
+        attempted = true
+
+        // 🔴 `provideAPIKey` RAISES an Objective-C exception when GoogleMaps.bundle is not where the
+        // Maps SDK looks for it:
+        //
+        //     Google Maps SDK for iOS requires GoogleMaps.bundle to be part of your target
+        //     under 'Copy Bundle Resources' (GMSServicesException)
+        //
+        // Swift cannot catch an NSException, so this must be PREVENTED, not handled. Checking first
+        // is the whole reason this function exists: an onboarding step that takes the host app down
+        // because a resource did not get copied is the worst possible failure for an SDK whose job
+        // is the user's first thirty seconds. Without the guard the app dies; with it the map
+        // quietly falls back to the static tier, which needs no bundle at all.
+        guard mapsBundleIsPresent() else {
+            Log.warning("""
+            AppDNA map: GoogleMaps.bundle is not in the app bundle, so the Maps SDK cannot start.             Falling back to the static map. If you integrate via Swift Package Manager, add the             GoogleMaps package to your APP target as well — SwiftPM nests the resource bundle inside             the dependency's own bundle, where the Maps SDK does not look for it.
+            """)
+            return false
+        }
+
+        provided = GMSServices.provideAPIKey(key)
         if !provided {
-            provided = GMSServices.provideAPIKey(key)
-            if !provided {
-                Log.warning("AppDNA map: Google Maps rejected the delivered key — falling back to the static map")
-            }
+            Log.warning("AppDNA map: Google Maps rejected the delivered key — falling back to the static map")
         }
         return provided
+    }
+
+    /**
+     Whether `GoogleMaps.bundle` is somewhere the Maps SDK will find it.
+
+     It looks in the MAIN bundle. CocoaPods copies it there, which is why the wrapper hosts work.
+     SwiftPM instead nests it inside the dependency's own resource bundle
+     (`GoogleMaps_GoogleMapsTarget.bundle/GoogleMaps.bundle`), which the Maps SDK does not search —
+     so both locations are checked here and only the main-bundle hit is treated as usable.
+     */
+    private static func mapsBundleIsPresent() -> Bool {
+        Bundle.main.url(forResource: "GoogleMaps", withExtension: "bundle") != nil
     }
 }
 
@@ -49,7 +82,17 @@ enum GoogleMapsBootstrap {
 struct GoogleInteractiveMap: UIViewRepresentable {
     let block: ContentBlock
 
-    func makeUIView(context: Context) -> GMSMapView {
+    func makeUIView(context: Context) -> GMSMapView { buildMapView() }
+
+    /**
+     The whole construction, with no SwiftUI `Context` in it.
+
+     Split out so the interactive-tier tests can hold the REAL `GMSMapView` this renderer produces.
+     `makeUIView` cannot be called outside a render pass (there is no way to fabricate a `Context`),
+     and a test that rebuilt the same map itself would be a copy agreeing with a copy — which is how
+     #671 stayed invisible: everything we measured was measuring something other than the map.
+     */
+    internal func buildMapView() -> GMSMapView {
         let camera = GMSCameraPosition.camera(
             withLatitude: centre.lat,
             longitude: centre.lng,
