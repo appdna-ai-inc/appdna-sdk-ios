@@ -3791,8 +3791,26 @@ internal func googleStyleJsonOf(_ block: ContentBlock) -> String? {
 /// Pure, so the tier decision is asserted by a test and a shared fixture rather than inferred from
 /// a screenshot. An unknown value falls back to mapbox: a typo in a provider name must not blank
 /// the map. Mirrors Android `mapProviderOf`.
+/**
+ * SPEC-495 §A — which engine draws this map.
+ *
+ * 🔴 The APP's setting decides, not the block. The provider began as a per-map dropdown, which made
+ * an author re-pick the same value on every step and let them choose an engine their app had no key
+ * for — a silent placeholder on device with nothing to explain it. It is account-level setup now
+ * (console: Settings → Apps → Maps), delivered in the bootstrap payload beside the keys it selects
+ * between.
+ *
+ * A block that NAMES a provider still wins, and that is deliberate: flows published while the
+ * per-map dropdown existed carry `map_provider`, and they must keep rendering exactly as they do.
+ *
+ * An unknown value on either side falls back to mapbox — a typo must not blank the map.
+ */
 internal func mapProviderOf(_ block: ContentBlock) -> String {
-    ((mapCfg(block, "map_provider") as? String)?.lowercased() == "google") ? "google" : "mapbox"
+    switch (mapCfg(block, "map_provider") as? String)?.lowercased() {
+    case "google": return "google"
+    case "mapbox": return "mapbox"
+    default: return AppDNA.mapProvider?.lowercased() == "google" ? "google" : "mapbox"
+    }
 }
 
 /// SPEC-495 §A — the static image URL for whichever provider the author chose.

@@ -202,6 +202,34 @@ public final class AppDNA: @unchecked Sendable {
         else { UserDefaults.standard.removeObject(forKey: googleKeyDefaultsKey) }
     }
 
+    /**
+     SPEC-495 — the app's map engine (`mapbox` | `google`), delivered with the keys it selects
+     between.
+
+     🔴 App-level, and that is a correction. The provider began as a per-block field, which let an
+     author choose an engine their app had no key for and get a silent placeholder on device. It is
+     set once in the console beside the credentials, and arrives here the same way they do. A block
+     that still names a provider wins, so flows published before this keep rendering unchanged.
+
+     Cached in `UserDefaults` for the same reason the tokens are: the FIRST render after a cold
+     launch happens before the bootstrap round-trip returns, and a map that flips engine a second
+     later is worse than one that starts on the engine it ended on.
+     */
+    public static var mapProvider: String? {
+        get { hostMapProvider ?? remoteMapProvider ?? UserDefaults.standard.string(forKey: mapProviderDefaultsKey) }
+        set { hostMapProvider = newValue }
+    }
+
+    private static var hostMapProvider: String?
+    private static var remoteMapProvider: String?
+    private static let mapProviderDefaultsKey = "appdna.map_provider"
+
+    internal static func applyRemoteMapProvider(_ provider: String?) {
+        remoteMapProvider = provider
+        if let provider, !provider.isEmpty { UserDefaults.standard.set(provider, forKey: mapProviderDefaultsKey) }
+        else { UserDefaults.standard.removeObject(forKey: mapProviderDefaultsKey) }
+    }
+
     private static let mapboxTokenDefaultsKey = "appdna.mapbox_token"
 
     /// Cached across launches so the very first onboarding of a cold, offline start still draws a
@@ -1583,6 +1611,8 @@ public final class AppDNA: @unchecked Sendable {
             AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
             // SPEC-495 §B — same path, same ownership rules, for the Google provider.
             AppDNA.applyRemoteGoogleMapsKey(data.settings.googleMapsApiKey)
+            // SPEC-495 — the engine those two keys select between, same delivery path.
+            AppDNA.applyRemoteMapProvider(data.settings.mapProvider)
 
             let previousLock = AppDNA.runtimeLock
             let currentLock = data.runtime_lock
@@ -2022,6 +2052,9 @@ struct BootstrapSettings: Codable {
     /// SPEC-495 §B — the customer's Google Maps key, same delivery path and same optionality so a
     /// backend that has not shipped the field yet still decodes.
     let googleMapsApiKey: String?
+    /// SPEC-495 §B — `mapbox` | `google`, chosen once per app. Optional so a backend that has not
+    /// shipped the field yet still decodes.
+    let mapProvider: String?
 }
 
 struct BootstrapGeo: Codable {
