@@ -3931,6 +3931,16 @@ internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloa
     // Google's `size:` is a token, not a pixel value, so the console's pixel slider lands in the
     // nearer of the two the API offers — the same honest approximation pin-s/pin-l makes.
     let sizeTok = (mapDouble(block, "marker_size") ?? 28) >= 32 ? "mid" : "small"
+    // 🔴 A NUMBERED marker must be at least `mid`, or Google silently drops the number.
+    //
+    // The Static Maps API renders `label:` only on markers of size `mid` and above — `small` and
+    // `tiny` cannot display one. Emitting `size:small` with `label:1` succeeds, draws the pins, and
+    // leaves the numbers off: a route whose stops the author numbered comes out as identical
+    // anonymous pins. Nothing errors. It was found by LOOKING at a rendered PNG from a real key,
+    // and Mapbox numbers its small pins happily — so it was a silent difference between providers
+    // for one authored config.
+    let numbered = markerStyle == "numbered" && stops.count <= 9
+    let markerSize = numbered && sizeTok == "small" ? "mid" : sizeTok
     for (i, st) in stops.enumerated() {
         let at = "\(formatCoord(st.lat)),\(formatCoord(st.lng))"
         if let custom {
@@ -3939,9 +3949,9 @@ internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloa
         }
         // One uppercase character or digit, so past 9 stops the label is dropped rather than
         // rendered wrong — identical to the Mapbox rule so the two agree stop for stop.
-        let label = (markerStyle == "numbered" && stops.count <= 9) ? "%7Clabel:\(i + 1)" : ""
+        let label = numbered ? "%7Clabel:\(i + 1)" : ""
         let colour = i == 0 ? startColor : markerColor
-        parts.append("markers=color:0x\(colour)%7Csize:\(sizeTok)\(label)%7C\(at)")
+        parts.append("markers=color:0x\(colour)%7Csize:\(markerSize)\(label)%7C\(at)")
     }
 
     // Omitting centre+zoom is how Google is told to fit; with nothing to fit it needs an explicit
