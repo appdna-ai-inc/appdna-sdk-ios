@@ -1495,7 +1495,7 @@ final class SharedFixtureTests: XCTestCase {
         let blocks = merged.content_blocks ?? []
         h.state["merged_block_count"] = blocks.count
         h.state["merged_block_ids"] = blocks.map { $0.id }
-        if let target = blocks.first(where: { $0.id == "winery_select" }) {
+        if let target = blocks.first(where: { $0.id == "venue_select" }) {
             h.state["merged_target_option_count"] = (target.field_options ?? []).count
             h.state["merged_target_first_value"] = (target.field_options ?? []).first?.resolvedValue
         }

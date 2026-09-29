@@ -1922,7 +1922,7 @@ struct OnboardingStepRouter: View {
         case OnboardingCTAFlag.actionName:
             // A CTA that RECORDS A CHOICE and continues.
             //
-            // The case it exists for: a summary step offers an upsell ("book a tasting", "go
+            // The case it exists for: a summary step offers an upsell ("book a workshop", "go
             // premium"). Routing to that destination DURING onboarding tears the user out of a flow
             // they are halfway through, and every host that tried it ended up rebuilding the flow
             // state by hand on the way back. So the CTA writes one key and advances exactly like
@@ -1963,7 +1963,7 @@ struct OnboardingStepRouter: View {
             // is finished.
             //
             // Advancing is the whole point: this exists for a cross-sell the user meets BEFORE the
-            // end ("book a tasting"), and opening it on tap would abandon the rest of the flow.
+            // end ("book a workshop"), and opening it on tap would abandon the rest of the flow.
             // `link` already covers "open it now" for a terms or privacy URL.
             if actionValue?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                 // An author chose "Open link after onboarding" and left the URL blank. Advancing is

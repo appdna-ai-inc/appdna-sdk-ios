@@ -308,7 +308,7 @@ func resolveDotPath(
     // ended, at which point the card is gone. Registered here, in the preview, and in the
     // picker's namespace list; an unregistered root resolves to nil and renders raw.
     case "step": root = stepInputs
-    // SPEC-448 — the OPTION the user picked, not just its value. `{{selected.winery.subtitle}}`
+    // SPEC-448 — the OPTION the user picked, not just its value. `{{selected.venue.subtitle}}`
     // on a later screen. Read from its own store rather than `responses`, because `responses` is
     // what customer webhooks receive and must stay byte-identical for anyone not using this.
     case "selected": root = SelectedOptionStore.shared.snapshot

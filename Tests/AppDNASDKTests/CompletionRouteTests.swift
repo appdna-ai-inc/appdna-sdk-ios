@@ -52,9 +52,9 @@ final class CompletionRouteTests: XCTestCase {
     }
 
     func testCompletionOpensTheDestinationTheCtaRecorded() {
-        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/workshop")
         complete()
-        XCTAssertEqual(opened.map(\.absoluteString), ["hostapp://booking/tasting"])
+        XCTAssertEqual(opened.map(\.absoluteString), ["hostapp://booking/workshop"])
     }
 
     func testCompletionOpensNothingWhenNoCtaAskedForOne() {
@@ -65,7 +65,7 @@ final class CompletionRouteTests: XCTestCase {
     func testTheDestinationIsConsumedSoASecondCompletionOpensNothing() {
         // The abandoned-flow bug: without consuming, finishing ANY later flow would navigate the
         // user somewhere they never asked to go.
-        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/workshop")
         complete()
         XCTAssertEqual(opened.count, 1)
         complete()
@@ -78,7 +78,7 @@ final class CompletionRouteTests: XCTestCase {
         var order: [String] = []
         URLSafety.opener = { _ in order.append("open") }
         let delegate = OrderRecordingDelegate { order.append("delegate") }
-        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/workshop")
         complete(delegate: delegate)
         XCTAssertEqual(order, ["delegate", "open"])
     }
@@ -88,7 +88,7 @@ final class CompletionRouteTests: XCTestCase {
         // declares the scheme. This is why the manual tells the customer they must own the
         // destination — an unregistered scheme is silently refused, not opened.
         URLSafety.hostSchemes = []
-        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/workshop")
         complete()
         XCTAssertTrue(opened.isEmpty)
     }
@@ -108,7 +108,7 @@ final class CompletionRouteTests: XCTestCase {
     }
 
     func testALaterTapReplacesAnEarlierDestination() {
-        PendingCompletionRoute.shared.record("hostapp://booking/tasting")
+        PendingCompletionRoute.shared.record("hostapp://booking/workshop")
         PendingCompletionRoute.shared.record("hostapp://audio/pass")
         complete()
         XCTAssertEqual(opened.map(\.absoluteString), ["hostapp://audio/pass"])

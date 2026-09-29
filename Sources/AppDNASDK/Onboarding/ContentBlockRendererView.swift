@@ -21,7 +21,7 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
 /// `w-full` in the console preview, so `element_width: "auto"` — the one value that means "be as
 /// wide as your label" — was ignored on all three. The author could size a button OR centre it,
 /// never both: at a fixed width the block was constrained, and at `auto` it silently filled the row.
-/// "Show 4 More Options" is authored `auto` + `center` and rendered edge-to-edge.
+/// A "show more" button authored `auto` + `center` rendered edge-to-edge.
 ///
 /// `auto` is the ONLY value that stops the fill. Unset keeps filling (every published CTA relies on
 /// it), `fill`/`100%` obviously fill, and a px/% width has already constrained the parent, so
@@ -1030,7 +1030,7 @@ struct ContentBlockRendererView: View {
             } else if isRefresh {
                 // #657 — refresh the step in place. Until now `onElementInteraction` could only be
                 // fired by a fixed set of interactive blocks (OTP, press-hold, the pickers…), never
-                // by a button, so "Show 4 more" / "Regenerate results" had no way to ask the host
+                // by a button, so a "show more" or "refresh results" button had no way to ask the host
                 // for new content without ALSO advancing — which sent the user to the next screen.
                 // The host returns `advance: false` (the default) and the step re-renders.
                 if let channel {
@@ -3395,9 +3395,9 @@ func resolveBlockTemplates(
             // renderer means no current or future renderer can leak it, and a fixture can see it as a
             // count. A stat whose LABEL alone is unresolved keeps its value and loses the caption.
             //
-            // 🔴 #660 — dropping the stat was too much. WineTrails' booking summary is five stats,
+            // 🔴 #660 — dropping the stat was too much. A five-stat booking summary,
             // all bound to `hook_data.booking.*`. Until the host supplies them EVERY card vanished,
-            // so the screen read as "the Summary Screen does not render at all" on both platforms —
+            // so the screen read as "the summary screen does not render at all" on both platforms —
             // and an author had no way to tell a mis-typed path from a host that sent nothing.
             //
             // A card with a resolved LABEL still has something true to show, so it keeps its shape
@@ -3721,7 +3721,7 @@ internal func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
 
 /// SPEC-495 E1 — a map number, accepting the STRING the console actually publishes.
 ///
-/// 🔴 EVERY NUMERIC MAP SETTING WAS BEING SILENTLY DROPPED. The published WineTrails block carries
+/// 🔴 EVERY NUMERIC MAP SETTING WAS BEING SILENTLY DROPPED. A published map block carries
 /// `map_height: "220"`, `map_zoom: "12"`, `marker_size: "28"`, `route_width: "4"` — strings. This
 /// accepted only Double/Int, so each fell back to its default and the author's styling did nothing.
 /// Android had the identical accessor, so it was consistent rather than divergent, which is why it

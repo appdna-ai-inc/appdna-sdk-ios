@@ -131,7 +131,7 @@ final class VisualSnapshotTests: XCTestCase {
     // MARK: - #654 / #659 / #663 — a button could be SIZED or ALIGNED, never both
 
     /*
-     * The pure helper (`buttonFillsWidth`) is asserted in WineTrailsRenderGatesTests. These two
+     * The pure helper (`buttonFillsWidth`) is asserted in AuthoredLayoutRenderGatesTests. These two
      * prove the RENDERER actually uses it, which is the half that was broken: `element_width` was
      * read, parsed and then ignored by a hardcoded `.frame(maxWidth: .infinity)`. A unit test on
      * the helper alone would have passed against the bug.
@@ -142,12 +142,12 @@ final class VisualSnapshotTests: XCTestCase {
      */
 
     private static let autoWidthButtonJSON = """
-    {"id":"b_auto","type":"button","text":"Show 4 More Options","action":"next",
+    {"id":"b_auto","type":"button","text":"Load More Options","action":"next",
      "element_width":"auto","horizontal_align":"center","bg_color":"#6366F1"}
     """
 
     private static let fillWidthButtonJSON = """
-    {"id":"b_fill","type":"button","text":"Show 4 More Options","action":"next",
+    {"id":"b_fill","type":"button","text":"Load More Options","action":"next",
      "element_width":"fill","horizontal_align":"center","bg_color":"#6366F1"}
     """
 
@@ -431,8 +431,8 @@ final class VisualSnapshotTests: XCTestCase {
           "field_config": { "display_style": "image_tiles", "grid_columns": 2, \(layoutConfig) },
           "field_style": { "fill_color": "#FACC15" },
           "field_options": [
-            { "id": "w1", "value": "w1", "label": "Sunrise Vineyard", "subtitle": "Lakeside", "image_url": "https://example.com/a.png"\(optionExtras) },
-            { "id": "w2", "value": "w2", "label": "Southridge Vineyard", "subtitle": "Highlands", "image_url": "https://example.com/b.png"\(optionExtras) }
+            { "id": "w1", "value": "w1", "label": "Sunrise Venue", "subtitle": "Lakeside", "image_url": "https://example.com/a.png"\(optionExtras) },
+            { "id": "w2", "value": "w2", "label": "Southridge Venue", "subtitle": "Highlands", "image_url": "https://example.com/b.png"\(optionExtras) }
           ]
         }
         """
@@ -647,7 +647,7 @@ final class VisualSnapshotTests: XCTestCase {
             "map_fallback_text": "Map unavailable",
             "place_lat": 51.5072, "place_lng": -0.1276,
             "place_title": "Our Shoreditch studio",
-            "place_subtitle": "Open daily 11-6 · tastings from £15",
+            "place_subtitle": "Open daily 11-6 · workshops from £15",
             "place_info_position": "overlay_bottom",
             "place_info_bg": "#FFFFFF", "place_info_text": "#111827", "place_info_radius": 12
           }
@@ -712,7 +712,7 @@ final class VisualSnapshotTests: XCTestCase {
                 "field_config": {
                   "stats_layout": "vertical",
                   "summary_stats": [
-                    { "color": "#EAE9E5", "label": "photo", "value": "Hillside Vineyard Estate" },
+                    { "color": "#EAE9E5", "label": "photo", "value": "Hillside Venue Estate" },
                     { "color": "#FFD700", "label": "Old Town - 12 min away", "value": "Today - 4:30 PM" },
                     { "color": "#EAE9E5", "input": "stepper", "label": "", "value": "", "required": "true" },
                     { "color": "#EAE9E5", "label": "Total Due Now: $45", "value": "Tour Price" }
@@ -1664,7 +1664,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - WineTrails #609 / #654 / #659 — the layout rules that only pixels can settle
+    // MARK: - #609 / #654 / #659 — the layout rules that only pixels can settle
 
     private static func multiButtonsJSON(_ lastRow: String, perRow: Int = 2) -> String {
         """
@@ -1673,7 +1673,7 @@ final class VisualSnapshotTests: XCTestCase {
           "field_config": { "buttons_per_row": \(perRow), "last_row": "\(lastRow)" },
           "block_style": { "background_color": "#1F2937", "border_radius": 16 },
           "stack_children": [
-            { "id": "b1", "type": "button", "text": "Book a tasting", "action": "next" },
+            { "id": "b1", "type": "button", "text": "Book a session", "action": "next" },
             { "id": "b2", "type": "button", "text": "Audio tour", "action": "next" },
             { "id": "b3", "type": "button", "text": "Guided tour", "action": "next" }
           ]
@@ -1714,7 +1714,7 @@ final class VisualSnapshotTests: XCTestCase {
     /// the `needsOuterAlignmentBox` unit tests, which is where a rule belongs anyway.
     func testConstrainedWidthButton_centered() throws {
         let json = """
-        {"id": "cta", "type": "button", "text": "Regenerate Results", "action": "next",
+        {"id": "cta", "type": "button", "text": "Refresh List", "action": "next",
          "element_width": "300px", "horizontal_align": "center"}
         """
         withSnapshotTesting(record: recordMode) {
@@ -1724,7 +1724,7 @@ final class VisualSnapshotTests: XCTestCase {
 
     func testConstrainedWidthButton_right() throws {
         let json = """
-        {"id": "cta", "type": "button", "text": "Audio Preview", "action": "next",
+        {"id": "cta", "type": "button", "text": "Play Sample", "action": "next",
          "element_width": "300px", "horizontal_align": "right"}
         """
         withSnapshotTesting(record: recordMode) {

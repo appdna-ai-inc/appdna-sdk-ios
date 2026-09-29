@@ -846,7 +846,7 @@ public struct ElementInteractionResult {
     ///
     /// Without this the refresh action could not change the thing it exists to change: a select's
     /// options live in `block.field_options`, and `fieldConfigPatches` merges into `field_config` —
-    /// a different field the renderer never reads for options. A "Show 4 more" button could fire the
+    /// a different field the renderer never reads for options. A "Load more" button could fire the
     /// hook and then have nothing to hand back.
     public var fieldOptions: [String: [InputOption]]?
     /// When true, advance to the next step after handling this interaction.

@@ -2,7 +2,7 @@ import Foundation
 
 /// The destination a `link_on_complete` CTA asked for, held until the flow finishes.
 ///
-/// The case it exists for: a cross-sell near the end of a flow ("book a wine tasting"). Opening the
+/// The case it exists for: a cross-sell near the end of a flow ("book a workshop"). Opening the
 /// destination when the CTA is tapped tears the user out of a flow they have not finished — the
 /// reason the `flag` CTA advances instead of routing. So the tap records where to go, the user
 /// continues, and the SDK opens it once the flow is genuinely complete.

@@ -3,11 +3,11 @@ import XCTest
 
 /// The render rules behind #609 and #660, on the iOS side.
 ///
-/// These are the iOS half of `WineTrailsRenderGatesTest.kt`. Both files assert the same rules
+/// These are the iOS half of `AuthoredLayoutRenderGatesTest.kt`. Both files assert the same rules
 /// against the same inputs on purpose: every bug in this group was a layout or suppression rule
 /// that lived inside a view, where the only way to check it was to look at a screen — and a
 /// screenshot is not run in CI.
-final class WineTrailsRenderGatesTests: XCTestCase {
+final class AuthoredLayoutRenderGatesTests: XCTestCase {
 
     // MARK: - #609 — Multi-buttons row planning
 
@@ -37,7 +37,7 @@ final class WineTrailsRenderGatesTests: XCTestCase {
     /*
      * Three reports, one defect. The button hardcoded `.frame(maxWidth: .infinity)`, so
      * `element_width: "auto"` — the one value meaning "be as wide as your label" — was ignored.
-     * WineTrails' "Show 4 More Options" is authored `auto` + `center` and rendered edge-to-edge.
+     * A "show more" button authored `auto` + `center` rendered edge-to-edge.
      * Same table as Android's.
      */
 
@@ -172,10 +172,10 @@ final class WineTrailsRenderGatesTests: XCTestCase {
     // MARK: - #660 — a summary stat whose token never resolved
 
     func testAResolvedStatPassesThroughUntouched() {
-        let stat: [String: Any] = ["label": "Region", "value": "Central Otago"]
+        let stat: [String: Any] = ["label": "Region", "value": "Central Region"]
         let out = sanitizeSummaryStat(stat)
         XCTAssertEqual(out?["label"] as? String, "Region")
-        XCTAssertEqual(out?["value"] as? String, "Central Otago")
+        XCTAssertEqual(out?["value"] as? String, "Central Region")
     }
 
     func testAnUnresolvedValueKeepsTheCardWhenTheLabelStillSaysSomething() {
@@ -189,9 +189,9 @@ final class WineTrailsRenderGatesTests: XCTestCase {
     }
 
     func testAnUnresolvedLabelLosesTheCaptionAndKeepsTheValue() {
-        let stat: [String: Any] = ["label": "{{hook_data.caption}}", "value": "NZ$25"]
+        let stat: [String: Any] = ["label": "{{hook_data.caption}}", "value": "$25"]
         let out = sanitizeSummaryStat(stat)
-        XCTAssertEqual(out?["value"] as? String, "NZ$25")
+        XCTAssertEqual(out?["value"] as? String, "$25")
         XCTAssertNil(out?["label"], "an unresolved label must not print braces on screen")
     }
 

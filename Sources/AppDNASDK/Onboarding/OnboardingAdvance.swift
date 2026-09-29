@@ -492,7 +492,7 @@ enum OnboardingAdvance {
 
         // Re-bound to the original local names so every operator below is unchanged. `step` matters
         // as much as `responses`: the aliases that map an authored "opt_1" onto the stored
-        // "wine_tasting" come from the SOURCE step's options, not the step being left.
+        // "workshop" come from the SOURCE step's options, not the step being left.
         let scope = resolveConditionScope(
             field: rawField, stepResponses: stepResponses, allResponses: allResponses,
             currentStep: currentStep, flow: flow

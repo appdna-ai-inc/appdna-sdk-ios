@@ -50,7 +50,7 @@ final class GoogleInteractiveMapTests: XCTestCase {
             .nilIfEmpty
     }
 
-    /// A three-stop route, the shape the WineTrails flow in #671 actually uses.
+    /// A three-stop route, the shape reported in #671.
     private func routeBlock(interactive: Bool = true) throws -> ContentBlock {
         let json = """
         {"id":"m1","type":"map","field_config":{

@@ -16,8 +16,8 @@ final class HostDataCacheRoundTripTests: XCTestCase {
       "steps": [{
         "id": "step8", "type": "custom",
         "config": { "content_blocks": [
-          { "id": "block_1_6q6rs0", "type": "input_select", "field_id": "select_Q6A",
-            "field_options": [{ "id": "opt_1", "label": "Recommended winery", "value": "recommended",
+          { "id": "block_recs_select", "type": "input_select", "field_id": "select_recs",
+            "field_options": [{ "id": "opt_1", "label": "Recommended venue", "value": "recommended",
               "image_url": "https://assets.example.com/fallback.png",
               "data_templates": { "label": "{{item.name}}", "image_url": "{{item.imageUrl}}", "value": "{{item.id}}" } }],
             "field_config": { "repeat": { "source": "hook_data.recommendations", "template_option_id": "opt_1", "max": 4 },
@@ -76,7 +76,7 @@ final class HostDataCacheRoundTripTests: XCTestCase {
         dict["steps"] = steps
         let flow = try JSONDecoder().decode(OnboardingFlowConfig.self, from: JSONSerialization.data(withJSONObject: dict))
         XCTAssertEqual(flow.steps.first?.rawContentBlocks?.count, 2)
-        XCTAssertEqual(flow.steps.first?.rawContentBlocks?.first?.objectValue?["id"], .string("block_1_6q6rs0"))
+        XCTAssertEqual(flow.steps.first?.rawContentBlocks?.first?.objectValue?["id"], .string("block_recs_select"))
     }
 
     func test_step_built_in_code_has_no_raw() {
