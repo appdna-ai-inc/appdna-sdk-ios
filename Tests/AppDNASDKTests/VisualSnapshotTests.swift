@@ -687,10 +687,10 @@ final class VisualSnapshotTests: XCTestCase {
     /// `ThreeZoneStepLayout`. The reported symptom was a step whose heading, buttons and footnote
     /// all drew but whose summary card stack was simply absent.
     ///
-    /// The shape here is copied verbatim from a published `config/onboarding_index/flows/*` doc —
-    /// zones, `element_*`, `stats_layout`, the per-stat keys and the stat that carries `input`
-    /// without a `field_id`. Only the human-readable strings are replaced; changing any KEY makes
-    /// this test stop reproducing what shipped.
+    /// The shape is that of a published `config/onboarding_index/flows/*` step — zones,
+    /// `element_*`, `stats_layout`, the per-stat keys and the stat that carries `input` without a
+    /// `field_id`. Strings and colours are placeholders; changing any KEY makes this test stop
+    /// reproducing the shape that failed.
     ///
     /// WHAT THE GOLDEN PINS, card by card: the heading and both zoned CTAs land in the right zones;
     /// cards 1, 2 and 4 draw their value and label; and **card 3 draws a STEPPER**. Card 3 is the
@@ -704,34 +704,34 @@ final class VisualSnapshotTests: XCTestCase {
           "type": "custom",
           "layout": {
             "content_blocks": [
-              { "id": "block_1", "text": "Complete your reservation", "type": "heading", "level": 1,
-                "style": { "color": "#EAE9E5", "alignment": "center", "font_size": 22, "font_weight": 700 },
+              { "id": "block_1", "text": "Review your order", "type": "heading", "level": 1,
+                "style": { "color": "#F5F5F5", "alignment": "center", "font_size": 22, "font_weight": 700 },
                 "horizontal_align": "center" },
               { "id": "block_5", "text": "", "type": "summary_screen", "zone": "top",
-                "bg_color": "#232F43", "text_color": "#EAE9E5",
+                "bg_color": "#1F2937", "text_color": "#F5F5F5",
                 "field_config": {
                   "stats_layout": "vertical",
                   "summary_stats": [
-                    { "color": "#EAE9E5", "label": "photo", "value": "Hillside Venue Estate" },
-                    { "color": "#FFD700", "label": "Old Town - 12 min away", "value": "Today - 4:30 PM" },
-                    { "color": "#EAE9E5", "input": "stepper", "label": "", "value": "", "required": "true" },
-                    { "color": "#EAE9E5", "label": "Total Due Now: $45", "value": "Tour Price" }
+                    { "color": "#F5F5F5", "label": "photo", "value": "Sample Item" },
+                    { "color": "#F59E0B", "label": "Item details", "value": "Item subtitle" },
+                    { "color": "#F5F5F5", "input": "stepper", "label": "", "value": "", "required": "true" },
+                    { "color": "#F5F5F5", "label": "Total: $10", "value": "Item Price" }
                   ]
                 },
                 "element_width": "100%", "element_height": "auto",
                 "vertical_align": "top", "vertical_offset": 0, "horizontal_align": "center" },
-              { "id": "block_2", "text": "Pay with Credit Card", "type": "button", "zone": "bottom",
+              { "id": "block_2", "text": "Continue", "type": "button", "zone": "bottom",
                 "style": { "color": "#000000", "alignment": "center", "font_size": 16, "font_weight": 600 },
                 "action": "next", "variant": "primary", "bg_color": "#ffffff", "text_color": "#000000",
                 "element_width": "fill", "vertical_align": "bottom", "vertical_offset": 0,
                 "horizontal_align": "center", "button_corner_radius": 24 },
-              { "id": "block_6", "text": "Confirm Reservation", "type": "button", "zone": "bottom",
-                "style": { "color": "#192334", "alignment": "center", "font_size": 16, "font_weight": 600 },
-                "action": "link", "variant": "primary", "bg_color": "#FFD700", "text_color": "#192334",
+              { "id": "block_6", "text": "Confirm", "type": "button", "zone": "bottom",
+                "style": { "color": "#111827", "alignment": "center", "font_size": 16, "font_weight": 600 },
+                "action": "link", "variant": "primary", "bg_color": "#F59E0B", "text_color": "#111827",
                 "element_width": "fill", "vertical_align": "bottom", "vertical_offset": 0,
                 "horizontal_align": "center", "button_corner_radius": 24 },
-              { "id": "block_3", "text": "Free cancellation up to 24 hours.", "type": "text", "zone": "bottom",
-                "style": { "color": "#A0A4A7", "alignment": "center", "font_size": 16, "font_weight": 400 },
+              { "id": "block_3", "text": "Footnote text.", "type": "text", "zone": "bottom",
+                "style": { "color": "#9CA3AF", "alignment": "center", "font_size": 16, "font_weight": 400 },
                 "vertical_align": "bottom", "vertical_offset": 0, "horizontal_align": "center" }
             ]
           }
@@ -751,7 +751,7 @@ final class VisualSnapshotTests: XCTestCase {
             inputValues: .constant([:])
         )
         .frame(width: 390, height: 844)
-        .background(Color(hex: "#141B2B"))
+        .background(Color(hex: "#0F172A"))
         // NO PIXEL GOLDEN HERE, deliberately, and this is a real reduction in coverage rather than
         // a tidy-up.
         //
