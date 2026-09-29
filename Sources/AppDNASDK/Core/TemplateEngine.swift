@@ -74,6 +74,16 @@ final class TemplateEngine {
         }
     }
 
+    /// SPEC-496 §A5 — resolve ONE token exactly as `interpolate` would (`resolved ?? fallback ?? ""`).
+    ///
+    /// The raw host-data pass owns every block string and makes `loc()` lookup-only, so a token whose
+    /// root is NOT a block root (`device.*`, `computed.*`, `remote_config.*`, `input.*`, a bare name)
+    /// would otherwise stop resolving in published flows that rely on it today. The pass routes each
+    /// such token here, one at a time — never the whole string, which would re-scan substituted data.
+    func resolveToken(_ path: String, fallback: String?, context: TemplateContext) -> String {
+        resolveVariable(path.trimmingCharacters(in: .whitespaces), context: context) ?? fallback ?? ""
+    }
+
     // MARK: - Variable Resolution
 
     private func resolveVariable(_ path: String, context: TemplateContext) -> String? {

@@ -858,6 +858,80 @@ extension EnvironmentValues {
     }
 }
 
+/// SPEC-496 §A1 — "this block was produced by the raw host-data pass". Propagates to every NESTED
+/// renderer a raw-resolved block creates (carousel pages, option sheets), so none of them runs the
+/// view-level template pass over strings that were already resolved (no re-scan of host data).
+private struct RawResolvedKey: EnvironmentKey {
+    static let defaultValue: Bool = false
+}
+
+extension EnvironmentValues {
+    var appdnaRawResolved: Bool {
+        get { self[RawResolvedKey.self] }
+        set { self[RawResolvedKey.self] = newValue }
+    }
+}
+
+/// SPEC-496 §5b C5.1 — the onboarding step's interaction channel, for `refresh_step` buttons at ANY
+/// depth: top level, the three zones, `multi_buttons` children, `row` / `stack` /
+/// `section_background` children and carousel pages (whose nested renderer is built without
+/// `onInteract`). Provided by `OnboardingStepRouter` on its block-step content.
+///
+/// Precedence: when NON-nil it is authoritative for `refresh_step` buttons — the call, the loading
+/// state and tappability. When nil (Screens / SDUI, an option sheet) the explicit `onInteract`
+/// parameter is used, so those surfaces are unchanged. Option sheets set it to nil explicitly: a
+/// sheet has its own inputs and no interaction channel.
+struct StepInteraction: Equatable {
+    /// The presentation serial this channel belongs to — compared, so a router reused for a new
+    /// presentation always hands its children the new instance's `fire`.
+    var presentation: Int
+    /// The refresh button whose call is in flight (spinner), if any.
+    var loadingBlockId: String?
+    /// C5.3 / C5.4 — false while ANY interaction of the presentation is in flight, or while the
+    /// presentation is §B0-pending. Such a button draws normally; a tap is not a call.
+    var refreshTappable: Bool
+    /// The step scope's `handleInteract(blockId, action, value)`.
+    var fire: (String, String, String?) -> Void
+
+    /// The ONE tap rule for a `refresh_step` button (C5.3 / C5.4), used by the button and by the
+    /// fixture driver: a locked button's tap is not a call (debug log); otherwise it fires `refresh`
+    /// with the button's `action_value`. Returns whether the call was handed to the step.
+    @discardableResult
+    func tapRefresh(blockId: String, actionValue: String?) -> Bool {
+        guard refreshTappable else {
+            Log.debug("[Onboarding] refresh_step \(blockId) tapped while locked (an interaction is in flight or host data is pending) — ignored")
+            return false
+        }
+        fire(blockId, InteractionCoordinator.refreshAction, actionValue)
+        return true
+    }
+
+    /// Built from the presentation's coordinator — the one place `refreshTappable` is derived.
+    static func make(presentation: Int, coordinator: InteractionCoordinator, pending: Bool,
+                     fire: @escaping (String, String, String?) -> Void) -> StepInteraction {
+        StepInteraction(presentation: presentation, loadingBlockId: coordinator.loadingBlockId,
+                        refreshTappable: coordinator.isTappable(blockId: "", pending: pending), fire: fire)
+    }
+
+    /// The closure is deliberately not compared (closures cannot be); the state is what re-renders.
+    /// A stale `fire` (bound to an older router copy) is safe: every input the reply fold reads —
+    /// the base override, the layer — is read LIVE from the store (SPEC-496 §5b C3).
+    static func == (a: StepInteraction, b: StepInteraction) -> Bool {
+        a.presentation == b.presentation && a.loadingBlockId == b.loadingBlockId && a.refreshTappable == b.refreshTappable
+    }
+}
+
+private struct StepInteractionKey: EnvironmentKey {
+    static let defaultValue: StepInteraction? = nil
+}
+
+extension EnvironmentValues {
+    var appdnaStepInteraction: StepInteraction? {
+        get { self[StepInteractionKey.self] }
+        set { self[StepInteractionKey.self] = newValue }
+    }
+}
+
 /// #663 — what a fractional `element_width` actually resolves to.
 ///
 /// Pure so the rule is asserted by a test rather than by eye. `container` is the measured width of

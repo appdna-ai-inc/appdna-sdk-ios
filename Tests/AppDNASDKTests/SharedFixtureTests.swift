@@ -464,6 +464,11 @@ final class SharedFixtureTests: XCTestCase {
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
         case "receive_push":                   runReceivePush(fixture, harness)
         case "tap_push":                       runTapPush(fixture, harness)
+        // SPEC-496 — the raw host-data pass (HostDataResolver) and the step pipeline around it.
+        case "resolve_block":                  runResolveBlock(fixture, harness)
+        case "host_data_scenario":             await runHostDataScenario(fixture, harness)
+        // SPEC-496 §5b C2 — the core decoder every wrapper bridge forwards `dataContext` through.
+        case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         default:
             XCTFail("""
             [\(fixture.id)] no iOS driver for action.kind='\(fixture.action.kind)'.

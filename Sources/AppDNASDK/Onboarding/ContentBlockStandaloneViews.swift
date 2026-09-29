@@ -2463,10 +2463,20 @@ struct CarouselBlockView: View {
     let onAction: (_ action: String, _ actionValue: String?) -> Void
     @Binding var toggleValues: [String: Bool]
     @Binding var inputValues: [String: Any]
+    /// SPEC-496 §A4 — the step's ONE layered block list, handed down so a consent-coloured CTA on a
+    /// page gates on the WHOLE step's required fields, not just `[page]`. Nil → the page itself.
+    var gateBlocks: [ContentBlock]? = nil
+    /// SPEC-496 §A1 — the parent renderer's raw-resolved ids (markers honoured by the gate).
+    var rawResolvedIds: Set<String> = []
     @State private var selection = 0
+    /// SPEC-496 — set by the parent renderer on a raw-resolved carousel.
+    @SwiftUI.Environment(\.appdnaRawResolved) private var rawResolved: Bool
 
     var body: some View {
-        let pages = block.children ?? block.stack_children ?? []
+        // SPEC-496 §A3 — a page whose `empty_state.mode == hidden` is not a page (no blank slide, no dot).
+        let pages = (block.children ?? block.stack_children ?? []).filter {
+            !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolved)
+        }
         // Empty carousel collapses to 0 (matches Android, which renders nothing) — was a 240pt blank box.
         let height = pages.isEmpty ? 0 : CGFloat(block.height ?? 240)
         let activeColor = (block.field_config?["indicator_active_color"]?.value as? String).map { Color(hex: $0) } ?? Color(hex: AppDNA.brandAccentHex ?? "#6366F1")
@@ -2475,7 +2485,11 @@ struct CarouselBlockView: View {
             GeometryReader { geo in
                 HStack(spacing: 0) {
                     ForEach(Array(pages.enumerated()), id: \.offset) { _, page in
-                        ContentBlockRendererView(blocks: [page], onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues)
+                        // SPEC-496 §5b C5.1 — no `onInteract` here, and none is needed for
+                        // `refresh_step`: a page's buttons reach the step through the inherited
+                        // `\.appdnaStepInteraction` environment (proof: device row D7 + review).
+                        ContentBlockRendererView(blocks: [page], onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,
+                                                 rawResolvedIds: rawResolvedIds, gateBlocks: gateBlocks)
                             .frame(width: geo.size.width, height: geo.size.height, alignment: .topLeading)
                     }
                 }

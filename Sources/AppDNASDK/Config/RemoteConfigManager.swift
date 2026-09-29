@@ -13,6 +13,15 @@ final class RemoteConfigManager {
     /// Shared JSON decoder for all config parsing.
     private static let snakeCaseDecoder = JSONDecoder()
 
+    /// SPEC-496 §A1 — a DEDICATED decoder for the SDK's own onboarding cache. Its `userInfo` flag
+    /// tells `OnboardingStep` to prefer the cached `raw_content_blocks` over the typed ladder. Never
+    /// the shared decoder above: live parses must not honour a key only our cache writes.
+    private static let onboardingCacheDecoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.userInfo[.appdnaOnboardingFromCache] = true
+        return d
+    }()
+
     /// Recursively sanitize Firestore dictionaries: coerce string "true"/"false"
     /// → Bool so JSONDecoder doesn't fail on type mismatches for Bool fields.
     ///
@@ -546,7 +555,7 @@ final class RemoteConfigManager {
         }
         if let data = configCache.loadOnboarding() {
             if let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                parseOnboarding(dict)
+                parseOnboarding(dict, fromCache: true)
             }
         }
         if let data = configCache.loadMessages() {
@@ -648,7 +657,8 @@ final class RemoteConfigManager {
         }
     }
 
-    private func parseOnboarding(_ data: [String: Any]) {
+    private func parseOnboarding(_ data: [String: Any], fromCache: Bool = false) {
+        let decoder = fromCache ? Self.onboardingCacheDecoder : Self.snakeCaseDecoder
         // Parse active_flow_id
         let activeId = data["active_flow_id"] as? String
 
@@ -659,7 +669,7 @@ final class RemoteConfigManager {
                 guard let dict = value as? [String: Any] else { continue }
                 do {
                     let jsonData = try Self.sanitizedJSONData(dict)
-                    let config = try Self.snakeCaseDecoder.decode(OnboardingFlowConfig.self, from: jsonData)
+                    let config = try decoder.decode(OnboardingFlowConfig.self, from: jsonData)
                     parsed[key] = config
                 } catch let decodingError as DecodingError {
                     switch decodingError {

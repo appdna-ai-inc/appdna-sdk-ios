@@ -171,8 +171,22 @@ public struct OnboardingStep: Codable, Identifiable {
     /// When true, the back button is hidden on this step (the step still counts toward total progress).
     public let hide_back: Bool?
 
+    /// SPEC-496 §A1 — the step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
+    ///
+    /// The typed model drops what the raw host-data pass needs (`data_templates`, a token in a typed
+    /// slot, a `repeat` template), so the raw blocks travel on the step: every parse site gets them
+    /// for free and a config refresh cannot mix versions inside a presented flow. Nil = no raw was
+    /// captured (a step built in code) → today's view-level template pass, unchanged.
+    let rawContentBlocks: [HostJSON]?
+
     private enum CodingKeys: String, CodingKey {
         case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
+        case raw_content_blocks
+    }
+
+    /// Only `content_blocks` of a `config` / `layout` object, as raw JSON.
+    private struct RawBlocksOnly: Decodable {
+        let content_blocks: [HostJSON]?
     }
 
     /// `hide_progress` / `hide_back` are authored per-step but the console publishes them INSIDE the
@@ -183,7 +197,8 @@ public struct OnboardingStep: Codable, Identifiable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        let stepId = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.id = stepId
         self.name = try c.decodeIfPresent(String.self, forKey: .name)
         self.type = try c.decodeIfPresent(StepType.self, forKey: .type) ?? .custom
         self.hook = try c.decodeIfPresent(StepHookConfig.self, forKey: .hook)
@@ -214,11 +229,38 @@ public struct OnboardingStep: Codable, Identifiable {
         // field by hand — the same shape as the `StepConfigOverrideMerger` bug, where exactly such a
         // rebuild forgot `chat_config` and silently deleted it. Adding a field to `StepConfig` must not
         // require remembering two unrelated places to copy it.
+        //
+        // SPEC-496 §A1 — the RAW blocks follow the SAME ladder: `(config ?? layout).content_blocks`,
+        // then step-root `content_blocks` when that is empty.
+        // Same object the typed ladder read: `config` when present and non-null, else `layout`.
+        let rawSourceKey: CodingKeys = ((try? c.decodeNil(forKey: .config)) == false) ? .config : .layout
+        var rawBlocks: [HostJSON]? = (try? c.decodeIfPresent(RawBlocksOnly.self, forKey: rawSourceKey))?.content_blocks
         if (decoded.content_blocks ?? []).isEmpty {
             if let stepBlocks = try c.decodeIfPresent([ContentBlock].self, forKey: .content_blocks), !stepBlocks.isEmpty {
                 decoded.content_blocks = stepBlocks
+                rawBlocks = try? c.decodeIfPresent([HostJSON].self, forKey: .content_blocks)
             }
         }
+        // Our own cache writes `raw_content_blocks` beside the typed config (the typed encode would
+        // drop every `data_templates`). Read ONLY when decoding that cache — a live document never
+        // carries the key, and a dedicated decoder flags the cache path (RemoteConfigManager).
+        if decoder.userInfo[.appdnaOnboardingFromCache] as? Bool == true,
+           let cached = try? c.decodeIfPresent([HostJSON].self, forKey: .raw_content_blocks) {
+            rawBlocks = cached
+        }
+        // Stable ids: stamp every id-less block at any depth on a copy taken once here, and decode
+        // the step's authored typed blocks FROM that stamped raw, so authored readers (secret ids,
+        // prefetch) and resolved blocks see identical ids. Falls back to the typed decode above.
+        var stampedRaw: [HostJSON]? = nil
+        if let rawBlocks, !rawBlocks.isEmpty {
+            let stamped = rawBlocks.enumerated().map { HostDataResolver.stampBlockIds($1, stepId: stepId, blockIndex: $0) }
+            if let data = try? JSONEncoder().encode(stamped),
+               let typed = try? JSONDecoder().decode([ContentBlock].self, from: data) {
+                decoded.content_blocks = typed
+                stampedRaw = stamped
+            }
+        }
+        self.rawContentBlocks = stampedRaw
         self.config = decoded
         self.next_step_rules = stepRules
     }
@@ -233,9 +275,12 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(hide_progress, forKey: .hide_progress)
         try c.encodeIfPresent(hide_back, forKey: .hide_back)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
+        // SPEC-496 — verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
+        try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
     public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil) {
+        self.rawContentBlocks = nil
         self.id = id
         self.name = name
         self.type = type
@@ -260,6 +305,11 @@ public struct OnboardingStep: Codable, Identifiable {
             self = StepType(rawValue: rawValue) ?? .custom
         }
     }
+}
+
+extension CodingUserInfoKey {
+    /// SPEC-496 — set ONLY on the dedicated decoder that reads the SDK's own onboarding cache.
+    static let appdnaOnboardingFromCache = CodingUserInfoKey(rawValue: "ai.appdna.onboarding.fromCache")!
 }
 
 // MARK: - Step Hook Config (SPEC-083 P1)
@@ -801,28 +851,140 @@ public struct ElementInteractionResult {
     public var fieldOptions: [String: [InputOption]]?
     /// When true, advance to the next step after handling this interaction.
     public var advance: Bool
+    /// SPEC-496 §5b C2 — new host data for THIS step, merged into its `{{hook_data.…}}` namespace
+    /// **shallowly, per top-level key**: a key named here replaces that key's value whole, a key not
+    /// named keeps its value, and an `NSNull()` value REMOVES the key. Everything that reads
+    /// `hook_data` — tokens, `data_templates`, bindings and a Select's `repeat.source` — re-resolves,
+    /// so "Show more" is `dataContext: ["recommendations": accumulatedList]`.
+    ///
+    /// Honoured on the result of EVERY interaction, not only `refresh`. `nil` or `[:]` changes
+    /// nothing. Keys are top-level names, not paths (`"a.b"` is a key named `a.b`). Never persisted,
+    /// sent to the backend or tracked.
+    ///
+    /// Last in `init` on purpose: Swift argument order is part of every call, and the wrappers'
+    /// bridges construct this type positionally-by-label.
+    public var dataContext: [String: Any]?
 
     public init(
         fieldConfigPatches: [String: [String: Any]]? = nil,
         inputValuePatches: [String: Any]? = nil,
         fieldOptions: [String: [InputOption]]? = nil,
-        advance: Bool = false
+        advance: Bool = false,
+        dataContext: [String: Any]? = nil
     ) {
         self.fieldConfigPatches = fieldConfigPatches
         self.inputValuePatches = inputValuePatches
         self.fieldOptions = fieldOptions
         self.advance = advance
+        self.dataContext = dataContext
     }
+
+    /// SPEC-496 §5b C2 — the ONE decoder for a `dataContext` that crossed a bridge (or was built by a
+    /// native host). Every wrapper bridge forwards `map["dataContext"]` here in one line, and the core
+    /// `apply` runs every `dataContext` through it before writing the layer.
+    ///
+    /// - A non-map input → nil.
+    /// - Keys are stringified.
+    /// - A top-level `null` (`NSNull`, or a boxed `Optional<Any>.none`) is KEPT as `NSNull()`: that is
+    ///   the removal marker. 🔴 The wrappers' `anyMap` / `asStringMap` helpers DROP null members, which
+    ///   is why they must never be used for this field — "null removes a key" would silently vanish.
+    /// - Nested bridged maps and lists are normalised recursively to `[String: Any]` / `[Any]`,
+    ///   keeping nested nulls (a bridged nested map fails a direct `as? [String: Any]` at depth).
+    /// - Values keep their JSON type: a Swift `Bool` becomes the `CFBoolean` a bridged `true` is, and
+    ///   integers / doubles become `NSNumber`, so `true` renders `"true"` and `1` renders `"1"` whether
+    ///   the host is native or bridged.
+    public static func decodeDataContext(_ raw: Any?) -> [String: Any]? {
+        guard let raw = unwrapOptional(raw) else { return nil }
+        let pairs: [(String, Any)]
+        if let m = raw as? [String: Any] {
+            pairs = m.map { ($0.key, $0.value) }
+        } else if let m = raw as? NSDictionary {
+            pairs = m.compactMap { k, v in (k as? String ?? "\(k)", v) }
+        } else if let m = raw as? [AnyHashable: Any] {
+            pairs = m.map { ("\($0.key.base)", $0.value) }
+        } else {
+            return nil
+        }
+        var out: [String: Any] = [:]
+        for (k, v) in pairs { out[k] = normaliseJSONValue(v) }
+        return out
+    }
+
+    /// SPEC-496 §5b C5.5 — the minimum time a wrapper bridge must wait for the host's
+    /// `onElementInteraction` answer. `refresh` has an 8 s SDK deadline, so a bridge that gave up at its
+    /// default 5 s would cut every slow "Show more" short. Each bridge applies
+    /// `max(configured, minimumBridgeTimeout(action:) ?? 0)` — one line, no per-bridge rule.
+    public static func minimumBridgeTimeout(action: String) -> TimeInterval? {
+        action == "refresh" ? InteractionCoordinator.refreshTimeout : nil
+    }
+
+    /// `Optional<Any>.none` boxed in an `Any` is not `nil` to Swift — unwrap it.
+    private static func unwrapOptional(_ v: Any?) -> Any? {
+        guard let v else { return nil }
+        if let boxed = v as? AnyOptionalBox { return unwrapOptional(boxed.appdnaUnboxed) }
+        return v
+    }
+
+    /// One JSON value, normalised to the shapes a bridged value has. A null anywhere → `NSNull()`.
+    static func normaliseJSONValue(_ raw: Any) -> Any {
+        guard let v = unwrapOptional(raw) else { return NSNull() }
+        if v is NSNull { return NSNull() }
+        if let s = v as? String { return s }
+        // A bridged number or bool IS an NSNumber, and its CFBoolean-ness is the only thing that
+        // tells `true` from `1`. A native Swift `Bool` / `Int` / `Double` bridges to exactly the same
+        // shapes here (`NSNumber(value: true)` is the CFBoolean singleton), so a native host and a
+        // bridged one land in the layer identically.
+        if let n = v as? NSNumber { return n }
+        if let m = v as? [String: Any] { return m.mapValues { normaliseJSONValue($0) } }
+        if let m = v as? NSDictionary {
+            var out: [String: Any] = [:]
+            for (k, val) in m { out[k as? String ?? "\(k)"] = normaliseJSONValue(val) }
+            return out
+        }
+        if let a = v as? [Any] { return a.map { normaliseJSONValue($0) } }
+        if let a = v as? NSArray { return a.map { normaliseJSONValue($0) } }
+        return v
+    }
+}
+
+/// Lets `decodeDataContext` see through an `Optional` boxed inside an `Any`.
+private protocol AnyOptionalBox { var appdnaUnboxed: Any? { get } }
+extension Optional: AnyOptionalBox {
+    fileprivate var appdnaUnboxed: Any? { self.map { $0 as Any } }
 }
 
 /// The merged result of applying an `ElementInteractionResult` to a step's live state.
 public struct AppliedInteraction {
+    /// The TAP-TIME snapshot with the patches merged in. Kept for compatibility; SPEC-496 §5b C4.1:
+    /// the renderers no longer write it back (that reverted every pick made during the call) — they
+    /// apply `inputValuePatches` key by key onto the CURRENT values instead.
     public let inputValues: [String: Any]
     public let fieldConfigOverrides: [String: [String: Any]]
     /// #657 — per-block replacement options the renderer layers at read time, like the config
     /// overrides beside it.
     public let fieldOptionsOverrides: [String: [InputOption]]
     public let advance: Bool
+    /// SPEC-496 §5b C2 — `result.dataContext`, passed through unchanged.
+    public let dataContext: [String: Any]?
+    /// SPEC-496 §5b C4.1 — the raw `result.inputValuePatches`, passed through. The step scope applies
+    /// exactly these, one `inputValues[k] = v` per key, onto its LIVE state.
+    public let inputValuePatches: [String: Any]?
+
+    public init(
+        inputValues: [String: Any],
+        fieldConfigOverrides: [String: [String: Any]],
+        fieldOptionsOverrides: [String: [InputOption]],
+        advance: Bool,
+        dataContext: [String: Any]? = nil,
+        inputValuePatches: [String: Any]? = nil
+    ) {
+        self.inputValues = inputValues
+        self.fieldConfigOverrides = fieldConfigOverrides
+        self.fieldOptionsOverrides = fieldOptionsOverrides
+        self.advance = advance
+        self.dataContext = dataContext
+        self.inputValuePatches = inputValuePatches
+    }
 }
 
 /// SPEC-419 EPIC-11 — pure application of an `ElementInteractionResult` to a step's live state. Merges
@@ -838,7 +1000,9 @@ public func applyInteractionResult(_ result: ElementInteractionResult, inputValu
         inputValues: iv,
         fieldConfigOverrides: result.fieldConfigPatches ?? [:],
         fieldOptionsOverrides: result.fieldOptions ?? [:],
-        advance: result.advance
+        advance: result.advance,
+        dataContext: result.dataContext,
+        inputValuePatches: result.inputValuePatches
     )
 }
 

@@ -283,6 +283,34 @@ struct ContentBlockRendererView: View {
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
     /// SPEC-495 §C — where in the step a Map block is being drawn. See `MapPlacement`.
     var mapPlacement: MapPlacement = .inline
+    /// SPEC-496 §A1 — ids of blocks (any depth) the onboarding raw host-data pass produced. Those are
+    /// drawn AS RESOLVED: no view-level template pass, lookup-only `loc()` (the router's), markers
+    /// honoured. Screens/SDUI pass nothing and keep today's view-level whitelist pass.
+    var rawResolvedIds: Set<String> = []
+    /// SPEC-496 §A4 — the step's ONE layered block list, for the consent-CTA colour gate (a zone
+    /// renderer only holds its own zone's blocks). Nil → this renderer's `blocks`.
+    var gateBlocks: [ContentBlock]? = nil
+    /// SPEC-496 — set by a parent renderer on a raw-resolved block, so NESTED renderers (carousel
+    /// pages, option sheets) never re-scan resolved strings either.
+    @SwiftUI.Environment(\.appdnaRawResolved) private var envRawResolved: Bool
+    /// SPEC-496 §5b C5.1 — the onboarding step's interaction channel (nil on Screens / SDUI and inside
+    /// option sheets). Authoritative for `refresh_step` buttons when set.
+    @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
+
+    /// Was this block produced by the raw pass (directly, or inside a raw-resolved parent)?
+    private func isRawResolved(_ block: ContentBlock) -> Bool {
+        envRawResolved || rawResolvedIds.contains(block.id)
+    }
+
+    /// A container's children (row / stack / section background) minus any child whose
+    /// `empty_state.mode == hidden` (§A3). The top-level list filters in `body`; containers render
+    /// their children with `renderBlock(child)` directly, which skipped the filter, so a nested
+    /// `hide_when_empty` Select still drew.
+    private func containerChildren(_ block: ContentBlock) -> [ContentBlock] {
+        (block.children ?? block.stack_children ?? []).filter {
+            !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: isRawResolved(block) || isRawResolved($0))
+        }
+    }
 
     var body: some View {
         let visibleBlocks = blocks.filter { block in
@@ -291,6 +319,8 @@ struct ContentBlockRendererView: View {
                 responses: responses,
                 hookData: hookData
             )
+            // SPEC-496 §A3 — `empty_state.mode == hidden` hides the whole block (raw-pass blocks only).
+            && !OnboardingStepPipeline.isHiddenByEmptyState(block, rawResolved: isRawResolved(block))
         }
         // Entrance animation cap: max 10 animated blocks per step
         let animatedBlockIds: Set<String> = {
@@ -310,13 +340,18 @@ struct ContentBlockRendererView: View {
                 // SPEC-419 STEP-2 — fold any host-pushed field_config overrides onto the resolved block
                 // UNCONDITIONALLY (resolveBlockBindings early-returns raw blocks with no bindings/templates —
                 // which is every EPIC-11 element — so the merge cannot live inside it). Empty overrides = no-op.
-                let resolvedBlock = resolvedFieldOptions(
-                    resolvedFieldConfig(
-                        resolveBlockBindings(block, hookData: hookData, responses: responses),
-                        fieldConfigOverrides
-                    ),
-                    fieldOptionsOverrides
-                )
+                let isRaw = isRawResolved(block)
+                let resolvedBlock = isRaw
+                    // SPEC-496 — already resolved (and layered) by the step pipeline; only a sheet's
+                    // deferred `sheet_step_paths` remain, against this renderer's own inputs.
+                    ? OnboardingStepPipeline.applySheetStepPaths(block, stepInputs: inputValues)
+                    : resolvedFieldOptions(
+                        resolvedFieldConfig(
+                            resolveBlockBindings(block, hookData: hookData, responses: responses),
+                            fieldConfigOverrides
+                        ),
+                        fieldOptionsOverrides
+                    )
                 let shouldCollapse = resolvedBlock.collapse_on_scroll == true
                 // Collapse threshold: how many points of scroll before this block hides
                 let collapseThreshold = CGFloat(
@@ -332,6 +367,7 @@ struct ContentBlockRendererView: View {
                 let isExpandableBlock = resolvedBlock.type == .input_select
 
                 renderBlock(resolvedBlock, animate: shouldAnimate)
+                    .environment(\.appdnaRawResolved, isRaw)
                     .applyRelativeSizing(width: resolvedBlock.element_width, height: effectiveHeight, useMinHeight: isExpandableBlock)
                     .applyBlockContainerStyle(resolvedBlock)
                     // #654/#659 — a width-constrained block needs a full-width box OUTSIDE its
@@ -408,7 +444,10 @@ struct ContentBlockRendererView: View {
         case .image: return AnyView(imageBlock(block))
         case .media_gallery: return AnyView(mediaGalleryBlock(block))
         case .section_background: return AnyView(sectionBackgroundBlock(block))
-        case .carousel: return AnyView(CarouselBlockView(block: block, onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues))
+        case .carousel: return AnyView(CarouselBlockView(block: block, onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,
+                                                         // Onboarding passes the step's layered list; Screens pass nil, so a page
+                                                         // keeps gating on itself as before (Screens unchanged in P1, §A1).
+                                                         gateBlocks: gateBlocks, rawResolvedIds: rawResolvedIds))
         case .otp_input: return AnyView(OTPInputBlockView(block: block, inputValues: $inputValues, onInteract: onInteract))
         case .warning_banner: return AnyView(warningBannerBlock(block))
         case .password_strength: return AnyView(passwordStrengthBlock(block))
@@ -648,7 +687,7 @@ struct ContentBlockRendererView: View {
             return (CGFloat(w), Color(hex: (m["color"] as? String) ?? "#000000"))
         }
         let totalW = max(zones.reduce(0) { $0 + $1.0 }, 0.0001)
-        let children = block.children ?? block.stack_children ?? []
+        let children = containerChildren(block)
         let arrangement = (block.field_config?["content_arrangement"]?.value as? String) ?? "space_between"
         // EPIC-4b v2 — background_extent (% of screen height, 1–100) lets the section fill the screen
         // or reach a configured % from the top. When absent, fall back to the fixed height (parity with
@@ -961,7 +1000,8 @@ struct ContentBlockRendererView: View {
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
             guard enabledHex != nil || disabledHex != nil else { return Color(hex: fallback) }
-            let satisfied = RequiredFieldGate.evaluate(blocks: blocks, inputValues: inputValues).canAdvance
+            // SPEC-496 §A4 — the step's ONE layered list (every zone), markers honoured.
+            let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
             return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
         }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
@@ -970,17 +1010,36 @@ struct ContentBlockRendererView: View {
         let borderColor = authoredButtonBorderColorHex(block.border_color).map { Color(hex: $0) } ?? bgColor
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
+        // SPEC-496 §5b C5.1 / C5.3 — the step channel applies only to a `refresh_step` button with no
+        // tap override (a `sound_button` plays audio instead and never dispatches its action).
+        let isRefresh = onTapOverride == nil && (block.action ?? "next") == "refresh_step"
+        let channel: StepInteraction? = isRefresh ? stepInteraction : nil
+        let isLoading = channel?.loadingBlockId == block.id
+        // C5.3 — the spinner takes the colour the LABEL actually draws in: an authored `text_color`
+        // wins (#594), else a Typography style's colour (`applyTextStyle` bakes `.primary` when the
+        // style sets none), else the variant's foreground.
+        let labelColor: Color = {
+            if let hex = block.text_color, !hex.isEmpty { return Color(hex: hex) }
+            if let style = block.style { return style.color.map { Color(hex: $0) } ?? .primary }
+            return fgColor
+        }()
 
         return Button {
             if let onTapOverride {
                 onTapOverride()
-            } else if (block.action ?? "next") == "refresh_step" {
+            } else if isRefresh {
                 // #657 — refresh the step in place. Until now `onElementInteraction` could only be
                 // fired by a fixed set of interactive blocks (OTP, press-hold, the pickers…), never
                 // by a button, so "Show 4 more" / "Regenerate results" had no way to ask the host
                 // for new content without ALSO advancing — which sent the user to the next screen.
                 // The host returns `advance: false` (the default) and the step re-renders.
-                onInteract(block.id, "refresh", block.action_value)
+                if let channel {
+                    // C5.3 / C5.4 — locked while any interaction is in flight or host data is
+                    // pending: the button draws normally, and a tap is not a call.
+                    channel.tapRefresh(blockId: block.id, actionValue: block.action_value)
+                } else {
+                    onInteract(block.id, "refresh", block.action_value)
+                }
             } else {
                 onAction(block.action ?? "next", block.action_value)
             }
@@ -1043,6 +1102,17 @@ struct ContentBlockRendererView: View {
                 }
             }
             .foregroundColor(fgColor)
+            // SPEC-496 §5b C5.3 — the tapped refresh button, while its call is in flight: label and
+            // icon at opacity 0 (the frame, colours and border stay), a centred platform spinner
+            // tinted with the label colour on top.
+            .opacity(isLoading ? 0 : 1)
+            .overlay {
+                if isLoading {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .tint(labelColor)
+                }
+            }
             // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
             .padding(.vertical, block.button_height == nil ? 14 : 0)
             // #654/#659/#663 — `element_width: "auto"` means "as wide as the label"; this was an
@@ -1066,6 +1136,9 @@ struct ContentBlockRendererView: View {
             )
         }
         .applyPressedStyle(block.pressed_style)
+        // C5.3 — the loading button is not tappable: no pressed-style feedback, no tap.
+        .allowsHitTesting(!isLoading)
+        .accessibilityValue(isLoading ? Text("Loading") : Text(""))
     }
 
     // MARK: - Sound Button (Device QA — s20/s22)
@@ -2412,7 +2485,7 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func stackBlock(_ block: ContentBlock) -> some View {
-        let childBlocks = (block.children ?? block.stack_children ?? []).sorted { ($0.z_index ?? 0) < ($1.z_index ?? 0) } // stack_children = the editor's key (match rowBlock); was dropped → ZStack rendered empty
+        let childBlocks = containerChildren(block).sorted { ($0.z_index ?? 0) < ($1.z_index ?? 0) } // stack_children = the editor's key (match rowBlock); was dropped → ZStack rendered empty
         let align: Alignment = {
             // SPEC-419 — normalize hyphenated editor values (top-left, center-left, bottom-center)
             // to underscores so they map; also handle the *-center / center-* variants.
@@ -2488,7 +2561,7 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func wrappedRowBlock(_ block: ContentBlock) -> some View {
-        let childBlocks = block.children ?? block.stack_children ?? []
+        let childBlocks = containerChildren(block)
         let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
         let rowBgOpacity = CGFloat((cfgDouble(block.field_config?["background_opacity"])) ?? 1.0)
         let rowUseBlur = (block.field_config?["blur_background"]?.value as? Bool) == true
@@ -2536,7 +2609,7 @@ struct ContentBlockRendererView: View {
 
     @ViewBuilder
     private func standardRowBlock(_ block: ContentBlock) -> some View {
-        let childBlocks = block.children ?? block.stack_children ?? []
+        let childBlocks = containerChildren(block)
         // SPEC-419 — the editor writes `spacing` (preview reads `spacing`); `gap` is the legacy/
         // imported key. Read spacing first so authored row gap isn't lost on-device.
         let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
@@ -2849,7 +2922,7 @@ struct ContentBlockRendererView: View {
                         // keyless app on the static tier instead of constructing a GMSMapView that
                         // would raise.
                         GoogleInteractiveMap(block: block)
-                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height, googleKey: AppDNA.googleMapsApiKey) {
+                    } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height, googleKey: AppDNA.googleMapsApiKey, rawResolved: isRawResolved(block)) {
                         BundledAsyncPhaseImage(url: url) { phase in
                             switch phase {
                             case .success(let image):
@@ -3721,7 +3794,17 @@ internal func formatCoord(_ v: Double) -> String {
 ///     one is the value they left behind for when it does not resolve.
 ///  3. `map_route_polyline` as authored — a fixed route pasted into the panel.
 ///  4. the stops, joined in order, which is a straight line between them and not a road route.
-internal func mapRoutePolyline(_ block: ContentBlock) -> String? {
+internal func mapRoutePolyline(_ block: ContentBlock, rawResolved: Bool = false) -> String? {
+    // SPEC-496 §A1 — a raw-resolved block's `map_route_variable` is ALREADY resolved: use it as-is,
+    // no `.interpolated()` and no `{{` guard. Encoded polylines use ASCII 63–126, so a real host
+    // polyline can contain `{{` and the guard below would throw it away.
+    if rawResolved {
+        if let variable = (mapCfg(block, "map_route_variable") as? String) {
+            let v = variable.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !v.isEmpty { return v }
+        }
+        return (mapCfg(block, "map_route_polyline") as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
     if let variable = (mapCfg(block, "map_route_variable") as? String), !variable.isEmpty {
         let resolved = variable.interpolated().trimmingCharacters(in: .whitespacesAndNewlines)
         // An unresolved `{{token}}` comes back verbatim. Drawing it as a polyline would produce
@@ -3822,11 +3905,12 @@ internal func mapStaticURL(
     token: String?,
     width: CGFloat,
     height: CGFloat,
-    googleKey: String? = nil
+    googleKey: String? = nil,
+    rawResolved: Bool = false
 ) -> URL? {
     mapProviderOf(block) == "google"
-        ? googleStaticURL(block, key: googleKey, width: width, height: height)
-        : mapboxStaticURL(block, token: token, width: width, height: height)
+        ? googleStaticURL(block, key: googleKey, width: width, height: height, rawResolved: rawResolved)
+        : mapboxStaticURL(block, token: token, width: width, height: height, rawResolved: rawResolved)
 }
 
 /// SPEC-495 §D — our style vocabulary mapped onto Google's four map types. Mirrors Android.
@@ -3884,7 +3968,7 @@ internal func googleStyleParams(_ json: String?) -> [String] {
 /// same "one label character, only up to 9 stops" rule, the same fit behaviour. Two providers that
 /// agree on everything except URL grammar is the point: switching provider should change the map's
 /// look, not its design. Google auto-fits when centre/zoom are OMITTED.
-internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloat, height: CGFloat) -> URL? {
+internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloat, height: CGFloat, rawResolved: Bool = false) -> URL? {
     guard let key, !key.isEmpty else { return nil }
     let isPlace = (mapCfg(block, "map_mode") as? String) == "place"
     let stops = mapStops(block)
@@ -3905,7 +3989,7 @@ internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloa
 
     // Route BEFORE markers, matching Mapbox: Google draws parameters in order.
     if !isPlace, (mapCfg(block, "route_show") as? Bool) != false {
-        let encoded = mapRoutePolyline(block) ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
+        let encoded = mapRoutePolyline(block, rawResolved: rawResolved) ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
         if let encoded, !encoded.isEmpty {
             let routeW = Int(mapDouble(block, "route_width") ?? 4)
             let opacity = min(max(mapDouble(block, "route_opacity") ?? 1.0, 0), 1)
@@ -3967,7 +4051,7 @@ internal func googleStaticURL(_ block: ContentBlock, key: String?, width: CGFloa
     return URL(string: "https://maps.googleapis.com/maps/api/staticmap?" + parts.joined(separator: "&"))
 }
 
-internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat) -> URL? {
+internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFloat, height: CGFloat, rawResolved: Bool = false) -> URL? {
     guard let token, !token.isEmpty else { return nil }
     let styles = [
         "streets": "mapbox/streets-v12", "outdoors": "mapbox/outdoors-v12",
@@ -3982,7 +4066,7 @@ internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFl
     // Route BEFORE markers, so pins draw on top of the line rather than under it.
     let routeOn = !isPlace && (mapCfg(block, "route_show") as? Bool) != false
     if routeOn {
-        let encoded = mapRoutePolyline(block)
+        let encoded = mapRoutePolyline(block, rawResolved: rawResolved)
             ?? (stops.count >= 2 ? encodePolyline(stops.map { ($0.lat, $0.lng) }) : nil)
         if let e = encoded, !e.isEmpty {
             let w = Int(mapDouble(block, "route_width") ?? 4)

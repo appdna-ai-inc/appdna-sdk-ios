@@ -588,6 +588,18 @@ struct FormInputSelectBlock: View {
     // burst of onAppear callbacks from firing several identical requests for the same page.
     @State private var nextCursor: String? = nil
     @State private var isPaging: Bool = false
+    /// SPEC-496 §B0 — the in-memory query for an AUTHORED / repeat list. Stored as the query, not
+    /// as results, so the filter re-runs whenever the resolved `field_options` change (host data
+    /// landing mid-search), not only on a keystroke.
+    @State private var localQuery: String = ""
+    /// SPEC-496 — this block came out of the raw host-data pass (markers honoured, sheets not re-scanned).
+    @SwiftUI.Environment(\.appdnaRawResolved) private var rawResolved: Bool
+
+    /// SPEC-496 §A3 — `empty_state` (text in place of the options) on a raw-pass block.
+    private var emptyStateText: String? {
+        guard let es = OnboardingStepPipeline.emptyState(block, rawResolved: rawResolved), es.mode == "text" else { return nil }
+        return es.text
+    }
 
     /// Whether the author asked for a search box.
     private var showsSearch: Bool {
@@ -595,7 +607,11 @@ struct FormInputSelectBlock: View {
     }
 
     /// The set this Select is bound to, or nil for an authored list.
-    private var optionSetId: String? {
+    private var optionSetId: String? { Self.optionSetId(of: block) }
+
+    /// The Option Set a Select would load (and query) — nil/empty when host `fieldOptions` stripped
+    /// it (§A4). Static so the fixture runner reads the same field the view's `.task` keys on.
+    static func optionSetId(of block: ContentBlock) -> String? {
         block.field_config?["option_set_id"]?.value as? String
     }
 
@@ -781,7 +797,9 @@ struct FormInputSelectBlock: View {
     /// needs the full objects to record, and it only holds values.
     private var allSourcedOptions: [InputOption] {
         if let results = searchResults { return results }
-        guard let setId = optionSetId, !setId.isEmpty else { return block.field_options ?? [] }
+        guard let setId = optionSetId, !setId.isEmpty else {
+            return filterOptionsLocally(block.field_options ?? [], query: localQuery)
+        }
         return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
     }
 
@@ -798,18 +816,17 @@ struct FormInputSelectBlock: View {
             // Clearing the box restores the full list rather than showing "no results" — an empty
             // query is not a filter.
             searchResults = nil
+            localQuery = ""
             isSearching = false
             return
         }
 
         guard let setId = optionSetId, !setId.isEmpty else {
             // A locally-authored list is searched in memory. No network, no spinner, and it works
-            // with no Option Set at all.
-            let folded = trimmed.lowercased()
-            searchResults = (block.field_options ?? []).filter {
-                ($0.label ?? "").lowercased().contains(folded)
-                    || ($0.subtitle ?? "").lowercased().contains(folded)
-            }
+            // with no Option Set at all. SPEC-496 — the QUERY is kept, and the filter runs at read
+            // time over the current resolved options (see `localQuery`).
+            searchResults = nil
+            localQuery = trimmed
             return
         }
 
@@ -843,7 +860,9 @@ struct FormInputSelectBlock: View {
             // answer to "nothing matched", and falling back to the full list here would silently
             // ignore what the user typed.
             if let results = searchResults { return results }
-            guard let setId = optionSetId, !setId.isEmpty else { return block.field_options ?? [] }
+            guard let setId = optionSetId, !setId.isEmpty else {
+                return filterOptionsLocally(block.field_options ?? [], query: localQuery)
+            }
             return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
         }()
         // SPEC-441 (#541) — the active chip filters what the Select shows.
@@ -853,6 +872,14 @@ struct FormInputSelectBlock: View {
             formFieldLabel(block)
             categoryChipRow
 
+            if let emptyText = emptyStateText {
+                // SPEC-496 §A3 — a §B0-scoped Select with nothing to pick shows its empty text.
+                Text(emptyText)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 8)
+            } else {
             switch displayStyle {
             case "stacked":
                 stackedSelectView(options: options, fieldId: fieldId)
@@ -867,13 +894,14 @@ struct FormInputSelectBlock: View {
             default: // "dropdown"
                 dropdownSelectView(options: options, fieldId: fieldId)
             }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // SPEC-444 (#540, #542) — an option that owns sheet_blocks opens them in a bottom
         // sheet when picked. The blocks render through the ordinary renderer, which is what
         // lets one engine serve both the chooser and the detail screens.
         .sheet(item: $sheetOption) { opt in
-            OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil })
+            OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil }, rawResolved: rawResolved)
         }
         .onAppear {
             let fieldId = block.field_id ?? block.id
@@ -882,6 +910,18 @@ struct FormInputSelectBlock: View {
             }
             if selectedValues.isEmpty, let saved = inputValues[fieldId] as? [String] {
                 selectedValues = saved
+            }
+        }
+        // SPEC-496 §B0 — the step cleared a selection its rendered options no longer contain:
+        // follow it, so the view's selected state and `inputValues` never disagree.
+        // A value of a type this view cannot show (a host-patched `2`) leaves the view state alone —
+        // mapping it to "" would fire the dropdown's write-back and clobber the host's answer.
+        .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
+            let v = inputValues[fieldId]
+            if v is [String] {
+                selectedValues = SelectionResync.multi(v) ?? selectedValues; selectedValue = ""
+            } else if let single = SelectionResync.single(v) {
+                selectedValue = single; selectedValues = []
             }
         }
         // SPEC-448 (#556) — refresh the set AFTER the first frame has drawn. `.task` runs once the
@@ -1148,6 +1188,8 @@ struct FormInputSelectBlock: View {
                 .stroke(Color(hex: block.field_style?.border_color ?? "#D1D5DB"), lineWidth: fieldBorderWidth(block))
         )
         .onChange(of: selectedValue) { newValue in
+            // A §B0 resync to "nothing selected" must not write an empty answer back.
+            if newValue.isEmpty && inputValues[fieldId] == nil { return }
             inputValues[fieldId] = newValue
         }
     }
@@ -1535,31 +1577,12 @@ struct FormInputSelectBlock: View {
     // MARK: - Selection toggle helper
 
     private func toggleSelection(option: InputOption, fieldId: String) {
-        if isMultiSelect {
-            if let idx = selectedValues.firstIndex(of: option.resolvedValue) {
-                selectedValues.remove(at: idx)
-            } else {
-                // Enforce the console-configured cap on the ADD path only;
-                // removing a selection must always work.
-                let maxSel = cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
-                if let m = maxSel, selectedValues.count >= m { return }
-                selectedValues.append(option.resolvedValue)
-            }
-            inputValues[fieldId] = selectedValues
-            // SPEC-448 — record the full OPTIONS alongside the values, in selection order, so a
-            // later screen can say `{{selected.<field_id>.0.label}}`. inputValues keeps carrying
-            // the values alone, which is what reaches responses and therefore customer webhooks.
-            let chosen = allSourcedOptions.filter { selectedValues.contains($0.resolvedValue) }
-                .sorted { a, b in
-                    (selectedValues.firstIndex(of: a.resolvedValue) ?? 0)
-                        < (selectedValues.firstIndex(of: b.resolvedValue) ?? 0)
-                }
-            SelectedOptionStore.shared.record(fieldId: fieldId, options: chosen)
-        } else {
-            selectedValue = option.resolvedValue
-            inputValues[fieldId] = option.resolvedValue
-            SelectedOptionStore.shared.record(fieldId: fieldId, option: option)
-        }
+        guard let next = SelectOptionTap.apply(
+            option: option, block: block, selectedValues: selectedValues,
+            sourcedOptions: allSourcedOptions, inputValues: &inputValues
+        ) else { return }
+        selectedValues = next.selectedValues
+        selectedValue = next.selectedValue
         // SPEC-444 (#540, #542) — picking an option that owns a sheet opens it. The choice is
         // already recorded above; the sheet only presents, so nothing else is reported.
         if let blocks = option.sheet_blocks, !blocks.isEmpty {
@@ -2139,15 +2162,31 @@ struct FormInputSegmentedBlock: View {
             // with field_style.fill_color ?? active_color ?? brand) and the console preview.
             .tint(Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")))
             .onChange(of: selectedValue) { newValue in
+                // A resync to "nothing selected" (below) must not write an empty answer back.
+                if newValue.isEmpty && inputValues[fieldId] == nil { return }
                 inputValues[fieldId] = newValue
             }
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? String, !saved.isEmpty { selectedValue = saved }
-            else if selectedValue.isEmpty, let first = options.first {
-                selectedValue = first.resolvedValue
-                inputValues[fieldId] = first.resolvedValue
+            else if selectedValue.isEmpty, let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options) {
+                selectedValue = first
+                inputValues[fieldId] = first
             }
+        }
+        // SPEC-496 — options that arrive only after pending ends (empty → non-empty) get the same
+        // default-first rule `.onAppear` applied, when nothing is selected yet.
+        .onChange(of: options.isEmpty) { isEmpty in
+            guard !isEmpty, selectedValue.isEmpty,
+                  let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options) else { return }
+            selectedValue = first
+            inputValues[fieldId] = first
+        }
+        // SPEC-496 §B0 — the step cleared a selection its rendered options no longer contain: the
+        // view's selected state follows it (same resync as the Select). An unrecognised value type
+        // leaves the view alone (no "" write-back over a host-patched answer).
+        .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
+            if let single = SelectionResync.single(inputValues[fieldId]) { selectedValue = single }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -2417,6 +2456,12 @@ struct FormInputChipsBlock: View {
         .onAppear {
             let fieldId = block.field_id ?? block.id
             if let saved = inputValues[fieldId] as? [String] { selectedValues = saved }
+        }
+        // SPEC-496 §B0 — the step cleared (part of) a selection its rendered options no longer
+        // contain: the chips' selected state follows it, so a pruned chip is not still drawn
+        // selected — and not re-written on the next tap (`inputValues[fieldId] = selectedValues`).
+        .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
+            if let multi = SelectionResync.multi(inputValues[fieldId]) { selectedValues = multi }
         }
     }
 }
@@ -3088,6 +3133,10 @@ private extension View {
 struct OptionBottomSheetView: View {
     let option: InputOption
     let onDismiss: () -> Void
+    /// SPEC-496 — the option came out of the raw host-data pass: its sheet blocks are ALREADY
+    /// resolved, so the sheet renderer must not re-scan them (only `sheet_step_paths` resolve here,
+    /// against the sheet's own inputs).
+    var rawResolved: Bool = false
 
     @State private var sheetToggles: [String: Bool] = [:]
     @State private var sheetInputs: [String: Any] = [:]
@@ -3112,11 +3161,110 @@ struct OptionBottomSheetView: View {
                     toggleValues: $sheetToggles,
                     inputValues: $sheetInputs
                 )
+                .environment(\.appdnaRawResolved, rawResolved)
+                // SPEC-496 §5b C5.1 — a sheet has its own inputs and no interaction channel. SwiftUI
+                // environment reaches `.sheet` content, so the step's channel is cut off explicitly:
+                // a `refresh_step` button in `sheet_blocks` fires nothing (REFRESH_STEP_CANNOT_FIRE).
+                .environment(\.appdnaStepInteraction, nil)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
             }
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.hidden)
+    }
+}
+
+// MARK: - SPEC-496 helpers shared with the fixture runner
+
+/// SPEC-448 / SPEC-496 §B0 — the in-memory search of an authored (or repeat-generated) option list.
+/// Case-insensitive substring over label and subtitle; an empty query is not a filter.
+func filterOptionsLocally(_ options: [InputOption], query: String) -> [InputOption] {
+    let trimmed = query.trimmingCharacters(in: .whitespaces)
+    guard !trimmed.isEmpty else { return options }
+    let folded = trimmed.lowercased()
+    return options.filter {
+        ($0.label ?? "").lowercased().contains(folded)
+            || ($0.subtitle ?? "").lowercased().contains(folded)
+    }
+}
+
+/// SPEC-496 §B0 — a view's selected state, re-derived from `inputValues` after the step pruned it.
+/// `nil` = the `inputValues` entry is a type the view cannot show (e.g. an interaction patch
+/// `["plan": 2]`): the caller leaves its view state alone, so no "" is written back over it. Only a
+/// cleared (absent) entry resyncs the view to "nothing selected".
+enum SelectionResync {
+    static func single(_ value: Any?) -> String? {
+        guard let value else { return "" }
+        return value as? String
+    }
+    static func multi(_ value: Any?) -> [String]? {
+        guard let value else { return [] }
+        if let a = value as? [String] { return a }
+        if let s = value as? String { return s.isEmpty ? [] : [s] }
+        return nil
+    }
+}
+
+/// The Segmented default-first rule: with nothing answered (absent, or "") and options present, the
+/// first option is selected AND written. A host-set value of another type is an answer — left alone.
+enum SegmentedDefault {
+    static func pick(current: Any?, options: [InputOption]) -> String? {
+        if let current {
+            guard let s = current as? String, s.isEmpty else { return nil }
+        }
+        return options.first?.resolvedValue
+    }
+}
+
+/// A comparable fingerprint of an `inputValues` entry (the map is `[String: Any]`).
+func selectionSignature(_ value: Any?) -> String {
+    switch value {
+    case let s as String: return "s:" + s
+    case let a as [String]: return "a:" + a.joined(separator: "\u{1F}")
+    case nil: return "nil"
+    default: return "o:" + String(describing: value!)
+    }
+}
+
+/// One tap on a Select option — the write the view performs, extracted so the SPEC-496 fixture runner
+/// drives the SAME code (`host_data_scenario` `select_option`).
+enum SelectOptionTap {
+    static func isMultiSelect(_ block: ContentBlock) -> Bool {
+        block.multi_select == true || (block.field_config?["multi_select"]?.value as? Bool) == true
+    }
+
+    /// Returns the new (multi, single) selection, or nil when the tap is refused (multi-select cap).
+    static func apply(
+        option: InputOption, block: ContentBlock, selectedValues: [String],
+        sourcedOptions: [InputOption], inputValues: inout [String: Any],
+        store: SelectedOptionStore = .shared
+    ) -> (selectedValues: [String], selectedValue: String)? {
+        let fieldId = block.field_id ?? block.id
+        if isMultiSelect(block) {
+            var values = selectedValues
+            if let idx = values.firstIndex(of: option.resolvedValue) {
+                values.remove(at: idx)
+            } else {
+                // Enforce the console-configured cap on the ADD path only;
+                // removing a selection must always work.
+                let maxSel = cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
+                if let m = maxSel, values.count >= m { return nil }
+                values.append(option.resolvedValue)
+            }
+            inputValues[fieldId] = values
+            // SPEC-448 — record the full OPTIONS alongside the values, in selection order, so a
+            // later screen can say `{{selected.<field_id>.0.label}}`. inputValues keeps carrying
+            // the values alone, which is what reaches responses and therefore customer webhooks.
+            let chosen = sourcedOptions.filter { values.contains($0.resolvedValue) }
+                .sorted { a, b in
+                    (values.firstIndex(of: a.resolvedValue) ?? 0) < (values.firstIndex(of: b.resolvedValue) ?? 0)
+                }
+            store.record(fieldId: fieldId, options: chosen)
+            return (values, "")
+        }
+        inputValues[fieldId] = option.resolvedValue
+        store.record(fieldId: fieldId, option: option)
+        return ([], option.resolvedValue)
     }
 }

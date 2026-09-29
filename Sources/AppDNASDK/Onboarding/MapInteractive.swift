@@ -37,8 +37,9 @@ enum GoogleMapsBootstrap {
         if attempted { return provided }
         attempted = true
 
-        // 🔴 `provideAPIKey` RAISES an Objective-C exception when GoogleMaps.bundle is not where the
-        // Maps SDK looks for it:
+        // 🔴 When GoogleMaps.bundle is not where the Maps SDK looks for it, `GMSMapView` init RAISES an
+        // Objective-C exception (measured on 9.4.0: `provideAPIKey` itself still returns true; the
+        // raise comes at the first map view):
         //
         //     Google Maps SDK for iOS requires GoogleMaps.bundle to be part of your target
         //     under 'Copy Bundle Resources' (GMSServicesException)
@@ -50,7 +51,7 @@ enum GoogleMapsBootstrap {
         // quietly falls back to the static tier, which needs no bundle at all.
         guard mapsBundleIsPresent() else {
             Log.warning("""
-            AppDNA map: GoogleMaps.bundle is not in the app bundle, so the Maps SDK cannot start.             Falling back to the static map. If you integrate via Swift Package Manager, add the             GoogleMaps package to your APP target as well — SwiftPM nests the resource bundle inside             the dependency's own bundle, where the Maps SDK does not look for it.
+            AppDNA map: GoogleMaps.bundle is not in the app bundle (neither at its top level nor             inside one of its top-level .bundle resources), so the Maps SDK cannot start. Falling             back to the static map. Make sure the GoogleMaps resources are copied into the APP             target — not only into a framework or extension.
             """)
             return false
         }
@@ -65,13 +66,34 @@ enum GoogleMapsBootstrap {
     /**
      Whether `GoogleMaps.bundle` is somewhere the Maps SDK will find it.
 
-     It looks in the MAIN bundle. CocoaPods copies it there, which is why the wrapper hosts work.
-     SwiftPM instead nests it inside the dependency's own resource bundle
-     (`GoogleMaps_GoogleMapsTarget.bundle/GoogleMaps.bundle`), which the Maps SDK does not search —
-     so both locations are checked here and only the main-bundle hit is treated as usable.
+     🔴 MEASURED, not assumed (GoogleMaps 9.4.0, simulator, a minimal app with each layout; the
+     exception is raised at `GMSMapView` init). The Maps SDK finds `GoogleMaps.bundle`:
+       - at the top level of the MAIN bundle (`App.app/GoogleMaps.bundle`) — found;
+       - ONE level inside any top-level `.bundle` of the main bundle — found. That covers CocoaPods
+         9.x (`resource_bundles` → `App.app/GoogleMapsResources.bundle/GoogleMaps.bundle`, which is
+         what every Flutter / React Native / CocoaPods host gets) and SwiftPM
+         (`App.app/GoogleMaps_GoogleMapsTarget.bundle/GoogleMaps.bundle`); the wrapper name does not
+         matter (`Foo.bundle/GoogleMaps.bundle` was found too);
+       - TWO levels deep (`Outer.bundle/Inner.bundle/GoogleMaps.bundle`) — NOT found → the raise;
+       - absent — NOT found → the raise.
+     The old check accepted only the first, so on every CocoaPods host the interactive tier was
+     refused before the key was ever provided and the map always fell back to the static image.
      */
     private static func mapsBundleIsPresent() -> Bool {
-        Bundle.main.url(forResource: "GoogleMaps", withExtension: "bundle") != nil
+        mapsBundleIsPresent(inAppBundleAt: Bundle.main.bundleURL)
+    }
+
+    /// The layout rule above, against any app-bundle directory (injectable for tests).
+    static func mapsBundleIsPresent(inAppBundleAt root: URL, fileManager fm: FileManager = .default) -> Bool {
+        func isDir(_ u: URL) -> Bool {
+            var d: ObjCBool = false
+            return fm.fileExists(atPath: u.path, isDirectory: &d) && d.boolValue
+        }
+        if isDir(root.appendingPathComponent("GoogleMaps.bundle")) { return true }
+        let children = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        return children.contains { child in
+            child.pathExtension == "bundle" && isDir(child.appendingPathComponent("GoogleMaps.bundle"))
+        }
     }
 }
 

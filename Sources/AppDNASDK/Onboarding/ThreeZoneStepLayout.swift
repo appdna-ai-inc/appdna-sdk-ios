@@ -21,6 +21,9 @@ struct ThreeZoneStepLayout: View {
     var fieldConfigOverrides: [String: [String: Any]] = [:]
     /// #657 — per-block replacement options from a refresh interaction, threaded to the renderer.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
+    /// SPEC-496 — raw-resolved block ids and the step's ONE layered list (consent-CTA gate).
+    var rawResolvedIds: Set<String> = []
+    var gateBlocks: [ContentBlock]? = nil
 
     /// Scroll offset tracked for collapse_on_scroll blocks (Sprint 7).
     @State private var scrollOffset: CGFloat = 0
@@ -28,6 +31,8 @@ struct ThreeZoneStepLayout: View {
     var body: some View {
         let visible = blocks.filter {
             evaluateVisibilityCondition($0.visibility_condition, responses: responses, hookData: hookData)
+                // SPEC-496 §A3 — `empty_state.mode == hidden` hides the block (raw-pass blocks only).
+                && !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolvedIds.contains($0.id))
         }
         let (topBlocks, centerBlocks, bottomBlocks) = Self.partitionBlocks(visible)
         let onlyCenterContent = topBlocks.isEmpty && !centerBlocks.isEmpty
@@ -127,7 +132,9 @@ struct ThreeZoneStepLayout: View {
             scrollOffset: scrollOffset,
             onInteract: onInteract,
             fieldConfigOverrides: fieldConfigOverrides,
-            fieldOptionsOverrides: fieldOptionsOverrides
+            fieldOptionsOverrides: fieldOptionsOverrides,
+            rawResolvedIds: rawResolvedIds,
+            gateBlocks: gateBlocks ?? blocks
         )
         // Use ~8% of screen width for responsive margins across all devices
         .padding(.horizontal, max(24, UIScreen.main.bounds.width * 0.08))
