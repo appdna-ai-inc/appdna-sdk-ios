@@ -82,10 +82,10 @@ final class AppDNANotificationBootstrapTests: XCTestCase {
     func testDisabledKeyRecordsTheFlagAndInstallsNothing() {
         let slot = InMemoryNotificationCenterSlot()
         NotificationProxyBootstrap.install(slot: slot, plist: ["AppDNADisableNotificationProxy": true], source: .launchObserver)
-        XCTAssertNil(slot.delegate)
-        XCTAssertEqual(slot.delegateReads, 0)
         XCTAssertTrue(NotificationProxyBootstrap.diagnoseLines().contains("notificationDelegate: disabled"))
         XCTAssertTrue(NotificationProxyBootstrap.diagnoseLines().contains("notificationProxyInstallSource: none"))
+        XCTAssertEqual(slot.delegateReads, 0, "neither the disabled install nor diagnose() read the centre")
+        XCTAssertNil(slot.delegate)
     }
 
     // MARK: - Configure fallback

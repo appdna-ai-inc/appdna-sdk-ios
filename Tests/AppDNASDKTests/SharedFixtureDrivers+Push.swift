@@ -117,8 +117,9 @@ extension SharedFixtureTests {
         PushIdempotency.resetForTesting()
         let manager = pushTokenManager(h)
         AppDNA.pushModule.manager = manager
-        AppDNA.pushDelegate = PushDelegateSpy(harness: h)
-        defer { withExtendedLifetime(manager) { finishPushEntryPoints() } }
+        let pushSpy = PushDelegateSpy(harness: h)   // held here: `AppDNA.pushDelegate` is weak
+        AppDNA.pushDelegate = pushSpy
+        defer { withExtendedLifetime((manager, pushSpy)) { finishPushEntryPoints() } }
         if action["shutdown"]?.boolValue == true {
             PushGate.shared.markShutDown()
         } else if action["configured"]?.boolValue == true {

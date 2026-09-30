@@ -2137,8 +2137,9 @@ final class SharedFixtureTests: XCTestCase {
                 return XCTFail("[\(f.id)] receive_push via '\(via)' has no iOS entry point (iOS has no messaging service)")
             }
             let manager = preparePushEntryPoints(h)
-            defer { withExtendedLifetime(manager) { finishPushEntryPoints() } }
-            AppDNA.pushDelegate = PushDelegateSpy(harness: h)
+            let pushSpy = PushDelegateSpy(harness: h)   // held here: `AppDNA.pushDelegate` is weak
+            defer { withExtendedLifetime((manager, pushSpy)) { finishPushEntryPoints() } }
+            AppDNA.pushDelegate = pushSpy
             let returned = AppDNA.pushModule.handleMessageData(userInfo)      // REAL public entry point
             await settlePushMainQueue(seconds: 0.2)
             h.state["returned"] = returned
