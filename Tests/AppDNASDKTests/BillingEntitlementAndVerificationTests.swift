@@ -156,6 +156,19 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(closureGot.map(\.isActive), spy.changes[0].map(\.isActive))
     }
 
+    /// Parity with the server and Android — NEGATIVE CONTROL: `billing_retry` was not in the active set, so a
+    /// paying user in billing retry read `isActive == false` / `hasActiveSubscription == false`.
+    func testBillingRetryCountsAsActive() {
+        let row = ServerEntitlement(productId: "m", store: "app_store", status: "billing_retry",
+                                    expiresAt: nil, isTrial: false, offerType: nil)
+        XCTAssertEqual(AppDNA.BillingModule.publicEntitlements([row]).first?.isActive, true)
+        let cache = EntitlementCache()
+        defer { UserDefaults.standard.removeObject(forKey: "com.appdna.entitlements") }   // update() persists there
+        cache.update(row)
+        XCTAssertTrue(cache.hasActiveSubscription)
+        XCTAssertNotNil(cache.entitlement(for: "m"))
+    }
+
     // MARK: - 2. Real changes only — renewal, expiry, refund
 
     /// NEGATIVE CONTROL: with the old product-id-set diff, the renewal step (same product, later expiry)
@@ -381,6 +394,11 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let v = VerifiedPurchase.parse(try JSONDecoder().decode(VerifyReply.self, from: Data(dto.utf8)).data)
         XCTAssertEqual(v.productId, "m"); XCTAssertEqual(v.productType, "subs"); XCTAssertTrue(v.isTrial)
         XCTAssertEqual(v.expiresAt, "2099-01-01T00:00:00Z"); XCTAssertEqual(v.originalTransactionId, "100")
+        XCTAssertNil(v.environment, "absent on an older server")
+        let sandbox = #"{"data":{"entitled":true,"product_id":"m","store":"app_store","status":"active","environment":"sandbox"}}"#
+        XCTAssertEqual(VerifiedPurchase.parse(try JSONDecoder().decode(VerifyReply.self, from: Data(sandbox.utf8)).data).environment, "sandbox")
+        let odd = #"{"data":{"entitled":true,"product_id":"m","store":"app_store","status":"active","environment":"Xcode"}}"#
+        XCTAssertNil(VerifiedPurchase.parse(try JSONDecoder().decode(VerifyReply.self, from: Data(odd.utf8)).data).environment)
         let legacy = #"{"data":{"entitled":true,"subscription":{"product_id":"m","store":"app_store","status":"active","current_period_end":"2099-01-01T00:00:00Z"}}}"#
         let l = VerifiedPurchase.parse(try JSONDecoder().decode(VerifyReply.self, from: Data(legacy.utf8)).data)
         XCTAssertEqual(l.productId, "m"); XCTAssertEqual(l.expiresAt, "2099-01-01T00:00:00Z"); XCTAssertFalse(l.isTrial)

@@ -18,6 +18,9 @@ struct VerifyReplyItem: Decodable {
     let consume: Bool?
     let offer_type: String?
     let offer_applied: OfferApplied?
+    /// `"production"` / `"sandbox"` — the store environment the server verified the transaction in
+    /// (additive; absent on older servers).
+    let environment: String?
     /// Legacy servers nest the row here.
     let subscription: Legacy?
 
@@ -47,6 +50,10 @@ struct VerifiedPurchase: Equatable {
     let originalTransactionId: String?
     let consume: Bool
     let offerType: String?
+    /// The server's `environment` (`production` / `sandbox` only, as Android reads it); nil when absent or
+    /// anything else. The iOS verification runs after the purchase was delivered, so this is logged — the
+    /// `TransactionInfo` a host got carries StoreKit's own `Transaction.environment`.
+    var environment: String? = nil
 
     var serverEntitlement: ServerEntitlement {
         ServerEntitlement(productId: productId, store: store, status: status,
@@ -68,7 +75,8 @@ struct VerifiedPurchase: Equatable {
             isTrial: item.is_trial ?? (status == "trialing"),
             originalTransactionId: item.original_transaction_id,
             consume: item.consume ?? false,
-            offerType: legacy?.offer_applied?.offer_type ?? item.offer_applied?.offer_type ?? item.offer_type
+            offerType: legacy?.offer_applied?.offer_type ?? item.offer_applied?.offer_type ?? item.offer_type,
+            environment: item.environment.flatMap { $0 == "production" || $0 == "sandbox" ? $0 : nil }
         )
     }
 }

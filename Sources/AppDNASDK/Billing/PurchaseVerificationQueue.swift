@@ -121,7 +121,7 @@ actor PurchaseVerificationQueue {
                 appUserId: entry.appUserId
             )
             remove(transactionId)
-            Log.debug("PurchaseVerificationQueue: \(transactionId) verified (entitled: \(reply.entitled), status: \(reply.status))")
+            Log.debug("PurchaseVerificationQueue: \(transactionId) verified (entitled: \(reply.entitled), status: \(reply.status), environment: \(reply.environment ?? "-"))")
         } catch {
             switch VerifyFailureClass.classify(error) {
             case .terminal:

@@ -231,6 +231,7 @@ extension SharedFixtureTests {
                     "is_trial": v.isTrial,
                     "original_transaction_id": SharedFixtureTests.orNull(v.originalTransactionId),
                     "consume": v.consume,
+                    "environment": SharedFixtureTests.orNull(v.environment),
                 ]
             } catch {
                 XCTFail("[\(f.id)] case \(name): the reply did not decode: \(error)")

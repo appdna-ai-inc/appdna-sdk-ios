@@ -579,11 +579,12 @@ extension AppDNA {
 
         /// The public `Entitlement` of each posted `ServerEntitlement` — ONE conversion for the closure
         /// handlers and the delegate, so the two can never disagree. `isActive`: an entitled status
-        /// (`active` / `trialing` / `grace_period`) whose `expiresAt`, when known, has not passed.
+        /// (`EntitlementCache.activeStatuses` — `active` / `trialing` / `grace_period` / `billing_retry`, the
+        /// server's and Android's set) whose `expiresAt`, when known, has not passed.
         static func publicEntitlements(_ entitlements: [ServerEntitlement], now: Date = Date()) -> [Entitlement] {
             entitlements.map { e in
                 let expiresAt = e.expiresAt.flatMap(ISO8601.date(from:))
-                let entitledStatus = e.status == "active" || e.status == "trialing" || e.status == "grace_period"
+                let entitledStatus = EntitlementCache.activeStatuses.contains(e.status)
                 return Entitlement(
                     identifier: e.productId,
                     isActive: entitledStatus && (expiresAt.map { $0 > now } ?? true),
