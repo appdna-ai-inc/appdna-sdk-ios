@@ -2774,6 +2774,7 @@ struct FormInputLocationPlaceholderBlock: View {
             if let savedDict = inputValues[fieldId] as? [String: Any] {
                 // Full structured dict — rebuild display text from city/state/country
                 let display = Self.formatLocationDisplay(from: savedDict)
+                    ?? (savedDict["formatted_address"] as? String)
                     ?? (savedDict["address"] as? String)
                     ?? ""
                 if !display.isEmpty && text != display {
@@ -2828,7 +2829,9 @@ struct FormInputLocationPlaceholderBlock: View {
                 isRestoringFromSaved = true
                 text = fallback
                 DispatchQueue.main.async { isRestoringFromSaved = false }
-                inputValues[fieldId] = ["address": fallback]
+                // SPEC-497 §13h — `formatted_address` is the one key both platforms store; `address`
+                // stays as a legacy alias for readers of the raw answer.
+                inputValues[fieldId] = ["formatted_address": fallback, "address": fallback]
                 Log.debug("Location resolved without a placemark")
                 return
             }
@@ -2837,6 +2840,8 @@ struct FormInputLocationPlaceholderBlock: View {
             let city = placemark.locality ?? placemark.subAdministrativeArea ?? ""
             let state = placemark.administrativeArea ?? ""
             let country = placemark.country ?? ""
+            // SPEC-497 §13h — the completion's own text, as the fallback above builds it.
+            let formattedAddress = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
 
             // IMPORTANT: MKLocalSearch's MKPlacemark.timeZone is USUALLY NIL
             // for text-search results. Falling back to TimeZone.current returns
@@ -2853,7 +2858,8 @@ struct FormInputLocationPlaceholderBlock: View {
 
             // Helper that stores the dict + updates display + prints debug
             let finalize: (String) -> Void = { resolvedTimezone in
-                let locationDict: [String: Any] = [
+                var locationDict: [String: Any] = [
+                    "formatted_address": formattedAddress,
                     "city": city,
                     "state": state,
                     "country": country,
@@ -2861,6 +2867,8 @@ struct FormInputLocationPlaceholderBlock: View {
                     "latitude": coordinate.latitude,
                     "longitude": coordinate.longitude,
                 ]
+                if let code = placemark.isoCountryCode, !code.isEmpty { locationDict["country_code"] = code }
+                if let postal = placemark.postalCode, !postal.isEmpty { locationDict["postal_code"] = postal }
                 inputValues[fieldId] = locationDict
 
                 let display = Self.formatLocationDisplay(from: locationDict) ?? result.title

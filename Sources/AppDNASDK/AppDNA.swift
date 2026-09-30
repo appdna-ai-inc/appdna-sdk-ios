@@ -1164,6 +1164,9 @@ public final class AppDNA: @unchecked Sendable {
 
     // MARK: - Public API: Diagnostics
 
+    /// Test seam for the `base_url:` line (the configured environment is private state).
+    internal static var diagnoseEnvironmentForTesting: Environment?
+
     /// Print a comprehensive SDK health report to the console.
     /// Call after `configure()` has had time to complete (e.g. after 3-5 seconds or in viewDidAppear).
     /// Checks: API key format, bootstrap status, Firebase initialization, Firestore connectivity, event queue health.
@@ -1201,6 +1204,8 @@ public final class AppDNA: @unchecked Sendable {
 
             // 2. Environment
             lines.append("║ ✅ Environment: \(shared.environment.rawValue)")
+            // SPEC-497 §3.11 — the resolved API base. The E2E hosts match `base_url: ` by substring.
+            lines.append("║ base_url: \(APIBaseURL.resolve(environment: diagnoseEnvironmentForTesting ?? shared.environment))")
 
             // 3. Network
             switch NetworkMonitor.shared.currentConnectionType {
@@ -1332,15 +1337,16 @@ public final class AppDNA: @unchecked Sendable {
     }
 
     /// Get structured location data from an onboarding location field (SPEC-089).
-    /// Returns nil if the field wasn't filled or wasn't a location type.
+    ///
+    /// A selected suggestion returns the full object; text the user typed without selecting returns
+    /// `{formatted_address, raw_query}` = that text with null coordinates. Returns nil if the field was
+    /// not answered (or holds an empty string, a number or null). Never serialises the stored value,
+    /// so no stored shape can crash the host (SPEC-497 §13h).
     public static func getLocationData(fieldId: String) -> LocationData? {
         let responses = SessionDataStore.shared.onboardingResponses
-        for (_, stepData) in responses {
-            if let locationDict = (stepData as? [String: Any])?[fieldId],
-               let jsonData = try? JSONSerialization.data(withJSONObject: locationDict),
-               let location = try? JSONDecoder().decode(LocationData.self, from: jsonData) {
-                return location
-            }
+        for key in responses.keys.sorted() {
+            guard let stepData = responses[key] as? [String: Any], let stored = stepData[fieldId] else { continue }
+            if let location = LocationData.fromStoredAnswer(stored) { return location }
         }
         return nil
     }

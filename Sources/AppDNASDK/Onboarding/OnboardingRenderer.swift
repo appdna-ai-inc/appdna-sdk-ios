@@ -2386,6 +2386,11 @@ enum AuthActionPolicy {
         "logout", "change_password", "set_new_password",
         "delete_account", "update_profile",
     ]
+
+    /// SPEC-497 §4.2 — the actions a wrapper bridge must wait at least
+    /// `StepAdvanceResult.authBridgeTimeout` for. On iOS this is exactly the delegate-required set
+    /// (which already includes `social_login`); `check:auth-action-parity` pins this definition.
+    static let bridgeFloorActions = delegateRequiredActions
 }
 
 // MARK: - Secret redaction

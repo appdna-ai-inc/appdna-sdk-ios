@@ -692,6 +692,29 @@ public enum StepAdvanceResult {
     case stay(message: String? = nil)
 }
 
+// MARK: - SPEC-497 §4.2 — sign-in hook bridge floor
+
+extension StepAdvanceResult {
+    /// The floor a wrapper bridge applies to `onBeforeStepAdvance` for a sign-in action: 120 s.
+    ///
+    /// The native core never times this hook out; only the Flutter / React Native bridges do (5 s by
+    /// default). A sign-in spans OS sheets, account pickers, 2FA and a backend round trip, so a bridge
+    /// that gave up at 5 s blocked every real sign-in. It stays bounded so a handler that never answers
+    /// cannot pin the "Processing…" overlay forever.
+    public static let authBridgeTimeout: TimeInterval = 120
+
+    /// The minimum time a wrapper bridge must wait for the host's `onBeforeStepAdvance` answer, or
+    /// `nil` when no floor applies. Each bridge waits `max(configured, minimumBridgeTimeout(stepData:) ?? 0)`.
+    ///
+    /// - Parameter stepData: the step data the bridge forwards to the host (its `action` key names
+    ///   the button action that triggered the advance).
+    public static func minimumBridgeTimeout(stepData: [String: Any]?) -> TimeInterval? {
+        guard let action = stepData?["action"] as? String,
+              AuthActionPolicy.bridgeFloorActions.contains(action) else { return nil }
+        return authBridgeTimeout
+    }
+}
+
 /// Optional config override for dynamic step content.
 public struct StepConfigOverride {
     /// Override field values (for form steps — pre-fill fields).

@@ -114,7 +114,11 @@ final class SessionDataStore {
     // MARK: - Persistence Helpers
 
     private func persistDict(_ dict: [String: Any], key: String) {
-        guard let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+        // `data(withJSONObject:)` RAISES (an Objective-C exception `try?` cannot catch) on a NaN /
+        // infinite number or a non-JSON leaf, so validate first: an odd answer is not persisted,
+        // rather than taking the host app down (SPEC-497 §13h).
+        guard JSONSerialization.isValidJSONObject(dict),
+              let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
         // Enforce size cap
         guard data.count <= Self.maxStorageBytes else {
             Log.warning("SessionDataStore: \(key) exceeds \(Self.maxStorageBytes) bytes — not persisting")

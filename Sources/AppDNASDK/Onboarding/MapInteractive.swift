@@ -100,11 +100,21 @@ enum GoogleMapsBootstrap {
 /// The interactive Google map, wrapped for SwiftUI.
 ///
 /// Every camera, styling and overlay decision below mirrors `MapInteractive.kt` field for field, so
-/// switching platform does not change what the author authored. The shared fixtures assert that.
+/// switching platform does not change what the author authored. What is drawn and where the camera
+/// goes come from `MapInteractivePlan.compute` (SPEC-497 §7.2) — the same pure function the shared
+/// fixtures drive, so a fixture cannot pass against a copy of the logic.
 struct GoogleInteractiveMap: UIViewRepresentable {
     let block: ContentBlock
+    /// SPEC-497 §7.2 — as `mapStaticURL(…, rawResolved:)`: a raw host polyline containing `{{` is kept.
+    var rawResolved: Bool = false
 
-    func makeUIView(context: Context) -> GMSMapView { buildMapView() }
+    var plan: MapInteractivePlan { MapInteractivePlan.compute(block: block, rawResolved: rawResolved) }
+
+    func makeUIView(context: Context) -> InteractiveMapContainer {
+        let container = InteractiveMapContainer(mapView: buildMapView())
+        container.setCamera(plan.camera)
+        return container
+    }
 
     /**
      The whole construction, with no SwiftUI `Context` in it.
@@ -115,10 +125,11 @@ struct GoogleInteractiveMap: UIViewRepresentable {
      #671 stayed invisible: everything we measured was measuring something other than the map.
      */
     internal func buildMapView() -> GMSMapView {
+        let initial = Self.initialCamera(for: plan.camera)
         let camera = GMSCameraPosition.camera(
-            withLatitude: centre.lat,
-            longitude: centre.lng,
-            zoom: Float(mapDouble(block, "map_zoom") ?? 12)
+            withLatitude: initial.lat,
+            longitude: initial.lng,
+            zoom: Float(initial.zoom)
         )
 
         // `GMSMapViewOptions`, not the `init(frame:camera:)` pair — that initialiser is gone in the
@@ -173,35 +184,57 @@ struct GoogleInteractiveMap: UIViewRepresentable {
         return mapView
     }
 
-    func updateUIView(_ mapView: GMSMapView, context: Context) {
+    func updateUIView(_ container: InteractiveMapContainer, context: Context) {
         // Re-drawing on update rather than diffing: a step's map config is authored, not animated,
-        // so an update here means the author changed something and the cheap correct answer is to
-        // lay the overlays out again.
-        mapView.clear()
-        draw(on: mapView)
+        // so an update here means the author (or the host's late route) changed something.
+        container.mapView.clear()
+        draw(on: container.mapView)
+        // The camera moves only when its INPUT changed (e.g. host `mapRoutes` arriving after first
+        // paint) — styling changes and recompositions never override the user's pan/zoom.
+        container.setCamera(plan.camera)
     }
 
-    // MARK: - camera + overlays
-
-    private var isPlace: Bool { (mapCfg(block, "map_mode") as? String) == "place" }
-
-    private var centre: (lat: Double, lng: Double) {
-        let stops = mapStops(block)
-        if isPlace {
-            return (mapDouble(block, "place_lat") ?? 47.6205, mapDouble(block, "place_lng") ?? -122.3493)
+    /// Where the map starts before its first non-zero layout. A fit cannot be computed without a
+    /// size, so it starts centred on the fit's bounding box; the container applies the real fit as
+    /// soon as it has bounds.
+    static func initialCamera(for camera: MapInteractivePlan.Camera) -> (lat: Double, lng: Double, zoom: Double) {
+        switch camera {
+        case .center(let lat, let lng, let zoom):
+            return (lat, lng, zoom)
+        case .fit(let points):
+            guard let b = MapInteractivePlan.bounds(of: points) else {
+                return (MapInteractivePlan.defaultCenter.lat, MapInteractivePlan.defaultCenter.lng, MapInteractivePlan.defaultZoom)
+            }
+            return ((b.south + b.north) / 2, (b.west + b.east) / 2, MapInteractivePlan.defaultZoom)
         }
-        if let first = stops.first { return (first.lat, first.lng) }
-        return (mapDouble(block, "map_center_lat") ?? 47.6205, mapDouble(block, "map_center_lng") ?? -122.3493)
     }
+
+    /// Moves `mapView`'s camera to the plan's camera. Needs a non-zero size for a fit.
+    static func apply(_ camera: MapInteractivePlan.Camera, to mapView: GMSMapView) {
+        switch camera {
+        case .center(let lat, let lng, let zoom):
+            mapView.moveCamera(GMSCameraUpdate.setTarget(
+                CLLocationCoordinate2D(latitude: lat, longitude: lng), zoom: Float(zoom)))
+        case .fit(let points):
+            guard let b = MapInteractivePlan.bounds(of: points) else { return }
+            let bounds = GMSCoordinateBounds(
+                coordinate: CLLocationCoordinate2D(latitude: b.south, longitude: b.west),
+                coordinate: CLLocationCoordinate2D(latitude: b.north, longitude: b.east)
+            )
+            mapView.moveCamera(GMSCameraUpdate.fit(bounds, withPadding: CGFloat(MapInteractivePlan.fitPadding)))
+        }
+    }
+
+    // MARK: - overlays
 
     private func draw(on mapView: GMSMapView) {
-        let stops = mapStops(block)
+        let plan = self.plan
 
         // Route BEFORE markers, so pins draw over the line — the same ordering both static builders
-        // use, so changing tier does not reorder the map.
-        if !isPlace, (mapCfg(block, "route_show") as? Bool) != false, stops.count >= 2 {
+        // use, so changing tier does not reorder the map. Styling applies to whichever source won.
+        if plan.routeSource != .none, plan.routePoints.count >= 2 {
             let path = GMSMutablePath()
-            for s in stops { path.add(CLLocationCoordinate2D(latitude: s.lat, longitude: s.lng)) }
+            for p in plan.routePoints { path.add(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)) }
             let width = mapDouble(block, "route_width") ?? 4
             let casing = mapDouble(block, "route_casing_width") ?? 2
             if casing > 0 {
@@ -216,10 +249,47 @@ struct GoogleInteractiveMap: UIViewRepresentable {
             line.map = mapView
         }
 
-        for (i, s) in stops.enumerated() {
+        // Markers: one per stop, never one per polyline point.
+        for (i, s) in plan.markers.enumerated() {
             let marker = GMSMarker(position: CLLocationCoordinate2D(latitude: s.lat, longitude: s.lng))
             marker.title = i == 0 ? (mapCfg(block, "place_title") as? String) : nil
             marker.map = mapView
         }
+    }
+}
+
+/// Hosts the `GMSMapView` and applies the plan's camera on the first layout with a non-zero size,
+/// and again only when the camera input changes (SPEC-497 §7.2 rule 4).
+final class InteractiveMapContainer: UIView {
+    let mapView: GMSMapView
+    private var pending: MapInteractivePlan.Camera?
+    private var applied: MapInteractivePlan.Camera?
+
+    init(mapView: GMSMapView) {
+        self.mapView = mapView
+        super.init(frame: .zero)
+        mapView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        addSubview(mapView)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    func setCamera(_ camera: MapInteractivePlan.Camera) {
+        guard camera != applied, camera != pending else { return }
+        pending = camera
+        applyIfSized()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        mapView.frame = bounds
+        applyIfSized()
+    }
+
+    private func applyIfSized() {
+        guard let camera = pending, bounds.width > 0, bounds.height > 0 else { return }
+        GoogleInteractiveMap.apply(camera, to: mapView)
+        applied = camera
+        pending = nil
     }
 }
