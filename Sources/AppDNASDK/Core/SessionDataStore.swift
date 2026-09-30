@@ -117,11 +117,22 @@ final class SessionDataStore {
         // `data(withJSONObject:)` RAISES (an Objective-C exception `try?` cannot catch) on a NaN /
         // infinite number or a non-JSON leaf, so validate first: an odd answer is not persisted,
         // rather than taking the host app down (SPEC-497 §13h).
+        //
+        // It used to `return` here silently, which also LEFT THE PREVIOUS COPY on disk: the next launch
+        // reloaded values the app had since replaced, and nothing said why. Now the failure is logged
+        // (the key only — never the values, which can be answers the user typed) and the stale copy is
+        // removed, so the store holds nothing rather than something wrong. The in-memory value stays
+        // readable for the rest of this session.
         guard JSONSerialization.isValidJSONObject(dict),
-              let data = try? JSONSerialization.data(withJSONObject: dict) else { return }
+              let data = try? JSONSerialization.data(withJSONObject: dict) else {
+            Log.warning("SessionDataStore: \(key) holds a value that is not valid JSON (a NaN / infinite number or a non-JSON type) — not persisted; the saved copy is cleared")
+            defaults.removeObject(forKey: key)
+            return
+        }
         // Enforce size cap
         guard data.count <= Self.maxStorageBytes else {
-            Log.warning("SessionDataStore: \(key) exceeds \(Self.maxStorageBytes) bytes — not persisting")
+            Log.warning("SessionDataStore: \(key) exceeds \(Self.maxStorageBytes) bytes — not persisted; the saved copy is cleared")
+            defaults.removeObject(forKey: key)
             return
         }
         defaults.set(data, forKey: key)
