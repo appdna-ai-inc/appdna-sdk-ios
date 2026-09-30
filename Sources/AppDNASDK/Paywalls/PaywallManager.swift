@@ -460,7 +460,9 @@ final class PaywallManager {
             }
 
         default:
-            break
+            // SPEC-497 I4 m4 — an unknown action leaves the paywall up (nothing dismisses it), so re-enable
+            // its CTA as the no-config branch does; it kept spinning before.
+            NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
         }
     }
 

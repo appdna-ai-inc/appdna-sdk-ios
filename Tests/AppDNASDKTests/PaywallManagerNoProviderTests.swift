@@ -61,6 +61,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         provider: BillingProvider,
         configured: Bool = true,
         withPostPurchase: Bool = true,
+        postPurchase: [String: Any]? = nil,
         bridge: BillingBridgeProtocol? = nil
     ) async -> Spy {
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.test.\(UUID().uuidString)")
@@ -72,6 +73,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         if withPostPurchase {
             payload["post_purchase"] = ["on_failure": ["action": "show_error", "message": "m"]]
         }
+        if let postPurchase { payload["post_purchase"] = postPurchase }
         let paywall = rcm.decodePaywallPayload(payload)!
         let manager = PaywallManager(
             remoteConfigManager: rcm,
@@ -184,6 +186,20 @@ final class PaywallManagerNoProviderTests: XCTestCase {
     /// no-config branch, `purchaseEnded` stays 0.
     func testSuccessWithNoSuccessConfigEndsThePurchase() async {
         let spy = await tap(provider: .storeKit2, withPostPurchase: false, bridge: ScriptedBridge(fail: false))
+        await settle()
+        XCTAssertEqual(spy.completed, ["plan_monthly"])
+        XCTAssertEqual(purchaseEnded, 1, "the CTA is re-enabled")
+    }
+
+    /// SPEC-497 I4 m4 — a success whose `on_success.action` this SDK does not know leaves the paywall up,
+    /// so the CTA is re-enabled (as Android). NEGATIVE CONTROL: with `handlePostPurchaseSuccess`'s
+    /// `default:` back to `break`, `purchaseEnded` stays 0.
+    func testSuccessWithUnknownSuccessActionEndsThePurchase() async {
+        let spy = await tap(
+            provider: .storeKit2, withPostPurchase: false,
+            postPurchase: ["on_success": ["action": "a_future_action", "delay_ms": 0]],
+            bridge: ScriptedBridge(fail: false)
+        )
         await settle()
         XCTAssertEqual(spy.completed, ["plan_monthly"])
         XCTAssertEqual(purchaseEnded, 1, "the CTA is re-enabled")

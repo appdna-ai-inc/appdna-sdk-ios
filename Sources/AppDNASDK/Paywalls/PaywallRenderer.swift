@@ -25,6 +25,9 @@ struct PaywallRenderer: View {
     @State private var errorMessage = ""
     @State private var errorRetryText = ""
     @State private var errorAllowRetry = false
+    /// SPEC-497 I4 m3 — the post-purchase observer tokens, removed in `.onDisappear` so a presentation
+    /// does not leave its three block observers registered for the life of the process.
+    @State private var purchaseObservers: [NSObjectProtocol] = []
 
     // SPEC-084: Localization helper + SPEC-088: Template variable interpolation
     private func loc(_ key: String, _ fallback: String) -> String {
@@ -404,18 +407,20 @@ struct PaywallRenderer: View {
                 withAnimation { showDismiss = true }
             }
 
-            // Listen for post-purchase notifications
-            NotificationCenter.default.addObserver(forName: .paywallPurchaseSuccess, object: nil, queue: .main) { notif in
+            // Listen for post-purchase notifications (tokens kept; a repeated onAppear replaces them).
+            purchaseObservers.forEach { NotificationCenter.default.removeObserver($0) }
+            purchaseObservers = []
+            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseSuccess, object: nil, queue: .main) { notif in
                 let info = notif.userInfo ?? [:]
                 successMessage = info["message"] as? String ?? "Welcome to Premium!"
                 withAnimation { showSuccessOverlay = true }
                 if info["confetti"] as? Bool == true { showConfetti = true }
-            }
+            })
             // SPEC-497 R9 — the purchase ended with the paywall still up: re-enable the CTA.
-            NotificationCenter.default.addObserver(forName: .paywallPurchaseEnded, object: nil, queue: .main) { _ in
+            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseEnded, object: nil, queue: .main) { _ in
                 isPurchasing = false
-            }
-            NotificationCenter.default.addObserver(forName: .paywallPurchaseFailure, object: nil, queue: .main) { notif in
+            })
+            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseFailure, object: nil, queue: .main) { notif in
                 let info = notif.userInfo ?? [:]
                 errorMessage = info["message"] as? String ?? "Payment failed."
                 errorRetryText = info["retry_text"] as? String ?? "Try Again"
@@ -434,7 +439,12 @@ struct PaywallRenderer: View {
                         withAnimation { showErrorBanner = false }
                     }
                 }
-            }
+            })
+        }
+        .onDisappear {
+            // SPEC-497 I4 m3 — remove this presentation's observers (they leaked, three per presentation).
+            purchaseObservers.forEach { NotificationCenter.default.removeObserver($0) }
+            purchaseObservers = []
         }
         .gesture(
             config.dismiss?.style == "swipe_down" ?

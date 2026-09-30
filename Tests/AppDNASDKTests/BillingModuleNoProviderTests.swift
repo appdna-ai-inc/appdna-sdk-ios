@@ -46,6 +46,11 @@ final class BillingModuleNoProviderTests: XCTestCase {
     /// SPEC-497 I4 R8 m3 — a not-configured purchase that does reach a tracker carries
     /// `reason: "not_configured"`, as Android's (`AppDNAModules.kt` `purchase`). NEGATIVE CONTROL: without
     /// the `reason:` argument in `purchase`'s not-configured branch the key is missing — this fails.
+    ///
+    /// ⚠️ SPEC-497 I3 m1 — the tracker is INJECTED here. In production an unconfigured module has no
+    /// tracker (`configure` wires it, `teardown()` nils it), so this emit never reaches the pipeline on a
+    /// device — `testPurchaseBeforeConfigureIsUnknownNotConfiguredYet` above is the production shape. This test
+    /// pins the event's shape only; it is not proof of production behaviour.
     func testNotConfiguredPurchaseFailedCarriesReasonNotConfigured() async {
         let module = AppDNA.BillingModule()
         module.eventTracker = tracker // a tracker, but `configure` never wired billing

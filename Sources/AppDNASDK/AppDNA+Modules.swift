@@ -211,6 +211,11 @@ extension AppDNA {
             let ownershipPolicy = state.policy
             guard state.configured else {
                 // SPEC-497 §3.2 rule 3 (R65) — no new error type: an NSError the mappers send to `unknown`.
+                // ⚠️ SPEC-497 I3 m1 — in production this emit never happens: the tracker is wired by
+                // `configure` and nilled by `teardown()`, so whenever billing is not configured `tracker` is
+                // nil and `trackPurchaseFailed` is a no-op. The `reason` is kept for parity with Android and is
+                // only observable with an injected tracker (BillingModuleNoProviderTests) — not proof of what
+                // a device emits. Behaviour deliberately unchanged.
                 let error = Self.notConfiguredError()
                 trackPurchaseFailed(tracker, productId: productId, error: error, reason: "not_configured")
                 throw error
