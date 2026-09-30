@@ -144,33 +144,106 @@ extension TransactionFacts {
 /// so the envelope comes from the same `PurchaseSuccessEvents.properties`.
 struct LateEnvelope {
     let result: PurchaseResult
+    /// False when neither the transaction nor the product lookup gave a price: the envelope then OMITS
+    /// `price` (and `currency`) rather than booking a fabricated 0 as revenue. A free trial is priced 0 by
+    /// definition, so it is always known.
+    var priceKnown: Bool = true
 
     /// `purchase_completed` properties: `paywall_id: ""` (no paywall), `emitted_by: "sdk"`, the charged
     /// price, `is_trial`, the ids, and `purchased_at_ms` (the event's `ts_ms` is the emit time; this
     /// carries the purchase time, Int64 epoch ms — R49).
     func properties(purchasedAtMs: Int64) -> [String: Any] {
-        PurchaseSuccessEvents.properties(paywallId: "", result: result, extra: ["purchased_at_ms": Int(purchasedAtMs)])
+        var props = PurchaseSuccessEvents.properties(paywallId: "", result: result, extra: ["purchased_at_ms": Int(purchasedAtMs)])
+        if !priceKnown {
+            props.removeValue(forKey: "price")
+            props.removeValue(forKey: "currency")
+        }
+        return props
     }
 
-    /// Build from the facts plus the price the store charged.
+    /// Build from the facts plus the price the store charged. `price` / `currency` nil = unknown (the
+    /// transaction carried none and the product lookup failed) — omitted from the envelope, never 0.
     static func make(
         facts: TransactionFacts,
         productId: String,
-        price: Double,
-        currency: String,
+        price: Double?,
+        currency: String?,
         isTrial: Bool
     ) -> LateEnvelope {
-        LateEnvelope(result: PurchaseResult(
-            productId: productId,
-            transactionId: facts.id,
-            originalTransactionId: facts.originalID,
+        LateEnvelope(
+            result: PurchaseResult(
+                productId: productId,
+                transactionId: facts.id,
+                originalTransactionId: facts.originalID,
+                price: price ?? 0,
+                currency: currency ?? "",
+                provider: "storekit2",
+                isSubscription: facts.productType == "autoRenewable",
+                isConsumable: facts.productType == "consumable",
+                isTrial: isTrial
+            ),
+            priceKnown: isTrial || (price != nil && currency != nil)
+        )
+    }
+}
+
+/// One `Transaction.updates` item as the observer handles it (SPEC-497 §13a.2): its ids, whether it is
+/// revoked, how to build its facts and envelope, and how to finish it. Production wraps a verified
+/// StoreKit `Transaction` (`init(transaction:)`); a unit test cannot construct a `Transaction`, so it
+/// passes plain values and a recording `finish` — and drives the REAL
+/// `SubscriptionStatusObserver.handleOwnedUpdate(_:)`.
+struct OwnedTransactionUpdate {
+    let transactionId: String
+    let productId: String
+    let isRevoked: Bool
+    let appAccountToken: UUID?
+    let facts: (_ ownerUserId: String?, _ currentToken: UUID?, _ currentUserId: String?, _ alreadyReported: Bool) -> TransactionFacts
+    let envelope: (TransactionFacts) async -> LateEnvelope
+    let finish: () async -> Void
+}
+
+extension OwnedTransactionUpdate {
+    init(transaction: Transaction) {
+        self.init(
+            transactionId: String(transaction.id),
+            productId: transaction.productID,
+            isRevoked: transaction.revocationDate != nil,
+            appAccountToken: transaction.appAccountToken,
+            facts: { owner, token, user, reported in
+                TransactionFacts(
+                    transaction: transaction,
+                    ownerUserId: owner,
+                    currentToken: token,
+                    currentUserId: user,
+                    alreadyReported: reported
+                )
+            },
+            envelope: { facts in await OwnedTransactionUpdate.lateEnvelope(for: transaction, facts: facts) },
+            // Called only by `SubscriptionStatusObserver.handleOwnedUpdate`, behind its
+            // `mode == .storeKitOwned` guard (SPEC-497 §3.8).
+            finish: { await transaction.finish() }
+        )
+    }
+
+    /// The late path's envelope: the CHARGED price (`transaction.price` / `currency`, the product's only
+    /// when nil) and the trial flag, from the same helpers the purchase path uses. When neither gives a
+    /// price the envelope omits it (no fabricated 0).
+    static func lateEnvelope(for transaction: Transaction, facts: TransactionFacts) async -> LateEnvelope {
+        let product = try? await Product.products(for: [transaction.productID]).first
+        var price: Double?
+        if let productPrice = product?.price {
+            price = chargedPrice(transactionPrice: transaction.price, productPrice: productPrice)
+        } else if let transactionPrice = transaction.price {
+            price = chargedPrice(transactionPrice: transactionPrice, productPrice: transactionPrice)
+        }
+        let currency = transaction.currency?.identifier ?? product?.priceFormatStyle.currencyCode
+        return LateEnvelope.make(
+            facts: facts,
+            productId: transaction.productID,
             price: price,
             currency: currency,
-            provider: "storekit2",
-            isSubscription: facts.productType == "autoRenewable",
-            isConsumable: facts.productType == "consumable",
-            isTrial: isTrial
-        ))
+            isTrial: TrialDetection.isFreeTrial(transaction: transaction, product: product)
+        )
     }
 }
 

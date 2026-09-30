@@ -76,13 +76,11 @@ public struct LocationData: Codable, Equatable {
             return s
         }
         func coord(_ key: String) -> Double? {
-            let raw = dict[key]
-            if raw is Bool { return nil }
-            let d: Double?
-            if let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { d = n.doubleValue }
-            else if let v = raw as? Double { d = v }
-            else if let v = raw as? Int { d = Double(v) }
-            else { d = nil }
+            // Every number (Swift or bridged) arrives as an NSNumber; only a CFBoolean is a Bool.
+            // (`raw is Bool` was also true for an NSNumber 0 / 1 — it dropped the 0.0 and 1.0
+            // coordinates.)
+            guard let n = dict[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+            let d: Double? = n.doubleValue
             guard let d, d.isFinite else { return nil }
             return d
         }

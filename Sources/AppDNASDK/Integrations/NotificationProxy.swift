@@ -17,6 +17,11 @@ protocol NotificationCenterSlot: AnyObject {
     var delegate: UNUserNotificationCenterDelegate? { get set }
     func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void)
     func setCategories(_ categories: Set<UNNotificationCategory>)
+    /// The ONLY route by which the SDK may post a notification itself. iOS never does from a received
+    /// push (the OS or the host presents; `handleMessageData` never displays — SPEC-497 §8.7), so
+    /// nothing calls it today; the push fixtures read `notification_posted` from this slot instead of
+    /// asserting a constant.
+    func add(_ request: UNNotificationRequest)
 }
 
 final class SystemNotificationCenterSlot: NotificationCenterSlot {
@@ -29,6 +34,9 @@ final class SystemNotificationCenterSlot: NotificationCenterSlot {
     }
     func setCategories(_ categories: Set<UNNotificationCategory>) {
         UNUserNotificationCenter.current().setNotificationCategories(categories)
+    }
+    func add(_ request: UNNotificationRequest) {
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }
 }
 
@@ -199,7 +207,9 @@ final class ProxyCore {
             AppDNA.pushModule.handleMessageData(userInfo, inForeground: true, requestId: requestId)
             completion(appDNAOptions)
         case .passThrough:
-            completion(appDNAOptions)
+            // After `shutdown()`: the DEFAULT presentation (§9a.4) — the Info.plist override belongs to a
+            // configured SDK — and neither tracked nor routed.
+            completion(NotificationProxyPolicy.options(NotificationProxyPolicy.defaultPresentation))
         case .forward:
             enter(key)
             defer { leave(key) }

@@ -20,6 +20,22 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         preCallIds.contains(transactionId)
     }
 
+    /// SPEC-497 §13a.2 (R40/R41) — the live caller's `onPurchaseCompleted` delivery, after `finish()`.
+    /// A re-buy of an owned item (`alreadyOwned`) delivers NOTHING. The purchase path calls this with
+    /// `AppDNA.billingDelegate`; the `rebuy_already_owned` fixture calls it with its recording spy, so
+    /// `delegate_calls: []` fails the moment a re-buy delivers. Returns whether it delivered.
+    @MainActor
+    @discardableResult
+    static func deliverToLiveCaller(
+        alreadyOwned: Bool,
+        transaction: TransactionInfo,
+        delegate: AppDNABillingDelegate?
+    ) -> Bool {
+        guard !alreadyOwned, let delegate else { return false }
+        delegate.onPurchaseCompleted(productId: transaction.productId, transaction: transaction)
+        return true
+    }
+
     func purchase(
         productId: String,
         appAccountToken: UUID?
@@ -81,17 +97,16 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             // SPEC-400 — fire onPurchaseCompleted to the host's registered AppDNABillingDelegate (the live
             // caller's fire-and-forget delivery). Single source of truth for billing-delegate purchase
             // callbacks; PaywallManager does NOT fire here. A re-buy of an owned item delivers nothing
-            // (SPEC-497 R40/R41, as Android).
-            if !alreadyOwned {
-                let txInfo = TransactionInfo(
-                    transactionId: transactionId,
-                    productId: product.id,
-                    purchaseDate: transaction.purchaseDate,
-                    environment: "production"
-                )
-                await MainActor.run {
-                    AppDNA.billingDelegate?.onPurchaseCompleted(productId: product.id, transaction: txInfo)
-                }
+            // (SPEC-497 R40/R41, as Android) — decided inside `deliverToLiveCaller`, the seam the
+            // `rebuy_already_owned` fixture drives.
+            let txInfo = TransactionInfo(
+                transactionId: transactionId,
+                productId: product.id,
+                purchaseDate: transaction.purchaseDate,
+                environment: "production"
+            )
+            await MainActor.run {
+                Self.deliverToLiveCaller(alreadyOwned: alreadyOwned, transaction: txInfo, delegate: AppDNA.billingDelegate)
             }
 
             // SPEC-497 §13a.2 (R42–R46) — the price the store CHARGED (`transaction.price`, the intro price

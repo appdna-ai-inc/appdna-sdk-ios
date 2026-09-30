@@ -30,11 +30,14 @@ final class StepAdvanceResultFloorTests: XCTestCase {
     }
 
     func testBridgeWaitIsMaxOfConfiguredAndFloor() {
-        func wait(_ configured: TimeInterval, _ data: [String: Any]?) -> TimeInterval {
-            max(configured, StepAdvanceResult.minimumBridgeTimeout(stepData: data) ?? 0)
+        // The SDK's own `max(configured, floor)` — the one line every wrapper bridge applies.
+        XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 5, stepData: ["action": "social_login"]), 120)
+        XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 150, stepData: ["action": "social_login"]), 150)
+        XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 5, stepData: ["action": "next"]), 5)
+        XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 5, stepData: nil), 5)
+        for action in AuthActionPolicy.bridgeFloorActions {
+            XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 5, stepData: ["action": action]),
+                           StepAdvanceResult.authBridgeTimeout, action)
         }
-        XCTAssertEqual(wait(5, ["action": "social_login"]), 120)
-        XCTAssertEqual(wait(150, ["action": "social_login"]), 150)
-        XCTAssertEqual(wait(5, ["action": "next"]), 5)
     }
 }

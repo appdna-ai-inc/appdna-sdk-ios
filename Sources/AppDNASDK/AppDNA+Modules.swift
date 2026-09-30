@@ -61,7 +61,24 @@ extension AppDNA {
         /// the shadow copy, not the variable the host actually calls through. The oracle and the bug
         /// were on opposite sides of the same name. `teardown()` below is what `shutdown()` now calls,
         /// and `isLive` is what `subsystemsUp()` now reads: both look at THIS object.
-        internal var bridge: BillingBridgeProtocol?
+        internal var bridge: BillingBridgeProtocol? {
+            get { stateLock.lock(); defer { stateLock.unlock() }; return _bridge }
+            set { stateLock.lock(); _bridge = newValue; stateLock.unlock() }
+        }
+
+        /// Guards `bridge`, `ownershipPolicy` and `configured`: `configure` writes them on the SDK queue,
+        /// `shutdown()` on its teardown, and `purchase` / `restore` read them from any thread.
+        private let stateLock = NSLock()
+        private var _bridge: BillingBridgeProtocol?
+        private var _ownershipPolicy: BillingOwnershipPolicy = BillingOwnership.unavailable
+        private var _configured = false
+
+        /// One consistent read of the three (a `purchase` must not see a bridge from one configure and a
+        /// policy from another).
+        private func snapshot() -> (configured: Bool, bridge: BillingBridgeProtocol?, policy: BillingOwnershipPolicy) {
+            stateLock.lock(); defer { stateLock.unlock() }
+            return (_configured, _bridge, _ownershipPolicy)
+        }
 
         /// The tracker this facade emits purchase events with. Weak: `shared` owns it.
         ///
@@ -75,13 +92,17 @@ extension AppDNA {
         internal var isLive: Bool { bridge != nil }
 
         /// SPEC-497 §3.2 — the ownership policy `configure` chose (`BillingOwnership.policy`).
-        internal private(set) var ownershipPolicy: BillingOwnershipPolicy = BillingOwnership.unavailable
+        internal var ownershipPolicy: BillingOwnershipPolicy {
+            stateLock.lock(); defer { stateLock.unlock() }; return _ownershipPolicy
+        }
 
         /// SPEC-497 §3.2 rule 3 (D-R39-1, R65–R67) — has `configure` wired billing yet? Until it has,
         /// `purchase` / `restore` fail with an `unknown` "not configured yet" error; once configured with no
         /// bridge (`none`) they throw `providerNotAvailable`. Reset by `teardown()`, so after `shutdown()`
         /// the not-configured error applies again.
-        internal private(set) var configured = false
+        internal var configured: Bool {
+            stateLock.lock(); defer { stateLock.unlock() }; return _configured
+        }
 
         /// The message of the not-configured error (an `NSError` the mappers send to `unknown`).
         static let notConfiguredMessage = "AppDNA SDK not configured yet — call configure() first"
@@ -89,18 +110,22 @@ extension AppDNA {
         /// `configure` wires the bridge, the tracker and the policy here — right after the bridge is built
         /// and BEFORE the observer starts, so the facade and the observer see the same bridge (R64/R65).
         internal func wire(bridge: BillingBridgeProtocol?, policy: BillingOwnershipPolicy, tracker: EventTracker?) {
-            self.bridge = bridge
-            self.ownershipPolicy = policy
+            stateLock.lock()
+            _bridge = bridge
+            _ownershipPolicy = policy
+            _configured = true
+            stateLock.unlock()
             self.eventTracker = tracker
-            self.configured = true
         }
 
         /// Released by `AppDNA.shutdown()`. Nothing else may call this.
         internal func teardown() {
-            bridge = nil
+            stateLock.lock()
+            _bridge = nil
+            _configured = false
+            _ownershipPolicy = BillingOwnership.unavailable
+            stateLock.unlock()
             eventTracker = nil
-            configured = false
-            ownershipPolicy = BillingOwnership.unavailable
             // Entitlement handlers are dropped SYNCHRONOUSLY by `AppDNA.shutdown()`, before this async
             // teardown is even queued. Clearing them again here would remove a handler the caller
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`
@@ -175,13 +200,15 @@ extension AppDNA {
             // the charge goes through and `if let eventTracker` reads nil: money taken, ZERO metered
             // events. Pin the tracker to the purchase the instant we commit to it.
             let tracker = eventTracker
-            guard configured else {
+            let state = snapshot()
+            let ownershipPolicy = state.policy
+            guard state.configured else {
                 // SPEC-497 §3.2 rule 3 (R65) — no new error type: an NSError the mappers send to `unknown`.
                 let error = Self.notConfiguredError()
                 trackPurchaseFailed(tracker, productId: productId, error: error)
                 throw error
             }
-            guard let bridge = bridge else {
+            guard let bridge = state.bridge else {
                 // SPEC-497 §3.4 (SDK minor 10) — was `BillingModuleError.noBillingProvider`.
                 Log.warning("BillingModule: No billing provider configured")
                 let error = BillingError.providerNotAvailable(ownershipPolicy.refusalMessage)
@@ -263,12 +290,13 @@ extension AppDNA {
         /// transactions are surfaced under the migration-tolerant policy and
         /// the server claims ownership via `receiptVerifier.restore(...)`.
         public func restorePurchases() async throws -> [String] {
-            guard configured else { throw Self.notConfiguredError() }
-            guard let bridge = bridge else {
+            let state = snapshot()
+            guard state.configured else { throw Self.notConfiguredError() }
+            guard let bridge = state.bridge else {
                 // SPEC-497 §3.4 — was `BillingModuleError.noBillingProvider`. A non-owning bridge throws
                 // `providerNotAvailable` itself (§3.2 rule 2).
                 Log.warning("BillingModule: No billing provider configured")
-                throw BillingError.providerNotAvailable(ownershipPolicy.refusalMessage)
+                throw BillingError.providerNotAvailable(state.policy.refusalMessage)
             }
             let restored = try await bridge.restore(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             // Round-34 — refresh entitlements so onEntitlementsChanged fires after a restore, matching

@@ -2149,13 +2149,16 @@ final class SharedFixtureTests: XCTestCase {
             }
             let manager = preparePushEntryPoints(h)
             let pushSpy = PushDelegateSpy(harness: h)   // held here: `AppDNA.pushDelegate` is weak
+            // The notification-centre slot the SDK posts through (and registers categories with) — read
+            // back for `notification_posted`, rather than asserting a constant.
+            let slot = InMemoryNotificationCenterSlot()
+            NotificationProxyBootstrap.injectedSlot = slot
             defer { withExtendedLifetime((manager, pushSpy)) { finishPushEntryPoints() } }
             AppDNA.pushDelegate = pushSpy
             let returned = AppDNA.pushModule.handleMessageData(userInfo)      // REAL public entry point
             await settlePushMainQueue(seconds: 0.2)
             h.state["returned"] = returned
-            // iOS `handleMessageData` has no display path at all — the host (or the OS) presents.
-            h.state["notification_posted"] = false
+            h.state["notification_posted"] = !slot.posted.isEmpty
             return
         }
 
@@ -2251,6 +2254,25 @@ final class SharedFixtureTests: XCTestCase {
             h.delegateCalls.count, expectedCalls.count,
             "\(prefix) delegate-call count — expected \(expectedCalls.map(\.name)), got \(h.delegateCalls.map(\.name))"
         )
+        // SPEC-497 §14 (R69) — `push_payload` fixtures compare `delegate_calls` ORDER-INSENSITIVELY: each
+        // expected call must match a distinct actual call (same name, every expected arg equal). Every
+        // other category compares them in order.
+        if f.category == "push_payload" {
+            var unmatched = Array(h.delegateCalls.indices)
+            for expected in expectedCalls {
+                let args = expected.args?.objectValue ?? [:]
+                let hit = unmatched.firstIndex { i in
+                    let actual = h.delegateCalls[i]
+                    guard actual.name == expected.name else { return false }
+                    return args.allSatisfy { key, value in Self.jsonMatches(expected: value, actual: actual.args[key]) }
+                }
+                if let hit {
+                    unmatched.remove(at: hit)
+                } else {
+                    XCTFail("\(prefix) no delegate call matches expected \(expected.name) \(args) — got \(h.delegateCalls.map(\.name))")
+                }
+            }
+        } else {
         for (i, expected) in expectedCalls.enumerated() {
             guard i < h.delegateCalls.count else { break }
             let actual = h.delegateCalls[i]
@@ -2263,6 +2285,7 @@ final class SharedFixtureTests: XCTestCase {
                     label: "\(prefix) delegate[\(i)].args.\(key)"
                 )
             }
+        }
         }
 
         // State — a key no real SDK call produced is a FAILURE, not an omission.
@@ -2296,6 +2319,10 @@ final class SharedFixtureTests: XCTestCase {
         for (key, value) in expectedContext {
             assertEqualJSON(expected: value, actual: actual[key], label: "\(prefix).context.\(key)")
         }
+    }
+
+    static func jsonMatches(expected: AnyJSON, actual: Any?) -> Bool {
+        canonicalJSON(expected) == canonical(actual)
     }
 
     private func assertEqualJSON(expected: AnyJSON, actual: Any?, label: String) {

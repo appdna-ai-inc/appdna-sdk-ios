@@ -37,7 +37,7 @@ extension SharedFixtureTests {
         case "subscription_snapshot_diff":  await runSubscriptionSnapshotDiff(f, h)
         case "trial_price":                 runTrialPrice(f, h)
         case "late_purchase":               await runLatePurchase(f, h)
-        case "rebuy_already_owned":         runRebuyAlreadyOwned(f, h)
+        case "rebuy_already_owned":         await runRebuyAlreadyOwned(f, h)
         case "delivery_queue":              await runDeliveryQueue(f, h)
         default:
             return false
@@ -294,8 +294,8 @@ extension SharedFixtureTests {
         return LateEnvelope.make(
             facts: facts,
             productId: config["product_id"]?.stringValue ?? "",
-            price: config["price"]?.doubleValue ?? 0,
-            currency: config["currency"]?.stringValue ?? "USD",
+            price: config["price"]?.doubleValue,
+            currency: config["currency"]?.stringValue,
             isTrial: false
         )
     }
@@ -324,10 +324,21 @@ extension SharedFixtureTests {
 
     // MARK: - rebuy_already_owned
 
-    private func runRebuyAlreadyOwned(_ f: Fixture, _ h: Harness) {
+    private func runRebuyAlreadyOwned(_ f: Fixture, _ h: Harness) async {
         let preCall = Set((f.setup.raw["pre_call_entitlement_ids"]?.arrayValue ?? []).compactMap(\.stringValue))
         let transactionId = f.action.raw["transaction_id"]?.stringValue ?? ""
         let owned = StoreKit2Bridge.isAlreadyOwned(preCallIds: preCall, transactionId: transactionId)   // REAL
+        // REAL — the live caller's `onPurchaseCompleted` delivery `StoreKit2Bridge.purchase` makes after
+        // `finish()`, with a recording delegate: `delegate_calls: []` fails if a re-buy delivers.
+        let spy = BillingDelegateSpy(harness: h)
+        let txInfo = TransactionInfo(
+            transactionId: transactionId,
+            productId: f.action.raw["product_id"]?.stringValue ?? "",
+            purchaseDate: Date(timeIntervalSince1970: 0)
+        )
+        await MainActor.run {
+            _ = StoreKit2Bridge.deliverToLiveCaller(alreadyOwned: owned, transaction: txInfo, delegate: spy)
+        }
         let config = f.setup.config?.objectValue ?? [:]
         let result = PurchaseResult(
             productId: f.action.raw["product_id"]?.stringValue ?? "",

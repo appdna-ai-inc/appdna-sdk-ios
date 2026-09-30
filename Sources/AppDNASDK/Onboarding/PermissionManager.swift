@@ -53,16 +53,37 @@ public final class PermissionManager {
     /// Contacts, Calendar, tracking, photo-library and camera/microphone authorisation, reached at
     /// runtime so the SDK binary carries no link-time reference to them (SPEC-497 §13i).
     private let runtime: PermissionRuntime
+    /// Is the app active? (ATT may only prompt while it is.) Read on the main actor.
+    private let applicationIsActive: @MainActor () -> Bool
 
     public init() {
         self.infoPlist = { Bundle.main.object(forInfoDictionaryKey: $0) }
         self.runtime = PermissionRuntime()
+        self.applicationIsActive = { PermissionManager.liveApplicationIsActive() }
     }
 
-    /// Test seam: an injected Info.plist reader and class resolver.
-    internal init(infoPlist: @escaping (String) -> Any?, resolver: PermissionClassResolving) {
+    /// Test seam: an injected Info.plist reader, class resolver and app-state reader.
+    internal init(
+        infoPlist: @escaping (String) -> Any?,
+        resolver: PermissionClassResolving,
+        applicationIsActive: @escaping @MainActor () -> Bool = { PermissionManager.liveApplicationIsActive() }
+    ) {
         self.infoPlist = infoPlist
         self.runtime = PermissionRuntime(resolver: resolver)
+        self.applicationIsActive = applicationIsActive
+    }
+
+    /// `UIApplication.shared.applicationState == .active`, looked up dynamically (a hostless test has no
+    /// shared application — `false` there).
+    @MainActor
+    static func liveApplicationIsActive() -> Bool {
+        #if canImport(UIKit)
+        let applicationClass: AnyObject = UIApplication.self
+        guard let app = applicationClass.value(forKey: "sharedApplication") as? UIApplication else { return false }
+        return app.applicationState == .active
+        #else
+        return true
+        #endif
     }
 
     // MARK: Info.plist crash-guard (pure, testable)
@@ -282,13 +303,12 @@ public final class PermissionManager {
         if Self.attGrantedWithoutPrompt(major: os.majorVersion, minor: os.minorVersion) {
             return true
         }
-        #if canImport(UIKit)
-        let active = await MainActor.run { UIApplication.shared.applicationState == .active }
+        let isActive = applicationIsActive
+        let active = await MainActor.run { isActive() }
         guard active else {
             // Not safe to prompt when backgrounded — report current status.
             return runtime.trackingStatus().map { Self.mapTracking($0) == .granted } ?? false
         }
-        #endif
         guard let raw = await runtime.requestTracking() else { return false }
         return Self.mapTracking(raw) == .granted
     }

@@ -11,7 +11,7 @@ extension Notification.Name {
 /// races between the user tapping X (calls onDismiss) and the SDK's
 /// auto-dismiss-on-restore-success path. First caller flips the flag;
 /// subsequent callers no-op. Mirrors Android's `PaywallActivity.dispatchedDismiss`.
-private final class PaywallDismissGuard {
+final class PaywallDismissGuard {
     var dispatched: Bool = false
     /// True if the host's `onPaywallRestoreCompleted` set this — used to
     /// suppress SDK auto-dismiss when the host wants to keep the paywall
@@ -463,7 +463,7 @@ final class PaywallManager {
         }
     }
 
-    private func handleRestore(
+    func handleRestore(
         paywallId: String,
         delegate: AppDNAPaywallDelegate?,
         viewController: UIViewController,

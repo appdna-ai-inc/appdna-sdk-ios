@@ -67,7 +67,13 @@ enum APIBaseURL {
         return true
         #else
         if bundle.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt" { return true }
+        if bundle == .main { return mainBundleHasProvisioningProfile }
         return bundle.path(forResource: "embedded", ofType: "mobileprovision") != nil
         #endif
     }
+
+    /// The main bundle's `embedded.mobileprovision` never changes while the process runs — looked up
+    /// once, not on every request.
+    private static let mainBundleHasProvisioningProfile: Bool =
+        Bundle.main.path(forResource: "embedded", ofType: "mobileprovision") != nil
 }

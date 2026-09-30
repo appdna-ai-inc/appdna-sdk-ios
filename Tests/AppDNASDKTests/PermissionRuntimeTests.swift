@@ -153,6 +153,26 @@ final class PermissionRuntimeTests: XCTestCase {
         XCTAssertTrue(PermissionCallLog.calls.contains("att.status"))
     }
 
+    /// The ATT REQUEST, through the fake tracking manager: while the app is active it prompts (the fake
+    /// answers authorized, 3); while it is not, it only reads the status (SPEC-497 §13i.4, impl audit 29).
+    func testTrackingRequestReachesTheFakeOnlyWhileActive() async throws {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        try XCTSkipIf(PermissionManager.attGrantedWithoutPrompt(major: os.majorVersion, minor: os.minorVersion),
+                      "no ATT prompt below iOS 14.5")
+        let active = PermissionManager(infoPlist: { _ in "why" }, resolver: resolver, applicationIsActive: { true })
+        let granted = await active.request("att")
+        XCTAssertTrue(granted, "the fake answers authorized (3)")
+        XCTAssertEqual(PermissionCallLog.calls, ["att.request"])
+        XCTAssertEqual(resolver.lookups.last, "AppTrackingTransparency/ATTrackingManager")
+
+        PermissionCallLog.reset()
+        FakeTrackingManager.status = 3
+        let inactive = PermissionManager(infoPlist: { _ in "why" }, resolver: resolver, applicationIsActive: { false })
+        let grantedInactive = await inactive.request("att")
+        XCTAssertTrue(grantedInactive, "inactive: the current status (authorized) is reported")
+        XCTAssertEqual(PermissionCallLog.calls, ["att.status"], "no prompt while inactive")
+    }
+
     func testPhotosForwarded() async {
         let m = manager(keys: true)
         FakePhotoLibrary.status = 4

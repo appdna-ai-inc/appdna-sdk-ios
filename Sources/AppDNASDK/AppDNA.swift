@@ -1636,7 +1636,9 @@ public final class AppDNA: @unchecked Sendable {
         // launch taps / deliveries (from the notification proxy and from host forwarding) drain now, on
         // the main queue, in arrival order. Then the configure fallback decides whether the proxy has
         // to be installed here because no launch-time observer was ever registered (§9a.4 table).
-        PushGate.shared.markConfigured()
+        // Epoch-scoped: a `shutdown()` that already ended this configure (it can land between the
+        // superseded check above and this line) keeps the gate closed.
+        PushGate.shared.markConfigured(epoch: epoch)
         DispatchQueue.main.async {
             NotificationProxyBootstrap.configureFallback(plist: Bundle.main.infoDictionary ?? [:])
         }
@@ -1978,7 +1980,7 @@ public final class AppDNA: @unchecked Sendable {
         // SPEC-497 B6 — clear the push configured point synchronously: the notification proxy stays
         // installed (removing it could orphan a library that wrapped it) but becomes pass-through for
         // AppDNA pushes until the next `configure()`.
-        PushGate.shared.markShutDown()
+        PushGate.shared.markShutDown(epoch: shutdownEpoch)
 
         shared.queue.async {
             // 🔴 BILLING GOES DOWN FIRST — BEFORE THE PIPELINE THAT REPORTS IT.

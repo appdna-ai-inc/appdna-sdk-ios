@@ -61,7 +61,9 @@ final class AdaptyBridge: BillingBridgeProtocol {
             let result = try await Adapty.makePurchase(product: productId)
             let purchaseResult = PurchaseResult(
                 productId: productId,
-                transactionId: result.transactionId ?? UUID().uuidString,
+                // Never an invented id: a fabricated UUID would reach `transaction_id` and dedupe as a
+                // purchase that does not exist. Empty = unknown, and the envelope omits the key.
+                transactionId: result.transactionId ?? "",
                 price: result.price ?? 0,
                 currency: result.currencyCode ?? "USD",
                 provider: "adapty",

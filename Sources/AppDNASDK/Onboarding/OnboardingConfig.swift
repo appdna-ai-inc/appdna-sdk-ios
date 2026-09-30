@@ -701,7 +701,8 @@ extension StepAdvanceResult {
     /// default). A sign-in spans OS sheets, account pickers, 2FA and a backend round trip, so a bridge
     /// that gave up at 5 s blocked every real sign-in. It stays bounded so a handler that never answers
     /// cannot pin the "Processing…" overlay forever.
-    public static let authBridgeTimeout: TimeInterval = 120
+    /// Internal: no wrapper reads it — they call `minimumBridgeTimeout(stepData:)`.
+    static let authBridgeTimeout: TimeInterval = 120
 
     /// The minimum time a wrapper bridge must wait for the host's `onBeforeStepAdvance` answer, or
     /// `nil` when no floor applies. Each bridge waits `max(configured, minimumBridgeTimeout(stepData:) ?? 0)`.
@@ -712,6 +713,12 @@ extension StepAdvanceResult {
         guard let action = stepData?["action"] as? String,
               AuthActionPolicy.bridgeFloorActions.contains(action) else { return nil }
         return authBridgeTimeout
+    }
+
+    /// The wait a wrapper bridge applies to `onBeforeStepAdvance`: `max(configured, floor)` — the one
+    /// line §4.2 prescribes, here so it has one implementation (and one test) instead of one per bridge.
+    public static func bridgeTimeout(configured: TimeInterval, stepData: [String: Any]?) -> TimeInterval {
+        max(configured, minimumBridgeTimeout(stepData: stepData) ?? 0)
     }
 }
 

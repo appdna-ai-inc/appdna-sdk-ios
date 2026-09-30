@@ -84,7 +84,13 @@ enum PushIdempotency {
 /// is built) and NOT `isReady` (set after the bootstrap network call). While it is false, every
 /// `handleMessageData` / `handleNotificationTap` — from the proxy AND from host forwarding — goes into
 /// the launch buffer and does not record an idempotency key. From the configured point the buffer is
-/// drained on the main queue, in arrival order.
+/// drained on the main queue, in STRICT arrival order: until it is empty, a new call joins the back of
+/// the buffer instead of overtaking the entries ahead of it.
+///
+/// Cold-start action buttons: the launch-options entry carries no action identifier. It waits
+/// `launchTapGrace` (from when it was captured) for the proxy's `didReceive` — which carries the action
+/// id — to replace it in its slot, so the richer event is the one handled and the key is never claimed
+/// by the poorer one first.
 final class PushGate {
     static let shared = PushGate()
 
@@ -94,25 +100,35 @@ final class PushGate {
         let requestId: String?
         let actionIdentifier: String?
         let fromLaunchOptions: Bool
+        var capturedAt: Date = Date()
     }
 
     static let bufferCapacity = 8
 
+    /// How long a launch-options tap waits for its `didReceive` before it is handled as a body tap.
+    var launchTapGrace: TimeInterval = 1.0
+
     private let lock = NSLock()
     private var configured = false
     private var shutDown = false
+    /// The newest configure epoch `shutdown()` ended; a `markConfigured(epoch:)` for it (or an older one)
+    /// that lands late is ignored.
+    private var shutDownThrough = 0
     private var buffer: [Entry] = []
+    private var draining = false
 
     var isConfigured: Bool { lock.lock(); defer { lock.unlock() }; return configured }
     var isShutDown: Bool { lock.lock(); defer { lock.unlock() }; return shutDown }
     var bufferCount: Int { lock.lock(); defer { lock.unlock() }; return buffer.count }
 
-    /// Buffers `entry` when the configured point has not been reached. Returns `true` when buffered
-    /// (the caller must stop), `false` when the SDK is configured and the caller should handle it now.
+    /// Buffers `entry` when the configured point has not been reached — or when it has but earlier
+    /// entries are still waiting to drain (arrival order). Returns `true` when buffered (the caller must
+    /// stop), `false` when the caller should handle it now.
     func bufferIfNotConfigured(_ entry: Entry) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard !configured else { return false }
+        guard !configured || !buffer.isEmpty || draining else { return false }
         insertLocked(entry)
+        if configured { scheduleDrainLocked() }
         return true
     }
 
@@ -124,7 +140,8 @@ final class PushGate {
     }
 
     /// Dedup by `(kind, delivery_id ?? push_id)` and by `(kind, request.identifier)`. A `didReceive`
-    /// entry REPLACES a launch-options entry with the same key (the response carries the action id).
+    /// entry REPLACES a launch-options entry with the same key, in its slot (the response carries the
+    /// action id).
     private func insertLocked(_ entry: Entry) {
         let key = PushMarker.key(entry.userInfo)
         if let index = buffer.firstIndex(where: { existing in
@@ -138,48 +155,76 @@ final class PushGate {
             }
             return
         }
-        guard buffer.count < Self.bufferCapacity else {
+        guard buffer.count < Self.bufferCapacity || configured else {
             Log.warning("[Push] launch buffer full (\(Self.bufferCapacity)); dropping a \(entry.kind.rawValue) entry")
             return
         }
         buffer.append(entry)
     }
 
-    /// The configured point. Drains the buffer on the main queue, in arrival order.
-    func markConfigured() {
-        lock.lock()
+    /// The configured point. Drains the buffer on the main queue, in arrival order. `epoch` is the
+    /// configure epoch: a `markConfigured` that lands after the `shutdown()` of its own epoch is ignored,
+    /// so a `shutdown()` racing a late `configure` build cannot leave the gate open. `nil` (tests) always
+    /// opens it.
+    func markConfigured(epoch: Int? = nil) {
+        lock.lock(); defer { lock.unlock() }
+        if let epoch, epoch <= shutDownThrough { return }
         configured = true
         shutDown = false
         scheduleDrainLocked()
-        lock.unlock()
     }
 
     /// `shutdown()`: the proxy becomes pass-through for AppDNA pushes until the next configure.
-    func markShutDown() {
+    func markShutDown(epoch: Int? = nil) {
         lock.lock(); defer { lock.unlock() }
+        if let epoch { shutDownThrough = max(shutDownThrough, epoch) }
         configured = false
         shutDown = true
     }
 
-    private func scheduleDrainLocked() {
-        DispatchQueue.main.async { [weak self] in self?.drain() }
+    /// Drains run on the main queue, one at a time (`draining`); an extra scheduled drain finds the
+    /// buffer empty (or a grace still running) and returns.
+    private func scheduleDrainLocked(after delay: TimeInterval = 0) {
+        let work: () -> Void = { [weak self] in self?.drain() }
+        if delay > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        } else {
+            DispatchQueue.main.async(execute: work)
+        }
     }
 
+    /// One entry at a time, head first. A launch-options head still inside its grace window pauses the
+    /// drain (everything behind it waits, keeping arrival order) until the grace ends or its `didReceive`
+    /// replaces it.
     private func drain() {
         lock.lock()
-        guard configured else { lock.unlock(); return }
-        let entries = buffer
-        buffer.removeAll()
+        guard configured, !draining else { lock.unlock(); return }
+        draining = true
         lock.unlock()
-        for entry in entries {
-            switch entry.kind {
+        while true {
+            lock.lock()
+            guard configured, let head = buffer.first else {
+                draining = false
+                lock.unlock()
+                return
+            }
+            if head.fromLaunchOptions {
+                let remaining = launchTapGrace - Date().timeIntervalSince(head.capturedAt)
+                if remaining > 0 {
+                    draining = false
+                    scheduleDrainLocked(after: remaining)
+                    lock.unlock()
+                    return
+                }
+            }
+            buffer.removeFirst()
+            lock.unlock()
+            switch head.kind {
             case .delivered:
                 // They arrived in `willPresent`, i.e. in the foreground.
-                AppDNA.pushModule.handleMessageData(entry.userInfo, inForeground: true, requestId: entry.requestId)
+                AppDNA.pushModule.processDelivered(head.userInfo, inForeground: true)
             case .tapped:
-                AppDNA.pushModule.handleNotificationTap(
-                    entry.userInfo, actionIdentifier: entry.actionIdentifier, requestId: entry.requestId
-                )
+                AppDNA.pushModule.processTapped(head.userInfo, actionIdentifier: head.actionIdentifier)
             }
         }
     }
@@ -188,7 +233,10 @@ final class PushGate {
         lock.lock(); defer { lock.unlock() }
         configured = false
         shutDown = false
+        shutDownThrough = 0
         buffer.removeAll()
+        draining = false
+        launchTapGrace = 1.0
     }
 }
 
@@ -208,7 +256,15 @@ extension AppDNA.PushModule {
     @discardableResult
     public func handleMessageData(_ userInfo: [AnyHashable: Any]) -> Bool {
         guard PushMarker.isAppDNA(userInfo) else { return false }
-        return handleMessageData(userInfo, inForeground: Self.applicationIsActive(), requestId: nil)
+        if let active = Self.applicationIsActiveOnMain() {
+            return handleMessageData(userInfo, inForeground: active, requestId: nil)
+        }
+        // Off the main thread (a host's FCM callback): read the application state on main, never with a
+        // blocking `main.sync`, and handle it there.
+        DispatchQueue.main.async {
+            self.handleMessageData(userInfo, inForeground: Self.applicationIsActiveOnMain() ?? false, requestId: nil)
+        }
+        return true
     }
 
     /// Forward a notification tap (e.g. from your own `didReceive`, with `response.actionIdentifier`).
@@ -229,8 +285,14 @@ extension AppDNA.PushModule {
         )) {
             return true
         }
+        processDelivered(userInfo, inForeground: inForeground)
+        return true
+    }
+
+    /// Past the gate: track once, fire `onPushReceived`.
+    func processDelivered(_ userInfo: [AnyHashable: Any], inForeground: Bool) {
         if let key = PushMarker.key(userInfo), !PushIdempotency.claim(.delivered, key: key) {
-            return true
+            return
         }
         let pushId = PushMarker.pushId(userInfo)
         manager?.trackDelivered(pushId: pushId, deliveryId: PushMarker.deliveryId(userInfo))
@@ -241,7 +303,6 @@ extension AppDNA.PushModule {
         let (title, body) = PushMarker.titleAndBody(userInfo)
         let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
         AppDNA.pushDelegate?.onPushReceived(notification: payload, inForeground: inForeground)
-        return true
     }
 
     /// The one tap path — host forwarding, the proxy's `didReceive` and the launch-buffer drain.
@@ -253,8 +314,14 @@ extension AppDNA.PushModule {
         )) {
             return true
         }
+        processTapped(userInfo, actionIdentifier: actionIdentifier)
+        return true
+    }
+
+    /// Past the gate: track once, fire `onPushTapped`, route.
+    func processTapped(_ userInfo: [AnyHashable: Any], actionIdentifier: String?) {
         if let key = PushMarker.key(userInfo), !PushIdempotency.claim(.tapped, key: key) {
-            return true
+            return
         }
         let pushId = PushMarker.pushId(userInfo)
         // The TRACKED action is the system identifier for a body tap (R69); routing and `onPushTapped`
@@ -274,17 +341,16 @@ extension AppDNA.PushModule {
 
         // SPEC-089c / SPEC-497 §9.2: auto-route with the ladder.
         PushTapRouter.perform(PushTapRouter.route(payload: payload, userInfo: userInfo, tappedActionId: tappedAction))
-        return true
     }
 
-    /// `UIApplication.shared.applicationState == .active`, read on the main thread. The shared
+    /// `UIApplication.shared.applicationState == .active`. `applicationState` is main-thread-only, and a
+    /// `DispatchQueue.main.sync` from a background thread can deadlock against a main thread that is
+    /// waiting on that thread — so this is read ONLY on the main thread (`nil` elsewhere). The
     /// application is looked up dynamically: a hostless unit test has none.
-    static func applicationIsActive() -> Bool {
-        let read: () -> Bool = {
-            let applicationClass: AnyObject = UIApplication.self
-            guard let app = applicationClass.value(forKey: "sharedApplication") as? UIApplication else { return false }
-            return app.applicationState == .active
-        }
-        return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
+    static func applicationIsActiveOnMain() -> Bool? {
+        guard Thread.isMainThread else { return nil }
+        let applicationClass: AnyObject = UIApplication.self
+        guard let app = applicationClass.value(forKey: "sharedApplication") as? UIApplication else { return false }
+        return app.applicationState == .active
     }
 }

@@ -210,53 +210,42 @@ final class SubscriptionStatusObserver {
     /// emit → finish → drain; `deferToOwner` → owner-tagged entry → finish; `finishSilently` (renewals,
     /// family-shared, upgraded, already reported by the purchase path) → finish.
     func handleOwnedUpdate(_ transaction: Transaction) async {
-        guard mode == .storeKitOwned else { return }
-        let transactionId = String(transaction.id)
+        await handleOwnedUpdate(OwnedTransactionUpdate(transaction: transaction))
+    }
 
-        if transaction.revocationDate != nil {
+    /// The same, on an `OwnedTransactionUpdate` — the seam a unit test drives (a `Transaction` cannot be
+    /// constructed there).
+    func handleOwnedUpdate(_ update: OwnedTransactionUpdate) async {
+        guard mode == .storeKitOwned else { return }
+        let transactionId = update.transactionId
+
+        if update.isRevoked {
             await deliveryQueue.removeEntry(transactionId: transactionId)
-            await transaction.finish()
+            await update.finish()
             return
         }
 
         // While a purchase of the SAME product is in flight, do not finish its update: the purchase path
         // reports and finishes it. Re-check once that purchase has ended.
-        await deliveryQueue.waitForPurchaseToEnd(productId: transaction.productID)
+        await deliveryQueue.waitForPurchaseToEnd(productId: update.productId)
 
-        let currentToken = AppAccountTokenResolver.tokenForCurrentUser()
-        let facts = TransactionFacts(
-            transaction: transaction,
-            ownerUserId: PurchaseOwnerMap.owner(of: transaction.appAccountToken),
-            currentToken: currentToken,
-            currentUserId: AppDNA.identityManagerRef?.currentIdentity.userId,
-            alreadyReported: await deliveryQueue.isReported(transactionId)
+        let facts = update.facts(
+            PurchaseOwnerMap.owner(of: update.appAccountToken),
+            AppAccountTokenResolver.tokenForCurrentUser(),
+            AppDNA.identityManagerRef?.currentIdentity.userId,
+            await deliveryQueue.isReported(transactionId)
         )
         let decision = await LatePurchaseProcessor.process(
             facts: facts,
             queue: deliveryQueue,
             tracker: eventTracker
         ) {
-            await SubscriptionStatusObserver.lateEnvelope(for: transaction, facts: facts)
+            await update.envelope(facts)
         }
-        await transaction.finish()
+        await update.finish()
         if decision == .report {
             await deliveryQueue.drain()   // trigger (i)
         }
-    }
-
-    /// The late path's envelope: the CHARGED price (`transaction.price` / `currency`, the product's only
-    /// when nil) and the trial flag, from the same helpers the purchase path uses.
-    private static func lateEnvelope(for transaction: Transaction, facts: TransactionFacts) async -> LateEnvelope {
-        let product = try? await Product.products(for: [transaction.productID]).first
-        let price = chargedPrice(transactionPrice: transaction.price, productPrice: product?.price ?? 0)
-        let currency = transaction.currency?.identifier ?? product?.priceFormatStyle.currencyCode ?? "USD"
-        return LateEnvelope.make(
-            facts: facts,
-            productId: transaction.productID,
-            price: price,
-            currency: currency,
-            isTrial: TrialDetection.isFreeTrial(transaction: transaction, product: product)
-        )
     }
 
     // MARK: - Reconcile

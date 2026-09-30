@@ -8,15 +8,17 @@
 //   notification_proxy  REAL: `ProxyCore.willPresent` / `.didReceive` (the proxy's behaviour on plain
 //                       values — `UNNotification` cannot be built in a test; the delegate methods are
 //                       thin adapters onto exactly these), the push gate / launch buffer and
-//                       `AppDNA.pushModule.handleNotificationTap` for `host_forward`; `install`
-//                       drives `NotificationProxyPolicy.advertisesWillPresent` with the fixture's
-//                       declared `detected_libraries` (class presence cannot be faked at runtime).
+//                       `AppDNA.pushModule.handleNotificationTap` for `host_forward`; `install` runs
+//                       the real `NotificationProxyBootstrap.install(slot:plist:)` (each declared
+//                       `detected_libraries` name is registered as a throwaway ObjC class for the
+//                       call) and reads the installed proxy's `responds(to: willPresent)`.
 //
 // © 2026 AppDNA AI, Inc.
 
 import Foundation
 import UserNotifications
 import XCTest
+import ObjectiveC
 @testable import AppDNASDK
 
 /// The in-memory notification-centre slot hostless tests inject (the real centre raises there).
@@ -35,6 +37,9 @@ final class InMemoryNotificationCenterSlot: NotificationCenterSlot {
 
     func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void) { completion(categories) }
     func setCategories(_ categories: Set<UNNotificationCategory>) { self.categories = categories }
+    /// Every notification the SDK posted through the slot (`notification_posted`).
+    private(set) var posted: [UNNotificationRequest] = []
+    func add(_ request: UNNotificationRequest) { posted.append(request) }
 }
 
 /// A previous delegate that implements both methods and records the calls.
@@ -78,6 +83,42 @@ extension SharedFixtureTests {
         }
     }
 
+    /// Installs the proxy into an in-memory slot holding `previousKind`, with `override` in the plist and
+    /// each of `detectedLibraries` present in the ObjC runtime (a throwaway class registered under that
+    /// name for the call, then disposed), and returns what the installed proxy answers for
+    /// `responds(to: willPresent)`.
+    static func installedProxyAdvertisesWillPresent(
+        previousKind: String,
+        override: [String]?,
+        detectedLibraries: [String]
+    ) -> Bool? {
+        NotificationProxyBootstrap.resetForTesting()
+        defer { NotificationProxyBootstrap.resetForTesting() }
+        var registered: [AnyClass] = []
+        for name in detectedLibraries where NSClassFromString(name) == nil {
+            guard let cls = objc_allocateClassPair(NSObject.self, name, 0) else { continue }
+            objc_registerClassPair(cls)
+            registered.append(cls)
+        }
+        defer { registered.forEach { objc_disposeClassPair($0) } }
+        let previous: UNUserNotificationCenterDelegate?
+        switch previousKind {
+        case "none": previous = nil
+        case "implements_neither": previous = SilentPreviousDelegate()
+        default: previous = RecordingPreviousDelegate()
+        }
+        let slot = InMemoryNotificationCenterSlot(delegate: previous)
+        var plist: [String: Any] = [:]
+        if let override { plist[NotificationProxyPolicy.presentationKey] = override }
+        NotificationProxyBootstrap.install(slot: slot, plist: plist, source: .explicit)
+        guard let proxy = slot.delegate as? AppDNANotificationCenterProxy else { return nil }
+        return withExtendedLifetime(previous) {
+            proxy.responds(to: #selector(
+                UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:)
+            ))
+        }
+    }
+
     private func runClassifyPush(_ f: Fixture, _ h: Harness) {
         guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
             return XCTFail("[\(f.id)] classify_push needs action.payload")
@@ -103,7 +144,14 @@ extension SharedFixtureTests {
             detectedLibraries: detected
         )
         if method == "install" {
-            h.state["advertises_will_present"] = advertises
+            // REAL install: `install(slot:plist:)` reads the previous delegate from the slot, the override
+            // from the plist and the libraries from the ObjC runtime, and the installed proxy answers
+            // `responds(to: willPresent)` — the value asserted. The pure rule must agree.
+            let installed = Self.installedProxyAdvertisesWillPresent(
+                previousKind: previousKind, override: override, detectedLibraries: detected
+            )
+            XCTAssertEqual(installed, advertises, "[\(f.id)] install() and advertisesWillPresent disagree")
+            h.state["advertises_will_present"] = installed
             return
         }
 

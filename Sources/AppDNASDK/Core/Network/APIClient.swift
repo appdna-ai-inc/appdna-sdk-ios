@@ -139,23 +139,7 @@ final class APIClient {
     func post(path: String, body: [String: Any], completion: ((Result<Void, Error>) -> Void)? = nil) {
         Task {
             do {
-                let base = APIBaseURL.resolve(environment: environment)
-                guard let url = URL(string: base + path) else {
-                    completion?(.failure(APIError.invalidURL))
-                    return
-                }
-
-                var request = URLRequest(url: url)
-                request.httpMethod = "POST"
-                request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-                // Round-10 #15 — backend version-gating/attribution keys on these; Android sends both on
-                // every request, iOS sent neither, so every iOS call looked like an unknown SDK version.
-                request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
-                request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
-                request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
+                let request = try postRequest(path: path, body: body)
                 let (_, response) = try await session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse,
                       (200..<300).contains(httpResponse.statusCode) else {
@@ -167,6 +151,24 @@ final class APIClient {
                 completion?(.failure(error))
             }
         }
+    }
+
+    /// The request `post` sends: the resolved base URL (SPEC-497 §3.11 — the test-only override applies
+    /// here exactly as it does to `request` and event ingest), the auth and SDK headers, the JSON body.
+    func postRequest(path: String, body: [String: Any]) throws -> URLRequest {
+        let base = APIBaseURL.resolve(environment: environment)
+        guard let url = URL(string: base + path) else { throw APIError.invalidURL }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
+        // Round-10 #15 — backend version-gating/attribution keys on these; Android sends both on
+        // every request, iOS sent neither, so every iOS call looked like an unknown SDK version.
+        request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
+        request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        return request
     }
 
     /// Fire-and-forget POST for event batches with gzip compression. Returns success status.

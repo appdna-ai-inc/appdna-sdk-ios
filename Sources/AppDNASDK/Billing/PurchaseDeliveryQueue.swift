@@ -105,6 +105,10 @@ actor PurchaseDeliveryQueue {
     private var env: Environment
     private var active = false
     private var activeSession = 0
+    /// The newest configure epoch a `shutdown()` has deactivated. An `activate(session:)` for that epoch
+    /// or an older one is ignored, so activate/deactivate cannot reorder across `shutdown()`: a
+    /// `configure()` whose activation Task runs AFTER the `shutdown()` that ended it stays inactive.
+    private var deactivatedThrough = 0
     private var cached: DeliveryStore?
     /// Entries a drain is delivering right now (two concurrent drains deliver an entry once).
     private var inFlight: Set<String> = []
@@ -119,19 +123,31 @@ actor PurchaseDeliveryQueue {
     // MARK: - Lifecycle
 
     /// Called by `configure` once the identity is loaded (trigger (iv) follows). Until then `drain()` is a
-    /// no-op. `session` is the configure epoch, so a late `deactivate` of an older session is ignored.
-    func activate(session: Int = 0, environment: Environment? = nil) {
+    /// no-op. `session` is the configure epoch: an epoch a `shutdown()` already deactivated never
+    /// activates (the two Tasks can run in either order). `nil` (tests) activates unconditionally.
+    func activate(session: Int? = nil, environment: Environment? = nil) {
         if let environment { env = environment; cached = nil }
-        activeSession = max(activeSession, session)
+        if let session {
+            guard session > deactivatedThrough else { return }
+            activeSession = max(activeSession, session)
+        }
         active = true
         _ = purgeAndSave()
     }
 
     /// `shutdown()`: drains become no-ops again until the next `configure` — unless a newer session was
-    /// already activated (`shutdown(); configure()` on one tick).
-    func deactivate(session: Int = Int.max) {
+    /// already activated (`shutdown(); configure()` on one tick). `nil` (tests) deactivates unconditionally.
+    func deactivate(session: Int? = nil) {
+        guard let session else { active = false; return }
+        deactivatedThrough = max(deactivatedThrough, session)
         guard session >= activeSession else { return }
         active = false
+    }
+
+    /// Tests: swap the environment without activating.
+    func setEnvironmentForTesting(_ environment: Environment) {
+        env = environment
+        cached = nil
     }
 
     var isActive: Bool { active }
@@ -226,30 +242,45 @@ actor PurchaseDeliveryQueue {
             guard active else { break }
             // (a) lock (actor), skip in-flight, check the entry is still queued and deliverable.
             guard !inFlight.contains(id) else { continue }
-            var store = load()
+            let store = load()
             guard let index = store.entries.firstIndex(where: { $0.transactionId == id }) else { continue }
             let entry = store.entries[index]
             guard isDeliverable(entry) else { continue }
             inFlight.insert(id)
 
-            // Deferred emit (R46 (2)): persist `emitPending = false` and the reported id in one write,
-            // THEN emit from the stored envelope — regardless of the delegate.
+            // Deferred emit (R46 (2)), from the stored envelope — regardless of the delegate. Only once a
+            // tracker exists: `emitPending = false` is persisted AFTER the emit, so an entry whose owner
+            // identified before the pipeline was up keeps its pending emit instead of losing it.
             if entry.emitPending {
-                store.entries[index].emitPending = false
                 let alreadyReported = store.reported.contains(id)
-                addReported(id, to: &store)
-                save(store)
-                if !alreadyReported, let tracker = env.tracker(), let props = entry.properties {
-                    PurchaseSuccessEvents.emit(
-                        tracker: tracker,
-                        properties: props.mapValues(\.value),
-                        isSubscription: entry.isSubscription
-                    )
+                if !alreadyReported {
+                    guard let tracker = env.tracker() else {
+                        inFlight.remove(id)
+                        continue          // stays queued with its emit pending; a later drain emits it
+                    }
+                    if let props = entry.properties {
+                        PurchaseSuccessEvents.emit(
+                            tracker: tracker,
+                            properties: props.mapValues(\.value),
+                            isSubscription: entry.isSubscription
+                        )
+                    }
                 }
+                var after = load()
+                if let i = after.entries.firstIndex(where: { $0.transactionId == id }) {
+                    after.entries[i].emitPending = false
+                }
+                addReported(id, to: &after)
+                save(after)
             }
 
-            // (b) re-read the delegate and call it on the main actor, in the same turn.
+            // (b) re-read the delegate and call it on the main actor, in the same turn — and re-check the
+            // identity there too: an `identify` / `reset` that landed while this drain was suspended must
+            // not receive another identity's purchase.
             let provider = env.deliveringDelegate
+            let currentToken = env.currentToken
+            let firstIdentifiedToken = env.firstIdentifiedToken
+            let ownerToken = entry.ownerToken
             let info = TransactionInfo(
                 transactionId: entry.transactionId,
                 productId: entry.productId,
@@ -257,6 +288,11 @@ actor PurchaseDeliveryQueue {
                 environment: "production"
             )
             let didDeliver: Bool = await MainActor.run {
+                guard Self.isDeliverable(
+                    ownerToken: ownerToken,
+                    current: currentToken(),
+                    firstIdentified: firstIdentifiedToken()
+                ) else { return false }
                 guard let delegate = provider() else { return false }
                 delegate.onPurchaseCompleted(productId: entry.productId, transaction: info)
                 return true
@@ -276,13 +312,18 @@ actor PurchaseDeliveryQueue {
 
     /// Queue rule 4 (EntitlementOwnerFilter semantics).
     private func isDeliverable(_ entry: PendingDelivery) -> Bool {
-        let current = env.currentToken()
-        if let owner = entry.ownerToken {
+        Self.isDeliverable(ownerToken: entry.ownerToken, current: env.currentToken(), firstIdentified: env.firstIdentifiedToken())
+    }
+
+    /// Queue rule 4, pure: a tagged entry goes only to the identity whose derived token equals its owner
+    /// token; an untagged one to an anonymous user or the device's first-identified user.
+    static func isDeliverable(ownerToken: String?, current: UUID?, firstIdentified: UUID?) -> Bool {
+        if let owner = ownerToken {
             guard let current else { return false }   // an anonymous identity never gets a tagged entry
             return current.uuidString.lowercased() == owner.lowercased()
         }
         guard let current else { return true }        // untagged → anonymous user
-        return env.firstIdentifiedToken() == current   // … or the device's first-identified user
+        return firstIdentified == current              // … or the device's first-identified user
     }
 
     // MARK: - Storage
