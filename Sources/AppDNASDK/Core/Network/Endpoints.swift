@@ -83,11 +83,6 @@ enum Endpoint {
     }
 
     func url(environment: Environment) -> URL? {
-        let base: String
-        switch environment {
-        case .production: base = "https://api.appdna.ai"
-        case .sandbox:    base = "https://api.appdna.ai"
-        }
-        return URL(string: base + path)
+        URL(string: APIBaseURL.resolve(environment: environment) + path)
     }
 }

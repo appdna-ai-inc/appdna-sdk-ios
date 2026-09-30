@@ -139,11 +139,7 @@ final class APIClient {
     func post(path: String, body: [String: Any], completion: ((Result<Void, Error>) -> Void)? = nil) {
         Task {
             do {
-                let base: String
-                switch environment {
-                case .production: base = "https://api.appdna.ai"
-                case .sandbox:    base = "https://api.appdna.ai"
-                }
+                let base = APIBaseURL.resolve(environment: environment)
                 guard let url = URL(string: base + path) else {
                     completion?(.failure(APIError.invalidURL))
                     return
