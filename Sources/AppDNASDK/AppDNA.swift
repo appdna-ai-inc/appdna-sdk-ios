@@ -1132,6 +1132,15 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Remove a handler registered by `onWebEntitlementChanged`. Removing the last one also tears
     /// down the NotificationCenter observer, so nothing is retained after a wrapper invalidates.
+    /// Drop every web-entitlement handler and the backing observer. Called synchronously by `shutdown()`.
+    static func removeAllWebEntitlementChangedHandlers() {
+        if let observer = webEntitlementObserverToken {
+            NotificationCenter.default.removeObserver(observer)
+            webEntitlementObserverToken = nil
+        }
+        webEntitlementChangeHandlers.removeAll()
+    }
+
     public static func removeWebEntitlementChangedHandler(_ token: UUID) {
         webEntitlementChangeHandlers.removeValue(forKey: token)
         guard webEntitlementChangeHandlers.isEmpty, let observer = webEntitlementObserverToken else { return }
@@ -1980,6 +1989,11 @@ public final class AppDNA: @unchecked Sendable {
         // returns, the pre-shutdown handlers are gone and anything registered afterwards is the
         // caller's and survives. `teardown()` deliberately no longer clears them.
         billing.removeAllEntitlementsChangedHandlers()
+        // …and the WEB-entitlement handlers, for the same reason. They used to be cleared inside the async
+        // teardown below, so a wrapper that re-registered on the `configure()` that followed on the same
+        // tick (React Native and Flutter both do) had its new handler removed by the late teardown, and
+        // `onWebEntitlementChanged` went silent for the rest of the process.
+        removeAllWebEntitlementChangedHandlers()
 
         // SPEC-497 B6 — clear the push configured point synchronously: the notification proxy stays
         // installed (removing it could orphan a library that wrapped it) but becomes pass-through for
@@ -2024,12 +2038,8 @@ public final class AppDNA: @unchecked Sendable {
             _lastInitError = nil
             initErrorLock.unlock()
 
-            // Remove web entitlement observer
-            if let token = webEntitlementObserverToken {
-                NotificationCenter.default.removeObserver(token)
-                webEntitlementObserverToken = nil
-            }
-            webEntitlementChangeHandlers.removeAll()
+            // (The web-entitlement handlers are dropped SYNCHRONOUSLY at the top of `shutdown()`, like the
+            // billing ones — see `removeAllWebEntitlementChangedHandlers()`.)
 
             // (The `billing` facade — bridge, tracker and entitlement handlers — was released at the TOP
             // of this method. `billing` is a process-global `static let`, so `shutdown()` cannot nil the
