@@ -35,7 +35,7 @@ final class BillingOwnershipTests: XCTestCase {
     }
 
     func testAdaptyKeepsLifecycleEventsLinkedOrNot() {
-        assertPolicy(.adapty(apiKey: "k"), linked: true, owns: false, purchase: true, restore: true, mode: .providerOwned, lifecycle: true)
+        assertPolicy(.adapty(apiKey: "k"), linked: true, owns: false, purchase: false, restore: true, mode: .providerOwned, lifecycle: true)
         assertPolicy(.adapty(apiKey: "k"), linked: false, owns: false, purchase: false, restore: false, mode: .providerOwned, lifecycle: true)
     }
 

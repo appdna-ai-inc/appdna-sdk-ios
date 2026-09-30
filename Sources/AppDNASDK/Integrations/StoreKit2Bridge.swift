@@ -8,9 +8,39 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
     /// transaction id into the reported set BEFORE `finish()`, so the late observer never re-reports it,
     /// and marks the product in flight so the observer does not finish its update mid-purchase.
     private let deliveryQueue: PurchaseDeliveryQueue
+    /// Server verification of every purchase and restored transaction (`/billing/verify`), in the
+    /// background — see `PurchaseVerificationQueue`.
+    private let verificationQueue: PurchaseVerificationQueue
+    /// The product lookup — `Product.products(for:)` in production; injectable so a test can make it throw.
+    private let loadProducts: ([String]) async throws -> [Product]
 
-    init(deliveryQueue: PurchaseDeliveryQueue = .shared) {
+    init(
+        deliveryQueue: PurchaseDeliveryQueue = .shared,
+        verificationQueue: PurchaseVerificationQueue = .shared,
+        loadProducts: (([String]) async throws -> [Product])? = nil
+    ) {
         self.deliveryQueue = deliveryQueue
+        self.verificationQueue = verificationQueue
+        self.loadProducts = loadProducts ?? { try await Product.products(for: $0) }
+    }
+
+    /// Queue one verified transaction for `/billing/verify` and return at once: the send runs in a
+    /// detached task, so neither the purchase nor the restore ever waits for — or fails with — the server.
+    static func submitForVerification(
+        _ transaction: Transaction,
+        signedTransaction: String,
+        queue: PurchaseVerificationQueue,
+        appUserId: String? = AppDNA.identityManagerRef?.currentIdentity.userId
+    ) {
+        let entry = PendingVerification(
+            transactionId: String(transaction.id),
+            productId: transaction.productID,
+            signedTransaction: signedTransaction,
+            productType: transaction.productType == .autoRenewable ? "subs" : "inapp",
+            appUserId: appUserId,
+            queuedAt: Int64(Date().timeIntervalSince1970 * 1000)
+        )
+        Task.detached { await queue.submit(entry) }
     }
 
     /// SPEC-497 §13a.2 (R40/R41) — the pure re-buy seam: StoreKit handed back a transaction that was
@@ -40,7 +70,15 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         productId: String,
         appAccountToken: UUID?
     ) async throws -> PurchaseResult {
-        let products = try await Product.products(for: [productId])
+        let products: [Product]
+        do {
+            products = try await loadProducts([productId])
+        } catch {
+            // A THROWN lookup (network, StoreKit unavailable) used to leave the purchase with no
+            // `onPurchaseFailed` — only a lookup that returned nothing fired it.
+            await fireBillingPurchaseFailed(productId: productId, error: error)
+            throw error
+        }
         guard let product = products.first else {
             let err = StoreKit2Error.productNotFound(productId)
             await fireBillingPurchaseFailed(productId: productId, error: err)
@@ -99,12 +137,16 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             // callbacks; PaywallManager does NOT fire here. A re-buy of an owned item delivers nothing
             // (SPEC-497 R40/R41, as Android) — decided inside `deliverToLiveCaller`, the seam the
             // `rebuy_already_owned` fixture drives.
+            let environment = StoreKitEnvironment.name(of: transaction)
             let txInfo = TransactionInfo(
                 transactionId: transactionId,
                 productId: product.id,
                 purchaseDate: transaction.purchaseDate,
-                environment: "production"
+                environment: environment
             )
+            // §17-4 — server verification, in the background. A re-buy of an owned item is sent too: the
+            // server's upsert is idempotent and it may never have seen the original.
+            Self.submitForVerification(transaction, signedTransaction: verification.jwsRepresentation, queue: verificationQueue)
             await MainActor.run {
                 Self.deliverToLiveCaller(alreadyOwned: alreadyOwned, transaction: txInfo, delegate: AppDNA.billingDelegate)
             }
@@ -127,7 +169,8 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
                 isSubscription: product.subscription != nil,
                 isConsumable: transaction.productType == .consumable,
                 isTrial: isTrial,
-                alreadyOwned: alreadyOwned
+                alreadyOwned: alreadyOwned,
+                environment: environment
             )
 
         case .userCancelled:
@@ -158,6 +201,7 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         // even if the host identifies a different user mid-iteration.
         let firstIdentifier = AppAccountTokenResolver.firstIdentifiedToken()
 
+        var granted: [(Transaction, String)] = []
         for await result in Transaction.currentEntitlements {
             guard let transaction = try? checkVerified(result) else { continue }
             // Per-user binding filter (see `EntitlementOwnerFilter`):
@@ -175,14 +219,22 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             ) {
             case .grant, .grantAnonymousPolicy:
                 restoredIds.append(transaction.productID)
+                granted.append((transaction, result.jwsRepresentation))
             case .grantUntaggedMigration:
                 Log.info("StoreKit2Bridge.restore: granting untagged historical transaction \(transaction.id) to the device's first-identifier (migration-tolerant policy — server should claim ownership).")
                 restoredIds.append(transaction.productID)
+                granted.append((transaction, result.jwsRepresentation))
             case .denyOtherUser:
                 Log.warning("StoreKit2Bridge.restore: skipped transaction \(transaction.id) — appAccountToken does not match the current user.")
             case .denyUntaggedOtherUser:
                 Log.warning("StoreKit2Bridge.restore: skipped untagged transaction \(transaction.id) — the current user is not the device's first-identifier, so the untagged history is not inherited (cross-account leak guard).")
             }
+        }
+
+        // §17-4 — every granted transaction goes to `/billing/verify` in the background (the untagged ones
+        // are how the server claims them for this user). Never awaited: a restore does not wait for it.
+        for (transaction, jws) in granted {
+            Self.submitForVerification(transaction, signedTransaction: jws, queue: verificationQueue)
         }
 
         // SPEC-400 — fire onRestoreCompleted alongside the return.

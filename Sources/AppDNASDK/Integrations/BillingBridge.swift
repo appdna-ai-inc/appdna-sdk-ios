@@ -48,6 +48,11 @@ public struct PurchaseResult {
     /// emits one `purchase_restored{reason: "item_already_owned"}` instead of a conversion.
     internal var alreadyOwned: Bool = false
 
+    /// The StoreKit environment the transaction was made in — `"production"`, `"sandbox"` or `"xcode"`
+    /// (`Transaction.environment`). Carried into `TransactionInfo.environment`; nil when the bridge could
+    /// not tell, which `TransactionInfo` reports as `"production"` (its long-standing default).
+    internal var environment: String? = nil
+
     internal init(
         productId: String,
         transactionId: String,
@@ -58,7 +63,8 @@ public struct PurchaseResult {
         isSubscription: Bool,
         isConsumable: Bool,
         isTrial: Bool? = nil,
-        alreadyOwned: Bool = false
+        alreadyOwned: Bool = false,
+        environment: String? = nil
     ) {
         self.productId = productId
         self.transactionId = transactionId
@@ -70,6 +76,7 @@ public struct PurchaseResult {
         self.isConsumable = isConsumable
         self.isTrial = isTrial
         self.alreadyOwned = alreadyOwned
+        self.environment = environment
     }
 }
 

@@ -28,4 +28,10 @@ enum ISO8601 {
     static func date(from string: String) -> Date? {
         fractional.date(from: string) ?? plain.date(from: string)
     }
+
+    /// The server's own spelling (`Date.toISOString()`, fractional seconds, UTC) — used when a local
+    /// StoreKit expiry rides in the same `ServerEntitlement.expiresAt` field a server one does.
+    static func string(from date: Date) -> String {
+        fractional.string(from: date)
+    }
 }
