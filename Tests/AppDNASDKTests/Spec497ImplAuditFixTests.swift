@@ -537,6 +537,8 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(failed.count, 1, "got \(log.names)")
         XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, "unknown")
         XCTAssertEqual(failed.first?.properties?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
+        // I4 R8 m3 — as Android.
+        XCTAssertEqual(failed.first?.properties?["reason"]?.value as? String, "not_configured")
         XCTAssertEqual(spy.failed.value, ["unknown"])
         XCTAssertEqual(spy.messages.value, [AppDNA.BillingModule.notConfiguredMessage])
         XCTAssertEqual(spy.started.value, 0, "the restore never started")
@@ -565,6 +567,21 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(failed.count, 1, "got \(log.names)")
         XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, "providerNotAvailable")
         XCTAssertEqual(failed.first?.properties?["paywall_id"]?.value as? String, "pw_r")
+        XCTAssertEqual(failed.first?.properties?["error"]?.value as? String, "No billing provider configured")
+        XCTAssertNil(failed.first?.properties?["reason"], "configured: no not_configured reason")
+        XCTAssertEqual(spy.failed.value, ["providerNotAvailable"])
+    }
+
+    /// SPEC-497 I4 R8 m4 — the refused paywall restore under an unlinked `revenueCat` carries the same
+    /// message on both platforms (Android `BillingOwnership.restoreRefusalMessage` now uses this wording).
+    func testRevenueCatPaywallRestoreRefusalMessageMatchesAndroid() async {
+        let log = EventLog()
+        let spy = await restore(bridge: nil, provider: .revenueCat, log: log)
+        let failed = log.events.filter { $0.event_name == "purchase_restore_failed" }
+        XCTAssertEqual(failed.count, 1, "got \(log.names)")
+        XCTAssertEqual(failed.first?.properties?["error"]?.value as? String,
+                       "RevenueCat: purchases are made by RevenueCat in your app")
+        XCTAssertEqual(spy.messages.value, ["RevenueCat: purchases are made by RevenueCat in your app"])
         XCTAssertEqual(spy.failed.value, ["providerNotAvailable"])
     }
 

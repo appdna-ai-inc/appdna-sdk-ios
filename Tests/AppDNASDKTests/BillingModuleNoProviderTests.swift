@@ -43,6 +43,24 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertTrue(events.isEmpty, "no tracker before configure → nothing emitted")
     }
 
+    /// SPEC-497 I4 R8 m3 — a not-configured purchase that does reach a tracker carries
+    /// `reason: "not_configured"`, as Android's (`AppDNAModules.kt` `purchase`). NEGATIVE CONTROL: without
+    /// the `reason:` argument in `purchase`'s not-configured branch the key is missing — this fails.
+    func testNotConfiguredPurchaseFailedCarriesReasonNotConfigured() async {
+        let module = AppDNA.BillingModule()
+        module.eventTracker = tracker // a tracker, but `configure` never wired billing
+        do {
+            _ = try await module.purchase("p1")
+            XCTFail("must throw")
+        } catch {
+            XCTAssertEqual(billingErrorType(error), "unknown")
+        }
+        let failed = events.filter { $0.event_name == "purchase_failed" }
+        XCTAssertEqual(failed.count, 1, "got \(events.map(\.event_name))")
+        XCTAssertEqual(failed.first?.properties?["reason"]?.value as? String, "not_configured")
+        XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, "unknown")
+    }
+
     func testConfiguredWithNoneThrowsProviderNotAvailableAndEmitsOnePurchaseFailed() async {
         let module = AppDNA.BillingModule()
         module.wire(bridge: nil, policy: BillingOwnership.policy(for: .none, bridgeLinked: false), tracker: tracker)

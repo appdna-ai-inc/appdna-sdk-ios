@@ -277,7 +277,8 @@ final class PaywallManager {
                 paywallId: paywallId,
                 productId: plan.productId,
                 error: error,
-                errorType: errorType
+                errorType: errorType,
+                reason: configured ? nil : "not_configured"
             ))
             DispatchQueue.main.async { [weak self] in
                 delegate?.onPaywallPurchaseFailed(
@@ -490,11 +491,14 @@ final class PaywallManager {
             let error: Error = configured
                 ? BillingError.providerNotAvailable(billingPolicy.refusalMessage)
                 : AppDNA.BillingModule.notConfiguredError()
-            eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
+            var props: [String: Any] = [
                 "paywall_id": paywallId,
                 "error": error.localizedDescription,
                 "error_type": billingErrorType(error),
-            ]))
+            ]
+            // I4 R8 m3 — as Android: a refusal before `configure` says why.
+            if !configured { props["reason"] = "not_configured" }
+            eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked(props))
             DispatchQueue.main.async {
                 delegate?.onPaywallRestoreFailed(
                     paywallId: paywallId,
@@ -645,11 +649,14 @@ enum PaywallPlacementResolver {
 enum PurchaseFailedProps {
     /// `paywallId` nil (a direct `AppDNA.billing.purchase`) omits the key rather than inventing one.
     /// Carries the SPEC-497 §11.9 `emitted_by` marker.
+    /// `reason` (SPEC-497 I4 R8 m3): `"not_configured"` for a purchase refused before `configure`, as Android
+    /// sends it; nil omits the key.
     static func build(
         paywallId: String?,
         productId: String?,
         error: Error,
-        errorType: String
+        errorType: String,
+        reason: String? = nil
     ) -> [String: Any] {
         var props: [String: Any] = [
             "product_id": productId ?? "",
@@ -657,6 +664,7 @@ enum PurchaseFailedProps {
             "error_type": errorType,
         ]
         if let paywallId { props["paywall_id"] = paywallId }
+        if let reason { props["reason"] = reason }
         return BillingEventProps.marked(props)
     }
 }

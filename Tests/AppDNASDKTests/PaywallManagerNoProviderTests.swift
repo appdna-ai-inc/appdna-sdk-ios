@@ -84,6 +84,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         XCTAssertEqual(props?["paywall_id"]?.value as? String, "pw_test")
         XCTAssertEqual(props?["error"]?.value as? String, message)
         XCTAssertEqual(props?["emitted_by"]?.value as? String, "sdk")
+        XCTAssertNil(props?["reason"], "a configured refusal carries no not_configured reason")
         XCTAssertEqual(spy.failed.count, 1)
         XCTAssertEqual(spy.failed.first?.errorType, "providerNotAvailable")
         XCTAssertEqual(spy.failed.first?.productId, "plan_monthly")
@@ -113,6 +114,8 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         let props = events.first?.properties
         XCTAssertEqual(props?["error_type"]?.value as? String, "unknown")
         XCTAssertEqual(props?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
+        // I4 R8 m3 — as Android.
+        XCTAssertEqual(props?["reason"]?.value as? String, "not_configured")
         XCTAssertEqual(spy.failed.first?.errorType, "unknown")
         XCTAssertEqual(spy.failed.first?.productId, "plan_monthly")
         XCTAssertTrue(spy.started.isEmpty, "the purchase never started")

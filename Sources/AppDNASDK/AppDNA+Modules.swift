@@ -212,7 +212,7 @@ extension AppDNA {
             guard state.configured else {
                 // SPEC-497 §3.2 rule 3 (R65) — no new error type: an NSError the mappers send to `unknown`.
                 let error = Self.notConfiguredError()
-                trackPurchaseFailed(tracker, productId: productId, error: error)
+                trackPurchaseFailed(tracker, productId: productId, error: error, reason: "not_configured")
                 throw error
             }
             guard let bridge = state.bridge else {
@@ -266,7 +266,7 @@ extension AppDNA {
         /// The terminal event of a failed direct purchase — split exactly as the paywall path splits it:
         /// a user cancel is `purchase_canceled`, a pending approval `purchase_pending`, anything else one
         /// `purchase_failed` (no `paywall_id`). Only when a tracker exists (none before `configure`).
-        private func trackPurchaseFailed(_ tracker: EventTracker?, productId: String, error: Error) {
+        private func trackPurchaseFailed(_ tracker: EventTracker?, productId: String, error: Error, reason: String? = nil) {
             guard let tracker else { return }
             let errorType = billingErrorType(error)
             switch errorType {
@@ -279,7 +279,8 @@ extension AppDNA {
                     paywallId: nil,
                     productId: productId,
                     error: error,
-                    errorType: errorType
+                    errorType: errorType,
+                    reason: reason
                 ))
             }
         }
