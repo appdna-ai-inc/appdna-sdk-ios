@@ -66,7 +66,15 @@ public final class AppDNA: @unchecked Sendable {
     public static weak var pushDelegate: AppDNAPushDelegate?
 
     /// Delegate for billing/purchase events.
-    public static weak var billingDelegate: AppDNABillingDelegate?
+    ///
+    /// Still a weak reference. Since SPEC-497 it is stored by `AppDNA.billing` (with the
+    /// `deliversPurchases` flag of `billing.setDelegate(_:deliversPurchases:)`); setting it here is
+    /// `billing.setDelegate(newValue, deliversPurchases: true)`, which also delivers any purchase queued
+    /// while no delegate was set.
+    public static var billingDelegate: AppDNABillingDelegate? {
+        get { billing.currentDelegate }
+        set { billing.setDelegate(newValue, deliversPurchases: true) }
+    }
 
     /// Delegate for server-driven screen events (SPEC-089c).
     public static weak var screenDelegate: AppDNAScreenDelegate?
@@ -406,6 +414,25 @@ public final class AppDNA: @unchecked Sendable {
     /// than merely observing that `track()` did not throw. Its `eventSink` fires on every enqueue.
     internal static var eventTrackerForTesting: EventTracker? { shared.eventTracker }
 
+    /// SPEC-497 §11.9 — test-only: install a capturing tracker as the SDK's event tracker (under the same
+    /// lock `configure` publishes it under), so a test can drive the PUBLIC `AppDNA.track`. Mirrors
+    /// Android `installEventTrackerForTest`. Pass nil to uninstall.
+    internal static func installEventTrackerForTest(_ tracker: EventTracker?) {
+        preInitLock.lock()
+        shared.eventTracker = tracker
+        preInitLock.unlock()
+    }
+
+    /// Test-only: drain the pre-init buffer into the installed tracker (what `configure` does).
+    internal static func drainPreInitBufferForTesting() {
+        drainPreInitBuffer()
+    }
+
+    /// Test-only: wait until everything already enqueued on the SDK's serial queue has run.
+    internal static func drainSDKQueueForTesting() {
+        shared.queue.sync {}
+    }
+
     /// Test-only: how many times `performConfigure` actually built the SDK (i.e. was NOT superseded
     /// by a later configure()/shutdown()). A `configure(); shutdown(); configure()` on one tick must
     /// leave this at 1 — the first, superseded build must be a no-op. See `configureEpoch`.
@@ -630,6 +657,12 @@ public final class AppDNA: @unchecked Sendable {
             Task {
                 await AppDNA.billing.refreshEntitlementCache()
             }
+
+            // SPEC-497 D-R40-1 — trigger (iii): a purchase queued for this user (or deferred to them as
+            // its owner) is emitted / delivered now.
+            Task {
+                await PurchaseDeliveryQueue.shared.drain()
+            }
         }
     }
 
@@ -696,6 +729,11 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Track a custom event.
     public static func track(event: String, properties: [String: Any]? = nil) {
+        // SPEC-497 §11.9 (R74) — `emitted_by` marks the SDK's OWN billing events and `_appdna_origin` is
+        // a server-only marker; a host may forge neither. Stripped FIRST, before the pre-init buffer
+        // decision, so a buffered event is stripped too. (The SDK's billing emitters never come through
+        // here — they track on the `EventTracker` directly, with `BillingEventProps.marked`.)
+        let properties = BillingEventProps.strippingReservedKeys(properties)
         // SPEC-428 CL-10/D7 + F2: before configure() the pipeline isn't wired — buffer instead of dropping.
         // Double-checked locking (mirrors Android): fast path reads eventTracker with no lock; if nil, take
         // preInitLock (which configure() holds while it publishes eventTracker) and RE-CHECK — still nil →
@@ -1535,46 +1573,48 @@ public final class AppDNA: @unchecked Sendable {
         // it immediately: `testEverySubsystemFailingAtOnceStillLeavesATrackingSDK` injects a failure into
         // EVERY subsystem and asserts none comes up — and billing came up anyway, because it was never
         // in the seam to fail. The oracle was blind in exactly the place the code was unguarded.
+        // SPEC-497 §3.2 (A1) — ownership comes from the REQUESTED provider, decided once by
+        // `BillingOwnership.policy`. A provider whose SDK is not linked into this build (RevenueCat /
+        // Adapty on every published channel) gets `ExternalProviderBridge`, which refuses to buy or
+        // restore and never finishes anything — it used to get a silent `StoreKit2Bridge` fallback that
+        // bought through StoreKit and finished transactions the provider owned.
+        let requestedProvider = options.billingProvider
+        let providerLinked = BillingOwnership.isLinked(requestedProvider)
+        var billingPolicy = BillingOwnership.policy(for: requestedProvider, bridgeLinked: providerLinked)
         self.billingBridge = AppDNA.initSubsystem("billing") { () -> BillingBridgeProtocol? in
-            switch options.billingProvider {
-            case .storeKit2:
-                return StoreKit2Bridge()
-            case .revenueCat:
-                #if canImport(RevenueCat)
-                return RevenueCatBridge(eventTracker: tracker)
-                #else
-                Log.warning("RevenueCat not available, falling back to StoreKit 2")
-                return StoreKit2Bridge()
-                #endif
-            case .adapty(let adaptyKey):
-                return AdaptyBridge(apiKey: adaptyKey, eventTracker: tracker)
-            case .none:
-                return nil
-            }
+            BillingOwnership.makeBridge(for: requestedProvider, tracker: tracker)
         } ?? nil
+        // A provider init that failed inside the isolation seam leaves billing unavailable: the `none`
+        // policy (no purchase, no restore, providerNotAvailable, no observer).
+        if self.billingBridge == nil { billingPolicy = BillingOwnership.unavailable }
 
-        // 4b. Subscription lifecycle. StoreKit is the ONLY place a renewal is observable on-device, and
-        // nothing on the live path was listening — so `subscription_renewed` / `_canceled` /
-        // `_renewal_failed` never fired on iOS, while Android emitted all three.
-        //
-        // 🔴 This used to run ONLY for `StoreKit2Bridge`, under a comment claiming "the RevenueCat /
-        // Adapty bridges own their own event emission". They do not: grep this module — this observer is
-        // the ONLY emitter of the three subscription-lifecycle events, and both bridges emit purchase
-        // events only. So a host on `.revenueCat` or `.adapty` still produced exactly one MTPU event per
-        // subscriber, ever. The undercount had been narrowed to the default provider, not fixed.
-        //
-        // The observer therefore runs under EVERY provider. What differs is who finishes transactions:
-        // under `.providerOwned` it never drains `Transaction.updates` (see `SubscriptionObserverMode`),
-        // and is instead nudged by the provider's own subscriber-state callback plus app-foreground.
-        //
-        // Keyed off the bridge that was actually built, not off `options.billingProvider`: a host that
-        // asks for `.revenueCat` without linking RevenueCat falls back to `StoreKit2Bridge` above, and
-        // that fallback DOES own transaction finishing.
-        if let bridge = self.billingBridge {
-            let mode: SubscriptionObserverMode = bridge is StoreKit2Bridge ? .storeKitOwned : .providerOwned
-            let observer = SubscriptionStatusObserver(eventTracker: tracker, mode: mode)
+        // D-R39-1 / R64–R68 — billing is ready from the first call: the facade gets the bridge, the
+        // policy and the tracker HERE, right after the bridge is built and before the observer starts
+        // (so both see the same bridge) — not after the bootstrap. This point is already after
+        // `tracker.setEventQueue` and the preInitLock publish above, so the tracker never meets a nil
+        // queue.
+        AppDNA.billing.wire(bridge: self.billingBridge, policy: billingPolicy, tracker: tracker)
+
+        // 4b. Subscription lifecycle — the observer runs under every provider that has one; its MODE
+        // comes from the ownership policy (SPEC-497 §3.2 rule 1): `.storeKitOwned` ONLY for `storeKit2`.
+        // Under `.providerOwned` it never drains `Transaction.updates` and never calls `finish()`.
+        // Device lifecycle events follow `emitsLifecycleEvents` (owner Q2: none under RevenueCat — its
+        // webhook is the single source; LD-R10-1: kept under Adapty); the snapshot is persisted either way.
+        if let observerMode = billingPolicy.observerMode.subscriptionObserverMode {
+            let observer = SubscriptionStatusObserver(
+                eventTracker: tracker,
+                mode: observerMode,
+                emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents
+            )
             self.subscriptionObserver = observer
             observer.start()
+        }
+
+        // D-R40-1 — the delivery queue is activated once the identity is loaded; trigger (iv): drain at
+        // the end of billing initialisation when a delivering delegate was set before `configure`.
+        Task {
+            await PurchaseDeliveryQueue.shared.activate(session: epoch)
+            await PurchaseDeliveryQueue.shared.drain()
         }
 
         // 5. Initialize push token manager (v0.2 + v0.4 SPEC-030: backend registration)
@@ -1727,6 +1767,7 @@ public final class AppDNA: @unchecked Sendable {
             PaywallManager(
                 remoteConfigManager: remoteCfg,
                 billingBridge: self.billingBridge,
+                billingPolicy: AppDNA.billing.ownershipPolicy,
                 eventTracker: tracker,
                 experimentManager: experimentMgr
             )
@@ -1804,12 +1845,8 @@ public final class AppDNA: @unchecked Sendable {
             )
         }
 
-        // Wire module namespaces (v1.0)
-        AppDNA.billing.bridge = self.billingBridge
-        // The facade emits the metered purchase events for the DIRECT `AppDNA.billing.purchase()` path
-        // (React Native, Flutter, and any host with its own paywall UI). Without a tracker it emitted
-        // nothing — see `BillingModule.purchase(_:options:)`.
-        AppDNA.billing.eventTracker = tracker
+        // Wire module namespaces (v1.0). (Billing is wired in `performConfigure`, right after its bridge
+        // is built — SPEC-497 D-R39-1: ready from the first call, not after the bootstrap.)
         AppDNA.onboarding.manager = self.onboardingFlowManager
         AppDNA.paywall.paywallManager = self.paywallManager
         AppDNA.remoteConfig.manager = remoteCfg
@@ -1865,6 +1902,13 @@ public final class AppDNA: @unchecked Sendable {
     /// next app foreground. The pass is serialized inside the observer, so this is safe to call from any
     /// thread, as often as the provider fires: a redundant call re-reads the same entitlements, diffs
     /// them against the snapshot it just wrote, and emits nothing.
+    /// SPEC-497 §13a.2 — the purchase path's one snapshot pass after a subscription purchase, so the
+    /// first renewal diffs against the right baseline. Awaits the pass (serialized in the observer).
+    internal static func reconcileSubscriptionStateNow() async {
+        let observer: SubscriptionStatusObserver? = shared.queue.sync { shared.subscriptionObserver }
+        await observer?.reconcile()
+    }
+
     internal static func reconcileSubscriptionState() {
         // Hopped onto the SDK queue, like every other cross-thread read of a manager the configure path
         // writes: a provider callback arrives on the provider's own thread, and `subscriptionObserver`
@@ -1897,6 +1941,7 @@ public final class AppDNA: @unchecked Sendable {
         // rebuild lands after the teardown — correct order, no lost re-configure.
         shared.initLock.lock()
         shared.isConfigured = false
+        let shutdownEpoch = shared.configureEpoch
         shared.initLock.unlock()
 
         // 🔴 DROP THE ENTITLEMENT HANDLERS SYNCHRONOUSLY, FOR THE SAME REASON `isConfigured` IS CLEARED
@@ -1924,6 +1969,10 @@ public final class AppDNA: @unchecked Sendable {
             //
             // Order the teardown by blast radius: stop what can spend money, then stop what observes it.
             billing.teardown()
+            // D-R40-1 — no drain until the next `configure` has loaded the identity again.
+            // (Session-scoped: a `configure()` that followed on the same tick has a newer epoch and its
+            // activation is never undone by this late deactivation.)
+            Task { await PurchaseDeliveryQueue.shared.deactivate(session: shutdownEpoch) }
 
             shared.eventQueue?.flush()
             shared.eventQueue = nil

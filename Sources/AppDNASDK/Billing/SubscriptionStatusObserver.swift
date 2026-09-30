@@ -13,6 +13,27 @@ struct SubSnapshot: Codable, Equatable {
     let productId: String
     let purchaseTime: Int64
     let isAutoRenewing: Bool
+    /// SPEC-497 §13e.5 rule 2 (S-M4) — the ids LAST SEEN for this product (`Transaction.id` /
+    /// `originalID`), so lifecycle events can be matched against provider rows. Optional: a snapshot
+    /// persisted by an older SDK lacks the keys and must still decode — a required field would make the
+    /// `try? … ?? [:]` load silently reset the baseline and lose one cycle of events. When absent, the
+    /// event keys are OMITTED, never sent empty.
+    var transactionId: String? = nil
+    var originalTransactionId: String? = nil
+
+    init(
+        productId: String,
+        purchaseTime: Int64,
+        isAutoRenewing: Bool,
+        transactionId: String? = nil,
+        originalTransactionId: String? = nil
+    ) {
+        self.productId = productId
+        self.purchaseTime = purchaseTime
+        self.isAutoRenewing = isAutoRenewing
+        self.transactionId = transactionId
+        self.originalTransactionId = originalTransactionId
+    }
 }
 
 /// Who owns the StoreKit transaction lifecycle while this observer is running.
@@ -75,10 +96,20 @@ final class SubscriptionStatusObserver {
     /// and a race that only reproduces on a device is a race nobody proves fixed.
     typealias EntitlementLoader = @Sendable () async -> [String: SubSnapshot]
 
+    /// SPEC-497 §13a.2 — the source of `Transaction.updates` items. Injectable so a test can feed a
+    /// real `Transaction` captured from an `SKTestSession` purchase.
+    typealias UpdatesSource = () -> AsyncStream<VerificationResult<Transaction>>
+
     private let eventTracker: EventTracker
     private let defaults: UserDefaults
     private let mode: SubscriptionObserverMode
     private let loadCurrent: EntitlementLoader
+    /// SPEC-497 §3.2 rule 4 (owner Q2 / LD-R10-1) — device lifecycle events. `false` under RevenueCat
+    /// (its webhook is the single source). The snapshot is computed and persisted EITHER WAY, so a later
+    /// switch to `storeKit2` diffs against a current baseline instead of a burst of stale events.
+    private let emitsLifecycleEvents: Bool
+    private let updatesSource: UpdatesSource
+    private let deliveryQueue: PurchaseDeliveryQueue
 
     private var updatesTask: Task<Void, Never>?
     private var foregroundToken: NSObjectProtocol?
@@ -93,12 +124,18 @@ final class SubscriptionStatusObserver {
         eventTracker: EventTracker,
         defaults: UserDefaults = .standard,
         mode: SubscriptionObserverMode = .storeKitOwned,
-        loadCurrent: EntitlementLoader? = nil
+        emitsLifecycleEvents: Bool = true,
+        loadCurrent: EntitlementLoader? = nil,
+        updatesSource: UpdatesSource? = nil,
+        deliveryQueue: PurchaseDeliveryQueue = .shared
     ) {
         self.eventTracker = eventTracker
         self.defaults = defaults
         self.mode = mode
+        self.emitsLifecycleEvents = emitsLifecycleEvents
         self.loadCurrent = loadCurrent ?? { await SubscriptionStatusObserver.storeKitSnapshot() }
+        self.updatesSource = updatesSource ?? TransactionUpdatesSource.storeKit
+        self.deliveryQueue = deliveryQueue
     }
 
     // MARK: - Lifecycle
@@ -117,12 +154,14 @@ final class SubscriptionStatusObserver {
                 // every foreground entry rather than trusting its purchase listener.
                 await self?.reconcile()
 
-                for await result in Transaction.updates {
+                guard let source = self?.updatesSource else { return }
+                for await result in source() {
                     guard let self else { return }
                     guard case .verified(let transaction) = result else { continue }
                     // Apple redelivers an unfinished transaction on every launch forever. StoreKit2Bridge
-                    // finishes the ones it purchases; a RENEWAL arrives here and nothing else would.
-                    await transaction.finish()
+                    // finishes the ones it purchases; renewals, interrupted / Ask-to-Buy purchases and
+                    // offer codes arrive here and nothing else would.
+                    await self.handleOwnedUpdate(transaction)
                     await self.reconcile()
                 }
             }
@@ -161,6 +200,63 @@ final class SubscriptionStatusObserver {
         chainLock.lock()
         chain = nil
         chainLock.unlock()
+    }
+
+    // MARK: - Late purchases (SPEC-497 §13a.2, D-R40-1(a))
+
+    /// One verified `Transaction.updates` item under `.storeKitOwned` — the ONLY place this class
+    /// finishes a transaction. Revoked → its queue entry is removed, nothing emitted (Q5). Otherwise
+    /// `LatePurchaseFilter.decide` classifies it: `report` → one write (reported set + queue entry) →
+    /// emit → finish → drain; `deferToOwner` → owner-tagged entry → finish; `finishSilently` (renewals,
+    /// family-shared, upgraded, already reported by the purchase path) → finish.
+    func handleOwnedUpdate(_ transaction: Transaction) async {
+        guard mode == .storeKitOwned else { return }
+        let transactionId = String(transaction.id)
+
+        if transaction.revocationDate != nil {
+            await deliveryQueue.removeEntry(transactionId: transactionId)
+            await transaction.finish()
+            return
+        }
+
+        // While a purchase of the SAME product is in flight, do not finish its update: the purchase path
+        // reports and finishes it. Re-check once that purchase has ended.
+        await deliveryQueue.waitForPurchaseToEnd(productId: transaction.productID)
+
+        let currentToken = AppAccountTokenResolver.tokenForCurrentUser()
+        let facts = TransactionFacts(
+            transaction: transaction,
+            ownerUserId: PurchaseOwnerMap.owner(of: transaction.appAccountToken),
+            currentToken: currentToken,
+            currentUserId: AppDNA.identityManagerRef?.currentIdentity.userId,
+            alreadyReported: await deliveryQueue.isReported(transactionId)
+        )
+        let decision = await LatePurchaseProcessor.process(
+            facts: facts,
+            queue: deliveryQueue,
+            tracker: eventTracker
+        ) {
+            await SubscriptionStatusObserver.lateEnvelope(for: transaction, facts: facts)
+        }
+        await transaction.finish()
+        if decision == .report {
+            await deliveryQueue.drain()   // trigger (i)
+        }
+    }
+
+    /// The late path's envelope: the CHARGED price (`transaction.price` / `currency`, the product's only
+    /// when nil) and the trial flag, from the same helpers the purchase path uses.
+    private static func lateEnvelope(for transaction: Transaction, facts: TransactionFacts) async -> LateEnvelope {
+        let product = try? await Product.products(for: [transaction.productID]).first
+        let price = chargedPrice(transactionPrice: transaction.price, productPrice: product?.price ?? 0)
+        let currency = transaction.currency?.identifier ?? product?.priceFormatStyle.currencyCode ?? "USD"
+        return LateEnvelope.make(
+            facts: facts,
+            productId: transaction.productID,
+            price: price,
+            currency: currency,
+            isTrial: TrialDetection.isFreeTrial(transaction: transaction, product: product)
+        )
     }
 
     // MARK: - Reconcile
@@ -228,7 +324,9 @@ final class SubscriptionStatusObserver {
             current[transaction.productID] = SubSnapshot(
                 productId: transaction.productID,
                 purchaseTime: Int64(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                isAutoRenewing: willAutoRenew
+                isAutoRenewing: willAutoRenew,
+                transactionId: String(transaction.id),
+                originalTransactionId: String(transaction.originalID)
             )
         }
         return current
@@ -240,26 +338,41 @@ final class SubscriptionStatusObserver {
     /// property name here would be the same silent-analytics bug in a new place. Both names are spelled
     /// out as literals at the callsite so `check:event-name-parity` can see them.
     func diffAndEmit(previous: [String: SubSnapshot], current: [String: SubSnapshot]) {
+        // SPEC-497 §3.2 rule 4 — suppressed under RevenueCat (owner Q2). `saveSnapshot` still runs.
+        guard emitsLifecycleEvents else { return }
+
         for (productId, prev) in previous where current[productId] == nil {
+            // SPEC-497 §13e.5 rule 2 — the product VANISHED, so no current transaction exists: the ids
+            // are the LAST-SEEN ones from the snapshot (omitted when an older snapshot has none).
+            var props: [String: Any] = ["product_id": productId]
+            Self.addIds(prev, to: &props)
             if prev.isAutoRenewing {
-                eventTracker.track(event: "subscription_renewal_failed", properties: [
-                    "product_id": productId,
-                ])
+                eventTracker.track(event: "subscription_renewal_failed", properties: BillingEventProps.marked(props))
             } else {
-                eventTracker.track(event: "subscription_canceled", properties: [
-                    "product_id": productId,
-                ])
+                // Churn semantics (SDK minor 17): a device cancel means "vanished while not
+                // auto-renewing"; a provider cancel means "auto-renew turned off".
+                props["cancel_semantics"] = "vanished_not_renewing"
+                eventTracker.track(event: "subscription_canceled", properties: BillingEventProps.marked(props))
             }
         }
 
         for (productId, now) in current {
             guard let prev = previous[productId] else { continue } // new product = purchase, not renewal
             if now.purchaseTime > prev.purchaseTime {
-                eventTracker.track(event: "subscription_renewed", properties: [
+                var props: [String: Any] = [
                     "product_id": productId,
                     "purchase_time": now.purchaseTime,
-                ])
+                ]
+                Self.addIds(now, to: &props)   // the CURRENT ids
+                eventTracker.track(event: "subscription_renewed", properties: BillingEventProps.marked(props))
             }
+        }
+    }
+
+    private static func addIds(_ snapshot: SubSnapshot, to props: inout [String: Any]) {
+        if let id = snapshot.transactionId, !id.isEmpty { props["transaction_id"] = id }
+        if let original = snapshot.originalTransactionId, !original.isEmpty {
+            props["original_transaction_id"] = original
         }
     }
 

@@ -4,6 +4,22 @@ import StoreKit
 /// Native StoreKit 2 billing bridge. Default fallback when RevenueCat is not available.
 final class StoreKit2Bridge: BillingBridgeProtocol {
 
+    /// The shared reported set / delivery queue (SPEC-497 §13a.2). The purchase path writes each
+    /// transaction id into the reported set BEFORE `finish()`, so the late observer never re-reports it,
+    /// and marks the product in flight so the observer does not finish its update mid-purchase.
+    private let deliveryQueue: PurchaseDeliveryQueue
+
+    init(deliveryQueue: PurchaseDeliveryQueue = .shared) {
+        self.deliveryQueue = deliveryQueue
+    }
+
+    /// SPEC-497 §13a.2 (R40/R41) — the pure re-buy seam: StoreKit handed back a transaction that was
+    /// ALREADY among the current entitlements before the purchase call (an owned non-consumable or
+    /// subscription). No date check.
+    static func isAlreadyOwned(preCallIds: Set<String>, transactionId: String) -> Bool {
+        preCallIds.contains(transactionId)
+    }
+
     func purchase(
         productId: String,
         appAccountToken: UUID?
@@ -28,10 +44,19 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             Log.warning("StoreKit2Bridge.purchase: no appAccountToken — host should call AppDNA.identify(userId:) BEFORE purchase to avoid cross-account entitlement leaks.")
         }
 
+        // R40/R41 — the entitlement ids BEFORE the purchase call: a returned transaction among them is a
+        // re-buy of something the user already owns.
+        var preCallIds: Set<String> = []
+        for await entitlement in Transaction.currentEntitlements {
+            if case .verified(let owned) = entitlement { preCallIds.insert(String(owned.id)) }
+        }
+
+        await deliveryQueue.beginPurchase(productId: product.id)
         let result: Product.PurchaseResult
         do {
             result = try await product.purchase(options: options)
         } catch {
+            await deliveryQueue.endPurchase(productId: product.id)
             await fireBillingPurchaseFailed(productId: productId, error: error)
             throw error
         }
@@ -42,50 +67,68 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             do {
                 transaction = try checkVerified(verification)
             } catch {
+                await deliveryQueue.endPurchase(productId: product.id)
                 await fireBillingPurchaseFailed(productId: productId, error: error)
                 throw error
             }
+            let transactionId = String(transaction.id)
+            let alreadyOwned = Self.isAlreadyOwned(preCallIds: preCallIds, transactionId: transactionId)
+            // Reported BEFORE finish(): the observer then finishes the matching update without emitting.
+            await deliveryQueue.markReported(transactionId)
             await transaction.finish()
+            await deliveryQueue.endPurchase(productId: product.id)
 
-            // SPEC-400 — fire onPurchaseCompleted to the host's
-            // registered AppDNABillingDelegate. Single source of truth
-            // for billing-delegate purchase callbacks; PaywallManager
-            // does NOT fire here, so each successful purchase produces
-            // exactly one onPurchaseCompleted invocation.
-            let txInfo = TransactionInfo(
-                transactionId: String(transaction.id),
-                productId: product.id,
-                purchaseDate: transaction.purchaseDate,
-                environment: "production"
-            )
-            await MainActor.run {
-                AppDNA.billingDelegate?.onPurchaseCompleted(productId: product.id, transaction: txInfo)
+            // SPEC-400 — fire onPurchaseCompleted to the host's registered AppDNABillingDelegate (the live
+            // caller's fire-and-forget delivery). Single source of truth for billing-delegate purchase
+            // callbacks; PaywallManager does NOT fire here. A re-buy of an owned item delivers nothing
+            // (SPEC-497 R40/R41, as Android).
+            if !alreadyOwned {
+                let txInfo = TransactionInfo(
+                    transactionId: transactionId,
+                    productId: product.id,
+                    purchaseDate: transaction.purchaseDate,
+                    environment: "production"
+                )
+                await MainActor.run {
+                    AppDNA.billingDelegate?.onPurchaseCompleted(productId: product.id, transaction: txInfo)
+                }
             }
 
+            // SPEC-497 §13a.2 (R42–R46) — the price the store CHARGED (`transaction.price`, the intro price
+            // for a paid intro, 0 for a free trial; the list price only when StoreKit has none) and
+            // whether this is a free trial.
+            let isTrial = TrialDetection.isFreeTrial(transaction: transaction, product: product)
             return PurchaseResult(
                 productId: product.id,
-                transactionId: String(transaction.id),
-                price: NSDecimalNumber(decimal: product.price).doubleValue,
-                currency: product.priceFormatStyle.currencyCode ?? "USD",
+                transactionId: transactionId,
+                originalTransactionId: String(transaction.originalID),
+                price: chargedPrice(transactionPrice: transaction.price, productPrice: product.price),
+                currency: transaction.currency?.identifier ?? product.priceFormatStyle.currencyCode ?? "USD",
                 provider: "storekit2",
                 // `Product.subscription` is `Product.SubscriptionInfo?` — non-nil ONLY for an
                 // auto-renewable subscription. A consumable / non-consumable / lifetime unlock leaves it
                 // nil and therefore emits `purchase_completed` alone. This is the iOS half of the
                 // discriminator Android reads off `Entitlement.expiresAt != null`.
-                isSubscription: product.subscription != nil
+                isSubscription: product.subscription != nil,
+                isConsumable: transaction.productType == .consumable,
+                isTrial: isTrial,
+                alreadyOwned: alreadyOwned
             )
 
         case .userCancelled:
+            await deliveryQueue.endPurchase(productId: product.id)
             let err = StoreKit2Error.userCancelled
             await fireBillingPurchaseFailed(productId: productId, error: err)
             throw err
 
         case .pending:
+            await deliveryQueue.endPurchase(productId: product.id)
             let err = StoreKit2Error.purchasePending
             await fireBillingPurchaseFailed(productId: productId, error: err)
             throw err
 
         @unknown default:
+            await deliveryQueue.endPurchase(productId: product.id)
             let err = StoreKit2Error.unknown
             await fireBillingPurchaseFailed(productId: productId, error: err)
             throw err
@@ -144,31 +187,9 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
     }
 
     func getEntitlements(appAccountToken: UUID?) async -> [String] {
-        var entitlements: [String] = []
-
-        // See `restore(...)` above for the rationale on resolving the
-        // first-identifier anchor once at the top of the read loop.
-        let firstIdentifier = AppAccountTokenResolver.firstIdentifiedToken()
-
-        for await result in Transaction.currentEntitlements {
-            guard let transaction = try? checkVerified(result) else { continue }
-            // Same per-user binding filter as `restore` above — see
-            // `EntitlementOwnerFilter` for the full decision matrix.
-            switch EntitlementOwnerFilter.decide(
-                transactionToken: transaction.appAccountToken,
-                expectedToken: appAccountToken,
-                firstIdentifiedToken: firstIdentifier
-            ) {
-            case .grant, .grantAnonymousPolicy, .grantUntaggedMigration:
-                entitlements.append(transaction.productID)
-            case .denyOtherUser:
-                Log.warning("StoreKit2Bridge.getEntitlements: skipped transaction \(transaction.id) — appAccountToken does not match the current user.")
-            case .denyUntaggedOtherUser:
-                Log.warning("StoreKit2Bridge.getEntitlements: skipped untagged transaction \(transaction.id) — the current user is not the device's first-identifier, so the untagged history is not inherited (cross-account leak guard).")
-            }
-        }
-
-        return entitlements
+        // The same read-only pass `ExternalProviderBridge` uses (see `EntitlementOwnerFilter` for the
+        // decision matrix).
+        await StoreKitEntitlementReader.productIds(appAccountToken: appAccountToken, label: "StoreKit2Bridge")
     }
 
     // MARK: - Verification

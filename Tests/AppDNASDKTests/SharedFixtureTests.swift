@@ -467,7 +467,12 @@ final class SharedFixtureTests: XCTestCase {
         case "fire_hook":                      runFireHook(fixture, harness)
         case "show_screen":                    runShowScreen(fixture, harness)
         case "show_paywall":                   runShowPaywall(fixture, harness)
-        case "purchase":                       runPurchase(fixture, harness)
+        case "purchase":
+            // SPEC-497 §3.9 — a paywall that declares a `billing_provider` is driven through the REAL
+            // PaywallManager tap path (SharedFixtureDrivers+Billing.swift); the outcome fixtures below
+            // still need a real store.
+            if await runPurchaseUnderProvider(fixture, harness) { break }
+            runPurchase(fixture, harness)
         case "restore_purchases":              runRestorePurchases(fixture, harness)
         case "show_message":                   runShowMessage(fixture, harness)
         case "tap_link":                       runTapLink(fixture, harness)
@@ -1992,7 +1997,13 @@ final class SharedFixtureTests: XCTestCase {
             h.state["current_screen"] = screenName
         }
 
-        h.tracker.track(event: name, properties: props)
+        // SPEC-497 §11.9 — through the PUBLIC `AppDNA.track` (it strips the host-forgeable
+        // `emitted_by` / `_appdna_origin` first), with the harness tracker installed as the SDK's.
+        let previous = AppDNA.eventTrackerForTesting
+        AppDNA.installEventTrackerForTest(h.tracker)
+        defer { AppDNA.installEventTrackerForTest(previous) }
+        AppDNA.track(event: name, properties: props)
+        AppDNA.drainSDKQueueForTesting()
     }
 
     // MARK: - Driver: present_surface_under_experiment

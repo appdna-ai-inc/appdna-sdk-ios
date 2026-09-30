@@ -74,10 +74,33 @@ extension AppDNA {
         /// host see the same object.
         internal var isLive: Bool { bridge != nil }
 
+        /// SPEC-497 §3.2 — the ownership policy `configure` chose (`BillingOwnership.policy`).
+        internal private(set) var ownershipPolicy: BillingOwnershipPolicy = BillingOwnership.unavailable
+
+        /// SPEC-497 §3.2 rule 3 (D-R39-1, R65–R67) — has `configure` wired billing yet? Until it has,
+        /// `purchase` / `restore` fail with an `unknown` "not configured yet" error; once configured with no
+        /// bridge (`none`) they throw `providerNotAvailable`. Reset by `teardown()`, so after `shutdown()`
+        /// the not-configured error applies again.
+        internal private(set) var configured = false
+
+        /// The message of the not-configured error (an `NSError` the mappers send to `unknown`).
+        static let notConfiguredMessage = "AppDNA SDK not configured yet — call configure() first"
+
+        /// `configure` wires the bridge, the tracker and the policy here — right after the bridge is built
+        /// and BEFORE the observer starts, so the facade and the observer see the same bridge (R64/R65).
+        internal func wire(bridge: BillingBridgeProtocol?, policy: BillingOwnershipPolicy, tracker: EventTracker?) {
+            self.bridge = bridge
+            self.ownershipPolicy = policy
+            self.eventTracker = tracker
+            self.configured = true
+        }
+
         /// Released by `AppDNA.shutdown()`. Nothing else may call this.
         internal func teardown() {
             bridge = nil
             eventTracker = nil
+            configured = false
+            ownershipPolicy = BillingOwnership.unavailable
             // Entitlement handlers are dropped SYNCHRONOUSLY by `AppDNA.shutdown()`, before this async
             // teardown is even queued. Clearing them again here would remove a handler the caller
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`
@@ -146,29 +169,53 @@ extension AppDNA {
         /// every entry point, emits exactly once. `PurchaseSuccessEvents.emit`'s own doc always said
         /// "exactly one of each, from the one site that observed the purchase"; now it is true.
         public func purchase(_ productId: String, options: PurchaseOptions? = nil) async throws -> TransactionInfo {
+            // 🔴 CAPTURE THE TRACKER STRONGLY BEFORE ANY AWAIT — OR A PURCHASE CAN CHARGE AND EMIT NOTHING.
+            //
+            // `eventTracker` is `weak`, and `teardown()` nils it — so if `shutdown()` lands mid-purchase,
+            // the charge goes through and `if let eventTracker` reads nil: money taken, ZERO metered
+            // events. Pin the tracker to the purchase the instant we commit to it.
+            let tracker = eventTracker
+            guard configured else {
+                // SPEC-497 §3.2 rule 3 (R65) — no new error type: an NSError the mappers send to `unknown`.
+                let error = Self.notConfiguredError()
+                trackPurchaseFailed(tracker, productId: productId, error: error)
+                throw error
+            }
             guard let bridge = bridge else {
+                // SPEC-497 §3.4 (SDK minor 10) — was `BillingModuleError.noBillingProvider`.
                 Log.warning("BillingModule: No billing provider configured")
-                throw BillingModuleError.noBillingProvider
+                let error = BillingError.providerNotAvailable(ownershipPolicy.refusalMessage)
+                trackPurchaseFailed(tracker, productId: productId, error: error)
+                throw error
             }
             let token = options?.appAccountToken ?? AppAccountTokenResolver.tokenForCurrentUser()
-            // 🔴 CAPTURE THE TRACKER STRONGLY BEFORE THE AWAIT — OR A PURCHASE CAN CHARGE AND EMIT NOTHING.
-            //
-            // `bridge` is a local strong `let`, so a purchase already past the guard completes even if
-            // `shutdown()` runs during the StoreKit sheet (seconds of user Face-ID). But `eventTracker`
-            // is `weak`, and `teardown()` nils it — so if `shutdown()` lands mid-purchase, the charge
-            // goes through and `if let eventTracker` reads nil: money taken, ZERO metered events. Moving
-            // teardown() earlier (which the shutdown fix did, correctly) makes this MORE likely, not less.
-            // Pin the tracker to the purchase the instant we commit to it.
-            let tracker = eventTracker
-            let result = try await bridge.purchase(productId: productId, appAccountToken: token)
-            // No `paywall_id`: this purchase did not come from an AppDNA-rendered paywall. Fabricating
-            // one would misattribute revenue to a paywall that was never shown.
-            if let tracker {
-                PurchaseSuccessEvents.emit(tracker: tracker, paywallId: nil, result: result)
+            // SPEC-497 §13a.2 (R40) — a direct purchase emits `purchase_started` like Android. A non-owning
+            // bridge refuses without starting anything, so it gets no `purchase_started` (R64).
+            if ownershipPolicy.sdkCanPurchase, let tracker {
+                tracker.track(event: "purchase_started", properties: BillingEventProps.marked([
+                    "product_id": productId,
+                ]))
             }
-            // Round-34 — refresh the entitlement cache so onEntitlementsChanged fires after a
-            // purchase, matching Android (handleSuccessfulPurchase → update → notifyBillingDelegate).
-            // Diff-guarded inside refreshEntitlementCache, so an unchanged set fires nothing.
+            // The owner map (R47–R50): recorded BEFORE the StoreKit call, whatever the outcome.
+            PurchaseOwnerMap.recordBeforePurchase(token: token)
+            let result: PurchaseResult
+            do {
+                result = try await bridge.purchase(productId: productId, appAccountToken: token)
+            } catch {
+                trackPurchaseFailed(tracker, productId: productId, error: error)
+                throw error
+            }
+            // No `paywall_id`: this purchase did not come from an AppDNA-rendered paywall. Fabricating
+            // one would misattribute revenue to a paywall that was never shown. A re-buy of an owned item
+            // books no revenue (`purchase_restored{reason: item_already_owned}`, R40/R41).
+            if let tracker {
+                PurchaseSuccessEvents.report(tracker: tracker, paywallId: nil, result: result)
+            }
+            // SPEC-497 §13a.2 — after a subscription purchase, one snapshot pass, so its first renewal
+            // diffs against the right baseline.
+            if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }
+            // Round-34 — refresh the entitlement cache so onEntitlementsChanged fires after a purchase,
+            // matching Android. Diff-guarded inside refreshEntitlementCache.
             await refreshEntitlementCache()
             return TransactionInfo(
                 transactionId: result.transactionId,
@@ -176,6 +223,32 @@ extension AppDNA {
                 purchaseDate: Date(),
                 environment: "production"
             )
+        }
+
+        /// The terminal event of a failed direct purchase — split exactly as the paywall path splits it:
+        /// a user cancel is `purchase_canceled`, a pending approval `purchase_pending`, anything else one
+        /// `purchase_failed` (no `paywall_id`). Only when a tracker exists (none before `configure`).
+        private func trackPurchaseFailed(_ tracker: EventTracker?, productId: String, error: Error) {
+            guard let tracker else { return }
+            let errorType = billingErrorType(error)
+            switch errorType {
+            case "userCancelled":
+                tracker.track(event: "purchase_canceled", properties: BillingEventProps.marked(["product_id": productId]))
+            case "pending":
+                tracker.track(event: "purchase_pending", properties: BillingEventProps.marked(["product_id": productId]))
+            default:
+                tracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
+                    paywallId: nil,
+                    productId: productId,
+                    error: error,
+                    errorType: errorType
+                ))
+            }
+        }
+
+        /// SPEC-497 §3.2 rule 3 (R65) — the not-configured error. `billingErrorType` sends it to `unknown`.
+        static func notConfiguredError() -> NSError {
+            NSError(domain: "AppDNA", code: -1, userInfo: [NSLocalizedDescriptionKey: notConfiguredMessage])
         }
 
         /// Restore previously purchased products.
@@ -186,9 +259,12 @@ extension AppDNA {
         /// transactions are surfaced under the migration-tolerant policy and
         /// the server claims ownership via `receiptVerifier.restore(...)`.
         public func restorePurchases() async throws -> [String] {
+            guard configured else { throw Self.notConfiguredError() }
             guard let bridge = bridge else {
+                // SPEC-497 §3.4 — was `BillingModuleError.noBillingProvider`. A non-owning bridge throws
+                // `providerNotAvailable` itself (§3.2 rule 2).
                 Log.warning("BillingModule: No billing provider configured")
-                throw BillingModuleError.noBillingProvider
+                throw BillingError.providerNotAvailable(ownershipPolicy.refusalMessage)
             }
             let restored = try await bridge.restore(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             // Round-34 — refresh entitlements so onEntitlementsChanged fires after a restore, matching
@@ -369,9 +445,47 @@ extension AppDNA {
             }
         }
 
+        // MARK: Billing delegate (SPEC-497 §13a.2 rule 6, R42/R43)
+
+        private let delegateLock = NSLock()
+        private weak var storedDelegate: AppDNABillingDelegate?
+        private var storedDelegateDelivers = true
+
         /// Set a delegate to receive billing lifecycle callbacks.
-        public func setDelegate(_ delegate: AppDNABillingDelegate?) {
-            AppDNA.billingDelegate = delegate
+        ///
+        /// - Parameter deliversPurchases: `true` (the default) makes this delegate the one the delivery
+        ///   queue delivers queued purchases to (`onPurchaseCompleted` for a purchase that completed
+        ///   outside a live `purchase()` call — an interrupted or Ask-to-Buy purchase). Setting such a
+        ///   delegate delivers anything already queued. Any billing delegate drains the queue, so
+        ///   implement `onPurchaseCompleted` — or pass `false` if this delegate must never receive queued
+        ///   purchases. Grant idempotently by `transactionId`: delivery is at least once.
+        public func setDelegate(_ delegate: AppDNABillingDelegate?, deliversPurchases: Bool = true) {
+            assignBillingDelegate(delegate, delivers: deliversPurchases)
+        }
+
+        /// The ONE entry point that writes the delegate storage and its `delivers` flag (R42/R43). The flag
+        /// is set BEFORE the delegate, and the drain is triggered here — only for a delivering delegate —
+        /// never by a bare `didSet`.
+        internal func assignBillingDelegate(_ delegate: AppDNABillingDelegate?, delivers: Bool) {
+            delegateLock.lock()
+            storedDelegateDelivers = delivers
+            storedDelegate = delegate
+            delegateLock.unlock()
+            if delegate != nil && delivers {
+                Task { await PurchaseDeliveryQueue.shared.drain() }   // trigger (ii)
+            }
+        }
+
+        /// The current delegate (the public `AppDNA.billingDelegate` getter).
+        internal var currentDelegate: AppDNABillingDelegate? {
+            delegateLock.lock(); defer { delegateLock.unlock() }
+            return storedDelegate
+        }
+
+        /// The delegate the drain may deliver to: nil unless one is set AND it delivers purchases.
+        internal func deliveringDelegate() -> AppDNABillingDelegate? {
+            delegateLock.lock(); defer { delegateLock.unlock() }
+            return storedDelegateDelivers ? storedDelegate : nil
         }
 
         /// Internal: Fetch products via StoreKit 2.
@@ -765,6 +879,10 @@ public struct PurchaseOptions {
 
 /// Errors specific to the BillingModule namespace.
 public enum BillingModuleError: LocalizedError {
+    /// Deprecated and unused since SPEC-497: `AppDNA.billing.purchase` / `restorePurchases` with no
+    /// billing provider throw `BillingError.providerNotAvailable` (and, before `configure`, an `unknown`
+    /// "not configured yet" error). Kept so host code that names it still compiles.
+    @available(*, deprecated, message: "No longer thrown — catch BillingError.providerNotAvailable instead.")
     case noBillingProvider
 
     public var errorDescription: String? {

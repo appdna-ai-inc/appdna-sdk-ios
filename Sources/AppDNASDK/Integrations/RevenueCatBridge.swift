@@ -43,9 +43,13 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
             throw err
         }
 
-        let customerInfo: CustomerInfo
+        // SPEC-497 §11.9 (R74) — keep the StoreTransaction: its `transactionIdentifier` is the STORE
+        // transaction id revenue dedupe matches against the RevenueCat webhook. This used to be discarded
+        // and the RevenueCat app-user id was reported as `transaction_id` instead. (`customerInfo` is not
+        // needed any more.) Review-only: no CI job compiles this file (RevenueCat is not linked).
+        let storeTransaction: StoreTransaction?
         do {
-            (_, customerInfo, _) = try await Purchases.shared.purchase(package: package)
+            (storeTransaction, _, _) = try await Purchases.shared.purchase(package: package)
         } catch {
             await fireBillingPurchaseFailed(productId: productId, error: error)
             throw error
@@ -60,8 +64,11 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         // billing delegate. SPEC-400 single-source-of-truth: every
         // purchase produces exactly one onPurchaseCompleted call from
         // the bridge that drove it.
+        // Nil → the key is omitted downstream (`PurchaseSuccessEvents.properties` skips an empty id) —
+        // never the user id.
+        let transactionId = storeTransaction?.transactionIdentifier ?? ""
         let txInfo = TransactionInfo(
-            transactionId: customerInfo.originalAppUserId,
+            transactionId: transactionId,
             productId: product.productIdentifier,
             purchaseDate: Date(),
             environment: "production"
@@ -72,7 +79,7 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
 
         return PurchaseResult(
             productId: product.productIdentifier,
-            transactionId: customerInfo.originalAppUserId,
+            transactionId: transactionId,
             price: NSDecimalNumber(decimal: product.price).doubleValue,
             currency: product.currencyCode ?? "USD",
             provider: "revenuecat",
@@ -85,7 +92,10 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
             // restores and cross-device syncs too, so a `subscription_started` there would fire once per
             // renewal — an over-count on a METERED event, and the exact double-count
             // `SubscriptionStatusObserver` was written to avoid.
-            isSubscription: product.subscriptionPeriod != nil
+            isSubscription: product.subscriptionPeriod != nil,
+            // SPEC-497 §13a.2 (C1, round-20 SDK minor 2). `isTrial` stays nil: `is_trial` is omitted for
+            // RevenueCat purchases (R45).
+            isConsumable: product.productType == .consumable
         )
     }
 

@@ -58,7 +58,11 @@ let package = Package(
                 // test cannot `import GoogleMaps` and the only thing left to check would be that
                 // our own code did not throw — which is exactly the kind of proof #671 slipped past.
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
-            ]
+            ],
+            // SPEC-497 §3.10 / §3.11 — the StoreKit test configuration the SKTestSession tests load
+            // (`Bundle.module`): coins (consumable), lifetime (non-consumable), and three monthly
+            // subscriptions each in its own group (no offer, free-trial intro, pay-up-front intro).
+            resources: [.copy("AppDNATestProducts.storekit")]
         )
     ]
 )

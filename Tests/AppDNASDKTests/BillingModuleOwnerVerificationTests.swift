@@ -36,7 +36,8 @@ final class BillingModuleOwnerVerificationTests: XCTestCase {
             price: 9.99,
             currency: "USD",
             provider: "test",
-            isSubscription: false
+            isSubscription: false,
+            isConsumable: false
         )
         var restoreResult: [String] = []
         var entitlementsResult: [String] = []
@@ -63,7 +64,9 @@ final class BillingModuleOwnerVerificationTests: XCTestCase {
     private func makeModule() -> (AppDNA.BillingModule, RecordingBridge) {
         let module = AppDNA.BillingModule()
         let bridge = RecordingBridge()
-        module.bridge = bridge
+        // SPEC-497 §3.2 rule 3 — a module `configure` never wired refuses with "not configured yet";
+        // these tests are about token threading on a CONFIGURED storeKit2 module.
+        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: nil)
         return (module, bridge)
     }
 

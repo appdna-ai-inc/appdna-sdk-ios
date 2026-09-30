@@ -51,10 +51,10 @@ final class AdaptyBridge: BillingBridgeProtocol {
         // so passing `appAccountToken` separately would risk inconsistent
         // attribution between Apple-side and Adapty-side ownership.
         _ = appAccountToken
-        eventTracker?.track(event: "purchase_started", properties: [
+        eventTracker?.track(event: "purchase_started", properties: BillingEventProps.marked([
             "product_id": productId,
             "provider": "adapty",
-        ])
+        ]))
 
         #if canImport(Adapty)
         do {
@@ -69,7 +69,10 @@ final class AdaptyBridge: BillingBridgeProtocol {
                 // that actually billed it. Same rule as StoreKit2Bridge (`product.subscription != nil`),
                 // just resolved a level up — an Adapty customer must not be the one customer whose
                 // subscriptions never emit `subscription_started`.
-                isSubscription: await PurchaseSuccessEvents.isAutoRenewable(productId: productId)
+                isSubscription: await PurchaseSuccessEvents.isAutoRenewable(productId: productId),
+                // SPEC-497 §13a.2 (C1, round-20 SDK minor 2) — a StoreKit product lookup, as for
+                // `isAutoRenewable`. `isTrial` stays nil (`is_trial` omitted for Adapty, R45).
+                isConsumable: await PurchaseSuccessEvents.isConsumable(productId: productId)
             )
             // 🔴 NO EMIT HERE. A bridge NEVER emits the metered purchase events — its CALLER does.
             //
@@ -104,11 +107,11 @@ final class AdaptyBridge: BillingBridgeProtocol {
             AppDNA.reconcileSubscriptionState()
             return purchaseResult
         } catch {
-            eventTracker?.track(event: "purchase_failed", properties: [
+            eventTracker?.track(event: "purchase_failed", properties: BillingEventProps.marked([
                 "product_id": productId,
                 "error": error.localizedDescription,
                 "provider": "adapty",
-            ])
+            ]))
             // SPEC-400 — fire onPurchaseFailed.
             await MainActor.run {
                 AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)
@@ -134,10 +137,10 @@ final class AdaptyBridge: BillingBridgeProtocol {
         #if canImport(Adapty)
         let profile = try await Adapty.restorePurchases()
         let ids = profile.accessLevels.filter(\.value.isActive).map(\.key)
-        eventTracker?.track(event: "purchase_restored", properties: [
+        eventTracker?.track(event: "purchase_restored", properties: BillingEventProps.marked([
             "restored_count": ids.count,
             "provider": "adapty",
-        ])
+        ]))
         // SPEC-400 — fire onRestoreCompleted.
         await MainActor.run {
             AppDNA.billingDelegate?.onRestoreCompleted(restoredProducts: ids)

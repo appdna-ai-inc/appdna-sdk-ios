@@ -54,7 +54,8 @@ final class SubscriptionStartedEventTests: XCTestCase {
             price: 49.99,
             currency: "USD",
             provider: provider,
-            isSubscription: isSubscription
+            isSubscription: isSubscription,
+            isConsumable: false
         )
     }
 

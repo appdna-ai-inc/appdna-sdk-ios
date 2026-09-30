@@ -50,7 +50,8 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
                 price: 9.99,
                 currency: "USD",
                 provider: "storekit2",
-                isSubscription: isSubscription
+                isSubscription: isSubscription,
+                isConsumable: false
             )
         }
         func restore(appAccountToken: UUID?) async throws -> [String] { [] }
@@ -201,8 +202,11 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
                 "bridge, so a host that shut the SDK down on sign-out could still charge the " +
                 "signed-out user, and with eventTracker already nil nobody would ever be told."
             )
-        } catch BillingModuleError.noBillingProvider {
-            // Correct: billing is down, and says so.
+        } catch {
+            // Correct: billing is down, and says so — since SPEC-497 (R67) with the `unknown`
+            // "not configured yet" error, because `shutdown()` resets the facade's `configured` flag.
+            XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
+            XCTAssertEqual(billingErrorType(error), "unknown")
         }
 
         XCTAssertEqual(

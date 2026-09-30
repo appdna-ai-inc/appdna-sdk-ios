@@ -23,6 +23,9 @@ private final class PaywallDismissGuard {
 final class PaywallManager {
     private let remoteConfigManager: RemoteConfigManager
     private let billingBridge: BillingBridgeProtocol?
+    /// SPEC-497 §3.2 rule 5 — the ownership policy `configure` chose. A tap the SDK cannot buy (no
+    /// bridge, or `!sdkCanPurchase`) fails LOUDLY instead of silently.
+    private let billingPolicy: BillingOwnershipPolicy
     private let eventTracker: EventTracker
     /// SPEC-036-F §1.2 — consulted at present-time for a running paywall
     /// experiment targeting the entity being shown.
@@ -31,11 +34,13 @@ final class PaywallManager {
     init(
         remoteConfigManager: RemoteConfigManager,
         billingBridge: BillingBridgeProtocol?,
+        billingPolicy: BillingOwnershipPolicy,
         eventTracker: EventTracker,
         experimentManager: ExperimentManager? = nil
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.billingBridge = billingBridge
+        self.billingPolicy = billingPolicy
         self.eventTracker = eventTracker
         self.experimentManager = experimentManager
     }
@@ -244,9 +249,37 @@ final class PaywallManager {
 
     // MARK: - Purchase flow
 
-    private func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
-        guard let bridge = billingBridge else {
-            Log.error("No billing bridge configured")
+    /// Internal (not private) so the shared fixtures drive the REAL tap path (SPEC-497 §3.9).
+    func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
+        // SPEC-497 §3.2 rule 5 — evaluated BEFORE anything else in the handler. This used to be a bare
+        // `Log.error("No billing bridge configured"); return`: a tap on a paywall plan did NOTHING — no
+        // delegate call, no event. Now: exactly one `purchase_failed`, one `onPaywallPurchaseFailed`
+        // (`providerNotAvailable`, with the tapped plan's product id — the documented recipe is to start
+        // the purchase with the host's own provider from that callback), then the normal failure
+        // routing. No `purchase_started` and no `onPaywallPurchaseStarted`: the purchase never started.
+        guard let bridge = billingBridge, billingPolicy.sdkCanPurchase else {
+            let error = BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+            let errorType = billingErrorType(error)
+            Log.warning("Paywall \(paywallId): the SDK cannot buy under billingProvider '\(billingPolicy.provider)' — \(billingPolicy.refusalMessage)")
+            eventTracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
+                paywallId: paywallId,
+                productId: plan.productId,
+                error: error,
+                errorType: errorType
+            ))
+            DispatchQueue.main.async { [weak self] in
+                delegate?.onPaywallPurchaseFailed(
+                    paywallId: paywallId,
+                    error: error,
+                    errorType: errorType,
+                    productId: plan.productId
+                )
+                self?.handlePostPurchaseFailure(
+                    config: config.post_purchase?.on_failure,
+                    paywallId: paywallId,
+                    viewController: viewController
+                )
+            }
             return
         }
 
@@ -254,44 +287,54 @@ final class PaywallManager {
         // AC-038: Include toggle states and promo code in purchase event
         var purchaseProps: [String: Any] = [
             "paywall_id": paywallId,
-            "product_id": plan.productId,
+            "product_id": plan.productId ?? "",
         ]
         for (key, value) in metadata {
             purchaseProps[key] = value
         }
-        eventTracker.track(event: "purchase_started", properties: purchaseProps)
+        eventTracker.track(event: "purchase_started", properties: BillingEventProps.marked(purchaseProps))
 
         Task {
             do {
                 // Cross-account-leak defence — bind the StoreKit transaction
                 // to the currently-identified app user via `appAccountToken`.
                 // See `AppAccountTokenResolver` for the derivation contract.
+                let token = AppAccountTokenResolver.tokenForCurrentUser()
+                // SPEC-497 §13a.2 (R47–R50) — the owner map, BEFORE the StoreKit call, whatever the outcome.
+                PurchaseOwnerMap.recordBeforePurchase(token: token)
                 let result = try await bridge.purchase(
                     productId: plan.productId ?? "",
-                    appAccountToken: AppAccountTokenResolver.tokenForCurrentUser()
+                    appAccountToken: token
                 )
                 // `purchase_completed` (unchanged) and — ONLY when the purchased product auto-renews —
                 // `subscription_started`, the MTPU-metered event iOS never emitted. Both carry the same
                 // envelope; the rule lives in `PurchaseSuccessEvents` so StoreKit2 / RevenueCat / Adapty
-                // all obey it from the single result they each return.
-                PurchaseSuccessEvents.emit(
+                // all obey it from the single result they each return. A re-buy of an owned item books
+                // no revenue: one `purchase_restored{reason: item_already_owned}` and no
+                // `onPaywallPurchaseCompleted` (SPEC-497 R40/R41).
+                let converted = PurchaseSuccessEvents.report(
                     tracker: eventTracker,
                     paywallId: paywallId,
                     result: result
                 )
+                // SPEC-497 §13a.2 — one snapshot pass after a subscription purchase (the right baseline
+                // for its first renewal).
+                if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }
                 // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
                 // purchase too (matches Android + the direct billing.purchase path). Diff-guarded.
                 await AppDNA.billing.refreshEntitlementCache()
                 DispatchQueue.main.async { [weak self] in
-                    delegate?.onPaywallPurchaseCompleted(
-                        paywallId: paywallId,
-                        productId: result.productId,
-                        transaction: TransactionInfo(
-                            transactionId: result.transactionId,
+                    if converted {
+                        delegate?.onPaywallPurchaseCompleted(
+                            paywallId: paywallId,
                             productId: result.productId,
-                            purchaseDate: Date()
+                            transaction: TransactionInfo(
+                                transactionId: result.transactionId,
+                                productId: result.productId,
+                                purchaseDate: Date()
+                            )
                         )
-                    )
+                    }
                     // Post-purchase success action
                     self?.handlePostPurchaseSuccess(
                         config: config.post_purchase?.on_success,
@@ -313,15 +356,15 @@ final class PaywallManager {
                 // entirely. (`delegate_contracts/purchase_cancel_is_not_a_failure` pins this.)
                 switch errorType {
                 case "userCancelled":
-                    eventTracker.track(event: "purchase_canceled", properties: [
+                    eventTracker.track(event: "purchase_canceled", properties: BillingEventProps.marked([
                         "paywall_id": paywallId,
                         "product_id": plan.productId ?? "",
-                    ])
+                    ]))
                 case "pending":
-                    eventTracker.track(event: "purchase_pending", properties: [
+                    eventTracker.track(event: "purchase_pending", properties: BillingEventProps.marked([
                         "paywall_id": paywallId,
                         "product_id": plan.productId ?? "",
-                    ])
+                    ]))
                 default:
                     eventTracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
                         paywallId: paywallId,
@@ -425,13 +468,21 @@ final class PaywallManager {
         viewController: UIViewController,
         dismissGuard: PaywallDismissGuard,
     ) {
-        guard let bridge = billingBridge else {
-            // No billing bridge configured — surface the failure so hosts don't see silence.
+        guard let bridge = billingBridge, billingPolicy.sdkCanRestore else {
+            // No billing bridge, or a provider that owns restoring (SPEC-497 §3.3) — surface the failure
+            // so hosts don't see silence, and emit it (R40 event parity: it used to emit nothing).
+            let error = BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+            eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
+                "paywall_id": paywallId,
+                "error": error.localizedDescription,
+                "error_type": billingErrorType(error),
+            ]))
             DispatchQueue.main.async {
                 delegate?.onPaywallRestoreFailed(
                     paywallId: paywallId,
-                    error: BillingError.providerNotAvailable("Billing bridge not configured"),
+                    error: error,
                 )
+                AppDNA.paywall.skipNextAutoDismissOnRestore = false
             }
             return
         }
@@ -451,12 +502,12 @@ final class PaywallManager {
                 // (NativeBillingManager emits N per-product + 1 aggregate). iOS previously emitted ONLY the
                 // aggregate below, so a per-product restore funnel worked on Android and was empty on iOS.
                 for productId in restored {
-                    eventTracker.track(event: "purchase_restored", properties: ["product_id": productId])
+                    eventTracker.track(event: "purchase_restored", properties: BillingEventProps.marked(["product_id": productId]))
                 }
-                eventTracker.track(event: "purchase_restored", properties: [
+                eventTracker.track(event: "purchase_restored", properties: BillingEventProps.marked([
                     "paywall_id": paywallId,
                     "restored_count": restored.count,
-                ])
+                ]))
                 // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
                 // restore too (matches Android + the direct restorePurchases path). Diff-guarded.
                 await AppDNA.billing.refreshEntitlementCache()
@@ -510,10 +561,12 @@ final class PaywallManager {
                     }
                 }
             } catch {
-                eventTracker.track(event: "purchase_restore_failed", properties: [
+                // SPEC-497 R40 — `error_type`, as Android.
+                eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
                     "paywall_id": paywallId,
                     "error": error.localizedDescription,
-                ])
+                    "error_type": billingErrorType(error),
+                ]))
                 DispatchQueue.main.async {
                     delegate?.onPaywallRestoreFailed(paywallId: paywallId, error: error)
                     Log.error("Restore failed: \(error.localizedDescription)")
@@ -566,17 +619,20 @@ enum PaywallPlacementResolver {
 /// wrapped — a nil product then serialized as the literal string "nil" instead of an empty value.
 /// `product_id` is the column that answers "WHICH product failed"; it has to be right.
 enum PurchaseFailedProps {
+    /// `paywallId` nil (a direct `AppDNA.billing.purchase`) omits the key rather than inventing one.
+    /// Carries the SPEC-497 §11.9 `emitted_by` marker.
     static func build(
-        paywallId: String,
+        paywallId: String?,
         productId: String?,
         error: Error,
         errorType: String
     ) -> [String: Any] {
-        [
-            "paywall_id": paywallId,
+        var props: [String: Any] = [
             "product_id": productId ?? "",
             "error": error.localizedDescription,
             "error_type": errorType,
         ]
+        if let paywallId { props["paywall_id"] = paywallId }
+        return BillingEventProps.marked(props)
     }
 }
