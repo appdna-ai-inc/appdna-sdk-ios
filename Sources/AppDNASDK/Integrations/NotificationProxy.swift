@@ -345,7 +345,7 @@ final class AppDNANotificationCenterProxy: NSObject, UNUserNotificationCenterDel
             }
         }
         core.didReceive(
-            userInfo: request.content.userInfo,
+            userInfo: PushReply.userInfo(of: response),
             requestId: request.identifier,
             actionId: response.actionIdentifier,
             forward: forward,

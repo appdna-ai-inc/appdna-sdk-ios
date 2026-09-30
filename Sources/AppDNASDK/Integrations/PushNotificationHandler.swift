@@ -36,7 +36,7 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
         let request = response.notification.request
         completionHandler()
         AppDNA.pushModule.handleNotificationTap(
-            request.content.userInfo,
+            PushReply.userInfo(of: response),
             actionIdentifier: response.actionIdentifier,
             requestId: request.identifier
         )
@@ -54,14 +54,31 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
 
 // MARK: - Action categories
 
-/// SPEC-084 — registers the push's action buttons as a notification category. Goes through a
-/// `NotificationCenterSlot` (SPEC-497 §9a.8) so it never touches `UNUserNotificationCenter.current()`
-/// in a hostless test, where that call raises.
+/// SPEC-084 / SPEC-497 §17 item 28 — registers the push's action buttons as a notification category.
+/// iOS shows buttons only for a category registered BEFORE the notification is displayed, so the server
+/// sends every distinct button set under its own id (`aps.category` = `appdna_` + a hash of the set) and
+/// the SDK registers it:
+///   - in the Notification Service Extension (`NotificationService`), on receipt, before display —
+///     the only point that works for the FIRST push with a new button set while the app is not running;
+///   - when the app sees the push (foreground delivery, a tap) and at `configure` from the notifications
+///     still in Notification Centre, so a later push with the same set shows its buttons without the
+///     extension.
+/// Goes through a `NotificationCenterSlot` (SPEC-497 §9a.8) so it never touches
+/// `UNUserNotificationCenter.current()` in a hostless test, where that call raises.
 enum PushActionCategories {
-    static func register(from userInfo: [AnyHashable: Any], slot: NotificationCenterSlot?) {
-        guard let slot else { return }
-        guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else { return }
-        let categoryId = userInfo["category"] as? String ?? "appdna_default"
+    /// The category id a payload's buttons register under: `aps.category`, else a top-level `category`,
+    /// else `appdna_default`.
+    static func categoryId(from userInfo: [AnyHashable: Any]) -> String {
+        if let aps = userInfo["aps"] as? [String: Any], let id = aps["category"] as? String, !id.isEmpty { return id }
+        if let id = userInfo["category"] as? String, !id.isEmpty { return id }
+        return "appdna_default"
+    }
+
+    /// The category for the payload's buttons, or nil when it has none. Buttons are the server's SDK shape
+    /// `{id, label, action_type, action_value?, foreground}`: `foreground` → `.foreground`; `dismiss` →
+    /// `.destructive`; `text_reply` → a text-input action whose placeholder is `action_value`.
+    static func category(from userInfo: [AnyHashable: Any]) -> UNNotificationCategory? {
+        guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else { return nil }
 
         // SPEC-088: Interpolate action button labels
         let pushCtx = TemplateEngine.shared.buildContext()
@@ -69,8 +86,18 @@ enum PushActionCategories {
             guard let id = actionData["id"] as? String,
                   let rawLabel = actionData["label"] as? String else { return nil }
             let label = TemplateEngine.shared.interpolate(rawLabel, context: pushCtx)
+            let type = actionData["action_type"] as? String
             let foreground = actionData["foreground"] as? Bool ?? false
-            let options: UNNotificationActionOptions = foreground ? [.foreground] : []
+            var options: UNNotificationActionOptions = foreground ? [.foreground] : []
+            if type == "dismiss" { options.insert(.destructive) }
+
+            if type == "text_reply" {
+                let placeholder = actionData["action_value"] as? String ?? ""
+                return UNTextInputNotificationAction(
+                    identifier: id, title: label, options: options,
+                    textInputButtonTitle: label, textInputPlaceholder: placeholder
+                )
+            }
 
             // SPEC-085: Action button icon support (iOS 15+)
             if #available(iOS 15.0, *) {
@@ -93,19 +120,60 @@ enum PushActionCategories {
             }
             return UNNotificationAction(identifier: id, title: label, options: options)
         }
-
-        let category = UNNotificationCategory(
-            identifier: categoryId,
+        guard !actions.isEmpty else { return nil }
+        return UNNotificationCategory(
+            identifier: categoryId(from: userInfo),
             actions: actions,
             intentIdentifiers: [],
             options: []
         )
+    }
 
+    /// Registers the payload's category (replacing one with the same id; every other category — the
+    /// host's own included — is kept). `completion` runs once the set has been handed to the centre.
+    static func register(
+        from userInfo: [AnyHashable: Any],
+        slot: NotificationCenterSlot?,
+        completion: (() -> Void)? = nil
+    ) {
+        guard let slot, let category = category(from: userInfo) else { completion?(); return }
         slot.getCategories { existing in
-            var categories = existing
+            var categories = existing.filter { $0.identifier != category.identifier }
             categories.insert(category)
             slot.setCategories(categories)
+            completion?()
         }
+    }
+
+    /// At `configure`: registers the categories of the AppDNA notifications still in Notification Centre
+    /// (delivered while the app was not running, with no Notification Service Extension to register them).
+    static func registerFromDeliveredNotifications() {
+        guard !NotificationProxyBootstrap.isRunningUnderXCTest else { return }
+        UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
+            let userInfos = notifications
+                .map { $0.request.content.userInfo }
+                .filter { PushMarker.isAppDNA($0) && $0["actions"] != nil }
+            guard !userInfos.isEmpty else { return }
+            DispatchQueue.main.async {
+                userInfos.forEach { register(from: $0, slot: NotificationProxyBootstrap.categorySlot()) }
+            }
+        }
+    }
+}
+
+/// SPEC-497 §17 item 28 — a `text_reply` button's typed text. The notification-centre adapters copy it
+/// into the userInfo they hand the push module under `appdna_reply_text`; the host receives it as
+/// `notification.data["reply_text"]` in `onPushTapped`.
+enum PushReply {
+    static let userInfoKey = "appdna_reply_text"
+    static let dataKey = "reply_text"
+
+    static func userInfo(of response: UNNotificationResponse) -> [AnyHashable: Any] {
+        var userInfo = response.notification.request.content.userInfo
+        if let text = (response as? UNTextInputNotificationResponse)?.userText {
+            userInfo[userInfoKey] = text
+        }
+        return userInfo
     }
 }
 
@@ -122,7 +190,11 @@ enum PushPayloadParser {
     static func parse(userInfo: [AnyHashable: Any], title: String, body: String) -> PushPayload {
         let pushId = userInfo["push_id"] as? String ?? ""
         let imageUrl = userInfo["image_url"] as? String
-        let data = userInfo["data"] as? [String: Any]
+        var data = userInfo["data"] as? [String: Any]
+        // SPEC-497 §17 item 28 — the typed text of a `text_reply` button (`PushReply`).
+        if let reply = userInfo[PushReply.userInfoKey] as? String {
+            data = (data ?? [:]).merging([PushReply.dataKey: reply]) { _, new in new }
+        }
 
         // SPEC-088: Interpolate push title, body, and action button labels via TemplateEngine.
         let ctx = TemplateEngine.shared.buildContext()

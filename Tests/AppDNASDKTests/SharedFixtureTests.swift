@@ -2176,6 +2176,28 @@ final class SharedFixtureTests: XCTestCase {
         AppDNA.pushDelegate?.onPushReceived(notification: payload, inForeground: true)
 
         h.state["registered_action_button_count"] = payload.actions.count
+
+        // SPEC-497 §17 item 28 — the category the extension / delivered path registers, read back from
+        // an in-memory notification-centre slot through the REAL `PushActionCategories.register`.
+        let slot = InMemoryNotificationCenterSlot()
+        PushActionCategories.register(from: userInfo, slot: slot)
+        if let category = slot.categories.first {
+            h.state["registered_category"] = [
+                "id": category.identifier,
+                "actions": category.actions.map { action -> [String: Any] in
+                    var entry: [String: Any] = [
+                        "id": action.identifier,
+                        "title": action.title,
+                        "foreground": action.options.contains(.foreground),
+                        "text_input": action is UNTextInputNotificationAction,
+                    ]
+                    if let input = action as? UNTextInputNotificationAction {
+                        entry["placeholder"] = input.textInputPlaceholder
+                    }
+                    return entry
+                },
+            ] as [String: Any]
+        }
     }
 
     private func runTapPush(_ f: Fixture, _ h: Harness) async {

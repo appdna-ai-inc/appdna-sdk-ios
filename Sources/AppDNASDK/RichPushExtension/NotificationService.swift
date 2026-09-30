@@ -1,7 +1,9 @@
 import UserNotifications
 
-/// UNNotificationServiceExtension for rich push content (image download).
-/// Add as a separate target: AppDNANotificationServiceExtension
+/// UNNotificationServiceExtension for rich push content: downloads the image attachment and registers
+/// the push's action-button category before the notification is shown (without it, buttons of a button
+/// set the app has not seen yet do not appear). Add as a separate target:
+/// AppDNANotificationServiceExtension, whose principal class subclasses this one.
 open class NotificationService: UNNotificationServiceExtension {
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttempt: UNMutableNotificationContent?
@@ -17,17 +19,40 @@ open class NotificationService: UNNotificationServiceExtension {
         }
         self.bestAttempt = bestAttempt
 
-        // Download image attachment if present
-        if let imageUrlString = bestAttempt.userInfo["image_url"] as? String,
-           let url = URL(string: imageUrlString) {
-            downloadAttachment(url: url) { attachment in
-                if let attachment = attachment {
-                    bestAttempt.attachments = [attachment]
+        // SPEC-497 §17 item 28 — register the action buttons' category BEFORE the notification is shown:
+        // iOS displays buttons only for a category that is already registered, and this extension is the
+        // one place that runs before display while the app is not running. The server marks every push
+        // with buttons `mutable-content`, so this runs for them.
+        Self.registerActionCategory(from: bestAttempt.userInfo, slot: SystemNotificationCenterSlot()) {
+            if let category = PushActionCategories.category(from: bestAttempt.userInfo) {
+                bestAttempt.categoryIdentifier = category.identifier
+            }
+            // Download image attachment if present
+            if let imageUrlString = bestAttempt.userInfo["image_url"] as? String,
+               let url = URL(string: imageUrlString) {
+                self.downloadAttachment(url: url) { attachment in
+                    if let attachment = attachment {
+                        bestAttempt.attachments = [attachment]
+                    }
+                    contentHandler(bestAttempt)
                 }
+            } else {
                 contentHandler(bestAttempt)
             }
-        } else {
-            contentHandler(bestAttempt)
+        }
+    }
+
+    /// Registers the payload's button category and calls `completion` once the centre holds it: the set
+    /// is written asynchronously, and reading the categories back waits for that write — without it the
+    /// notification can be shown before its category exists. A payload without buttons completes at once.
+    static func registerActionCategory(
+        from userInfo: [AnyHashable: Any],
+        slot: NotificationCenterSlot,
+        completion: @escaping () -> Void
+    ) {
+        guard PushActionCategories.category(from: userInfo) != nil else { return completion() }
+        PushActionCategories.register(from: userInfo, slot: slot) {
+            slot.getCategories { _ in completion() }
         }
     }
 

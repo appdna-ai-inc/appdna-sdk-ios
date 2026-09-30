@@ -1641,6 +1641,9 @@ public final class AppDNA: @unchecked Sendable {
         PushGate.shared.markConfigured(epoch: epoch)
         DispatchQueue.main.async {
             NotificationProxyBootstrap.configureFallback(plist: Bundle.main.infoDictionary ?? [:])
+            // SPEC-497 §17 item 28 — button categories of AppDNA pushes delivered while the app was not
+            // running (no Notification Service Extension to register them).
+            PushActionCategories.registerFromDeliveredNotifications()
         }
 
         // 6. Bootstrap async (fetch orgId/appId, then Firestore configs)
