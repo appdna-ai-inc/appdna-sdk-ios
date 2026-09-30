@@ -1,20 +1,111 @@
 import SwiftUI
 
-/// Structured location data returned by the geocoding autocomplete endpoint.
-/// @see SPEC-089
+/// Structured location data — a geocoding suggestion, or what `AppDNA.getLocationData(fieldId:)`
+/// builds from a stored location answer. @see SPEC-089, SPEC-497 §13h
+///
+/// Every field except `formatted_address` is optional: a stored answer may be a typed string (no
+/// coordinates), a legacy `{address, latitude, longitude}` dict, or a selection that lacked some keys.
 public struct LocationData: Codable, Equatable {
     public let formatted_address: String
-    public let city: String
-    public let state: String
-    public let state_code: String
-    public let country: String
-    public let country_code: String
-    public let latitude: Double
-    public let longitude: Double
-    public let timezone: String
-    public let timezone_offset: Int
+    public let city: String?
+    public let state: String?
+    public let state_code: String?
+    public let country: String?
+    public let country_code: String?
+    public let latitude: Double?
+    public let longitude: Double?
+    public let timezone: String?
+    public let timezone_offset: Int?
     public let postal_code: String?
-    public let raw_query: String
+    public let raw_query: String?
+
+    init(
+        formatted_address: String,
+        city: String? = nil,
+        state: String? = nil,
+        state_code: String? = nil,
+        country: String? = nil,
+        country_code: String? = nil,
+        latitude: Double? = nil,
+        longitude: Double? = nil,
+        timezone: String? = nil,
+        timezone_offset: Int? = nil,
+        postal_code: String? = nil,
+        raw_query: String? = nil
+    ) {
+        self.formatted_address = formatted_address
+        self.city = city
+        self.state = state
+        self.state_code = state_code
+        self.country = country
+        self.country_code = country_code
+        self.latitude = latitude
+        self.longitude = longitude
+        self.timezone = timezone
+        self.timezone_offset = timezone_offset
+        self.postal_code = postal_code
+        self.raw_query = raw_query
+    }
+
+    /// SPEC-497 §13h — builds the result from a stored location answer, tolerantly and WITHOUT any
+    /// serialisation. (`JSONSerialization.data(withJSONObject:)` raises an Objective-C exception for a
+    /// string / number / `NSNull` top level, which `try?` cannot catch — that aborted the host app.)
+    ///
+    /// - A non-empty `String` (typed, not selected) → `{formatted_address, raw_query}` = the text.
+    /// - A `[String: Any]` → every field read with `as?`; a legacy `address` key maps to
+    ///   `formatted_address`; a coordinate is kept only when it is a finite number.
+    /// - Anything else (empty string, number, `NSNull`, absent) → nil.
+    static func fromStoredAnswer(_ value: Any?) -> LocationData? {
+        guard let value else { return nil }
+        if let text = value as? String {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : LocationData(formatted_address: text, raw_query: text)
+        }
+        let dict: [String: Any]
+        if let d = value as? [String: Any] {
+            dict = d
+        } else if let d = value as? NSDictionary {
+            var out: [String: Any] = [:]
+            for (k, v) in d { if let key = k as? String { out[key] = v } }
+            dict = out
+        } else {
+            return nil
+        }
+        func str(_ key: String) -> String? {
+            guard let s = dict[key] as? String else { return nil }
+            return s
+        }
+        func coord(_ key: String) -> Double? {
+            let raw = dict[key]
+            if raw is Bool { return nil }
+            let d: Double?
+            if let n = raw as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { d = n.doubleValue }
+            else if let v = raw as? Double { d = v }
+            else if let v = raw as? Int { d = Double(v) }
+            else { d = nil }
+            guard let d, d.isFinite else { return nil }
+            return d
+        }
+        func int(_ key: String) -> Int? {
+            if let n = dict[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() { return n.intValue }
+            return dict[key] as? Int
+        }
+        let formatted = str("formatted_address") ?? str("address") ?? ""
+        return LocationData(
+            formatted_address: formatted,
+            city: str("city"),
+            state: str("state"),
+            state_code: str("state_code"),
+            country: str("country"),
+            country_code: str("country_code"),
+            latitude: coord("latitude"),
+            longitude: coord("longitude"),
+            timezone: str("timezone"),
+            timezone_offset: int("timezone_offset"),
+            postal_code: str("postal_code"),
+            raw_query: str("raw_query")
+        )
+    }
 }
 
 /// Autocomplete location field for onboarding form steps.
@@ -34,10 +125,9 @@ struct LocationFieldView: View {
 
     private var selectedLocation: LocationData? {
         if let loc = value as? LocationData { return loc }
-        guard let dict = value as? [String: Any],
-              let jsonData = try? JSONSerialization.data(withJSONObject: dict),
-              let loc = try? JSONDecoder().decode(LocationData.self, from: jsonData) else { return nil }
-        return loc
+        // A selection is a dict; a typed string is not a selection.
+        guard value is [String: Any] || value is NSDictionary else { return nil }
+        return LocationData.fromStoredAnswer(value)
     }
 
     private var minChars: Int {
@@ -102,16 +192,17 @@ struct LocationFieldView: View {
                                     .foregroundColor(.secondary)
                                 VStack(alignment: .leading, spacing: 1) {
                                     // Primary line: City (or fallback to country if city empty)
-                                    Text(suggestion.city.isEmpty ? suggestion.country : suggestion.city)
+                                    Text((suggestion.city ?? "").isEmpty ? (suggestion.country ?? "") : (suggestion.city ?? ""))
                                         .font(.system(size: 14, weight: .medium))
                                         .foregroundColor(.primary)
                                     // Secondary line: "State, Country" or just "Country"
                                     // (no street names per user request)
                                     let secondary: String = {
-                                        if !suggestion.state.isEmpty && !suggestion.country.isEmpty {
-                                            return "\(suggestion.state), \(suggestion.country)"
-                                        } else if !suggestion.country.isEmpty {
-                                            return suggestion.country
+                                        let state = suggestion.state ?? "", country = suggestion.country ?? ""
+                                        if !state.isEmpty && !country.isEmpty {
+                                            return "\(state), \(country)"
+                                        } else if !country.isEmpty {
+                                            return country
                                         }
                                         return ""
                                     }()
@@ -238,21 +329,26 @@ struct LocationFieldView: View {
     private func selectSuggestion(_ suggestion: LocationData) {
         // Build display: "City / State, Country" or "City, Country"
         let display = Self.formatDisplay(
-            city: suggestion.city,
-            state: suggestion.state,
-            country: suggestion.country
+            city: suggestion.city ?? "",
+            state: suggestion.state ?? "",
+            country: suggestion.country ?? ""
         )
         query = display
 
-        // Store structured dict: country, city, state, timezone, lat, lon
-        value = [
-            "city": suggestion.city,
-            "state": suggestion.state,
-            "country": suggestion.country,
-            "timezone": suggestion.timezone,
-            "latitude": suggestion.latitude,
-            "longitude": suggestion.longitude,
-        ] as [String: Any]
+        // SPEC-497 §13h — the one stored shape on both platforms: formatted_address, city, state,
+        // country, latitude, longitude, timezone, plus state_code / country_code / postal_code when the
+        // lookup has them. Absent values are left out rather than stored as "" / 0.
+        var stored: [String: Any] = ["formatted_address": suggestion.formatted_address]
+        if let v = suggestion.city { stored["city"] = v }
+        if let v = suggestion.state { stored["state"] = v }
+        if let v = suggestion.country { stored["country"] = v }
+        if let v = suggestion.timezone { stored["timezone"] = v }
+        if let v = suggestion.latitude { stored["latitude"] = v }
+        if let v = suggestion.longitude { stored["longitude"] = v }
+        if let v = suggestion.state_code, !v.isEmpty { stored["state_code"] = v }
+        if let v = suggestion.country_code, !v.isEmpty { stored["country_code"] = v }
+        if let v = suggestion.postal_code, !v.isEmpty { stored["postal_code"] = v }
+        value = stored
 
         suggestions = []
         isExpanded = false
