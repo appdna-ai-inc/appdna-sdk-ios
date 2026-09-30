@@ -126,7 +126,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
                               expiresAt: nil, isTrial: false, offerType: nil),
         ]
         NotificationCenter.default.post(name: .entitlementsChanged, object: nil, userInfo: ["entitlements": payload])
-        XCTAssertTrue(await waitUntil { spy.changes.count == 1 }, "the delegate must hear the change")
+        let ok1 = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok1, "the delegate must hear the change")
         await settle()
         XCTAssertEqual(spy.changes.count, 1, "once per change")
         XCTAssertEqual(spy.onMain, [true], "on the main thread")
@@ -148,7 +149,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         NotificationCenter.default.post(name: .entitlementsChanged, object: nil, userInfo: ["entitlements": [
             ServerEntitlement(productId: "a", store: "app_store", status: "trialing", expiresAt: "2099-02-01T00:00:00Z", isTrial: true, offerType: nil),
         ]])
-        XCTAssertTrue(await waitUntil { spy.changes.count == 1 && !closureGot.isEmpty })
+        let ok2 = await waitUntil { spy.changes.count == 1 && !closureGot.isEmpty }
+        XCTAssertTrue(ok2)
         XCTAssertEqual(closureGot.map(\.productId), spy.changes[0].map(\.productId))
         XCTAssertEqual(closureGot.map(\.expiresAt), spy.changes[0].map(\.expiresAt))
         XCTAssertEqual(closureGot.map(\.isActive), spy.changes[0].map(\.isActive))
@@ -165,7 +167,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         bridge.ids = ["monthly"]
         world.expirations = ["monthly": world.now.addingTimeInterval(30 * 86_400)]
         await module.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { spy.changes.count == 1 }, "a purchase is a change")
+        let ok3 = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok3, "a purchase is a change")
         XCTAssertEqual(spy.changes[0].first?.expiresAt, world.expirations["monthly"], "the StoreKit expiry is carried")
 
         await module.refreshEntitlementCache()
@@ -174,11 +177,13 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
         world.expirations = ["monthly": world.now.addingTimeInterval(60 * 86_400)]   // renewal
         await module.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { spy.changes.count == 2 }, "a renewal moves the expiry → a change")
+        let ok4 = await waitUntil { spy.changes.count == 2 }
+        XCTAssertTrue(ok4, "a renewal moves the expiry → a change")
 
         bridge.ids = []                                                              // expiry / refund
         await module.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { spy.changes.count == 3 }, "an expired or refunded product vanishing is a change")
+        let ok5 = await waitUntil { spy.changes.count == 3 }
+        XCTAssertTrue(ok5, "an expired or refunded product vanishing is a change")
         XCTAssertEqual(spy.changes[2].count, 0)
     }
 
@@ -192,7 +197,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let firstLaunch = Spy()
         let module1 = makeModule(bridge, world, spy: firstLaunch)
         await module1.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { firstLaunch.changes.count == 1 })
+        let ok6 = await waitUntil { firstLaunch.changes.count == 1 }
+        XCTAssertTrue(ok6)
         module1.setDelegate(nil)
 
         let secondLaunch = Spy()                       // a fresh module = a relaunch, same persisted defaults
@@ -203,7 +209,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
         bridge.ids = []
         await module2.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { secondLaunch.changes.count == 1 }, "a real change still fires")
+        let ok7 = await waitUntil { secondLaunch.changes.count == 1 }
+        XCTAssertTrue(ok7, "a real change still fires")
     }
 
     /// An expiry fires with no purchase, no foreground and no transaction: the module re-checks itself at
@@ -218,9 +225,11 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         bridge.ids = ["weekly"]
         world.expirations = ["weekly": Date().addingTimeInterval(0.4)]
         await module.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { spy.changes.count == 1 })
+        let ok8 = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok8)
         bridge.ids = []                                // StoreKit drops the expired transaction
-        XCTAssertTrue(await waitUntil(3) { spy.changes.count == 2 }, "the expiry re-check reports it")
+        let ok9 = await waitUntil(3) { spy.changes.count == 2 }
+        XCTAssertTrue(ok9, "the expiry re-check reports it")
         XCTAssertEqual(spy.changes.last?.count, 0)
         module.teardown()
     }
@@ -240,7 +249,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
                               expiresAt: "2099-01-01T00:00:00.000Z", isTrial: false, offerType: nil),
         ]
         await module.refreshEntitlementCache()
-        XCTAssertTrue(await waitUntil { spy.changes.count == 1 })
+        let ok10 = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok10)
         XCTAssertEqual(world.serverCalls, 1)
         XCTAssertEqual(Set(spy.changes[0].map(\.productId)), ["monthly", "cross"], "device rows + server-only rows, no duplicate")
 
@@ -297,7 +307,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         )
         await observer.reconcile()
         await observer.reconcile()
-        XCTAssertTrue(await waitUntil { passes.value == 2 }, "one afterPass per pass")
+        let ok11 = await waitUntil { passes.value == 2 }
+        XCTAssertTrue(ok11, "one afterPass per pass")
     }
 
     /// Under `.providerOwned` a `Transaction.updates` item (a renewal, a refund) now triggers a pass.
@@ -316,9 +327,11 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         )
         observer.start()
         defer { observer.stop() }
-        XCTAssertTrue(await waitUntil { loads.value == 1 }, "the launch pass")
+        let ok12 = await waitUntil { loads.value == 1 }
+        XCTAssertTrue(ok12, "the launch pass")
         continuation?.yield(())
-        XCTAssertTrue(await waitUntil { loads.value == 2 }, "a Transaction.updates item triggers a pass")
+        let ok13 = await waitUntil { loads.value == 2 }
+        XCTAssertTrue(ok13, "a Transaction.updates item triggers a pass")
     }
 
     /// §17-5 — NEGATIVE CONTROL: `subscription_renewed` had no `price` / `currency`.

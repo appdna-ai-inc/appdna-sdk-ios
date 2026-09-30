@@ -454,15 +454,46 @@ extension AppDNA {
         /// (its failure falls back to local state). Identify hook should not be blocked on completion.
         public func refreshEntitlementCache() async {
             // Serialized: each refresh awaits the one before it (see `refreshChain`).
+            await enqueueEntitlementRefresh().value
+        }
+
+        /// Append one refresh to the serial chain (synchronous: the lock is never held across an await).
+        private func enqueueEntitlementRefresh() -> Task<Void, Never> {
             refreshLock.lock()
+            defer { refreshLock.unlock() }
             let previous = refreshChain
             let task = Task { [weak self] in
                 await previous?.value
                 await self?.performEntitlementRefresh()
             }
             refreshChain = task
-            refreshLock.unlock()
-            await task.value
+            return task
+        }
+
+        /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
+        /// cache of the same user; otherwise none.
+        private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>) -> [ServerEntitlement] {
+            entitlementHandlerLock.lock()
+            defer { entitlementHandlerLock.unlock() }
+            if let server {
+                let serverOnly = server.filter { !localIds.contains($0.productId) }
+                cachedServerOnly = (userId, serverOnly)
+                return serverOnly
+            }
+            if let cached = cachedServerOnly, cached.userId == userId {
+                return cached.items.filter { !localIds.contains($0.productId) }
+            }
+            return []
+        }
+
+        /// Record `fingerprint` as the last-known state; returns whether it differs from the previous one
+        /// (seeded from the persisted copy on the first call).
+        private func swapFingerprint(_ fingerprint: [String], defaults: UserDefaults) -> Bool {
+            entitlementHandlerLock.lock()
+            defer { entitlementHandlerLock.unlock() }
+            let before = lastKnownFingerprint ?? EntitlementFingerprint.load(defaults)
+            lastKnownFingerprint = fingerprint
+            return fingerprint != before
         }
 
         /// One refresh pass. What it reads:
@@ -502,27 +533,12 @@ extension AppDNA {
 
             if let userId = sources.currentUserId(), !userId.isEmpty {
                 let server = await sources.server(userId)
-                entitlementHandlerLock.lock()
-                let serverOnly: [ServerEntitlement]
-                if let server {
-                    serverOnly = server.filter { !seen.contains($0.productId) }
-                    cachedServerOnly = (userId, serverOnly)
-                } else if let cached = cachedServerOnly, cached.userId == userId {
-                    serverOnly = cached.items.filter { !seen.contains($0.productId) }
-                } else {
-                    serverOnly = []
-                }
-                entitlementHandlerLock.unlock()
-                entitlements += serverOnly
+                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen)
             }
 
             let now = sources.now()
             let fingerprint = EntitlementFingerprint.make(entitlements, now: now)
-            entitlementHandlerLock.lock()
-            let before = lastKnownFingerprint ?? EntitlementFingerprint.load(sources.defaults)
-            let changed = fingerprint != before
-            lastKnownFingerprint = fingerprint
-            entitlementHandlerLock.unlock()
+            let changed = swapFingerprint(fingerprint, defaults: sources.defaults)
 
             scheduleExpiryCheck(entitlements, now: now)
             guard changed else { return }
