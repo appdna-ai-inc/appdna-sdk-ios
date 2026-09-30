@@ -723,6 +723,43 @@ extension StepAdvanceResult {
     }
 }
 
+// MARK: - SPEC-497 — a wrapper bridge's onBeforeStepAdvance reply
+
+extension StepAdvanceResult {
+    /// The decision types a wrapper bridge understands in a host's `onBeforeStepAdvance` reply
+    /// (`{type: …}` from Dart / JavaScript).
+    static let bridgeDecisionTypes: Set<String> = [
+        "proceed", "proceedWithData", "block", "skipTo", "skipToWithData", "stay",
+    ]
+
+    /// Did the host make an EXPLICIT, RECOGNISED decision? A wrapper bridge's auth gate blocks a
+    /// sign-in step unless this is true. Not a decision: a non-map, the `__appdna_unhandled` sentinel,
+    /// a map with no or an unknown `type` — and a `skipTo` / `skipToWithData` whose `stepId` is missing,
+    /// not a string or blank. That last one used to count: `{type: "skipTo"}` decoded to
+    /// `skipTo("")`, which names no step and so ADVANCED — past a sign-in step nobody signed in on.
+    public static func isExplicitBridgeDecision(_ reply: Any?) -> Bool {
+        guard let map = reply as? [String: Any] else { return false }
+        if map["__appdna_unhandled"] as? Bool == true { return false }
+        guard let type = map["type"] as? String, bridgeDecisionTypes.contains(type) else { return false }
+        if type == "skipTo" || type == "skipToWithData" {
+            return bridgeSkipTarget(reply: map) != nil
+        }
+        return true
+    }
+
+    /// The step a `skipTo` / `skipToWithData` reply names, or nil when the reply is not a skip or its
+    /// `stepId` is missing, not a string or blank. A wrapper decodes a nil target as NO skip — the reply
+    /// then means what it says without the skip (`proceedWithData` when it carries data, else
+    /// `proceed`), and on a sign-in step it is not a decision at all (see `isExplicitBridgeDecision`).
+    public static func bridgeSkipTarget(reply: Any?) -> String? {
+        guard let map = reply as? [String: Any],
+              let type = map["type"] as? String, type == "skipTo" || type == "skipToWithData",
+              let stepId = map["stepId"] as? String,
+              !stepId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return stepId
+    }
+}
+
 /// Optional config override for dynamic step content.
 public struct StepConfigOverride {
     /// Override field values (for form steps — pre-fill fields).

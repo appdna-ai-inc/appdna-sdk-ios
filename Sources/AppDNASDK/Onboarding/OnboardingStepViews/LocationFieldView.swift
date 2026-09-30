@@ -161,6 +161,7 @@ struct LocationFieldView: View {
                 .frame(height: 20)
                 .onChange(of: query) { newValue in
                     onQueryChanged(newValue)
+                    storeTyped(newValue)
                 }
 
                 if isLoading {
@@ -247,7 +248,10 @@ struct LocationFieldView: View {
             // Restore from saved dict on re-entry (back navigation). Rebuild the
             // display query text from city/state/country so the field doesn't
             // show an empty placeholder after back-navigating to this step.
-            if query.isEmpty, let dict = value as? [String: Any] {
+            if query.isEmpty, let typed = value as? String, !typed.isEmpty {
+                // A typed (not selected) answer is restored as typed.
+                query = typed
+            } else if query.isEmpty, let dict = value as? [String: Any] {
                 let city = (dict["city"] as? String) ?? ""
                 let state = (dict["state"] as? String) ?? ""
                 let country = (dict["country"] as? String) ?? ""
@@ -311,10 +315,7 @@ struct LocationFieldView: View {
             let dataObj = json?["data"] as? [String: Any]
             let suggestionsArr = dataObj?["suggestions"] as? [[String: Any]] ?? []
 
-            let decoded = suggestionsArr.compactMap { dict -> LocationData? in
-                guard let itemData = try? JSONSerialization.data(withJSONObject: dict) else { return nil }
-                return try? JSONDecoder().decode(LocationData.self, from: itemData)
-            }
+            let decoded = LocationAnswer.decodeSuggestions(suggestionsArr)
             await MainActor.run {
                 suggestions = decoded
                 isExpanded = !decoded.isEmpty
@@ -325,28 +326,18 @@ struct LocationFieldView: View {
     }
 
     private func selectSuggestion(_ suggestion: LocationData) {
+        // The text the user typed to find this place — read before `query` shows the selection.
+        let typed = query
         // Build display: "City / State, Country" or "City, Country"
         let display = Self.formatDisplay(
             city: suggestion.city ?? "",
             state: suggestion.state ?? "",
             country: suggestion.country ?? ""
         )
+        // SPEC-497 §13h — the one stored shape on both platforms and both writers (`LocationAnswer`).
+        // Stored BEFORE `query` changes, so `storeTyped` sees the selection and leaves it alone.
+        value = LocationAnswer.selection(from: suggestion, rawQuery: typed)
         query = display
-
-        // SPEC-497 §13h — the one stored shape on both platforms: formatted_address, city, state,
-        // country, latitude, longitude, timezone, plus state_code / country_code / postal_code when the
-        // lookup has them. Absent values are left out rather than stored as "" / 0.
-        var stored: [String: Any] = ["formatted_address": suggestion.formatted_address]
-        if let v = suggestion.city { stored["city"] = v }
-        if let v = suggestion.state { stored["state"] = v }
-        if let v = suggestion.country { stored["country"] = v }
-        if let v = suggestion.timezone { stored["timezone"] = v }
-        if let v = suggestion.latitude { stored["latitude"] = v }
-        if let v = suggestion.longitude { stored["longitude"] = v }
-        if let v = suggestion.state_code, !v.isEmpty { stored["state_code"] = v }
-        if let v = suggestion.country_code, !v.isEmpty { stored["country_code"] = v }
-        if let v = suggestion.postal_code, !v.isEmpty { stored["postal_code"] = v }
-        value = stored
 
         suggestions = []
         isExpanded = false
@@ -356,6 +347,24 @@ struct LocationFieldView: View {
         // here is unconditional — it reaches release builds and the host's crash
         // reporter / device console.
         Log.debug("Location suggestion selected")
+    }
+
+    /// SPEC-497 §13h — typing without selecting stores the typed text, as Android and the
+    /// `input_location` block do (this field used to store nothing, so `getLocationData` returned nil
+    /// and a required field stayed empty). Editing after a selection replaces it with the text. The
+    /// display text a selection or a restore writes into `query` is not typing: it is skipped.
+    private func storeTyped(_ newValue: String) {
+        if let dict = value as? [String: Any] {
+            let shown = Self.formatDisplay(
+                city: (dict["city"] as? String) ?? "",
+                state: (dict["state"] as? String) ?? "",
+                country: (dict["country"] as? String) ?? ""
+            )
+            if newValue == shown { return }
+        }
+        if let current = value as? String, current == newValue { return }
+        if newValue.isEmpty && value == nil { return }
+        value = newValue.isEmpty ? nil : LocationAnswer.typed(newValue)
     }
 
     private func clearSelection() {

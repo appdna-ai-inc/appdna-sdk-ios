@@ -217,14 +217,22 @@ public struct AppDNAOptions: Sendable {
 enum Log {
     static var level: LogLevel = .warning
 
+    /// Test seam: when set, every warning and error that passes the level check is also handed here.
+    /// Nil in production.
+    static var testSink: ((String) -> Void)?
+
     static func error(_ message: @autoclosure () -> String) {
         guard level >= .error else { return }
-        print("[AppDNA][ERROR] \(message())")
+        let text = "[AppDNA][ERROR] \(message())"
+        testSink?(text)
+        print(text)
     }
 
     static func warning(_ message: @autoclosure () -> String) {
         guard level >= .warning else { return }
-        print("[AppDNA][WARN] \(message())")
+        let text = "[AppDNA][WARN] \(message())"
+        testSink?(text)
+        print(text)
     }
 
     static func info(_ message: @autoclosure () -> String) {

@@ -1987,15 +1987,7 @@ struct OnboardingStepRouter: View {
             //   - .proceed to advance immediately
             // The data includes "action": "social_login" so the flow host knows not to
             // auto-advance if no delegate is set.
-            var data: [String: Any] = [
-                "provider": actionValue ?? "unknown",
-                "action": "social_login",
-            ]
-            // Include any form input values collected on this step
-            for (key, value) in inputValues {
-                data[key] = value
-            }
-            onNext(data)
+            onNext(SocialLoginStepData.build(provider: actionValue, inputValues: inputValues))
         case permissionActionName:
             // SPEC-421 + SPEC-070-B: resolve the type (config → layout → the BUTTON'S OWN value, which
             // this used to ignore), tell the host the permission CTA was acted on (every other CTA
@@ -2373,6 +2365,20 @@ func fireElementInteraction(
 /// without a delegate, `handleStepCompleted` logs a warning and stays on the
 /// step — credentials never silently flow into `responses` without a side
 /// effect (sign in, register, send OTP, etc.) actually being performed.
+/// The step data a `social_login` tap hands to `onNext`: the step's input values, then the SDK's own
+/// `provider` and `action` keys LAST, so an input field whose id happens to be `action` or `provider`
+/// cannot override them. It used to be the other way round — an input named `action` replaced
+/// `"social_login"`, which also took the tap out of the sign-in gate (`AuthActionPolicy`) and the
+/// bridges' 120 s sign-in floor. Android builds the map in the same order.
+enum SocialLoginStepData {
+    static func build(provider: String?, inputValues: [String: Any]) -> [String: Any] {
+        var data = inputValues
+        data["provider"] = provider ?? "unknown"
+        data["action"] = "social_login"
+        return data
+    }
+}
+
 enum AuthActionPolicy {
     static let delegateRequiredActions: Set<String> = [
         // existing
