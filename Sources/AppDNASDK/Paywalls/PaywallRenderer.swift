@@ -25,9 +25,10 @@ struct PaywallRenderer: View {
     @State private var errorMessage = ""
     @State private var errorRetryText = ""
     @State private var errorAllowRetry = false
-    /// SPEC-497 I4 m3 — the post-purchase observer tokens, removed in `.onDisappear` so a presentation
-    /// does not leave its three block observers registered for the life of the process.
-    @State private var purchaseObservers: [NSObjectProtocol] = []
+    /// SPEC-497 I4 m3 / round 11 — the post-purchase observer tokens, owned for exactly the life of this
+    /// view and removed in the holder's `deinit` (not `.onDisappear`, which also fires under a host's
+    /// full-screen cover and so lost a purchase-ended post, leaving the CTA spinning).
+    @StateObject private var purchaseObservers = PaywallPurchaseObservers()
 
     // SPEC-084: Localization helper + SPEC-088: Template variable interpolation
     private func loc(_ key: String, _ fallback: String) -> String {
@@ -407,45 +408,51 @@ struct PaywallRenderer: View {
                 withAnimation { showDismiss = true }
             }
 
-            // Listen for post-purchase notifications (tokens kept; a repeated onAppear replaces them).
-            purchaseObservers.forEach { NotificationCenter.default.removeObserver($0) }
-            purchaseObservers = []
-            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseSuccess, object: nil, queue: .main) { notif in
-                let info = notif.userInfo ?? [:]
-                successMessage = info["message"] as? String ?? "Welcome to Premium!"
-                withAnimation { showSuccessOverlay = true }
-                if info["confetti"] as? Bool == true { showConfetti = true }
-            })
-            // SPEC-497 R9 — the purchase ended with the paywall still up: re-enable the CTA.
-            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseEnded, object: nil, queue: .main) { _ in
-                isPurchasing = false
-            })
-            purchaseObservers.append(NotificationCenter.default.addObserver(forName: .paywallPurchaseFailure, object: nil, queue: .main) { notif in
-                let info = notif.userInfo ?? [:]
-                errorMessage = info["message"] as? String ?? "Payment failed."
-                errorRetryText = info["retry_text"] as? String ?? "Try Again"
-                errorAllowRetry = (info["action"] as? String) == "retry"
-                isPurchasing = false
-                withAnimation { showErrorBanner = true }
-                // Auto-dismiss after 4s when there is no retry button —
-                // the banner otherwise has no escape path besides closing
-                // the entire paywall (e.g. when host triggers a failure
-                // without a retry action, the user sees a "Payment failed"
-                // banner pinned to the bottom of the screen indefinitely).
-                // When errorAllowRetry is true the banner stays up; user
-                // action is required to choose retry vs dismiss.
-                if !errorAllowRetry {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                        withAnimation { showErrorBanner = false }
+            // Listen for post-purchase notifications (a repeated onAppear replaces them). The blocks capture
+            // Bindings, never `self` — see `PaywallPurchaseObservers` (a captured view would keep the holder alive).
+            let purchasing = $isPurchasing
+            let successText = $successMessage
+            let successOverlay = $showSuccessOverlay
+            let confetti = $showConfetti
+            let errorText = $errorMessage
+            let retryText = $errorRetryText
+            let allowRetry = $errorAllowRetry
+            let errorBanner = $showErrorBanner
+            purchaseObservers.register(
+                onSuccess: { notif in
+                    let info = notif.userInfo ?? [:]
+                    successText.wrappedValue = info["message"] as? String ?? "Welcome to Premium!"
+                    withAnimation { successOverlay.wrappedValue = true }
+                    if info["confetti"] as? Bool == true { confetti.wrappedValue = true }
+                },
+                // SPEC-497 R9 — the purchase ended with the paywall still up: re-enable the CTA.
+                onEnded: { _ in
+                    purchasing.wrappedValue = false
+                },
+                onFailure: { notif in
+                    let info = notif.userInfo ?? [:]
+                    errorText.wrappedValue = info["message"] as? String ?? "Payment failed."
+                    retryText.wrappedValue = info["retry_text"] as? String ?? "Try Again"
+                    let canRetry = (info["action"] as? String) == "retry"
+                    allowRetry.wrappedValue = canRetry
+                    purchasing.wrappedValue = false
+                    withAnimation { errorBanner.wrappedValue = true }
+                    // Auto-dismiss after 4s when there is no retry button —
+                    // the banner otherwise has no escape path besides closing
+                    // the entire paywall (e.g. when host triggers a failure
+                    // without a retry action, the user sees a "Payment failed"
+                    // banner pinned to the bottom of the screen indefinitely).
+                    // When errorAllowRetry is true the banner stays up; user
+                    // action is required to choose retry vs dismiss.
+                    if !canRetry {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                            withAnimation { errorBanner.wrappedValue = false }
+                        }
                     }
                 }
-            })
+            )
         }
-        .onDisappear {
-            // SPEC-497 I4 m3 — remove this presentation's observers (they leaked, three per presentation).
-            purchaseObservers.forEach { NotificationCenter.default.removeObserver($0) }
-            purchaseObservers = []
-        }
+        // SPEC-497 round 11 — no `.onDisappear` removal: `purchaseObservers` removes them in its `deinit`.
         .gesture(
             config.dismiss?.style == "swipe_down" ?
             DragGesture()
