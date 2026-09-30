@@ -337,8 +337,8 @@ final class Spec497QueueFixTests: XCTestCase {
         XCTAssertEqual(w.recorder.delivered, [])
     }
 
-    // Minor 11 — a deferred emit is not lost when the tracker is nil; it is emitted once, later.
-    func testDeferredEmitWaitsForATracker() async throws {
+    // Minor 11, branch 1 — no tracker: the entry is left untouched (emit pending, not delivered).
+    func testDeferredEmitWithoutATrackerLeavesTheEntryUntouched() async throws {
         let w = World()
         let owner = UUID()
         w.currentToken = { owner }
@@ -347,20 +347,45 @@ final class Spec497QueueFixTests: XCTestCase {
         await q.activate()
         let props: [String: AnyCodable] = ["product_id": AnyCodable("p_d1"), "paywall_id": AnyCodable("")]
         await q.recordDeferred(entry("d1", owner: owner, emitPending: true, properties: props))
+        let before = w.suite.data(forKey: PurchaseDeliveryQueue.storageKey)
 
-        _ = await q.drain()
-        var stored = await q.entry(transactionId: "d1")
+        let delivered = await q.drain()
+        XCTAssertEqual(delivered, [])
+        XCTAssertEqual(w.suite.data(forKey: PurchaseDeliveryQueue.storageKey), before, "nothing written")
+        let stored = await q.entry(transactionId: "d1")
         XCTAssertEqual(stored?.emitPending, true, "no tracker: the emit stays pending")
+        let reported = await q.isReported("d1")
+        XCTAssertFalse(reported)
         XCTAssertEqual(w.recorder.delivered, [], "not delivered ahead of its emit")
-        let reportedEarly = await q.isReported("d1")
-        XCTAssertFalse(reportedEarly)
+        XCTAssertTrue(w.log.names.isEmpty)
+    }
 
-        w.trackerOn.value = true
+    // Minor 11, branch 2 — tracker present: `emitPending = false` (and the reported id) are PERSISTED
+    // before the emit (R46 (2)); the sink reads the stored store at the moment the event is tracked.
+    func testDeferredEmitPersistsBeforeEmittingAndEmitsOnce() async throws {
+        let w = World()
+        let owner = UUID()
+        w.currentToken = { owner }
+        let seenAtEmit = Box<DeliveryStore?>(nil)
+        w.tracker.eventSink = { [suite = w.suite, log = w.log] event in
+            if event.event_name == "purchase_completed",
+               let data = suite.data(forKey: PurchaseDeliveryQueue.storageKey) {
+                seenAtEmit.value = try? JSONDecoder().decode(DeliveryStore.self, from: data)
+            }
+            log.append(event)
+        }
+        let q = PurchaseDeliveryQueue(environment: w.env())
+        await q.activate()
+        let props: [String: AnyCodable] = ["product_id": AnyCodable("p_d2"), "paywall_id": AnyCodable("")]
+        await q.recordDeferred(entry("d2", owner: owner, emitPending: true, properties: props))
+
         _ = await q.drain()
         XCTAssertEqual(w.log.names, ["purchase_completed"])
-        XCTAssertEqual(w.recorder.delivered, ["d1"])
-        stored = await q.entry(transactionId: "d1")
-        XCTAssertNil(stored)
+        let atEmit = try XCTUnwrap(seenAtEmit.value, "nothing was persisted before the emit")
+        XCTAssertTrue(atEmit.reported.contains("d2"), "the reported id is persisted before the emit")
+        XCTAssertEqual(atEmit.entries.first { $0.transactionId == "d2" }?.emitPending, false,
+                       "emitPending = false is persisted before the emit")
+        XCTAssertEqual(w.recorder.delivered, ["d2"])
         _ = await q.drain()
         XCTAssertEqual(w.log.names, ["purchase_completed"], "emitted once")
     }

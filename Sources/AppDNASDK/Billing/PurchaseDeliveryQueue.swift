@@ -248,30 +248,27 @@ actor PurchaseDeliveryQueue {
             guard isDeliverable(entry) else { continue }
             inFlight.insert(id)
 
-            // Deferred emit (R46 (2)), from the stored envelope — regardless of the delegate. Only once a
-            // tracker exists: `emitPending = false` is persisted AFTER the emit, so an entry whose owner
-            // identified before the pipeline was up keeps its pending emit instead of losing it.
+            // Deferred emit (R46 (2)), from the stored envelope — regardless of the delegate. With no
+            // tracker yet the entry is left untouched (emit still pending, not delivered ahead of it).
+            // With one: persist `emitPending = false` and the reported id in ONE write, THEN emit, in the
+            // same actor turn — at most once, never a double emit after a crash.
             if entry.emitPending {
-                let alreadyReported = store.reported.contains(id)
-                if !alreadyReported {
-                    guard let tracker = env.tracker() else {
-                        inFlight.remove(id)
-                        continue          // stays queued with its emit pending; a later drain emits it
-                    }
-                    if let props = entry.properties {
-                        PurchaseSuccessEvents.emit(
-                            tracker: tracker,
-                            properties: props.mapValues(\.value),
-                            isSubscription: entry.isSubscription
-                        )
-                    }
+                guard let tracker = env.tracker() else {
+                    inFlight.remove(id)
+                    continue          // stays queued with its emit pending; a later drain emits it
                 }
-                var after = load()
-                if let i = after.entries.firstIndex(where: { $0.transactionId == id }) {
-                    after.entries[i].emitPending = false
-                }
+                var after = store
+                after.entries[index].emitPending = false
+                let alreadyReported = after.reported.contains(id)
                 addReported(id, to: &after)
                 save(after)
+                if !alreadyReported, let props = entry.properties {
+                    PurchaseSuccessEvents.emit(
+                        tracker: tracker,
+                        properties: props.mapValues(\.value),
+                        isSubscription: entry.isSubscription
+                    )
+                }
             }
 
             // (b) re-read the delegate and call it on the main actor, in the same turn — and re-check the
