@@ -69,13 +69,24 @@ final class PushTokenManager {
 
     /// Track that a push notification was delivered (called from notification extension or foreground handler).
     func trackDelivered(pushId: String) {
-        eventTracker?.track(event: "push_delivered", properties: ["push_id": pushId])
+        trackDelivered(pushId: pushId, deliveryId: nil)
+    }
+
+    /// SPEC-497 B1 — the delivered call with the per-token `delivery_id` the server stamps on every
+    /// AppDNA push. The id rides in both the `push_delivered` event and the `/push/delivered` body, so
+    /// the server can move exactly this delivery row (the push id alone only increments counters).
+    func trackDelivered(pushId: String, deliveryId: String?) {
+        var props: [String: String] = ["push_id": pushId]
+        var body: [String: Any] = ["push_id": pushId]
+        if let deliveryId, !deliveryId.isEmpty {
+            props["delivery_id"] = deliveryId
+            body["delivery_id"] = deliveryId
+        }
+        eventTracker?.track(event: "push_delivered", properties: props)
 
         Task {
             do {
-                let _: EmptyResponse = try await apiClient?.request(.pushDelivered(body: [
-                    "push_id": pushId,
-                ])) ?? EmptyResponse()
+                let _: EmptyResponse = try await apiClient?.request(.pushDelivered(body: body)) ?? EmptyResponse()
             } catch {
                 Log.warning("Failed to track push delivered: \(error)")
             }
@@ -84,15 +95,24 @@ final class PushTokenManager {
 
     /// Track that a push notification was tapped.
     func trackTapped(pushId: String, action: String? = nil) {
+        trackTapped(pushId: pushId, action: action, deliveryId: nil)
+    }
+
+    /// SPEC-497 B1 — the tapped call with `delivery_id`, sent in both the `push_tapped` event and the
+    /// `/push/tapped` body.
+    func trackTapped(pushId: String, action: String?, deliveryId: String?) {
         var props: [String: String] = ["push_id": pushId]
         if let action = action { props["action"] = action }
+        var body: [String: Any] = ["push_id": pushId]
+        if let deliveryId, !deliveryId.isEmpty {
+            props["delivery_id"] = deliveryId
+            body["delivery_id"] = deliveryId
+        }
         eventTracker?.track(event: "push_tapped", properties: props)
 
         Task {
             do {
-                let _: EmptyResponse = try await apiClient?.request(.pushTapped(body: [
-                    "push_id": pushId,
-                ])) ?? EmptyResponse()
+                let _: EmptyResponse = try await apiClient?.request(.pushTapped(body: body)) ?? EmptyResponse()
             } catch {
                 Log.warning("Failed to track push tapped: \(error)")
             }

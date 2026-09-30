@@ -2,6 +2,10 @@ import Foundation
 import UserNotifications
 
 /// Handles push notification display and tracking.
+///
+/// SPEC-497 B6: the SDK no longer relies on a host instantiating this class (nothing ever did — its
+/// `init` is internal). The installed `AppDNANotificationCenterProxy` is the SDK's delegate now; this
+/// class stays for source compatibility and forwards to the same `AppDNA.pushModule` entry points.
 public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate {
     private weak var eventTracker: EventTracker?
     private weak var pushTokenManager: PushTokenManager?
@@ -18,20 +22,8 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        let userInfo = notification.request.content.userInfo
-        let pushId = userInfo["push_id"] as? String ?? ""
-        pushTokenManager?.trackDelivered(pushId: pushId)
-        // Fold push_id into the 30-min window so subsequent events carry context.push_id (mirrors
-        // Android's PushSessionContext.recordPushReceived on delivery).
-        PushSessionContext.recordPushReceived(pushId)
-
-        // SPEC-084: Register action categories if present
-        registerActionCategories(from: userInfo)
-
-        // Notify delegate
-        let payload = buildPayload(from: notification.request.content)
-        AppDNA.pushDelegate?.onPushReceived(notification: payload, inForeground: true)
-
+        let request = notification.request
+        AppDNA.pushModule.handleMessageData(request.content.userInfo, inForeground: true, requestId: request.identifier)
         completionHandler([.banner, .badge, .sound])
     }
 
@@ -41,46 +33,33 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        let userInfo = response.notification.request.content.userInfo
-        let pushId = userInfo["push_id"] as? String ?? ""
-        let actionIdentifier = response.actionIdentifier
-        pushTokenManager?.trackTapped(pushId: pushId, action: actionIdentifier)
-        PushSessionContext.recordPushReceived(pushId)
-
-        // Build payload and notify delegate
-        let payload = buildPayload(from: response.notification.request.content)
-        let tappedAction = actionIdentifier == UNNotificationDefaultActionIdentifier ? nil : actionIdentifier
-        AppDNA.pushDelegate?.onPushTapped(notification: payload, actionId: tappedAction)
-
-        // SPEC-089c: Auto-route the tapped action (AC-076). When a BUTTON was tapped, route on that
-        // button's own action — routing every button tap through the body action would send every
-        // button to the same destination.
-        switch PushTapRouter.route(payload: payload, tappedActionId: tappedAction) {
-        case .showScreen(let screenId):
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                AppDNA.showScreen(screenId)
-            }
-        case .deepLink(let urlString):
-            // iOS used to route ONLY `show_screen`, so a push whose action was a deep link did
-            // nothing at all: no `onDeepLinkReceived`, no `deep_link_handled`. Android has always
-            // routed it (`AppDNA.kt:1391/1397` → `deepLinks.handleURL`). Same 0.5 s settle delay as
-            // the screen route so the app is foregrounded before the host is asked to navigate.
-            if let url = URL(string: urlString) {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    AppDNA.deepLinks.handleURL(url)
-                }
-            } else {
-                Log.warning("[Push] deep link action carried an unparseable URL: \(urlString)")
-            }
-        case .ignored:
-            break
-        }
-
+        let request = response.notification.request
         completionHandler()
+        AppDNA.pushModule.handleNotificationTap(
+            request.content.userInfo,
+            actionIdentifier: response.actionIdentifier,
+            requestId: request.identifier
+        )
     }
 
     // SPEC-084: Register notification categories with action buttons
     func registerActionCategories(from userInfo: [AnyHashable: Any]) {
+        PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
+    }
+
+    private func buildPayload(from content: UNNotificationContent) -> PushPayload {
+        PushPayloadParser.parse(userInfo: content.userInfo, title: content.title, body: content.body)
+    }
+}
+
+// MARK: - Action categories
+
+/// SPEC-084 — registers the push's action buttons as a notification category. Goes through a
+/// `NotificationCenterSlot` (SPEC-497 §9a.8) so it never touches `UNUserNotificationCenter.current()`
+/// in a hostless test, where that call raises.
+enum PushActionCategories {
+    static func register(from userInfo: [AnyHashable: Any], slot: NotificationCenterSlot?) {
+        guard let slot else { return }
         guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else { return }
         let categoryId = userInfo["category"] as? String ?? "appdna_default"
 
@@ -122,15 +101,11 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
             options: []
         )
 
-        UNUserNotificationCenter.current().getNotificationCategories { existing in
+        slot.getCategories { existing in
             var categories = existing
             categories.insert(category)
-            UNUserNotificationCenter.current().setNotificationCategories(categories)
+            slot.setCategories(categories)
         }
-    }
-
-    private func buildPayload(from content: UNNotificationContent) -> PushPayload {
-        PushPayloadParser.parse(userInfo: content.userInfo, title: content.title, body: content.body)
     }
 }
 
@@ -191,10 +166,8 @@ enum PushPayloadParser {
 /// without a `UNNotificationResponse` (which cannot be constructed in a unit test — which is exactly
 /// how iOS shipped for months routing `show_screen` and silently dropping `deep_link`).
 ///
-/// Mirrors Android's auto-route ladder in `AppDNA.handlePushTap` (`AppDNA.kt:1382-1404`): screen wins,
-/// then deep link. Android additionally routes `show_paywall` / `show_survey` from a push — iOS does
-/// not, and that gap is NOT closed here (it needs the same delegate/veto treatment as a screen and is
-/// out of scope for this pass).
+/// SPEC-497 §9.2: the same routing ladder as Android (see `PushTapRouter.route`). Android additionally
+/// routes `show_paywall` / `show_survey` from a push — iOS does not (known gap, not closed here).
 enum PushTapRoute: Equatable {
     case showScreen(String)
     case deepLink(String)
@@ -203,18 +176,87 @@ enum PushTapRoute: Equatable {
 }
 
 enum PushTapRouter {
-    /// Resolve the action to route on: the tapped BUTTON's own action when a button was tapped,
-    /// otherwise the notification-body action.
-    static func route(payload: PushPayload, tappedActionId: String?) -> PushTapRoute {
-        let action = payload.actions.first { $0.id == tappedActionId } ?? payload.action
-        guard let action, !action.value.isEmpty else { return .ignored }
-        switch action.type {
+    /// SPEC-497 §8.7 — the route-sink test seam. Production leaves it nil. When set, the tap router
+    /// reports `("show_screen", id)` / `("deep_link", url)` to it BEFORE `showScreen` / `handleURL`
+    /// run, so a failure in the real navigation can never hide the decision from a test.
+    static var routeSink: ((_ type: String, _ value: String) -> Void)?
+
+    /// The routing ladder (SPEC-497 §9.2, the same one Android uses):
+    ///   (0) a tapped BUTTON's own action (`tappedActionId` matches an entry of `actions`);
+    ///   (1) the canonical body `action` `{type, value}`;
+    ///   (2) flat `action_type` / `action_value`;
+    ///   (3) `screen_id`;
+    ///   (4) `deep_link`;
+    ///   (5) iOS only, unchanged: the first button's action when the payload has no body action.
+    /// Rungs (1)–(4) are read from the RAW `userInfo`, because `PushPayload.action` folds
+    /// `action ?? actions.first` and so cannot tell a real body action from the rung-(5) fallback.
+    /// The first rung that is present decides; iOS routes `show_screen` and `deep_link` / `open_url`
+    /// only (Android also routes paywalls and surveys — a known gap, not closed here).
+    static func route(payload: PushPayload, userInfo: [AnyHashable: Any], tappedActionId: String?) -> PushTapRoute {
+        if let tappedActionId, let button = payload.actions.first(where: { $0.id == tappedActionId }) {
+            return resolve(type: button.type, value: button.value)
+        }
+        if let canonical = canonicalAction(userInfo["action"]) {
+            return resolve(type: canonical.type, value: canonical.value)
+        }
+        if let type = userInfo["action_type"] as? String, !type.isEmpty {
+            return resolve(type: type, value: userInfo["action_value"] as? String ?? "")
+        }
+        if let screenId = userInfo["screen_id"] as? String, !screenId.isEmpty {
+            return .showScreen(screenId)
+        }
+        if let deepLink = userInfo["deep_link"] as? String, !deepLink.isEmpty {
+            return .deepLink(deepLink)
+        }
+        if let first = payload.action {
+            return resolve(type: first.type, value: first.value)
+        }
+        return .ignored
+    }
+
+    /// `action` as a nested `{type, value}` object (APNs, and iOS wrappers pass it untouched) or, for
+    /// robustness, as a JSON string of the same object.
+    private static func canonicalAction(_ raw: Any?) -> (type: String, value: String)? {
+        var dict = raw as? [String: Any]
+        if dict == nil, let text = raw as? String, let data = text.data(using: .utf8) {
+            dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        }
+        guard let dict, let type = dict["type"] as? String, !type.isEmpty else { return nil }
+        return (type, dict["value"] as? String ?? "")
+    }
+
+    private static func resolve(type: String, value: String) -> PushTapRoute {
+        guard !value.isEmpty else { return .ignored }
+        switch type {
         case "show_screen":
-            return .showScreen(action.value)
+            return .showScreen(value)
         case "deep_link", "open_url":
-            return .deepLink(action.value)
+            return .deepLink(value)
         default:
             return .ignored
+        }
+    }
+
+    /// Performs a route after the 0.5 s settle delay (the app is foregrounded before the host is asked
+    /// to navigate). The sink, when set, hears the decision first.
+    static func perform(_ route: PushTapRoute) {
+        switch route {
+        case .showScreen(let screenId):
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                routeSink?("show_screen", screenId)
+                AppDNA.showScreen(screenId)
+            }
+        case .deepLink(let urlString):
+            guard let url = URL(string: urlString) else {
+                Log.warning("[Push] deep link action carried an unparseable URL: \(urlString)")
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                routeSink?("deep_link", urlString)
+                AppDNA.deepLinks.handleURL(url)
+            }
+        case .ignored:
+            break
         }
     }
 }

@@ -5,7 +5,9 @@ let package = Package(
     name: "AppDNASDK",
     platforms: [.iOS(.v16)],
     products: [
-        .library(name: "AppDNASDK", targets: ["AppDNASDK"])
+        // SPEC-497 B6 — the product carries the ObjC `AppDNASDKLoader` target (the `+load` launch hook
+        // that installs the notification proxy). Consumers' `Package.swift` lines are unchanged.
+        .library(name: "AppDNASDK", targets: ["AppDNASDK", "AppDNASDKLoader"])
     ],
     dependencies: [
         .package(url: "https://github.com/kishikawakatsumi/KeychainAccess.git", from: "4.2.2"),
@@ -47,10 +49,21 @@ let package = Package(
                 .copy("PrivacyInfo.xcprivacy")
             ]
         ),
+        // SPEC-497 B6 — a `.m` only, NO public header, so nothing here is exposed to Swift hosts.
+        // `publicHeadersPath` is omitted, so SwiftPM uses the default `include/` — and SwiftPM (Xcode
+        // 26) REFUSES to resolve the package when that directory is missing ("public headers
+        // ("include") directory path … is invalid"), so an empty `include/` is committed with a
+        // `.gitkeep` (hidden files are ignored by SwiftPM and by the podspec's `*.m` glob).
+        .target(
+            name: "AppDNASDKLoader",
+            path: "Sources/AppDNASDKLoader"
+        ),
         .testTarget(
             name: "AppDNASDKTests",
             dependencies: [
                 "AppDNASDK",
+                // Linked so the tests can prove the real loader class is present.
+                "AppDNASDKLoader",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
                 // SPEC-495 — the test target links GoogleMaps directly so the interactive-tier proof
                 // can hold a real `GMSMapView` and assert on it. `AppDNASDK` linking it is not

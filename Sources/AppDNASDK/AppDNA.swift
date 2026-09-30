@@ -1242,6 +1242,12 @@ public final class AppDNA: @unchecked Sendable {
             if shared.experimentManager != nil { modules.append("experiments") }
             lines.append("║ ✅ Modules: \(modules.isEmpty ? "none" : modules.joined(separator: ", "))")
 
+            // SPEC-497 B6 — the notification proxy's state (read through the installed slot; the
+            // disabled / not-installed states read no notification centre).
+            for line in NotificationProxyBootstrap.diagnoseLines() {
+                lines.append("║ ℹ️ \(line)")
+            }
+
             // SPEC-070-B PN row 14 + 16: the two settings whose effect is invisible until something
             // goes wrong — a silently opted-out user, and a veto that timed out into its default.
             let consent = ConsentStore.decision
@@ -1580,6 +1586,14 @@ public final class AppDNA: @unchecked Sendable {
         // 5. Initialize push token manager (v0.2 + v0.4 SPEC-030: backend registration)
         self.pushTokenManager = PushTokenManager(keychainStore: keychainStore, eventTracker: tracker, apiClient: client)
         AppDNA.pushModule.manager = self.pushTokenManager
+        // SPEC-497 B6 — the push CONFIGURED POINT (R72): from here the SDK can track, so buffered
+        // launch taps / deliveries (from the notification proxy and from host forwarding) drain now, on
+        // the main queue, in arrival order. Then the configure fallback decides whether the proxy has
+        // to be installed here because no launch-time observer was ever registered (§9a.4 table).
+        PushGate.shared.markConfigured()
+        DispatchQueue.main.async {
+            NotificationProxyBootstrap.configureFallback(plist: Bundle.main.infoDictionary ?? [:])
+        }
 
         // 6. Bootstrap async (fetch orgId/appId, then Firestore configs)
         Task { [weak self] in
@@ -1909,6 +1923,11 @@ public final class AppDNA: @unchecked Sendable {
         // returns, the pre-shutdown handlers are gone and anything registered afterwards is the
         // caller's and survives. `teardown()` deliberately no longer clears them.
         billing.removeAllEntitlementsChangedHandlers()
+
+        // SPEC-497 B6 — clear the push configured point synchronously: the notification proxy stays
+        // installed (removing it could orphan a library that wrapped it) but becomes pass-through for
+        // AppDNA pushes until the next `configure()`.
+        PushGate.shared.markShutDown()
 
         shared.queue.async {
             // 🔴 BILLING GOES DOWN FIRST — BEFORE THE PIPELINE THAT REPORTS IT.

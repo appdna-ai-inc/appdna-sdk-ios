@@ -480,8 +480,8 @@ final class SharedFixtureTests: XCTestCase {
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
-        case "receive_push":                   runReceivePush(fixture, harness)
-        case "tap_push":                       runTapPush(fixture, harness)
+        case "receive_push":                   await runReceivePush(fixture, harness)
+        case "tap_push":                       await runTapPush(fixture, harness)
         // SPEC-496 — the raw host-data pass (HostDataResolver) and the step pipeline around it.
         case "resolve_block":                  runResolveBlock(fixture, harness)
         case "host_data_scenario":             await runHostDataScenario(fixture, harness)
@@ -2089,17 +2089,64 @@ final class SharedFixtureTests: XCTestCase {
 
     // MARK: - Driver: receive_push / tap_push
     //
-    // REAL: PushPayloadParser.parse(userInfo:title:body:) — the parse
-    // PushNotificationHandler.buildPayload runs (the `actions` array was shipped by the server,
-    // registered as buttons, and then silently dropped on the way to the host).
-    // REAL: PushTokenManager.trackDelivered / trackTapped — the push_delivered / push_tapped events.
-    // REAL: AppDNA.deepLinks.handleURL — the deep-link dispatch to the host delegate.
+    // SPEC-497 §8.7 — the drivers call the PUBLIC entry points and observe tracking, the delegate and
+    // routing as outputs:
+    //   receive_push with `via: "handleMessageData"` → REAL `AppDNA.pushModule.handleMessageData`
+    //     (marker gate, idempotency, push_delivered with delivery_id, onPushReceived; never presents);
+    //   receive_push WITHOUT `via` (action_buttons_parse) → the parser the delivered path runs,
+    //     `PushPayloadParser.parse`, plus the REAL `trackDelivered` — it pins only the parser;
+    //   tap_push → REAL `AppDNA.pushModule.handleNotificationTap` (marker gate, push_tapped with
+    //     delivery_id, onPushTapped, the routing ladder). The route is observed through
+    //     `PushTapRouter.routeSink`, which the SDK calls before it navigates, after its 0.5 s delay.
+    // Each fixture resets the process-wide idempotency set and the push gate, reaches the configured
+    // point, and injects a PushTokenManager on the harness tracker (held strongly here, because
+    // `pushModule.manager` is weak).
 
-    private func runReceivePush(_ f: Fixture, _ h: Harness) {
+    func preparePushEntryPoints(_ h: Harness) -> PushTokenManager {
+        NotificationProxyBootstrap.resetForTesting()
+        PushIdempotency.resetForTesting()
+        let manager = pushTokenManager(h)
+        AppDNA.pushModule.manager = manager
+        PushGate.shared.markConfigured()
+        return manager
+    }
+
+    func finishPushEntryPoints() {
+        AppDNA.pushModule.manager = nil
+        AppDNA.pushDelegate = nil
+        PushTapRouter.routeSink = nil
+        NotificationProxyBootstrap.resetForTesting()
+        PushIdempotency.resetForTesting()
+    }
+
+    /// Lets the main-queue work the SDK scheduled (buffer drain, the 0.5 s routing delay) run.
+    func settlePushMainQueue(seconds: Double = 0.8) async {
+        let settled = expectation(description: "push main-queue work settles")
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { settled.fulfill() }
+        await fulfillment(of: [settled], timeout: seconds + 5)
+    }
+
+    private func runReceivePush(_ f: Fixture, _ h: Harness) async {
         guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
             return XCTFail("[\(f.id)] receive_push needs action.payload")
         }
-        let userInfo = payloadJSON.mapValues { $0.foundation }
+        let userInfo: [AnyHashable: Any] = payloadJSON.mapValues { $0.foundation }
+
+        if let via = f.action.raw["via"]?.stringValue {
+            guard via == "handleMessageData" else {
+                return XCTFail("[\(f.id)] receive_push via '\(via)' has no iOS entry point (iOS has no messaging service)")
+            }
+            let manager = preparePushEntryPoints(h)
+            defer { withExtendedLifetime(manager) { finishPushEntryPoints() } }
+            AppDNA.pushDelegate = PushDelegateSpy(harness: h)
+            let returned = AppDNA.pushModule.handleMessageData(userInfo)      // REAL public entry point
+            await settlePushMainQueue(seconds: 0.2)
+            h.state["returned"] = returned
+            // iOS `handleMessageData` has no display path at all — the host (or the OS) presents.
+            h.state["notification_posted"] = false
+            return
+        }
+
         let payload = PushPayloadParser.parse(
             userInfo: userInfo,
             title: payloadJSON["title"]?.stringValue ?? "",
@@ -2116,53 +2163,38 @@ final class SharedFixtureTests: XCTestCase {
         h.state["registered_action_button_count"] = payload.actions.count
     }
 
-    private func runTapPush(_ f: Fixture, _ h: Harness) {
+    private func runTapPush(_ f: Fixture, _ h: Harness) async {
         guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
             return XCTFail("[\(f.id)] tap_push needs action.payload")
         }
-        let userInfo = payloadJSON.mapValues { $0.foundation }
-        let payload = PushPayloadParser.parse(
-            userInfo: userInfo,
-            title: payloadJSON["title"]?.stringValue ?? "",
-            body: payloadJSON["body"]?.stringValue ?? ""
-        )
+        let userInfo: [AnyHashable: Any] = payloadJSON.mapValues { $0.foundation }
+        let actionId = f.action.raw["action_id"]?.stringValue
+
+        let manager = preparePushEntryPoints(h)
+        defer { withExtendedLifetime(manager) { finishPushEntryPoints() } }
 
         let pushSpy = PushDelegateSpy(harness: h)
         let linkSpy = DeepLinkDelegateSpy(harness: h)
         AppDNA.pushDelegate = pushSpy
         AppDNA.deepLinks.setDelegate(linkSpy)
-        defer {
-            AppDNA.pushDelegate = nil
-            AppDNA.deepLinks.setDelegate(nil)
-        }
-
-        pushTokenManager(h).trackTapped(pushId: payload.pushId)             // REAL push_tapped
-        AppDNA.pushDelegate?.onPushTapped(notification: payload, actionId: nil)
-
-        // The body action routes. `DeepLinksModule.handleURL` is the REAL dispatch: it fires
-        // `onDeepLinkReceived` on the host delegate AND emits `deep_link_handled` {url} — which iOS
-        // never did before SPEC-070-B, so every deep-link-attributed session was invisible in iOS
-        // analytics while Android counted it. `trackEvent` is the module's analytics seam (AppDNA.track
-        // needs a fully configured SDK); the event name and props are the SDK's own, via
-        // DeepLinkAnalytics.
-        guard let action = payload.action, action.type == "deep_link", let url = URL(string: action.value) else {
-            return
-        }
+        // `deep_link_handled` goes through the module's analytics seam (AppDNA.track needs a fully
+        // configured SDK); the event name and props are the SDK's own, via DeepLinkAnalytics.
         let previousSink = AppDNA.deepLinks.trackEvent
         AppDNA.deepLinks.trackEvent = { name, props in h.tracker.track(event: name, properties: props) }
-        defer { AppDNA.deepLinks.trackEvent = previousSink }
+        defer {
+            AppDNA.deepLinks.setDelegate(nil)
+            AppDNA.deepLinks.trackEvent = previousSink
+        }
+        PushTapRouter.routeSink = { type, value in
+            h.state["routed"] = ["type": type, "value": value]
+        }
 
-        AppDNA.deepLinks.handleURL(url)                                      // REAL
-
-        // The route the host navigates to — derived from the URL the SDK parsed out of the push.
-        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        let path = (components?.path ?? "").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        h.state["current_route"] = [components?.host, path.isEmpty ? nil : path]
-            .compactMap { $0 }
-            .joined(separator: "/")
+        let returned = AppDNA.pushModule.handleNotificationTap(userInfo, actionIdentifier: actionId)   // REAL
+        await settlePushMainQueue()
+        h.state["returned"] = returned
     }
 
-    private func pushTokenManager(_ h: Harness) -> PushTokenManager {
+    func pushTokenManager(_ h: Harness) -> PushTokenManager {
         PushTokenManager(
             keychainStore: KeychainStore(service: "ai.appdna.sdk.fixture.\(UUID().uuidString)"),
             eventTracker: h.tracker,
