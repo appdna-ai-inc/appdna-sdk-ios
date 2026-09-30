@@ -2653,7 +2653,7 @@ struct FormInputLocationPlaceholderBlock: View {
                     // Once a suggestion is selected, selectResult writes the
                     // structured dict and this onChange won't fire again until
                     // the user starts typing over it.
-                    inputValues[fieldId] = newValue
+                    inputValues[fieldId] = LocationAnswer.typed(newValue)
                 }
                 if !text.isEmpty {
                     Button {
@@ -2786,7 +2786,8 @@ struct FormInputLocationPlaceholderBlock: View {
                         isRestoringFromSaved = false
                     }
                 }
-                Log.debug("[LocationBlock] restored saved dict: \(savedDict)")
+                // Never log the restored dict — it carries the user's location.
+                Log.debug("[LocationBlock] restored a saved value")
             } else if let savedStr = inputValues[fieldId] as? String, !savedStr.isEmpty {
                 if text != savedStr {
                     isRestoringFromSaved = true
@@ -2815,60 +2816,79 @@ struct FormInputLocationPlaceholderBlock: View {
         }
     }
 
+    /// SPEC-497 §13h — the stored answer for a resolved MapKit place, through the one rule both
+    /// writers and both platforms share (`LocationAnswer`). A missing city / state / country is left
+    /// out (it used to be stored as `""`), and a failed time-zone lookup (`timeZone == nil`) stores no
+    /// `timezone` / `timezone_offset` (it used to store `"UTC"`, a real zone the place is not in).
+    static func storedAnswer(
+        formattedAddress: String,
+        city: String?,
+        state: String?,
+        stateCode: String? = nil,
+        country: String?,
+        countryCode: String?,
+        latitude: Double?,
+        longitude: Double?,
+        timeZone: TimeZone?,
+        postalCode: String?,
+        rawQuery: String?,
+        now: Date = Date()
+    ) -> [String: Any] {
+        LocationAnswer.selection(
+            formattedAddress: formattedAddress,
+            city: city, state: state, stateCode: stateCode,
+            country: country, countryCode: countryCode,
+            latitude: latitude, longitude: longitude,
+            timezone: timeZone?.identifier,
+            timezoneOffsetMinutes: timeZone.map { LocationAnswer.offsetMinutes($0, at: now) },
+            postalCode: postalCode,
+            rawQuery: rawQuery
+        )
+    }
+
     private func selectResult(_ result: MKLocalSearchCompletion, fieldId: String) {
         showResults = false
         isFocused = false  // dismiss keyboard + hide dropdown reliably
+        // The text the user typed to find this place — read before `text` shows the selection.
+        let typed = text
 
         // Resolve full placemark via MKLocalSearch to get city/state/country
         let searchRequest = MKLocalSearch.Request(completion: result)
         let search = MKLocalSearch(request: searchRequest)
         search.start { response, _ in
+            // SPEC-497 §13h — the completion's own text is `formatted_address`.
+            let formattedAddress = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
             guard let mapItem = response?.mapItems.first else {
-                // Fallback: store minimal data
-                let fallback = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
+                // Fallback: the completion text only (no placemark → no coordinates, no zone).
                 isRestoringFromSaved = true
-                text = fallback
+                text = formattedAddress
                 DispatchQueue.main.async { isRestoringFromSaved = false }
-                // SPEC-497 §13h — `formatted_address` is the one key both platforms store; `address`
-                // stays as a legacy alias for readers of the raw answer.
-                inputValues[fieldId] = ["formatted_address": fallback, "address": fallback]
+                inputValues[fieldId] = LocationAnswer.selection(formattedAddress: formattedAddress, rawQuery: typed)
                 Log.debug("Location resolved without a placemark")
                 return
             }
             let placemark = mapItem.placemark
             let coordinate = placemark.coordinate
-            let city = placemark.locality ?? placemark.subAdministrativeArea ?? ""
-            let state = placemark.administrativeArea ?? ""
-            let country = placemark.country ?? ""
-            // SPEC-497 §13h — the completion's own text, as the fallback above builds it.
-            let formattedAddress = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
 
             // IMPORTANT: MKLocalSearch's MKPlacemark.timeZone is USUALLY NIL
             // for text-search results. Falling back to TimeZone.current returns
             // the DEVICE's timezone (e.g. Europe/Warsaw) — not the LOCATION's
             // timezone. To get the accurate timezone for the selected location,
             // we reverse-geocode via CLGeocoder which reliably populates
-            // CLPlacemark.timeZone.
-            //
-            // Strategy: if MKPlacemark has a timezone, use it immediately.
-            // Otherwise, update the field text + lat/lng/city/state/country
-            // synchronously (fast UX), then fetch the timezone async and
-            // overwrite the dict once we have it. The user won't be able to
-            // advance for a few hundred ms, which is fine.
-
-            // Helper that stores the dict + updates display + prints debug
-            let finalize: (String) -> Void = { resolvedTimezone in
-                var locationDict: [String: Any] = [
-                    "formatted_address": formattedAddress,
-                    "city": city,
-                    "state": state,
-                    "country": country,
-                    "timezone": resolvedTimezone,
-                    "latitude": coordinate.latitude,
-                    "longitude": coordinate.longitude,
-                ]
-                if let code = placemark.isoCountryCode, !code.isEmpty { locationDict["country_code"] = code }
-                if let postal = placemark.postalCode, !postal.isEmpty { locationDict["postal_code"] = postal }
+            // CLPlacemark.timeZone. When that fails too, no zone is stored.
+            let finalize: (TimeZone?) -> Void = { resolvedTimeZone in
+                let locationDict = Self.storedAnswer(
+                    formattedAddress: formattedAddress,
+                    city: placemark.locality ?? placemark.subAdministrativeArea,
+                    state: placemark.administrativeArea,
+                    country: placemark.country,
+                    countryCode: placemark.isoCountryCode,
+                    latitude: coordinate.latitude,
+                    longitude: coordinate.longitude,
+                    timeZone: resolvedTimeZone,
+                    postalCode: placemark.postalCode,
+                    rawQuery: typed
+                )
                 inputValues[fieldId] = locationDict
 
                 let display = Self.formatLocationDisplay(from: locationDict) ?? result.title
@@ -2878,10 +2898,10 @@ struct FormInputLocationPlaceholderBlock: View {
 
                 // Never log city/state/country/coordinates. A raw `print` is
                 // unconditional and reaches release builds.
-                Log.debug("Location selected (timezone resolved: \(!resolvedTimezone.isEmpty))")
+                Log.debug("Location selected (timezone resolved: \(resolvedTimeZone != nil))")
             }
 
-            if let tz = placemark.timeZone?.identifier {
+            if let tz = placemark.timeZone {
                 // Rare happy path — placemark already has timezone
                 finalize(tz)
             } else {
@@ -2889,11 +2909,10 @@ struct FormInputLocationPlaceholderBlock: View {
                 let geocoder = CLGeocoder()
                 let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
                 geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                    let tz = placemarks?.first?.timeZone?.identifier ?? "UTC"
                     if let error = error {
-                        Log.warning("Reverse geocode timezone lookup failed: \(error.localizedDescription), defaulting to UTC")
+                        Log.warning("Reverse geocode timezone lookup failed: \(error.localizedDescription) — no timezone stored")
                     }
-                    finalize(tz)
+                    finalize(placemarks?.first?.timeZone)
                 }
             }
         }
