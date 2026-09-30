@@ -109,7 +109,7 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         // applied here — RC's server-side binding is the source of truth.
         _ = appAccountToken
         let customerInfo = try await Purchases.shared.restorePurchases()
-        let restoredIds = Array(customerInfo.entitlements.active.keys)
+        let restoredIds = Self.activeProductIds(customerInfo)
         // SPEC-400 — fire onRestoreCompleted.
         await MainActor.run {
             AppDNA.billingDelegate?.onRestoreCompleted(restoredProducts: restoredIds)
@@ -127,7 +127,17 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
     func getEntitlements(appAccountToken: UUID?) async -> [String] {
         _ = appAccountToken  // RC binds entitlements to its own appUserID
         guard let info = try? await Purchases.shared.customerInfo() else { return [] }
-        return Array(info.entitlements.active.keys)
+        return Self.activeProductIds(info)
+    }
+
+    /// The PRODUCT ids behind the active entitlements — what the bridge contract returns. The entitlement
+    /// KEYS (e.g. "pro") used to be returned instead, so `getEntitlements()` and the restore callback named
+    /// RevenueCat entitlements where every other bridge names store products.
+    static func activeProductIds(_ info: CustomerInfo) -> [String] {
+        var seen = Set<String>()
+        return info.entitlements.active.values
+            .map(\.productIdentifier)
+            .filter { seen.insert($0).inserted }
     }
 }
 
