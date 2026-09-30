@@ -51,10 +51,11 @@ final class GoogleInteractiveMapTests: XCTestCase {
     }
 
     /// A three-stop route, the shape reported in #671.
-    private func routeBlock(interactive: Bool = true) throws -> ContentBlock {
+    private func routeBlock(interactive: Bool = true, fit: Bool = true) throws -> ContentBlock {
         let json = """
         {"id":"m1","type":"map","field_config":{
           "map_mode":"route","map_style":"streets","map_interactive":\(interactive),
+          "map_fit_to_stops":\(fit),
           "map_show_controls":true,"map_zoom":12,
           "map_center_lat":47.6205,"map_center_lng":-122.3493,
           "route_show":true,"route_color":"#cf4646","route_casing_color":"#FFFFFF",
@@ -87,7 +88,8 @@ final class GoogleInteractiveMapTests: XCTestCase {
         AppDNA.googleMapsApiKey = key
         XCTAssertTrue(GoogleMapsBootstrap.ready(), "GMSServices rejected the key — the map cannot be live")
 
-        let map = makeMap(try routeBlock())
+        // Fit off → the authored centre and zoom (SPEC-497 §7.2 rule 3).
+        let map = makeMap(try routeBlock(fit: false))
 
         // A finger has to reach the engine. These are the flags `map_interactive` sets, and they are
         // the difference between a map and a picture of one.
@@ -134,6 +136,42 @@ final class GoogleInteractiveMapTests: XCTestCase {
         let zoomBefore = map.camera.zoom
         map.moveCamera(GMSCameraUpdate.zoomIn())
         XCTAssertGreaterThan(map.camera.zoom, zoomBefore, "the map did not zoom")
+    }
+}
+
+extension GoogleInteractiveMapTests {
+    /// SPEC-497 §7.8 — "applies plan camera fit": the container applies the plan's fit on its first
+    /// non-zero layout, and the whole route is inside the visible region.
+    func testAppliesPlanCameraFit() throws {
+        guard let key = ProcessInfo.processInfo.environment["GOOGLE_MAPS_TEST_KEY"], !key.isEmpty else {
+            throw XCTSkip("No GOOGLE_MAPS_TEST_KEY")
+        }
+        guard Bundle.main.url(forResource: "GoogleMaps", withExtension: "bundle") != nil else {
+            throw XCTSkip("GoogleMaps.bundle is not in the test host's main bundle")
+        }
+        AppDNA.googleMapsApiKey = key
+        XCTAssertTrue(GoogleMapsBootstrap.ready())
+
+        let block = try JSONDecoder().decode(ContentBlock.self, from: Data("""
+        {"id":"m2","type":"map","field_config":{"map_mode":"route","route_show":true,
+          "map_stops":[{"lat":47.6205,"lng":-122.3493},{"lat":47.5,"lng":-122.1}]}}
+        """.utf8))
+        let view = GoogleInteractiveMap(block: block)
+        guard case .fit(let points) = view.plan.camera else { return XCTFail("expected a fit plan") }
+
+        let container = InteractiveMapContainer(mapView: view.buildMapView())
+        container.setCamera(view.plan.camera)
+        container.frame = CGRect(x: 0, y: 0, width: 390, height: 240)
+        let window = UIWindow(frame: container.frame)
+        window.addSubview(container)
+        window.makeKeyAndVisible()
+        container.layoutIfNeeded()
+
+        let region = GMSCoordinateBounds(region: container.mapView.projection.visibleRegion())
+        for p in points {
+            XCTAssertTrue(region.contains(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)),
+                          "route point \(p) is outside the fitted camera")
+        }
     }
 }
 

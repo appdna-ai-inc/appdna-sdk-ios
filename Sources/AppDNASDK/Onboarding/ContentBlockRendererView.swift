@@ -2921,7 +2921,7 @@ struct ContentBlockRendererView: View {
                         // `GMSServices.provideAPIKey` takes it at runtime. `ready()` is what keeps a
                         // keyless app on the static tier instead of constructing a GMSMapView that
                         // would raise.
-                        GoogleInteractiveMap(block: block)
+                        GoogleInteractiveMap(block: block, rawResolved: isRawResolved(block))
                     } else if let url = mapStaticURL(block, token: AppDNA.mapboxToken, width: 390, height: height, googleKey: AppDNA.googleMapsApiKey, rawResolved: isRawResolved(block)) {
                         BundledAsyncPhaseImage(url: url) { phase in
                             switch phase {
