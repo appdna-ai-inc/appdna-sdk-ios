@@ -102,10 +102,11 @@ final class BillingModuleNoProviderTests: XCTestCase {
             XCTAssertEqual(billingErrorType(error), "unknown")
             XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
         }
-        // SPEC-497 round 5 (I4 m4) — the test still holds `tracker` strongly, so the weak facade
-        // reference would still resolve if `teardown()` had not cleared it: a restore after teardown
-        // is the not-configured error and tracks NOTHING.
+        // SPEC-497 round 5 (I4 m4), round 6 (I4 m1) — the test still holds `tracker` strongly, so the
+        // weak facade reference would still resolve had `teardown()` not cleared it. `teardown()` does
+        // clear it, and restore after teardown is the not-configured error and tracks nothing.
         XCTAssertNotNil(tracker, "the tracker is retained across teardown")
+        XCTAssertNil(module.eventTracker, "teardown() cleared the facade's tracker reference")
         events = []
         do {
             _ = try await module.restorePurchases()
