@@ -56,6 +56,7 @@ final class StoreKitSessionTests: XCTestCase {
         events = []
         tracker = EventTracker(identityManager: IdentityManager(keychainStore: KeychainStore(service: "t.\(UUID())")))
         tracker.eventSink = { [weak self] in self?.events.append($0) }
+        try probePurchasesWork()
         queue = PurchaseDeliveryQueue(environment: PurchaseDeliveryQueue.Environment(
             defaults: defaults, now: Date.init, currentToken: { nil }, firstIdentifiedToken: { nil },
             deliveringDelegate: { nil }, tracker: { [weak self] in self?.tracker }
@@ -72,6 +73,38 @@ final class StoreKitSessionTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// SKTestSession purchases in the HOSTLESS SPM test target are "unproven" (round-3 SDK minor 8). On
+    /// the Mac bridge (Xcode 26, iOS 26 simulator) `Product.purchase()` there fails with an unknown
+    /// StoreKit error, so these tests skip with that reason and the SPM run stays honest; the fallback
+    /// is the RN pod's app-hosted `test_spec`. Probed once per process with a consumable.
+    private static var purchaseProbe: String??
+
+    private func probePurchasesWork() throws {
+        if Self.purchaseProbe == nil {
+            let semaphore = DispatchSemaphore(value: 0)
+            var failure: String?
+            Task.detached {
+                do {
+                    guard let coins = try await Product.products(for: ["ai.appdna.test.coins"]).first else {
+                        failure = "the .storekit products did not load"
+                        semaphore.signal(); return
+                    }
+                    let result = try await coins.purchase()
+                    if case .success(.verified(let t)) = result { await t.finish() } else { failure = "purchase result \(result)" }
+                } catch {
+                    failure = "Product.purchase() threw \(error)"
+                }
+                semaphore.signal()
+            }
+            if semaphore.wait(timeout: .now() + 20) == .timedOut { failure = "purchase probe timed out" }
+            Self.purchaseProbe = .some(failure)
+            session.clearTransactions()
+        }
+        if let reason = Self.purchaseProbe ?? nil {
+            throw XCTSkip("SKTestSession purchases do not run in this hostless test target (\(reason)); fallback: the RN pod's app-hosted test_spec (SPEC-497 §3.10).")
+        }
+    }
+
     private func unfinishedIds(productId: String) async -> [UInt64] {
         var ids: [UInt64] = []
         for await result in Transaction.unfinished {
@@ -81,7 +114,8 @@ final class StoreKitSessionTests: XCTestCase {
     }
 
     private func buyWithoutFinishing(_ productId: String) async throws -> Transaction {
-        let product = try XCTUnwrap(try await Product.products(for: [productId]).first)
+        let products = try await Product.products(for: [productId])
+        let product = try XCTUnwrap(products.first)
         let result = try await product.purchase()
         guard case .success(.verified(let transaction)) = result else {
             throw XCTSkip("SKTestSession purchase did not succeed in this target: \(result)")
@@ -175,7 +209,8 @@ final class StoreKitSessionTests: XCTestCase {
     // MARK: - Purchase path: charged price, trial, consumable, re-buy
 
     func testPlainMonthlyReportsTheChargedPriceEqualToTheProductPrice() async throws {
-        let product = try XCTUnwrap(try await Product.products(for: ["ai.appdna.test.monthly"]).first)
+        let products = try await Product.products(for: ["ai.appdna.test.monthly"])
+        let product = try XCTUnwrap(products.first)
         let result = try await StoreKit2Bridge(deliveryQueue: queue).purchase(productId: product.id, appAccountToken: nil)
         XCTAssertEqual(result.price, NSDecimalNumber(decimal: product.price).doubleValue, accuracy: 1e-9)
         XCTAssertEqual(result.isTrial, false)
