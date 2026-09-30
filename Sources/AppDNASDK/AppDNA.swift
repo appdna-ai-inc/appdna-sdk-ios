@@ -1790,6 +1790,7 @@ public final class AppDNA: @unchecked Sendable {
                 remoteConfigManager: remoteCfg,
                 billingBridge: self.billingBridge,
                 billingPolicy: AppDNA.billing.ownershipPolicy,
+                billingConfigured: { AppDNA.billing.configured },
                 eventTracker: tracker,
                 experimentManager: experimentMgr
             )

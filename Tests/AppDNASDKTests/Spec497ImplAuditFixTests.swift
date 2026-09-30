@@ -483,7 +483,20 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         func onPaywallPurchaseCompleted(paywallId: String, productId: String, transaction: TransactionInfo) {}
         func onPaywallPurchaseFailed(paywallId: String, error: Error, errorType: String, productId: String?) {}
         func onPaywallDismissed(paywallId: String) {}
-        func onPaywallRestoreFailed(paywallId: String, error: Error) { failed.value.append(billingErrorType(error)) }
+        let started = Box<Int>(0)
+        let messages = Box<[String]>([])
+        func onPaywallRestoreStarted(paywallId: String) { started.value += 1 }
+        func onPaywallRestoreFailed(paywallId: String, error: Error) {
+            failed.value.append(billingErrorType(error))
+            messages.value.append(error.localizedDescription)
+        }
+    }
+
+    /// A restore whose task is cancelled (I4 r7 m3).
+    private final class CancelledRestoreBridge: BillingBridgeProtocol, @unchecked Sendable {
+        func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult { throw StoreKit2Error.unknown }
+        func restore(appAccountToken: UUID?) async throws -> [String] { throw CancellationError() }
+        func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
     }
 
     private final class FailingRestoreBridge: BillingBridgeProtocol, @unchecked Sendable {
@@ -492,13 +505,15 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
     }
 
-    private func restore(bridge: BillingBridgeProtocol?, provider: BillingProvider, log: EventLog) async -> Spy {
+    private func restore(bridge: BillingBridgeProtocol?, provider: BillingProvider, log: EventLog,
+                         configured: Bool = true, waitFor: TimeInterval = 5) async -> Spy {
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixr1.\(UUID().uuidString)")
         let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
         let manager = PaywallManager(
             remoteConfigManager: rcm,
             billingBridge: bridge,
             billingPolicy: BillingOwnership.policy(for: provider, bridgeLinked: bridge != nil),
+            billingConfigured: { configured },
             eventTracker: makeTracker(log)
         )
         let spy = Spy()
@@ -506,8 +521,41 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
             manager.handleRestore(paywallId: "pw_r", delegate: spy, viewController: UIViewController(),
                                   dismissGuard: PaywallDismissGuard())
         }
-        _ = await poll(timeout: 5) { !spy.failed.value.isEmpty }
+        _ = await poll(timeout: waitFor) { !spy.failed.value.isEmpty }
         return spy
+    }
+
+    /// SPEC-497 I3 r7 m5 — a restore tap while billing is not configured (before `configure`, or after
+    /// `shutdown()`) fails with the `unknown` "not configured yet" error, as the purchase tap in the same
+    /// window — not `providerNotAvailable` — and never reaches the bridge or `onPaywallRestoreStarted`.
+    /// NEGATIVE CONTROL: without the `billingConfigured()` check in `handleRestore`, the StoreKit bridge's
+    /// restore runs (Started fires, then the bridge's own network error) — this fails.
+    func testNotConfiguredPaywallRestoreFailsUnknownNotConfigured() async {
+        let log = EventLog()
+        let spy = await restore(bridge: FailingRestoreBridge(), provider: .storeKit2, log: log, configured: false)
+        let failed = log.events.filter { $0.event_name == "purchase_restore_failed" }
+        XCTAssertEqual(failed.count, 1, "got \(log.names)")
+        XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, "unknown")
+        XCTAssertEqual(failed.first?.properties?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
+        XCTAssertEqual(spy.failed.value, ["unknown"])
+        XCTAssertEqual(spy.messages.value, [AppDNA.BillingModule.notConfiguredMessage])
+        XCTAssertEqual(spy.started.value, 0, "the restore never started")
+    }
+
+    /// SPEC-497 I4 r7 m3 — a cancelled paywall restore is untracked and calls no delegate (symmetry with
+    /// Android). NEGATIVE CONTROL: without the `catch is CancellationError` the catch-all tracks one
+    /// `purchase_restore_failed` and calls `onPaywallRestoreFailed` — this fails.
+    func testCancelledPaywallRestoreIsUntracked() async {
+        let log = EventLog()
+        await MainActor.run { AppDNA.paywall.skipNextAutoDismissOnRestore = true }
+        let spy = await restore(bridge: CancelledRestoreBridge(), provider: .storeKit2, log: log, waitFor: 1)
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        await MainActor.run {}
+        XCTAssertEqual(spy.started.value, 1)
+        XCTAssertTrue(spy.failed.value.isEmpty, "no onPaywallRestoreFailed")
+        XCTAssertEqual(log.events.filter { $0.event_name == "purchase_restore_failed" }.count, 0, "got \(log.names)")
+        let flag = await MainActor.run { AppDNA.paywall.skipNextAutoDismissOnRestore }
+        XCTAssertFalse(flag, "the one-shot skip flag is cleared")
     }
 
     func testNoBridgePaywallRestoreFailsWithProviderNotAvailable() async {

@@ -47,7 +47,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         func onPaywallDismissed(paywallId: String) {}
     }
 
-    private func tap(provider: BillingProvider) async -> Spy {
+    private func tap(provider: BillingProvider, configured: Bool = true) async -> Spy {
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.test.\(UUID().uuidString)")
         let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
         let paywall = rcm.decodePaywallPayload([
@@ -59,6 +59,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
             remoteConfigManager: rcm,
             billingBridge: BillingOwnership.makeBridge(for: provider, tracker: tracker),
             billingPolicy: BillingOwnership.policy(for: provider, bridgeLinked: BillingOwnership.isLinked(provider)),
+            billingConfigured: { configured },
             eventTracker: tracker
         )
         let spy = Spy()
@@ -100,5 +101,21 @@ final class PaywallManagerNoProviderTests: XCTestCase {
 
     func testUnlinkedAdaptyTapFailsLoudly() async {
         await assertFailsLoudly(.adapty(apiKey: "k"), message: "Adapty: purchases are made by Adapty in your app")
+    }
+
+    /// SPEC-497 I3 r7 m5 / §3.2 rule 3 (R65–R67) — a tap while billing is not configured (before
+    /// `configure`, or after `shutdown()`) fails with the `unknown` "not configured yet" error, as Android's
+    /// paywall tap and the direct API — even with a StoreKit bridge in hand. NEGATIVE CONTROL: without the
+    /// `billingConfigured()` check the StoreKit bridge is called and `purchase_started` is emitted — this fails.
+    func testNotConfiguredTapFailsUnknownNotConfigured() async {
+        let spy = await tap(provider: .storeKit2, configured: false)
+        XCTAssertEqual(events.map(\.event_name), ["purchase_failed"], "exactly one purchase_failed, no purchase_started")
+        let props = events.first?.properties
+        XCTAssertEqual(props?["error_type"]?.value as? String, "unknown")
+        XCTAssertEqual(props?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
+        XCTAssertEqual(spy.failed.first?.errorType, "unknown")
+        XCTAssertEqual(spy.failed.first?.productId, "plan_monthly")
+        XCTAssertTrue(spy.started.isEmpty, "the purchase never started")
+        XCTAssertEqual(failureRoutes, ["show_error"], "the paywall's failure routing runs")
     }
 }

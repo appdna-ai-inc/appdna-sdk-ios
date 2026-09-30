@@ -26,6 +26,11 @@ final class PaywallManager {
     /// SPEC-497 §3.2 rule 5 — the ownership policy `configure` chose. A tap the SDK cannot buy (no
     /// bridge, or `!sdkCanPurchase`) fails LOUDLY instead of silently.
     private let billingPolicy: BillingOwnershipPolicy
+    /// SPEC-497 §3.2 rule 3 (R65–R67; I3 r7 m5) — is billing configured right now? `configure` passes
+    /// `{ AppDNA.billing.configured }`, so a tap after `shutdown()` (whose teardown resets it) fails with
+    /// the `unknown` "not configured yet" error, as the direct `AppDNA.billing` API does — never with
+    /// `providerNotAvailable`, and never through a bridge captured from the torn-down configure.
+    private let billingConfigured: () -> Bool
     private let eventTracker: EventTracker
     /// SPEC-036-F §1.2 — consulted at present-time for a running paywall
     /// experiment targeting the entity being shown.
@@ -35,12 +40,14 @@ final class PaywallManager {
         remoteConfigManager: RemoteConfigManager,
         billingBridge: BillingBridgeProtocol?,
         billingPolicy: BillingOwnershipPolicy,
+        billingConfigured: @escaping () -> Bool = { true },
         eventTracker: EventTracker,
         experimentManager: ExperimentManager? = nil
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.billingBridge = billingBridge
         self.billingPolicy = billingPolicy
+        self.billingConfigured = billingConfigured
         self.eventTracker = eventTracker
         self.experimentManager = experimentManager
     }
@@ -257,10 +264,15 @@ final class PaywallManager {
         // (`providerNotAvailable`, with the tapped plan's product id — the documented recipe is to start
         // the purchase with the host's own provider from that callback), then the normal failure
         // routing. No `purchase_started` and no `onPaywallPurchaseStarted`: the purchase never started.
-        guard let bridge = billingBridge, billingPolicy.sdkCanPurchase else {
-            let error = BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+        // Before `configure` has wired billing, or after `shutdown()`: the `unknown` "not configured yet"
+        // error, as Android's paywall tap and the direct API (§3.2 rule 3, R65–R67).
+        let configured = billingConfigured()
+        guard configured, let bridge = billingBridge, billingPolicy.sdkCanPurchase else {
+            let error: Error = configured
+                ? BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+                : AppDNA.BillingModule.notConfiguredError()
             let errorType = billingErrorType(error)
-            Log.warning("Paywall \(paywallId): the SDK cannot buy under billingProvider '\(billingPolicy.provider)' — \(billingPolicy.refusalMessage)")
+            Log.warning("Paywall \(paywallId): the SDK cannot buy under billingProvider '\(billingPolicy.provider)' — \(error.localizedDescription)")
             eventTracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
                 paywallId: paywallId,
                 productId: plan.productId,
@@ -469,10 +481,15 @@ final class PaywallManager {
         viewController: UIViewController,
         dismissGuard: PaywallDismissGuard,
     ) {
-        guard let bridge = billingBridge, billingPolicy.sdkCanRestore else {
+        let configured = billingConfigured()
+        guard configured, let bridge = billingBridge, billingPolicy.sdkCanRestore else {
             // No billing bridge, or a provider that owns restoring (SPEC-497 §3.3) — surface the failure
             // so hosts don't see silence, and emit it (R40 event parity: it used to emit nothing).
-            let error = BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+            // Not configured (before `configure`, or after `shutdown()`): the `unknown` "not configured
+            // yet" error, as the purchase tap in the same window (I3 r7 m5; §3.2 rule 3, R65–R67).
+            let error: Error = configured
+                ? BillingError.providerNotAvailable(billingPolicy.refusalMessage)
+                : AppDNA.BillingModule.notConfiguredError()
             eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
                 "paywall_id": paywallId,
                 "error": error.localizedDescription,
@@ -561,6 +578,12 @@ final class PaywallManager {
                         delegate?.onPaywallDismissed(paywallId: paywallId)
                     }
                 }
+            } catch is CancellationError {
+                // SPEC-497 (I4 r7 m3) — a cancelled restore is not a failed restore: untracked, no delegate
+                // call (symmetry with Android `handleRestore`, I3 r6 m3). The one-shot skip flag is still
+                // cleared, as on every other terminal path.
+                DispatchQueue.main.async { AppDNA.paywall.skipNextAutoDismissOnRestore = false }
+                return
             } catch {
                 // SPEC-497 R40 — `error_type`, as Android.
                 eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
