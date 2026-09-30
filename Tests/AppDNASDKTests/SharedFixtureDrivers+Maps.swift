@@ -11,6 +11,11 @@
 //                              `StepConfigOverrideMerger.apply` (the merge the renderer runs) →
 //                              `MapInteractivePlan.compute`, the seam `GoogleInteractiveMap` draws from.
 //   location_data_from_answer  REAL: `SessionDataStore` + `AppDNA.getLocationData(fieldId:)`.
+//   location_answer_from_input REAL: `LocationAnswer` (the rule both location writers call; a selection
+//                              first goes through `LocationAnswer.decodeSuggestions`, the form-step
+//                              field's parser) → `SessionDataStore` → `AppDNA.getLocationData(fieldId:)`.
+//   bridge_step_advance_reply  REAL: `StepAdvanceResult.isExplicitBridgeDecision` / `bridgeSkipTarget`,
+//                              the two calls every wrapper bridge's auth gate and decoder make.
 //   bridge_timeout_floor       REAL: `StepAdvanceResult.minimumBridgeTimeout(stepData:)`. Only
 //                              `action.cases` — `bridge_waits` (max of configured and floor) belongs to
 //                              the wrapper bridge tests; asserting it here would be a tautology.
@@ -29,6 +34,8 @@ extension SharedFixtureTests {
         case "decode_polyline":           runDecodePolyline(f, h)
         case "map_interactive_plan":      runMapInteractivePlan(f, h)
         case "location_data_from_answer": runLocationDataFromAnswer(f, h)
+        case "location_answer_from_input": runLocationAnswerFromInput(f, h)
+        case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
         default:
             return false
@@ -135,6 +142,68 @@ extension SharedFixtureTests {
             "postal_code": o(loc.postal_code),
             "raw_query": o(loc.raw_query),
         ] as [String: Any]
+    }
+
+    // MARK: location_answer_from_input
+
+    private func runLocationAnswerFromInput(_ f: Fixture, _ h: Harness) {
+        guard let fieldId = f.action.raw["field_id"]?.stringValue,
+              let input = f.action.raw["input"]?.objectValue,
+              let kind = input["kind"]?.stringValue else {
+            return XCTFail("[\(f.id)] location_answer_from_input needs action.field_id and action.input.kind")
+        }
+        let stored: Any
+        switch kind {
+        case "typed":
+            stored = LocationAnswer.typed(input["text"]?.stringValue ?? "")
+        case "selected":
+            guard let item = input["suggestion"]?.foundation as? [String: Any],
+                  let suggestion = LocationAnswer.decodeSuggestions([item]).first else {
+                return XCTFail("[\(f.id)] the suggestion did not parse")
+            }
+            stored = LocationAnswer.selection(from: suggestion, rawQuery: input["typed_query"]?.stringValue)
+        default:
+            return XCTFail("[\(f.id)] unknown input.kind \(kind)")
+        }
+        h.state["stored_answer"] = stored
+
+        SessionDataStore.shared.clearAll()
+        defer { SessionDataStore.shared.clearAll() }
+        SessionDataStore.shared.setOnboardingResponses(["step_location": [fieldId: stored]])
+        guard let loc = AppDNA.getLocationData(fieldId: fieldId) else {
+            h.state["location_data"] = NSNull()
+            return
+        }
+        let o = SharedFixtureTests.orNull
+        h.state["location_data"] = [
+            "formatted_address": loc.formatted_address,
+            "city": o(loc.city),
+            "state": o(loc.state),
+            "state_code": o(loc.state_code),
+            "country": o(loc.country),
+            "country_code": o(loc.country_code),
+            "latitude": o(loc.latitude),
+            "longitude": o(loc.longitude),
+            "timezone": o(loc.timezone),
+            "timezone_offset": o(loc.timezone_offset),
+            "postal_code": o(loc.postal_code),
+            "raw_query": o(loc.raw_query),
+        ] as [String: Any]
+    }
+
+    // MARK: bridge_step_advance_reply
+
+    private func runBridgeStepAdvanceReply(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] bridge_step_advance_reply needs action.cases")
+        }
+        h.state["decisions"] = cases.map { c -> Any in
+            let reply = c.objectValue?["reply"]?.foundation
+            return [
+                "explicit": StepAdvanceResult.isExplicitBridgeDecision(reply),
+                "skip_target": SharedFixtureTests.orNull(StepAdvanceResult.bridgeSkipTarget(reply: reply)),
+            ] as [String: Any]
+        }
     }
 
     // MARK: bridge_timeout_floor
