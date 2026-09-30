@@ -119,4 +119,24 @@ final class EntitlementHandlerLifecycleTests: XCTestCase {
         XCTAssertEqual(first, 0, "the removed web handler must be gone")
         XCTAssertEqual(second, 1, "the surviving web handler must still fire, exactly once")
     }
+
+    /// Fix wave (shutdown → configure latch). `shutdown()` cleared the web-entitlement handlers in its
+    /// ASYNC teardown, so a handler registered right after `shutdown()` returned — what the React Native
+    /// and Flutter bridges do on the `configure()` that follows on the same tick — was removed when the
+    /// teardown landed, and `onWebEntitlementChanged` never fired again.
+    func testWebHandlerRegisteredRightAfterShutdownSurvivesTheTeardown() {
+        var before = 0
+        var after = 0
+        AppDNA.onWebEntitlementChanged { _ in before += 1 }
+
+        AppDNA.shutdown()
+        AppDNA.onWebEntitlementChanged { _ in after += 1 }   // same tick, before the teardown runs
+        settle()
+
+        NotificationCenter.default.post(name: .webEntitlementChanged, object: nil)
+        settle()
+
+        XCTAssertEqual(before, 0, "the pre-shutdown handler must be gone")
+        XCTAssertEqual(after, 1, "a handler registered after shutdown() returned must survive the async teardown")
+    }
 }
