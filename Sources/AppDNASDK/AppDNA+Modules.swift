@@ -302,7 +302,8 @@ extension AppDNA {
         /// setup, a non-owning bridge (RevenueCat / Adapty not linked) and a failing `bridge.restore`
         /// alike. Before `configure` there is no tracker, so the not-configured error tracks nothing
         /// (as in `purchase`). The paywall restore calls `bridge.restore` itself (`PaywallManager`) and
-        /// tracks its own event, so it never passes through here and is never counted twice.
+        /// tracks its own event, so it never passes through here and is never counted twice. A Swift
+        /// `CancellationError` (the host cancelled its Task) is not a failure: rethrown as-is, untracked.
         public func restorePurchases() async throws -> [String] {
             // Pinned before any await, as in `purchase` — `teardown()` nils the weak tracker.
             let tracker = eventTracker
@@ -320,6 +321,10 @@ extension AppDNA {
                 // Android (restorePurchases → replaceAll → notifyBillingDelegate). Diff-guarded.
                 await refreshEntitlementCache()
                 return restored
+            } catch let cancellation as CancellationError {
+                // The host cancelled its own Task: not a failed restore. Rethrown as-is and not tracked,
+                // matching Android (`NativeBillingManager` rethrows `CancellationException`) — §13b.2 R37.
+                throw cancellation
             } catch {
                 trackRestoreFailed(tracker, error: error)
                 throw error

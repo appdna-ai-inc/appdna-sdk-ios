@@ -102,6 +102,40 @@ final class BillingModuleNoProviderTests: XCTestCase {
             XCTAssertEqual(billingErrorType(error), "unknown")
             XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
         }
+        // SPEC-497 round 5 (I4 m4) — the test still holds `tracker` strongly, so the weak facade
+        // reference would still resolve if `teardown()` had not cleared it: a restore after teardown
+        // is the not-configured error and tracks NOTHING.
+        XCTAssertNotNil(tracker, "the tracker is retained across teardown")
+        events = []
+        do {
+            _ = try await module.restorePurchases()
+            XCTFail("must throw")
+        } catch {
+            XCTAssertEqual(billingErrorType(error), "unknown")
+            XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
+        }
+        XCTAssertTrue(events.isEmpty, "a restore after teardown tracks nothing — got \(events.map(\.event_name))")
+    }
+
+    /// SPEC-497 round 5 (I4 m1) — a host that cancels its Task gets the `CancellationError` back as-is,
+    /// and no `purchase_restore_failed` is tracked (Android rethrows `CancellationException` the same way).
+    func testDirectRestoreCancellationIsRethrownUntracked() async {
+        final class CancellingBridge: BillingBridgeProtocol {
+            func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult {
+                throw BillingError.productNotFound(productId)
+            }
+            func restore(appAccountToken: UUID?) async throws -> [String] { throw CancellationError() }
+            func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
+        }
+        let module = AppDNA.BillingModule()
+        module.wire(bridge: CancellingBridge(), policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        do {
+            _ = try await module.restorePurchases()
+            XCTFail("must throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "rethrown as-is, got \(error)")
+        }
+        XCTAssertTrue(events.isEmpty, "a cancelled restore tracks nothing — got \(events.map(\.event_name))")
     }
 
     /// R40 parity — a direct purchase that the bridge fails emits `purchase_started` then ONE terminal

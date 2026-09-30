@@ -537,8 +537,21 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         let log = EventLog()
         let bridge = FailingRestoreBridge()
         let tracker = makeTracker(log)
+        // SPEC-497 round 5 (I4 m5) — `AppDNA.billing` is process-wide: save what an earlier test (or a
+        // configure) left there and put exactly that back, rather than tearing it down, so the result
+        // does not depend on test order.
+        let prior = (configured: AppDNA.billing.configured, bridge: AppDNA.billing.bridge,
+                     policy: AppDNA.billing.ownershipPolicy, tracker: AppDNA.billing.eventTracker)
         AppDNA.billing.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
-        defer { AppDNA.billing.teardown() }
+        defer {
+            if prior.configured {
+                AppDNA.billing.wire(bridge: prior.bridge, policy: prior.policy, tracker: prior.tracker)
+            } else {
+                AppDNA.billing.teardown()
+                AppDNA.billing.bridge = prior.bridge
+                AppDNA.billing.eventTracker = prior.tracker
+            }
+        }
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixr4.\(UUID().uuidString)")
         let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
         let manager = PaywallManager(

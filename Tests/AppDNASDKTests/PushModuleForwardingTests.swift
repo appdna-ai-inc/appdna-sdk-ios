@@ -140,27 +140,54 @@ final class PushModuleForwardingTests: XCTestCase {
 
     /// I4 minor 5 — a host forwarding a tap from a background queue gets `onPushTapped` on main.
     /// NEGATIVE CONTROL: the delegate used to run on the caller's queue — `onMain` was false.
+    ///
+    /// SPEC-497 round 5 (I4 m3) — the tap carries a `deep_link` action, so the router runs as well: the
+    /// delegate call and `PushTapRouter.routeSink` are recorded in ONE log, and the order must be the
+    /// delegate first, then the route (posted to main after its 0.5 s settle delay).
     func testTapForwardedOffMainCallsTheDelegateOnMain() {
+        final class OrderLog {
+            private let lock = NSLock()
+            private var _entries: [String] = []
+            private var _offMain = 0
+            func append(_ entry: String) {
+                lock.lock(); defer { lock.unlock() }
+                if !Thread.isMainThread { _offMain += 1 }
+                _entries.append(entry)
+            }
+            var entries: [String] { lock.lock(); defer { lock.unlock() }; return _entries }
+            var offMain: Int { lock.lock(); defer { lock.unlock() }; return _offMain }
+        }
         final class ThreadRecorder: AppDNAPushDelegate {
-            let exp: XCTestExpectation
+            let log: OrderLog
             var onMain: Bool?
-            init(_ exp: XCTestExpectation) { self.exp = exp }
+            init(_ log: OrderLog) { self.log = log }
             func onPushReceived(notification: PushPayload, inForeground: Bool) {}
             func onPushTapped(notification: PushPayload, actionId: String?) {
                 onMain = Thread.isMainThread
-                exp.fulfill()
+                log.append("delegate")
             }
         }
         PushGate.shared.markConfigured()
-        let exp = expectation(description: "onPushTapped")
-        let spy = ThreadRecorder(exp)
-        AppDNA.pushDelegate = spy
-        let tap = marked
-        DispatchQueue.global().async {
-            AppDNA.pushModule.handleNotificationTap(tap, actionIdentifier: "view")
+        let log = OrderLog()
+        let routed = expectation(description: "route")
+        PushTapRouter.routeSink = { type, value in
+            log.append("route:\(type):\(value)")
+            routed.fulfill()
         }
-        wait(for: [exp], timeout: 5)
+        let spy = ThreadRecorder(log)
+        AppDNA.pushDelegate = spy
+        let tap: [AnyHashable: Any] = [
+            "appdna": "1", "push_id": "p1", "delivery_id": "d1",
+            "action": ["type": "deep_link", "value": "x://offmain"],
+        ]
+        DispatchQueue.global().async {
+            AppDNA.pushModule.handleNotificationTap(tap)
+        }
+        wait(for: [routed], timeout: 5)
         XCTAssertEqual(spy.onMain, true)
+        XCTAssertEqual(log.offMain, 0, "the delegate and the route both run on main")
+        XCTAssertEqual(log.entries, ["delegate", "route:deep_link:x://offmain"],
+                       "the host hears the tap before the SDK routes it")
         XCTAssertEqual(events.filter { $0.event_name == "push_tapped" }.count, 1)
     }
 
