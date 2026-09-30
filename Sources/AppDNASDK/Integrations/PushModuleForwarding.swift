@@ -361,7 +361,17 @@ extension AppDNA.PushModule {
         let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
         let tappedAction = (actionIdentifier == nil || actionIdentifier == UNNotificationDefaultActionIdentifier)
             ? nil : actionIdentifier
-        AppDNA.pushDelegate?.onPushTapped(notification: payload, actionId: tappedAction)
+        // I4 minor 5 — the delegate is a UI callback: on main, like `onPushReceived` above. A host forwarding
+        // a tap from a background queue used to get `onPushTapped` on that queue. Directly when already on
+        // main (unchanged ordering for the proxy's `didReceive`); the route below is posted to main 0.5 s
+        // later, so the delegate still runs first.
+        if Thread.isMainThread {
+            AppDNA.pushDelegate?.onPushTapped(notification: payload, actionId: tappedAction)
+        } else {
+            DispatchQueue.main.async {
+                AppDNA.pushDelegate?.onPushTapped(notification: payload, actionId: tappedAction)
+            }
+        }
 
         // SPEC-089c / SPEC-497 §9.2: auto-route with the ladder.
         PushTapRouter.perform(PushTapRouter.route(payload: payload, userInfo: userInfo, tappedActionId: tappedAction))

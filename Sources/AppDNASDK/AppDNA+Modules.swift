@@ -293,23 +293,46 @@ extension AppDNA {
         /// Returns an array of restored product IDs.
         ///
         /// Cross-account-leak defence: restored products are filtered to the
-        /// currently-identified user's `appAccountToken`. Untagged historical
-        /// transactions are surfaced under the migration-tolerant policy and
-        /// the server claims ownership via `receiptVerifier.restore(...)`.
+        /// currently-identified user's `appAccountToken` (the bridge filters). The iOS SDK makes no
+        /// server restore call: StoreKit2 reads `Transaction.currentEntitlements` locally, and a
+        /// linked provider restores through its own SDK.
+        ///
+        /// SPEC-497 §13b.2 (R37/R38/R39) — a direct call that fails tracks exactly ONE
+        /// `purchase_restore_failed` (`error`, `error_type`, no `paywall_id`) and rethrows: the `none`
+        /// setup, a non-owning bridge (RevenueCat / Adapty not linked) and a failing `bridge.restore`
+        /// alike. Before `configure` there is no tracker, so the not-configured error tracks nothing
+        /// (as in `purchase`). The paywall restore calls `bridge.restore` itself (`PaywallManager`) and
+        /// tracks its own event, so it never passes through here and is never counted twice.
         public func restorePurchases() async throws -> [String] {
+            // Pinned before any await, as in `purchase` — `teardown()` nils the weak tracker.
+            let tracker = eventTracker
             let state = snapshot()
             guard state.configured else { throw Self.notConfiguredError() }
-            guard let bridge = state.bridge else {
-                // SPEC-497 §3.4 — was `BillingModuleError.noBillingProvider`. A non-owning bridge throws
-                // `providerNotAvailable` itself (§3.2 rule 2).
-                Log.warning("BillingModule: No billing provider configured")
-                throw BillingError.providerNotAvailable(state.policy.refusalMessage)
+            do {
+                guard let bridge = state.bridge else {
+                    // SPEC-497 §3.4 — was `BillingModuleError.noBillingProvider`. A non-owning bridge throws
+                    // `providerNotAvailable` itself (§3.2 rule 2).
+                    Log.warning("BillingModule: No billing provider configured")
+                    throw BillingError.providerNotAvailable(state.policy.refusalMessage)
+                }
+                let restored = try await bridge.restore(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
+                // Round-34 — refresh entitlements so onEntitlementsChanged fires after a restore, matching
+                // Android (restorePurchases → replaceAll → notifyBillingDelegate). Diff-guarded.
+                await refreshEntitlementCache()
+                return restored
+            } catch {
+                trackRestoreFailed(tracker, error: error)
+                throw error
             }
-            let restored = try await bridge.restore(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
-            // Round-34 — refresh entitlements so onEntitlementsChanged fires after a restore, matching
-            // Android (restorePurchases → replaceAll → notifyBillingDelegate). Diff-guarded.
-            await refreshEntitlementCache()
-            return restored
+        }
+
+        /// The one `purchase_restore_failed` of a failed direct restore (no `paywall_id`).
+        private func trackRestoreFailed(_ tracker: EventTracker?, error: Error) {
+            guard let tracker else { return }
+            tracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
+                "error": error.localizedDescription,
+                "error_type": billingErrorType(error),
+            ]))
         }
 
         /// Get current entitlements as `Entitlement` objects.

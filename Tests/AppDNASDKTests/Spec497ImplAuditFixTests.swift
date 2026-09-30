@@ -529,6 +529,36 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, expected)
         XCTAssertEqual(spy.failed.value, [expected])
     }
+
+    /// SPEC-497 §13b.2 (R37–R39, I3 M1) — the direct `BillingModule.restorePurchases()` now tracks its own
+    /// `purchase_restore_failed`. A paywall restore must still track exactly ONE, even with the facade wired
+    /// to the same tracker and bridge (the paywall calls `bridge.restore` itself, never the facade).
+    func testPaywallRestoreStillTracksExactlyOneWithTheFacadeWired() async {
+        let log = EventLog()
+        let bridge = FailingRestoreBridge()
+        let tracker = makeTracker(log)
+        AppDNA.billing.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        defer { AppDNA.billing.teardown() }
+        let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixr4.\(UUID().uuidString)")
+        let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
+        let manager = PaywallManager(
+            remoteConfigManager: rcm,
+            billingBridge: bridge,
+            billingPolicy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true),
+            eventTracker: tracker
+        )
+        let spy = Spy()
+        await MainActor.run {
+            manager.handleRestore(paywallId: "pw_r4", delegate: spy, viewController: UIViewController(),
+                                  dismissGuard: PaywallDismissGuard())
+        }
+        _ = await poll(timeout: 5) { !spy.failed.value.isEmpty }
+        // Let any stray second emission land before counting.
+        try? await Task.sleep(nanoseconds: 200_000_000)
+        let failed = log.events.filter { $0.event_name == "purchase_restore_failed" }
+        XCTAssertEqual(failed.count, 1, "got \(log.names)")
+        XCTAssertEqual(failed.first?.properties?["paywall_id"]?.value as? String, "pw_r4")
+    }
 }
 
 // MARK: - Push

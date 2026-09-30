@@ -122,6 +122,107 @@ final class DeliveryQueueTests: XCTestCase {
         XCTAssertEqual(ids, ["7"])
     }
 
+    /// SPEC-497 I4 minor 3 — `shutdown(); configure()` on one tick, with the two Tasks running out of
+    /// order: the new session's `activate(2)` lands BEFORE the old session's `deactivate(1)`, and the host
+    /// wiped its defaults in between. The late `deactivate(1)` must neither deactivate session 2 nor bring
+    /// session 1's in-memory store back: the queue stays active and reads only what is persisted.
+    func testOutOfOrderActivateThenStaleDeactivateWithAWipedStore() async {
+        let w = World()
+        let q = PurchaseDeliveryQueue(environment: w.env())
+        w.delegate = nil                                                   // keep "7" queued in session 1
+        await q.activate(session: 1)
+        await q.recordReport(entry("7"))
+
+        w.defaults.removeObject(forKey: PurchaseDeliveryQueue.storageKey)  // the host clears its defaults
+        await q.activate(session: 2)                                       // configure() #2 runs first …
+        await q.deactivate(session: 1)                                     // … then shutdown() #1's Task
+
+        let active = await q.isActive
+        XCTAssertTrue(active, "a stale deactivate must not end the newer session")
+        let reported = await q.isReported("7")
+        XCTAssertFalse(reported, "session 1's memory must not come back")
+        var ids = await q.queuedIds()
+        XCTAssertEqual(ids, [], "the wiped entry must not come back")
+
+        // A late activate of the ended session is ignored too (it cannot re-read / reorder anything).
+        await q.activate(session: 1)
+        w.delegate = Recorder()
+        await q.recordReport(entry("8"))
+        let delivered = await q.drain()
+        XCTAssertEqual(delivered, ["8"])
+        XCTAssertEqual(w.delegate?.delivered, ["8"])
+        ids = await q.queuedIds()
+        XCTAssertEqual(ids, [])
+        let persisted = w.defaults.data(forKey: PurchaseDeliveryQueue.storageKey)
+            .flatMap { try? JSONDecoder().decode(DeliveryStore.self, from: $0) }
+        XCTAssertEqual(persisted?.reported, ["8"], "only this session's report is persisted")
+    }
+
+    /// SPEC-497 I4 minor 3 — a drain SUSPENDED at step (b) (inside `MainActor.run`, held there by a
+    /// gate-awaiting delegate provider) across `deactivate` → wipe → `activate`, which then resumes. The
+    /// actor is free while the drain is suspended, so the restart and a new report run meanwhile. On
+    /// resume the call completes once, step (c) removes the entry from the store the NEW session reads —
+    /// without resurrecting the wiped state or clobbering the report made meanwhile — and nothing is
+    /// delivered twice.
+    func testDrainSuspendedAtStepBAcrossRestartResumesCleanly() async {
+        let w = World()
+        let recorder = Recorder()
+        let entered = DispatchSemaphore(value: 0)
+        let gate = DispatchSemaphore(value: 0)
+        let gateOnce = NSLock()
+        var gated = false
+        let env = PurchaseDeliveryQueue.Environment(
+            defaults: w.defaults,
+            now: { Date() },
+            currentToken: { nil },
+            firstIdentifiedToken: { nil },
+            deliveringDelegate: {
+                gateOnce.lock()
+                let first = !gated
+                gated = true
+                gateOnce.unlock()
+                if first {
+                    entered.signal()
+                    gate.wait()           // holds the main actor: the drain is suspended in step (b)
+                }
+                return recorder
+            },
+            tracker: { nil }
+        )
+        let q = PurchaseDeliveryQueue(environment: env)
+        await q.activate(session: 1)
+        await q.recordReport(entry("s1"))
+
+        let drain = Task.detached { await q.drain() }
+        let reachedStepB = await withCheckedContinuation { (c: CheckedContinuation<Bool, Never>) in
+            DispatchQueue.global().async { c.resume(returning: entered.wait(timeout: .now() + 10) == .success) }
+        }
+        XCTAssertTrue(reachedStepB, "the drain reached step (b)")
+
+        // While it is suspended: shutdown() → the host wipes its defaults → configure() → a new report.
+        await q.deactivate(session: 1)
+        w.defaults.removeObject(forKey: PurchaseDeliveryQueue.storageKey)
+        await q.activate(session: 2)
+        await q.recordReport(entry("s2"))
+        var ids = await q.queuedIds()
+        XCTAssertEqual(ids, ["s2"], "the wipe dropped s1 from the new session's store")
+
+        gate.signal()
+        let delivered = await drain.value
+        XCTAssertEqual(delivered, ["s1"], "the suspended call completed once")
+        XCTAssertEqual(recorder.delivered, ["s1"])
+
+        ids = await q.queuedIds()
+        XCTAssertEqual(ids, ["s2"], "step (c) kept the new report and did not resurrect s1")
+        let reported = await q.isReported("s1")
+        XCTAssertFalse(reported, "the wiped reported set was not written back")
+
+        _ = await q.drain()
+        XCTAssertEqual(recorder.delivered, ["s1", "s2"], "s1 never delivered twice; s2 delivered by the next drain")
+        ids = await q.queuedIds()
+        XCTAssertEqual(ids, [])
+    }
+
     func testNoDelegateKeepsItQueued() async {
         let w = World()
         w.delegate = nil

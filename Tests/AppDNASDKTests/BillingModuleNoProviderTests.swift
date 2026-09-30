@@ -121,6 +121,82 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertEqual(events.last?.properties?["error_type"]?.value as? String, "productNotFound")
     }
 
+    // MARK: - SPEC-497 §13b.2 R37/R38/R39 — a failed DIRECT restore tracks exactly one purchase_restore_failed
+
+    private func restoreFailedEvents() -> [SDKEvent] {
+        events.filter { $0.event_name == "purchase_restore_failed" }
+    }
+
+    func testDirectRestoreWithNoneTracksExactlyOneRestoreFailed() async {
+        let module = AppDNA.BillingModule()
+        module.wire(bridge: nil, policy: BillingOwnership.policy(for: .none, bridgeLinked: false), tracker: tracker)
+        do {
+            _ = try await module.restorePurchases()
+            XCTFail("must throw")
+        } catch {
+            XCTAssertEqual(billingErrorType(error), "providerNotAvailable")
+        }
+        XCTAssertEqual(events.map(\.event_name), ["purchase_restore_failed"])
+        let props = restoreFailedEvents().first?.properties
+        XCTAssertEqual(props?["error_type"]?.value as? String, "providerNotAvailable")
+        XCTAssertEqual(props?["error"]?.value as? String, "No billing provider configured")
+        XCTAssertNil(props?["paywall_id"], "a direct restore has no paywall")
+        XCTAssertEqual(props?["emitted_by"]?.value as? String, "sdk")
+    }
+
+    func testDirectRestoreWithUnlinkedProviderTracksExactlyOneRestoreFailed() async {
+        let module = AppDNA.BillingModule()
+        module.wire(
+            bridge: ExternalProviderBridge(provider: .revenueCat),
+            policy: BillingOwnership.policy(for: .revenueCat, bridgeLinked: false),
+            tracker: tracker
+        )
+        do {
+            _ = try await module.restorePurchases()
+            XCTFail("must throw")
+        } catch {
+            XCTAssertEqual(billingErrorType(error), "providerNotAvailable")
+        }
+        XCTAssertEqual(events.map(\.event_name), ["purchase_restore_failed"])
+        XCTAssertEqual(restoreFailedEvents().first?.properties?["error_type"]?.value as? String, "providerNotAvailable")
+    }
+
+    func testDirectRestoreBridgeFailureTracksExactlyOneRestoreFailed() async {
+        final class FailingRestoreBridge: BillingBridgeProtocol {
+            func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult {
+                throw BillingError.productNotFound(productId)
+            }
+            func restore(appAccountToken: UUID?) async throws -> [String] { throw URLError(.notConnectedToInternet) }
+            func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
+        }
+        let module = AppDNA.BillingModule()
+        module.wire(bridge: FailingRestoreBridge(), policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        do {
+            _ = try await module.restorePurchases()
+            XCTFail("must throw")
+        } catch {
+            XCTAssertTrue(error is URLError, "rethrows the bridge's error unchanged")
+        }
+        XCTAssertEqual(events.map(\.event_name), ["purchase_restore_failed"])
+        XCTAssertEqual(restoreFailedEvents().first?.properties?["error_type"]?.value as? String,
+                       billingErrorType(URLError(.notConnectedToInternet)))
+    }
+
+    func testSuccessfulDirectRestoreTracksNoRestoreFailed() async throws {
+        final class OkBridge: BillingBridgeProtocol {
+            func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult {
+                throw BillingError.productNotFound(productId)
+            }
+            func restore(appAccountToken: UUID?) async throws -> [String] { ["p1"] }
+            func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
+        }
+        let module = AppDNA.BillingModule()
+        module.wire(bridge: OkBridge(), policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        let restored = try await module.restorePurchases()
+        XCTAssertEqual(restored, ["p1"])
+        XCTAssertTrue(restoreFailedEvents().isEmpty)
+    }
+
     /// R40/R41 — a re-buy of an owned item: one `purchase_restored{reason: item_already_owned}`, no price,
     /// no conversion; `purchase()` still returns the TransactionInfo.
     func testRebuyOfAnOwnedItemBooksNoRevenue() async throws {

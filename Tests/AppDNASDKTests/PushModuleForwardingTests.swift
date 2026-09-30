@@ -138,6 +138,32 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(recorder.tapped.count, 1)
     }
 
+    /// I4 minor 5 — a host forwarding a tap from a background queue gets `onPushTapped` on main.
+    /// NEGATIVE CONTROL: the delegate used to run on the caller's queue — `onMain` was false.
+    func testTapForwardedOffMainCallsTheDelegateOnMain() {
+        final class ThreadRecorder: AppDNAPushDelegate {
+            let exp: XCTestExpectation
+            var onMain: Bool?
+            init(_ exp: XCTestExpectation) { self.exp = exp }
+            func onPushReceived(notification: PushPayload, inForeground: Bool) {}
+            func onPushTapped(notification: PushPayload, actionId: String?) {
+                onMain = Thread.isMainThread
+                exp.fulfill()
+            }
+        }
+        PushGate.shared.markConfigured()
+        let exp = expectation(description: "onPushTapped")
+        let spy = ThreadRecorder(exp)
+        AppDNA.pushDelegate = spy
+        let tap = marked
+        DispatchQueue.global().async {
+            AppDNA.pushModule.handleNotificationTap(tap, actionIdentifier: "view")
+        }
+        wait(for: [exp], timeout: 5)
+        XCTAssertEqual(spy.onMain, true)
+        XCTAssertEqual(events.filter { $0.event_name == "push_tapped" }.count, 1)
+    }
+
     func testTapWithoutMarkerIsIgnored() {
         PushGate.shared.markConfigured()
         XCTAssertFalse(AppDNA.pushModule.handleNotificationTap(["push_id": "p1", "action": ["type": "deep_link", "value": "x://y"]]))
