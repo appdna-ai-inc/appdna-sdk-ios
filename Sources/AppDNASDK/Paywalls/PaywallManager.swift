@@ -312,11 +312,12 @@ final class PaywallManager {
                 // all obey it from the single result they each return. A re-buy of an owned item books
                 // no revenue: one `purchase_restored{reason: item_already_owned}` and no
                 // `onPaywallPurchaseCompleted` (SPEC-497 R40/R41).
-                let converted = PurchaseSuccessEvents.report(
-                    tracker: eventTracker,
-                    paywallId: paywallId,
-                    result: result
-                )
+                let converted = !result.alreadyOwned
+                if converted {
+                    PurchaseSuccessEvents.emit(tracker: eventTracker, paywallId: paywallId, result: result)
+                } else {
+                    PurchaseSuccessEvents.emitAlreadyOwned(tracker: eventTracker, paywallId: paywallId, result: result)
+                }
                 // SPEC-497 §13a.2 — one snapshot pass after a subscription purchase (the right baseline
                 // for its first renewal).
                 if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }

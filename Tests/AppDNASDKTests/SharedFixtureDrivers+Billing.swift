@@ -14,7 +14,7 @@
 //   trial_price                REAL: TrialDetection.isFreeTrial + chargedPrice + PurchaseSuccessEvents.properties.
 //   late_purchase              REAL: LatePurchaseProcessor.process (LatePurchaseFilter.decide + the queue
 //                              write + the emit) into a real PurchaseDeliveryQueue.
-//   rebuy_already_owned        REAL: StoreKit2Bridge.isAlreadyOwned + PurchaseSuccessEvents.report.
+//   rebuy_already_owned        REAL: StoreKit2Bridge.isAlreadyOwned + PurchaseSuccessEvents.emitAlreadyOwned.
 //   delivery_queue             REAL: PurchaseDeliveryQueue (identity rule, drain) + LatePurchaseProcessor
 //                              for `report` steps. The queue's triggers (setDelegate / identify) are
 //                              emulated by calling the drain they call — the trigger wiring itself is
@@ -340,7 +340,12 @@ extension SharedFixtureTests {
             isTrial: false,
             alreadyOwned: owned
         )
-        PurchaseSuccessEvents.report(tracker: h.tracker, paywallId: nil, result: result)    // REAL
+        // REAL — what both callers (BillingModule.purchase, PaywallManager) do with an owned result.
+        if result.alreadyOwned {
+            PurchaseSuccessEvents.emitAlreadyOwned(tracker: h.tracker, paywallId: nil, result: result)
+        } else {
+            PurchaseSuccessEvents.emit(tracker: h.tracker, paywallId: nil, result: result)
+        }
         h.state["already_owned"] = owned
     }
 

@@ -96,16 +96,10 @@ enum PurchaseSuccessEvents {
         tracker.track(event: "subscription_started", properties: props)
     }
 
-    /// SPEC-497 §13a.2 (R40/R41) — the caller's outcome for a purchase result: a re-buy of an owned
-    /// non-consumable / subscription (`alreadyOwned`) books NO revenue — one
-    /// `purchase_restored{reason: "item_already_owned"}` with no price or currency; anything else is a
-    /// conversion (`emit`). Returns `true` when it was a conversion.
-    @discardableResult
-    static func report(tracker: EventTracker, paywallId: String?, result: PurchaseResult) -> Bool {
-        guard result.alreadyOwned else {
-            emit(tracker: tracker, paywallId: paywallId, result: result)
-            return true
-        }
+    /// SPEC-497 §13a.2 (R40/R41) — a re-buy of an owned non-consumable / subscription
+    /// (`PurchaseResult.alreadyOwned`) books NO revenue: its caller emits this — one
+    /// `purchase_restored{reason: "item_already_owned"}` with no price or currency — INSTEAD of `emit`.
+    static func emitAlreadyOwned(tracker: EventTracker, paywallId: String?, result: PurchaseResult) {
         var props: [String: Any] = [
             "product_id": result.productId,
             "reason": "item_already_owned",
@@ -113,15 +107,8 @@ enum PurchaseSuccessEvents {
         if !result.transactionId.isEmpty { props["transaction_id"] = result.transactionId }
         if let paywallId { props["paywall_id"] = paywallId }
         tracker.track(event: "purchase_restored", properties: BillingEventProps.marked(props))
-        return false
     }
 
-    /// Does the App Store consider this product auto-renewing?
-    ///
-    /// Used by bridges whose provider model does not expose the product type at the emit site
-    /// (`AdaptyBridge`). StoreKit is the same source of truth the store itself bills against, so the
-    /// answer is provider-independent. Best-effort: a failed product lookup answers `false` rather than
-    /// fabricating a subscription (an over-emit here would inflate a metered event).
     /// SPEC-497 §13a.2 (C1) — is this product a consumable? Same best-effort StoreKit lookup as
     /// `isAutoRenewable`; a failed lookup answers `false`.
     static func isConsumable(productId: String) async -> Bool {

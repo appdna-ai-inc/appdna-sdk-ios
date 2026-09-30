@@ -209,7 +209,11 @@ extension AppDNA {
             // one would misattribute revenue to a paywall that was never shown. A re-buy of an owned item
             // books no revenue (`purchase_restored{reason: item_already_owned}`, R40/R41).
             if let tracker {
-                PurchaseSuccessEvents.report(tracker: tracker, paywallId: nil, result: result)
+                if result.alreadyOwned {
+                    PurchaseSuccessEvents.emitAlreadyOwned(tracker: tracker, paywallId: nil, result: result)
+                } else {
+                    PurchaseSuccessEvents.emit(tracker: tracker, paywallId: nil, result: result)
+                }
             }
             // SPEC-497 §13a.2 — after a subscription purchase, one snapshot pass, so its first renewal
             // diffs against the right baseline.
