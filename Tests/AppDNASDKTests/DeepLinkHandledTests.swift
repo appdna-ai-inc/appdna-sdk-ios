@@ -87,7 +87,7 @@ final class DeepLinkHandledTests: XCTestCase {
             action: PushAction(type: "deep_link", value: "myapp://workout/123")
         )
         XCTAssertEqual(
-            PushTapRouter.route(payload: payload, tappedActionId: nil),
+            PushTapRouter.route(payload: payload, userInfo: [:], tappedActionId: nil),
             .deepLink("myapp://workout/123")
         )
     }
@@ -106,16 +106,16 @@ final class DeepLinkHandledTests: XCTestCase {
             ]
         )
         XCTAssertEqual(
-            PushTapRouter.route(payload: payload, tappedActionId: "btn_offer"),
+            PushTapRouter.route(payload: payload, userInfo: [:], tappedActionId: "btn_offer"),
             .deepLink("myapp://offer")
         )
         XCTAssertEqual(
-            PushTapRouter.route(payload: payload, tappedActionId: "btn_settings"),
+            PushTapRouter.route(payload: payload, userInfo: [:], tappedActionId: "btn_settings"),
             .showScreen("settings")
         )
         // Body tap (no button) falls back to the body action — unchanged behaviour.
         XCTAssertEqual(
-            PushTapRouter.route(payload: payload, tappedActionId: nil),
+            PushTapRouter.route(payload: payload, userInfo: [:], tappedActionId: nil),
             .showScreen("home")
         )
     }
@@ -126,7 +126,7 @@ final class DeepLinkHandledTests: XCTestCase {
             action: PushAction(type: "open_url", value: "https://example.com/promo")
         )
         XCTAssertEqual(
-            PushTapRouter.route(payload: payload, tappedActionId: nil),
+            PushTapRouter.route(payload: payload, userInfo: [:], tappedActionId: nil),
             .deepLink("https://example.com/promo")
         )
     }
@@ -136,17 +136,59 @@ final class DeepLinkHandledTests: XCTestCase {
             pushId: "p1", title: "t", body: "b",
             action: PushAction(type: "dismiss", value: "x")
         )
-        XCTAssertEqual(PushTapRouter.route(payload: dismiss, tappedActionId: nil), .ignored)
+        XCTAssertEqual(PushTapRouter.route(payload: dismiss, userInfo: [:], tappedActionId: nil), .ignored)
 
         // A deep-link action with no target is not a destination.
         let empty = PushPayload(
             pushId: "p1", title: "t", body: "b",
             action: PushAction(type: "deep_link", value: "")
         )
-        XCTAssertEqual(PushTapRouter.route(payload: empty, tappedActionId: nil), .ignored)
+        XCTAssertEqual(PushTapRouter.route(payload: empty, userInfo: [:], tappedActionId: nil), .ignored)
 
         // No action at all.
         let none = PushPayload(pushId: "p1", title: "t", body: "b")
-        XCTAssertEqual(PushTapRouter.route(payload: none, tappedActionId: nil), .ignored)
+        XCTAssertEqual(PushTapRouter.route(payload: none, userInfo: [:], tappedActionId: nil), .ignored)
+    }
+
+    // MARK: - SPEC-497 §9.2 routing ladder (rungs 1–4 read the RAW userInfo)
+
+    private func ladder(_ userInfo: [AnyHashable: Any], tapped: String? = nil) -> PushTapRoute {
+        let payload = PushPayloadParser.parse(userInfo: userInfo, title: "", body: "")
+        return PushTapRouter.route(payload: payload, userInfo: userInfo, tappedActionId: tapped)
+    }
+
+    func testLadderScreenIdBeatsFirstButtonFallback() {
+        let userInfo: [AnyHashable: Any] = [
+            "appdna": "1", "push_id": "p", "screen_id": "s1",
+            "actions": [["id": "b1", "action_type": "deep_link", "action_value": "x://b"]],
+        ]
+        XCTAssertEqual(ladder(userInfo), .showScreen("s1"))
+        // The tapped button (rung 0) still wins.
+        XCTAssertEqual(ladder(userInfo, tapped: "b1"), .deepLink("x://b"))
+    }
+
+    func testLadderCanonicalActionBeatsFlatAndScreenId() {
+        let userInfo: [AnyHashable: Any] = [
+            "action": ["type": "deep_link", "value": "x://canon"],
+            "action_type": "show_screen", "action_value": "flat",
+            "screen_id": "s1",
+        ]
+        XCTAssertEqual(ladder(userInfo), .deepLink("x://canon"))
+    }
+
+    func testLadderFlatActionBeatsScreenId() {
+        XCTAssertEqual(
+            ladder(["action_type": "deep_link", "action_value": "x://flat", "screen_id": "s1"]),
+            .deepLink("x://flat")
+        )
+    }
+
+    func testLadderDeepLinkKeyIsTheLastRawRung() {
+        XCTAssertEqual(ladder(["deep_link": "x://dl"]), .deepLink("x://dl"))
+        XCTAssertEqual(ladder(["screen_id": "s2", "deep_link": "x://dl"]), .showScreen("s2"))
+    }
+
+    func testLadderCanonicalActionAsJSONString() {
+        XCTAssertEqual(ladder(["action": "{\"type\":\"show_screen\",\"value\":\"home\"}"]), .showScreen("home"))
     }
 }
