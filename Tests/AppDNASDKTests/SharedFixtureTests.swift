@@ -70,6 +70,24 @@ final class SharedFixtureTests: XCTestCase {
         let session_data: AnyJSON?
         let experiment_assignments: AnyJSON?
         let remote_config: AnyJSON?
+        /// SPEC-497 — every `setup` key, including the ones declared after SPEC-496
+        /// (`previous_snapshot`, `current`, `transaction_facts`, `pending_deliveries`, `offer`, …).
+        let raw: [String: AnyJSON]
+
+        private enum CodingKeys: String, CodingKey {
+            case config, user_traits, session_data, experiment_assignments, remote_config
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            config = try c.decodeIfPresent(AnyJSON.self, forKey: .config)
+            user_traits = try c.decodeIfPresent(AnyJSON.self, forKey: .user_traits)
+            session_data = try c.decodeIfPresent(AnyJSON.self, forKey: .session_data)
+            experiment_assignments = try c.decodeIfPresent(AnyJSON.self, forKey: .experiment_assignments)
+            remote_config = try c.decodeIfPresent(AnyJSON.self, forKey: .remote_config)
+            let blob = try decoder.singleValueContainer().decode(AnyJSON.self)
+            raw = blob.objectValue ?? [:]
+        }
     }
 
     struct Action: Decodable {
@@ -470,6 +488,11 @@ final class SharedFixtureTests: XCTestCase {
         // SPEC-496 §5b C2 — the core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         default:
+            // SPEC-497 — the new kinds are driven from one file per area, each returning `true` for
+            // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift.
+            if await driveSpec497Billing(fixture, harness) { return }
+            if await driveSpec497Push(fixture, harness) { return }
+            if await driveSpec497Maps(fixture, harness) { return }
             XCTFail("""
             [\(fixture.id)] no iOS driver for action.kind='\(fixture.action.kind)'.
             Add a driver that calls REAL SDK code for this kind, or remove 'ios' from the fixture's
