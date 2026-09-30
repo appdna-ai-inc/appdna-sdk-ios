@@ -8,7 +8,8 @@ enum Endpoint {
     // Billing endpoints
     case verifyReceipt(body: [String: Any])
     case restorePurchases(body: [String: Any])
-    case getEntitlements
+    /// `GET /billing/entitlements?app_user_id=` — the server's entitlements for one identified user.
+    case getEntitlements(appUserId: String)
     case signOffer(body: [String: Any])
     // Push endpoints (SPEC-030)
     case registerPushToken(body: [String: Any])
@@ -27,7 +28,12 @@ enum Endpoint {
         case .ingestIdentify:       return "/api/v1/ingest/identify"
         case .verifyReceipt:        return "/api/v1/billing/verify"
         case .restorePurchases:     return "/api/v1/billing/restore"
-        case .getEntitlements:      return "/api/v1/billing/entitlements"
+        case .getEntitlements(let appUserId):
+            // Percent-encoded as a query VALUE: a host user id may contain `&`, `+` or `=`.
+            var allowed = CharacterSet.urlQueryAllowed
+            allowed.remove(charactersIn: "&+=?#")
+            let encoded = appUserId.addingPercentEncoding(withAllowedCharacters: allowed) ?? appUserId
+            return "/api/v1/billing/entitlements?app_user_id=\(encoded)"
         case .signOffer:            return "/api/v1/billing/offers/sign"
         case .registerPushToken:    return "/api/v1/push/token"
         case .deactivatePushToken:  return "/api/v1/push/token"

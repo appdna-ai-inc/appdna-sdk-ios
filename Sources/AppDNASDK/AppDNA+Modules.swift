@@ -135,6 +135,7 @@ extension AppDNA {
             _ownershipPolicy = BillingOwnership.unavailable
             _eventTracker = nil
             stateLock.unlock()
+            cancelExpiryCheck()
             // Entitlement handlers are dropped SYNCHRONOUSLY by `AppDNA.shutdown()`, before this async
             // teardown is even queued. Clearing them again here would remove a handler the caller
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`
@@ -146,16 +147,58 @@ extension AppDNA {
         private var entitlementChangeHandlers: [UUID: ([Entitlement]) -> Void] = [:]
         private let entitlementHandlerLock = NSLock()
         private var entitlementObserverToken: NSObjectProtocol?
-        /// The active product-id set at the last `refreshEntitlementCache`. Used to post
-        /// `.entitlementsChanged` only on a REAL change. Guarded by `entitlementHandlerLock`.
-        private var lastKnownEntitlementIds: Set<String> = []
+        /// The fingerprint (`EntitlementFingerprint`) of the entitlements at the last refresh. Used to post
+        /// `.entitlementsChanged` only on a REAL change. Nil until the first refresh, which SEEDS it from
+        /// the persisted copy (`EntitlementFingerprint.storageKey`) — before, it started as an empty set,
+        /// so the first refresh after every launch reported any non-empty entitlement set as a change.
+        /// Guarded by `entitlementHandlerLock`.
+        private var lastKnownFingerprint: [String]?
+        /// The server-only entitlements (`/billing/entitlements` rows StoreKit on this device does not
+        /// hold, e.g. a purchase made on another platform) of the last successful server read, and whose
+        /// they were — reused when the server is unreachable, so going offline is not an entitlement
+        /// change. Guarded by `entitlementHandlerLock`.
+        private var cachedServerOnly: (userId: String, items: [ServerEntitlement])?
+        /// The observer that delivers `.entitlementsChanged` to the billing delegate.
+        private var delegateObserverToken: NSObjectProtocol?
+        /// The tail of the refresh chain: refreshes run one after another, so an older read can never
+        /// land after a newer one and report a change back. Guarded by `refreshLock`.
+        private var refreshChain: Task<Void, Never>?
+        private let refreshLock = NSLock()
+        /// The pending expiry re-check (the earliest future `expiresAt`). Guarded by `refreshLock`.
+        private var expiryTask: Task<Void, Never>?
 
-        internal init() {}
+        /// Where a refresh reads entitlements from. Production reads StoreKit and `/billing/entitlements`;
+        /// tests inject their own. Set before use.
+        internal var entitlementSources = EntitlementSources.production
+        /// Added to the earliest expiry before the re-check runs, so StoreKit has dropped the expired
+        /// transaction from `currentEntitlements` by then. Tests shorten it.
+        internal var expiryRecheckLeeway: TimeInterval = 1
+
+        internal init() {
+            // 🔴 `AppDNABillingDelegate.onEntitlementsChanged` WAS NEVER CALLED. Only the closure API
+            // (`onEntitlementsChanged {}`) listened to `.entitlementsChanged`; the typed delegate — the
+            // documented surface — had no caller anywhere in the SDK. Now the delegate hears every post
+            // the closures hear: same notification, same conversion, on the main queue, once per post.
+            delegateObserverToken = NotificationCenter.default.addObserver(
+                forName: .entitlementsChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let self,
+                      let entitlements = notification.userInfo?["entitlements"] as? [ServerEntitlement],
+                      let delegate = self.currentDelegate else { return }
+                delegate.onEntitlementsChanged(entitlements: Self.publicEntitlements(entitlements))
+            }
+        }
 
         deinit {
             if let token = entitlementObserverToken {
                 NotificationCenter.default.removeObserver(token)
             }
+            if let token = delegateObserverToken {
+                NotificationCenter.default.removeObserver(token)
+            }
+            expiryTask?.cancel()
         }
 
         /// Fetch localized product information from the App Store.
@@ -243,6 +286,11 @@ extension AppDNA {
             let result: PurchaseResult
             do {
                 result = try await bridge.purchase(productId: productId, appAccountToken: token)
+            } catch let cancellation as CancellationError {
+                // The host cancelled its own Task: not a failed purchase. Rethrown as-is and not tracked —
+                // the same rule as `restorePurchases` (Android rethrows `CancellationException`). It used
+                // to be tracked as `purchase_failed{error_type: unknown}`.
+                throw cancellation
             } catch {
                 trackPurchaseFailed(tracker, productId: productId, error: error)
                 throw error
@@ -267,7 +315,7 @@ extension AppDNA {
                 transactionId: result.transactionId,
                 productId: result.productId,
                 purchaseDate: Date(),
-                environment: "production"
+                environment: result.environment ?? StoreKitEnvironment.fallback
             )
         }
 
@@ -405,46 +453,137 @@ extension AppDNA {
         ///      links, OAuth web flows) and need to flush stale cache
         ///      without firing user-visible restore events.
         ///
-        /// Side effects: ZERO. No analytics events, no delegate callbacks,
-        /// no UI. Errors are swallowed and logged at warning level — the
-        /// method returns normally so callers can chain without try/catch.
+        /// Side effects: no analytics events, no restore callbacks, no UI. When the entitlements REALLY
+        /// changed since the last refresh (product set, `isActive` or `expiresAt`), the
+        /// `onEntitlementsChanged` closures and `AppDNABillingDelegate.onEntitlementsChanged` fire once, on
+        /// the main thread. Errors are swallowed and logged — the method returns normally so callers can
+        /// chain without try/catch.
         ///
-        /// Performance: cheap when StoreKit cache is warm (one verified
-        /// transaction read), bounded by the bridge's network behavior on
-        /// cold start. Identify hook should not be blocked on completion.
+        /// Performance: one StoreKit read plus, for an identified user, one `GET /billing/entitlements`
+        /// (its failure falls back to local state). Identify hook should not be blocked on completion.
         public func refreshEntitlementCache() async {
+            // Serialized: each refresh awaits the one before it (see `refreshChain`).
+            refreshLock.lock()
+            let previous = refreshChain
+            let task = Task { [weak self] in
+                await previous?.value
+                await self?.performEntitlementRefresh()
+            }
+            refreshChain = task
+            refreshLock.unlock()
+            await task.value
+        }
+
+        /// One refresh pass. What it reads:
+        ///   1. the bridge's entitlements for the current user (StoreKit `Transaction.currentEntitlements`,
+        ///      or the provider's customer info) — the device's own truth, with each product's StoreKit
+        ///      `expirationDate`;
+        ///   2. `GET /billing/entitlements?app_user_id=` for an identified user — the server's rows that
+        ///      this device does NOT hold (a purchase made on another platform or device) are added. The
+        ///      server call never gates the device's answer: when it fails, the last server-only rows of the
+        ///      same user are reused (so going offline is not an entitlement change), else none.
+        ///
+        /// 🔴 POST `.entitlementsChanged` on a REAL change only — the product set, `isActive` or `expiresAt`
+        /// of any entitlement. A renewal moves the expiry, so it IS a change; a refresh that finds the same
+        /// state (every identify, every foreground) is not. The fingerprint is persisted, so the first refresh
+        /// after a launch compares against the last one the app saw, not against "nothing".
+        ///
+        /// Triggers (each diff-guarded here): a purchase, a restore, `identify`, every
+        /// `SubscriptionStatusObserver` pass (launch, app foreground, `Transaction.updates` — renewals,
+        /// refunds / revocations, late purchases — and a provider's subscriber-state callback), and the
+        /// expiry re-check scheduled below at the earliest future `expiresAt`.
+        private func performEntitlementRefresh() async {
             guard let bridge = bridge else {
                 Log.warning("BillingModule.refreshEntitlementCache: no billing provider configured")
                 return
             }
-            // Calling getEntitlements() reads `Transaction.currentEntitlements`
-            // (or RC/Adapty customerInfo) without firing restore events. Token is
-            // critical here: this method is auto-called by `identify`, and
-            // the whole point of that call is to make the cache reflect the
-            // *newly-identified* user — passing the freshly-resolved token
-            // is what filters out the previous user's transactions.
+            let sources = entitlementSources
+            // The token filters out the previous user's transactions — this runs on every `identify`.
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
-
-            // 🔴 POST `.entitlementsChanged` on a real change — this is what makes `onEntitlementsChanged`
-            // fire on iOS AT ALL. The result USED TO BE DISCARDED: the only poster of that notification is
-            // `EntitlementCache`, which is NEVER constructed anywhere in the iOS SDK, so the host's
-            // entitlement-change callback (and the typed billing delegate) were dead on iOS while Android
-            // drove them live (`AppDNA.kt` constructs `EntitlementCache`). Diff against the last-known
-            // active set so we don't fire a spurious callback on every identify with unchanged
-            // entitlements. (Real-time renewal/expiry without a refresh still needs a Firestore-listener
-            // wiring — the `EntitlementCache.startObserving` design — tracked separately.)
-            let newIds = Set(productIds)
-            entitlementHandlerLock.lock()
-            let changed = newIds != lastKnownEntitlementIds
-            lastKnownEntitlementIds = newIds
-            entitlementHandlerLock.unlock()
-            guard changed else { return }
-            let entitlements = productIds.map {
-                ServerEntitlement(productId: $0, store: "app_store", status: "active",
-                                  expiresAt: nil, isTrial: false, offerType: nil)
+            var seen = Set<String>()
+            let localIds = productIds.filter { seen.insert($0).inserted }
+            let expirations = await sources.localExpirations(localIds)
+            var entitlements: [ServerEntitlement] = localIds.map { id in
+                ServerEntitlement(productId: id, store: "app_store", status: "active",
+                                  expiresAt: expirations[id].map(ISO8601.string(from:)),
+                                  isTrial: false, offerType: nil)
             }
+
+            if let userId = sources.currentUserId(), !userId.isEmpty {
+                let server = await sources.server(userId)
+                entitlementHandlerLock.lock()
+                let serverOnly: [ServerEntitlement]
+                if let server {
+                    serverOnly = server.filter { !seen.contains($0.productId) }
+                    cachedServerOnly = (userId, serverOnly)
+                } else if let cached = cachedServerOnly, cached.userId == userId {
+                    serverOnly = cached.items.filter { !seen.contains($0.productId) }
+                } else {
+                    serverOnly = []
+                }
+                entitlementHandlerLock.unlock()
+                entitlements += serverOnly
+            }
+
+            let now = sources.now()
+            let fingerprint = EntitlementFingerprint.make(entitlements, now: now)
+            entitlementHandlerLock.lock()
+            let before = lastKnownFingerprint ?? EntitlementFingerprint.load(sources.defaults)
+            let changed = fingerprint != before
+            lastKnownFingerprint = fingerprint
+            entitlementHandlerLock.unlock()
+
+            scheduleExpiryCheck(entitlements, now: now)
+            guard changed else { return }
+            EntitlementFingerprint.save(fingerprint, sources.defaults)
             NotificationCenter.default.post(name: .entitlementsChanged, object: nil,
                                             userInfo: ["entitlements": entitlements])
+        }
+
+        /// Re-check once the earliest future expiry has passed (plus `expiryRecheckLeeway`), so an expiry
+        /// with no transaction and no foreground still reports. At most one pending check; each refresh
+        /// replaces it. Capped at 24 h (a later refresh schedules the next one).
+        private func scheduleExpiryCheck(_ entitlements: [ServerEntitlement], now: Date) {
+            let next = entitlements
+                .compactMap { $0.expiresAt.flatMap(ISO8601.date(from:)) }
+                .filter { $0 > now }
+                .min()
+            let leeway = expiryRecheckLeeway
+            refreshLock.lock()
+            expiryTask?.cancel()
+            expiryTask = nil
+            if let next {
+                let delay = min(next.timeIntervalSince(now) + leeway, 24 * 60 * 60)
+                expiryTask = Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
+                    guard !Task.isCancelled else { return }
+                    await self?.refreshEntitlementCache()
+                }
+            }
+            refreshLock.unlock()
+        }
+
+        private func cancelExpiryCheck() {
+            refreshLock.lock()
+            expiryTask?.cancel()
+            expiryTask = nil
+            refreshLock.unlock()
+        }
+
+        /// The public `Entitlement` of each posted `ServerEntitlement` — ONE conversion for the closure
+        /// handlers and the delegate, so the two can never disagree. `isActive`: an entitled status
+        /// (`active` / `trialing` / `grace_period`) whose `expiresAt`, when known, has not passed.
+        static func publicEntitlements(_ entitlements: [ServerEntitlement], now: Date = Date()) -> [Entitlement] {
+            entitlements.map { e in
+                let expiresAt = e.expiresAt.flatMap(ISO8601.date(from:))
+                let entitledStatus = e.status == "active" || e.status == "trialing" || e.status == "grace_period"
+                return Entitlement(
+                    identifier: e.productId,
+                    isActive: entitledStatus && (expiresAt.map { $0 > now } ?? true),
+                    expiresAt: expiresAt,
+                    productId: e.productId
+                )
+            }
         }
 
         /// Register a callback that fires when entitlements change.
@@ -470,14 +609,7 @@ extension AppDNA {
             ) { [weak self] notification in
                 guard let self = self else { return }
                 if let entitlements = notification.userInfo?["entitlements"] as? [ServerEntitlement] {
-                    let infos = entitlements.map { e in
-                        Entitlement(
-                            identifier: e.productId,
-                            isActive: e.status == "active" || e.status == "trialing" || e.status == "grace_period",
-                            expiresAt: e.expiresAt.flatMap(ISO8601.date(from:)),
-                            productId: e.productId
-                        )
-                    }
+                    let infos = Self.publicEntitlements(entitlements)
                     self.entitlementHandlerLock.lock()
                     let handlers = Array(self.entitlementChangeHandlers.values)
                     self.entitlementHandlerLock.unlock()
@@ -995,5 +1127,54 @@ enum DeepLinkAnalytics {
 
     static func props(url: URL) -> [String: Any] {
         ["url": url.absoluteString]
+    }
+}
+
+// MARK: - Entitlement refresh sources
+
+/// Where `BillingModule.refreshEntitlementCache` reads from. Production: StoreKit for the expiries,
+/// `/billing/entitlements` for the server's rows. Tests inject their own.
+struct EntitlementSources {
+    /// The server's entitlements for `appUserId`; nil when the call failed or no client exists.
+    var server: (_ appUserId: String) async -> [ServerEntitlement]?
+    /// StoreKit's expiry per product id (`StoreKitEntitlementReader.expirations`).
+    var localExpirations: (_ productIds: [String]) async -> [String: Date]
+    var currentUserId: () -> String?
+    var defaults: UserDefaults
+    var now: () -> Date
+
+    static var production: EntitlementSources {
+        EntitlementSources(
+            server: { userId in
+                guard let client = AppDNA.billingAPIClient else { return nil }
+                return await ReceiptVerifier(apiClient: client).fetchEntitlements(appUserId: userId)
+            },
+            localExpirations: { await StoreKitEntitlementReader.expirations(for: $0) },
+            currentUserId: { AppDNA.identityManagerRef?.currentIdentity.userId },
+            defaults: .standard,
+            now: Date.init
+        )
+    }
+}
+
+/// What "the entitlements changed" compares: per entitlement its product id, whether it is active, and its
+/// expiry to the second — sorted, so order never counts. Persisted so a relaunch compares against the
+/// last state the app saw.
+enum EntitlementFingerprint {
+    static let storageKey = "appdna.billing.last_entitlements_v1"
+
+    static func make(_ entitlements: [ServerEntitlement], now: Date) -> [String] {
+        AppDNA.BillingModule.publicEntitlements(entitlements, now: now).map { e in
+            let expiry = e.expiresAt.map { String(Int64($0.timeIntervalSince1970.rounded())) } ?? "-"
+            return "\(e.productId)|\(e.isActive ? 1 : 0)|\(expiry)"
+        }.sorted()
+    }
+
+    static func load(_ defaults: UserDefaults) -> [String] {
+        defaults.stringArray(forKey: storageKey) ?? []
+    }
+
+    static func save(_ fingerprint: [String], _ defaults: UserDefaults) {
+        defaults.set(fingerprint, forKey: storageKey)
     }
 }

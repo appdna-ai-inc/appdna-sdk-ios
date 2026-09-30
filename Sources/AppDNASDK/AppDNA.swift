@@ -108,6 +108,10 @@ public final class AppDNA: @unchecked Sendable {
     /// nil before `configure()`, which the store treats as "no refresh possible" rather than
     /// an error, so the fallback ladder still renders.
     static var optionSetClient: APIClient? { shared.apiClient }
+    /// The client billing's server calls (`/billing/verify`, `/billing/entitlements`) use. Nil before
+    /// `configure()` and after `shutdown()`: a verification then stays queued, and an entitlement
+    /// refresh falls back to local StoreKit state.
+    static var billingAPIClient: APIClient? { shared.apiClient }
 
     // MARK: - Module Namespaces (v1.0)
 
