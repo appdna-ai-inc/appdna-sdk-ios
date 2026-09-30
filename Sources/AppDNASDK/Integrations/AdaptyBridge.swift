@@ -8,7 +8,9 @@ import Adapty
 ///
 /// Usage: Configure via `AppDNA.configure(billing: .adapty(apiKey: "..."))`
 ///
-/// Requires Adapty SDK to be available (conditionally imported).
+/// Requires Adapty SDK to be available (conditionally imported). Compiles against Adapty 3.x (checked
+/// against 3.17) and the 2.x APIs it shares: `Adapty.activate(_:)`, `Adapty.restorePurchases()`,
+/// `Adapty.getProfile()`, `AdaptyProfile.accessLevels`. The SDK does not BUY through Adapty (see `purchase`).
 /// If Adapty is not linked, this bridge logs a warning and returns empty results.
 ///
 /// **Subscription lifecycle** (`subscription_renewed` / `_canceled` / `_renewal_failed`) is NOT emitted
@@ -42,107 +44,44 @@ final class AdaptyBridge: BillingBridgeProtocol {
 
     // MARK: - BillingBridgeProtocol
 
+    /// The message of the refusal below.
+    static let purchaseRefusal = "Adapty: purchases are made by Adapty in your app — Adapty.makePurchase(product:) needs an AdaptyPaywallProduct from an Adapty paywall, which the SDK does not have"
+
+    /// 🔴 THIS NEVER COMPILED AGAINST ANY ADAPTY SDK.
+    ///
+    /// It called `Adapty.makePurchase(product: productId)` with a product-id STRING and read
+    /// `transactionId` / `price` / `currencyCode` off the result. Neither Adapty 2.x nor 3.x has that:
+    /// `makePurchase(product:)` takes an `AdaptyPaywallProduct` — which only an Adapty paywall /
+    /// placement lookup hands out — and 3.x returns an `AdaptyPurchaseResult` enum. Published builds never
+    /// link Adapty (`canImport(Adapty)` is false there), so nobody saw it; a source build that linked
+    /// Adapty failed to compile here.
+    ///
+    /// There is no Adapty API that buys by product id, and buying through StoreKit behind Adapty's back
+    /// would finish (or strand) a transaction Adapty owns. So the SDK does not buy under Adapty — linked or
+    /// not — and the ownership policy says so (`sdkCanPurchase: false` for `.adapty`): the paywall reports
+    /// `providerNotAvailable` with the tapped product id, and the host buys with Adapty
+    /// (`Adapty.makePurchase(product:)`), the documented recipe. Restore and entitlements do go through
+    /// Adapty when it is linked. This is reached only if a caller bypasses the policy.
     func purchase(
         productId: String,
         appAccountToken: UUID?
     ) async throws -> PurchaseResult {
-        // Adapty binds purchases to its own customer-user-id (set via
-        // `Adapty.identify(customerUserId:)` when AppDNA.identify runs),
-        // so passing `appAccountToken` separately would risk inconsistent
-        // attribution between Apple-side and Adapty-side ownership.
         _ = appAccountToken
-        eventTracker?.track(event: "purchase_started", properties: BillingEventProps.marked([
-            "product_id": productId,
-            "provider": "adapty",
-        ]))
-
-        #if canImport(Adapty)
-        do {
-            let result = try await Adapty.makePurchase(product: productId)
-            let purchaseResult = PurchaseResult(
-                productId: productId,
-                // Adapty's store transaction id when it has one. Otherwise NOT "" (impl audit round 2, I3):
-                // every such purchase shared that id, so a host granting idempotently by `transactionId`
-                // dropped the second one. A unique, clearly-marked `adapty:<uuid>` instead — never a
-                // plausible store id, and never sent as the event's `transaction_id` (the envelope omits
-                // a synthetic id, so §13e.5 dedupe sees an unknown id, as before).
-                transactionId: result.transactionId.flatMap { $0.isEmpty ? nil : $0 }
-                    ?? SyntheticTransactionId.make(provider: "adapty"),
-                price: result.price ?? 0,
-                currency: result.currencyCode ?? "USD",
-                provider: "adapty",
-                // Adapty's purchase result does not carry the product TYPE at this site, so ask the store
-                // that actually billed it. Same rule as StoreKit2Bridge (`product.subscription != nil`),
-                // just resolved a level up — an Adapty customer must not be the one customer whose
-                // subscriptions never emit `subscription_started`.
-                isSubscription: await PurchaseSuccessEvents.isAutoRenewable(productId: productId),
-                // SPEC-497 §13a.2 (C1, round-20 SDK minor 2) — a StoreKit product lookup, as for
-                // `isAutoRenewable`. `isTrial` stays nil (`is_trial` omitted for Adapty, R45).
-                isConsumable: await PurchaseSuccessEvents.isConsumable(productId: productId)
-            )
-            // 🔴 NO EMIT HERE. A bridge NEVER emits the metered purchase events — its CALLER does.
-            //
-            // This bridge used to emit, and `PaywallManager` (which calls `bridge.purchase(...)`)
-            // emitted again on the very result returned below — so every Adapty purchase through a
-            // native paywall fired `purchase_completed` AND `subscription_started` TWICE, inflating
-            // purchase counts and revenue sums. Meanwhile StoreKit2Bridge emitted nothing and relied on
-            // its caller, so the DIRECT `AppDNA.billing.purchase()` path emitted nothing at all.
-            //
-            // One rule, both callers, every provider: emission belongs to whoever called us. See
-            // `AppDNA.BillingModule.purchase(_:options:)`. `check-purchase-emit-chokepoint.ts` fails
-            // the build if a bridge ever emits again.
-            //
-            // `isSubscription` above is still resolved HERE, because only the bridge knows which store
-            // actually billed — the caller cannot ask Adapty what kind of product it just sold.
-            // SPEC-400 — fire onPurchaseCompleted to the host's
-            // AppDNABillingDelegate. Bridges are the single source of
-            // truth for billing-delegate purchase events.
-            let txInfo = TransactionInfo(
-                transactionId: purchaseResult.transactionId,
-                productId: productId,
-                purchaseDate: Date(),
-                environment: "production"
-            )
-            await MainActor.run {
-                AppDNA.billingDelegate?.onPurchaseCompleted(productId: productId, transaction: txInfo)
-            }
-            // Adapty's subscriber state just moved. Reconcile so the observer's snapshot records the new
-            // subscription immediately — otherwise the FIRST post-purchase reconcile would see a product
-            // that is new to it, and a product new to the snapshot is (correctly) not a renewal, but the
-            // snapshot would only be written at the next foreground.
-            AppDNA.reconcileSubscriptionState()
-            return purchaseResult
-        } catch {
-            eventTracker?.track(event: "purchase_failed", properties: BillingEventProps.marked([
-                "product_id": productId,
-                "error": error.localizedDescription,
-                "provider": "adapty",
-            ]))
-            // SPEC-400 — fire onPurchaseFailed.
-            await MainActor.run {
-                AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)
-            }
-            throw error
-        }
-        #else
-        // Stub: Adapty not available
-        let err = NSError(
-            domain: "ai.appdna.sdk",
-            code: -1,
-            userInfo: [NSLocalizedDescriptionKey: "Adapty SDK not linked"]
-        )
+        // NO `purchase_started` / `purchase_failed` HERE — the caller emits them (`PaywallManager` for a
+        // paywall tap, `BillingModule.purchase` for a direct call), as for every other bridge. This bridge
+        // used to emit both as well, so every Adapty purchase reported `purchase_started` twice.
+        let error = BillingError.providerNotAvailable(Self.purchaseRefusal)
         await MainActor.run {
-            AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: err)
+            AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)
         }
-        throw err
-        #endif
+        throw error
     }
 
     func restore(appAccountToken: UUID?) async throws -> [String] {
         _ = appAccountToken  // Adapty binds via its own customerUserId
         #if canImport(Adapty)
         let profile = try await Adapty.restorePurchases()
-        let ids = profile.accessLevels.filter(\.value.isActive).map(\.key)
+        let ids = Self.activeProductIds(profile)
         eventTracker?.track(event: "purchase_restored", properties: BillingEventProps.marked([
             "restored_count": ids.count,
             "provider": "adapty",
@@ -165,12 +104,26 @@ final class AdaptyBridge: BillingBridgeProtocol {
         #endif
     }
 
+    #if canImport(Adapty)
+    /// The PRODUCT ids behind the profile's active access levels — what the bridge contract returns. The
+    /// access-level KEYS (e.g. "premium") used to be returned instead, so the entitlement list and the
+    /// restore callback named access levels where every other bridge names store products.
+    /// `AccessLevel.vendorProductId` / `isActive` exist in Adapty 2.x and 3.x alike.
+    static func activeProductIds(_ profile: AdaptyProfile) -> [String] {
+        var seen = Set<String>()
+        return profile.accessLevels.values
+            .filter(\.isActive)
+            .map(\.vendorProductId)
+            .filter { seen.insert($0).inserted }
+    }
+    #endif
+
     func getEntitlements(appAccountToken: UUID?) async -> [String] {
         _ = appAccountToken  // Adapty binds via its own customerUserId
         #if canImport(Adapty)
         do {
             let profile = try await Adapty.getProfile()
-            return profile.accessLevels.filter(\.value.isActive).map(\.key)
+            return Self.activeProductIds(profile)
         } catch {
             Log.error("Adapty getEntitlements failed: \(error.localizedDescription)")
             return []

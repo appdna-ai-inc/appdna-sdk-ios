@@ -67,11 +67,14 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         // Nil → the key is omitted downstream (`PurchaseSuccessEvents.properties` skips an empty id) —
         // never the user id.
         let transactionId = storeTransaction?.transactionIdentifier ?? ""
+        // RevenueCat's `StoreTransaction` does not expose StoreKit's environment; read the latest local
+        // transaction of this product instead (was always "production").
+        let environment = await StoreKitEnvironment.latest(for: product.productIdentifier) ?? StoreKitEnvironment.fallback
         let txInfo = TransactionInfo(
             transactionId: transactionId,
             productId: product.productIdentifier,
             purchaseDate: Date(),
-            environment: "production"
+            environment: environment
         )
         await MainActor.run {
             AppDNA.billingDelegate?.onPurchaseCompleted(productId: product.productIdentifier, transaction: txInfo)
@@ -95,7 +98,8 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
             isSubscription: product.subscriptionPeriod != nil,
             // SPEC-497 §13a.2 (C1, round-20 SDK minor 2). `isTrial` stays nil: `is_trial` is omitted for
             // RevenueCat purchases (R45).
-            isConsumable: product.productType == .consumable
+            isConsumable: product.productType == .consumable,
+            environment: environment
         )
     }
 

@@ -1620,7 +1620,14 @@ public final class AppDNA: @unchecked Sendable {
             let observer = SubscriptionStatusObserver(
                 eventTracker: tracker,
                 mode: observerMode,
-                emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents
+                emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents,
+                // After every pass (launch, foreground, `Transaction.updates`, provider callback): the
+                // diff-guarded entitlement refresh — so a renewal, an expiry or a refund reaches
+                // `onEntitlementsChanged` — and a retry of unverified purchases (§17-4).
+                afterPass: {
+                    await AppDNA.billing.refreshEntitlementCache()
+                    await PurchaseVerificationQueue.shared.retryPending()
+                }
             )
             self.subscriptionObserver = observer
             observer.start()

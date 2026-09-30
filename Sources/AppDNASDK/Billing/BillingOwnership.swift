@@ -64,7 +64,7 @@ enum BillingOwnership {
     /// | storeKit2             | yes  | yes / yes        | storeKitOwned | yes              |
     /// | revenueCat, unlinked  | no   | no / no          | providerOwned | no  (owner Q2)   |
     /// | revenueCat, linked    | no   | yes / yes        | providerOwned | no  (owner Q2)   |
-    /// | adapty, linked        | no   | yes / yes        | providerOwned | yes (LD-R10-1)   |
+    /// | adapty, linked        | no   | no / yes         | providerOwned | yes (LD-R10-1)   |
     /// | adapty, unlinked      | no   | no / no          | providerOwned | yes (LD-R10-1)   |
     /// | none                  | no   | no / no          | none          | no               |
     static func policy(for provider: BillingProvider, bridgeLinked: Bool) -> BillingOwnershipPolicy {
@@ -80,8 +80,11 @@ enum BillingOwnership {
                 observerMode: .providerOwned, emitsLifecycleEvents: false, provider: provider.type
             )
         case .adapty:
+            // No purchase even when Adapty is linked: Adapty (2.x and 3.x) buys only an
+            // `AdaptyPaywallProduct` from its own paywall, never a product id — see `AdaptyBridge.purchase`.
+            // Restore goes through `Adapty.restorePurchases()`.
             return BillingOwnershipPolicy(
-                ownsTransactions: false, sdkCanPurchase: bridgeLinked, sdkCanRestore: bridgeLinked,
+                ownsTransactions: false, sdkCanPurchase: false, sdkCanRestore: bridgeLinked,
                 observerMode: .providerOwned, emitsLifecycleEvents: true, provider: provider.type
             )
         case .none:

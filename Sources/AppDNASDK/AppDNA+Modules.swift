@@ -399,34 +399,25 @@ extension AppDNA {
 
         /// Get current entitlements as `Entitlement` objects.
         ///
-        /// ⚠️ `expiresAt` IS ALWAYS `nil` HERE, AND THAT IS THE HONEST ANSWER — BUT ONLY JUST.
-        ///
-        /// `BillingBridgeProtocol.getEntitlements` returns `[String]`: product IDs and nothing else. No
-        /// bridge has an expiry to give, so this cannot invent one, and per ADR-002 N11 `expiresAt` is
-        /// OPTIONAL precisely because "this platform does not know" is a better answer than a fabricated
-        /// date. Synthesising one here would be the `isTrial: false`-for-a-trialing-user mistake again.
-        ///
-        /// What was NOT honest: the OTHER path — the server-entitlement observer below — had a real
-        /// expiry in hand and threw it away on every single parse, because a bare `ISO8601DateFormatter`
-        /// cannot read the fractional-second timestamps our server sends. Between a field that is always
-        /// nil here and a field that never parses there, `Entitlement.expiresAt` was a public property
-        /// of a public type that could not hold a value. See `ISO8601` in `EntitlementCache.swift`.
-        ///
-        /// Making the expiry reachable HERE means widening the bridge protocol to carry it (StoreKit's
-        /// `Transaction.currentEntitlements` does expose `expirationDate`) across all three bridges and
-        /// both wrapper DTOs. That is a real change, not a one-liner, and it is recorded rather than
-        /// faked.
+        /// Read from the bridge (StoreKit `Transaction.currentEntitlements`, or the provider's customer
+        /// info), with each product's StoreKit `expirationDate` as `expiresAt` — nil for a product without
+        /// one (a non-consumable, a lifetime unlock) or one StoreKit on this device does not hold. It used to
+        /// be nil always. `isActive` follows the same rule as `onEntitlementsChanged`: true unless the expiry
+        /// has passed. Local only — `refreshEntitlementCache` is the path that also reads the server.
         public func getEntitlements() async -> [Entitlement] {
             guard let bridge = bridge else {
                 Log.warning("BillingModule: No billing provider configured")
                 return []
             }
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
+            let expirations = await entitlementSources.localExpirations(productIds)
+            let now = entitlementSources.now()
             return productIds.map { productId in
-                Entitlement(
+                let expiresAt = expirations[productId]
+                return Entitlement(
                     identifier: productId,
-                    isActive: true,
-                    expiresAt: nil,
+                    isActive: expiresAt.map { $0 > now } ?? true,
+                    expiresAt: expiresAt,
                     productId: productId
                 )
             }
