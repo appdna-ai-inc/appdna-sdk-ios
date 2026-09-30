@@ -411,6 +411,10 @@ struct PaywallRenderer: View {
                 withAnimation { showSuccessOverlay = true }
                 if info["confetti"] as? Bool == true { showConfetti = true }
             }
+            // SPEC-497 R9 — the purchase ended with the paywall still up: re-enable the CTA.
+            NotificationCenter.default.addObserver(forName: .paywallPurchaseEnded, object: nil, queue: .main) { _ in
+                isPurchasing = false
+            }
             NotificationCenter.default.addObserver(forName: .paywallPurchaseFailure, object: nil, queue: .main) { notif in
                 let info = notif.userInfo ?? [:]
                 errorMessage = info["message"] as? String ?? "Payment failed."

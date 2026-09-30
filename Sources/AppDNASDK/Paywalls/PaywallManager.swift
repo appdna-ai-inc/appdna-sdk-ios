@@ -5,6 +5,10 @@ import SwiftUI
 extension Notification.Name {
     static let paywallPurchaseSuccess = Notification.Name("ai.appdna.paywallPurchaseSuccess")
     static let paywallPurchaseFailure = Notification.Name("ai.appdna.paywallPurchaseFailure")
+    /// SPEC-497 R9 — a paywall purchase ended and the paywall stays on screen: every non-success outcome
+    /// (whatever `on_failure` says), and a success with no `on_success` config. The renderer re-enables
+    /// its CTA (`isPurchasing = false`). Mirrors Android's `PaywallActivity.purchaseEndedSignal`.
+    static let paywallPurchaseEnded = Notification.Name("ai.appdna.paywallPurchaseEnded")
 }
 
 /// SPEC-401 Fix 1C — per-presentation guard that prevents double-dismiss
@@ -408,7 +412,12 @@ final class PaywallManager {
     // MARK: - Post-purchase actions
 
     private func handlePostPurchaseSuccess(config: PostPurchaseSuccessConfig?, paywallId: String, delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
-        guard let config = config else { return } // No config = legacy behavior (delegate-only)
+        guard let config = config else {
+            // No config = legacy behavior (delegate-only): the paywall stays up for the host to close,
+            // so its CTA stops spinning (SPEC-497 R9, as Android).
+            NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
+            return
+        }
         let delay = Double(config.delay_ms ?? 2000) / 1000.0
 
         switch config.action {
@@ -456,6 +465,9 @@ final class PaywallManager {
     }
 
     private func handlePostPurchaseFailure(config: PostPurchaseFailureConfig?, paywallId: String, viewController: UIViewController) {
+        // SPEC-497 R9 — every failed / cancelled / pending / refused purchase re-enables the paywall's CTA,
+        // whatever `on_failure` says (with no config, nothing else ever did).
+        NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
         guard let config = config else { return }
 
         switch config.action {
