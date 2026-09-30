@@ -269,11 +269,10 @@ extension AppDNA.PushModule {
     public func handleMessageData(_ userInfo: [AnyHashable: Any]) -> Bool {
         guard PushMarker.isAppDNA(userInfo) else { return false }
         // Off the main thread (a host's FCM callback) the application state cannot be read here.
-        // §8.2 says `DispatchQueue.main.sync { read }`; that DEADLOCKS when the main thread is waiting on
-        // this thread (impl audit round 1, minor 30 — proven by
-        // `testHandleMessageDataOffMainDoesNotBlockOnMain`). So (round 2, I5): the delivery is still
-        // TRACKED synchronously, on this thread, before this returns — only the foreground state and
-        // `onPushReceived` wait for the main thread (async).
+        // Per §9.2/§8.2: the delivery is TRACKED synchronously, on this thread, before this returns; the
+        // off-main work — reading the foreground state and firing `onPushReceived` — runs async on main.
+        // (A `DispatchQueue.main.sync` read would deadlock when the main thread is waiting on this thread
+        // — proven by `testHandleMessageDataOffMainDoesNotBlockOnMain`.)
         return handleMessageData(userInfo, inForeground: Self.applicationIsActiveOnMain(), requestId: nil)
     }
 

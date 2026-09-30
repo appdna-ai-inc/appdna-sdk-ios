@@ -109,6 +109,12 @@ actor PurchaseDeliveryQueue {
     /// or an older one is ignored, so activate/deactivate cannot reorder across `shutdown()`: a
     /// `configure()` whose activation Task runs AFTER the `shutdown()` that ended it stays inactive.
     private var deactivatedThrough = 0
+    /// The in-memory copy of the persisted store, loaded on first use. Dropped on every `activate` and
+    /// `deactivate`, so each `configure()` starts from what is PERSISTED — an in-process restart
+    /// (`shutdown()` → `configure()`) must see exactly what a cold launch would. Keeping it across the
+    /// restart let a store that had since been cleared (a host wiping its defaults on sign-out) come back
+    /// from memory: its reported ids silenced the next late purchase with a matching id —
+    /// `finishSilently`, no `purchase_completed`, no queue entry — and the next write persisted it again.
     private var cached: DeliveryStore?
     /// Entries a drain is delivering right now (two concurrent drains deliver an entry once).
     private var inFlight: Set<String> = []
@@ -131,6 +137,7 @@ actor PurchaseDeliveryQueue {
             guard session > deactivatedThrough else { return }
             activeSession = max(activeSession, session)
         }
+        cached = nil          // this configure reads the PERSISTED store, never a previous run's memory
         active = true
         _ = purgeAndSave()
     }
@@ -138,10 +145,11 @@ actor PurchaseDeliveryQueue {
     /// `shutdown()`: drains become no-ops again until the next `configure` — unless a newer session was
     /// already activated (`shutdown(); configure()` on one tick). `nil` (tests) deactivates unconditionally.
     func deactivate(session: Int? = nil) {
-        guard let session else { active = false; return }
+        guard let session else { active = false; cached = nil; return }
         deactivatedThrough = max(deactivatedThrough, session)
         guard session >= activeSession else { return }
         active = false
+        cached = nil
     }
 
     /// Tests: swap the environment without activating.

@@ -79,6 +79,49 @@ final class DeliveryQueueTests: XCTestCase {
         XCTAssertEqual(left, [])
     }
 
+    /// An in-process restart (`shutdown()` → `configure()`) reads the PERSISTED store, never the previous
+    /// run's memory. The store was cleared in between (a host wiping its defaults on sign-out): a late
+    /// purchase whose id the previous run had reported must be reported and queued again — it used to be
+    /// `alreadyReported` from the stale in-memory copy (finished silently, no event, no delivery), and
+    /// the next write resurrected the wiped entries.
+    func testRestartReadsThePersistedStoreNotThePreviousRunsMemory() async {
+        let w = World()
+        let q = PurchaseDeliveryQueue(environment: w.env())
+        await q.activate(session: 1)
+        await q.recordReport(entry("7"))
+        var reported = await q.isReported("7")
+        XCTAssertTrue(reported)
+
+        await q.deactivate(session: 1)                                     // shutdown()
+        w.defaults.removeObject(forKey: PurchaseDeliveryQueue.storageKey)  // the host clears its defaults
+        await q.activate(session: 2)                                       // configure()
+
+        reported = await q.isReported("7")
+        XCTAssertFalse(reported, "a cleared store must not come back from memory after a restart")
+        var ids = await q.queuedIds()
+        XCTAssertEqual(ids, [], "the wiped queue entry must not come back either")
+
+        await q.recordReport(entry("8"))
+        ids = await q.queuedIds()
+        XCTAssertEqual(ids, ["8"], "the next write persists only this run's state")
+    }
+
+    /// The restart does not LOSE anything either: what was persisted before `shutdown()` is still there
+    /// after `configure()`.
+    func testRestartKeepsWhatWasPersisted() async {
+        let w = World()
+        w.delegate = nil
+        let q = PurchaseDeliveryQueue(environment: w.env())
+        await q.activate(session: 1)
+        await q.recordReport(entry("7"))
+        await q.deactivate(session: 1)
+        await q.activate(session: 2)
+        let reported = await q.isReported("7")
+        let ids = await q.queuedIds()
+        XCTAssertTrue(reported)
+        XCTAssertEqual(ids, ["7"])
+    }
+
     func testNoDelegateKeepsItQueued() async {
         let w = World()
         w.delegate = nil
