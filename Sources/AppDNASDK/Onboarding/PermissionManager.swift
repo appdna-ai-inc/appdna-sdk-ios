@@ -1,15 +1,11 @@
 import Foundation
+// AVFoundation stays linked for playback; only its typed `AVAuthorizationStatus` / `AVMediaType`
+// constants are used here — `AVCaptureDevice` is reached at runtime (SPEC-497 §13i).
 import AVFoundation
-import Photos
-import Contacts
 import CoreLocation
-import EventKit
 import UserNotifications
 #if canImport(UIKit)
 import UIKit
-#endif
-#if canImport(AppTrackingTransparency)
-import AppTrackingTransparency
 #endif
 
 // MARK: - Permission status
@@ -52,7 +48,22 @@ public final class PermissionManager {
     /// authorization is reported ONLY via `locationManagerDidChangeAuthorization`.
     private let location = LocationAuthCoordinator()
 
-    public init() {}
+    /// Reads an Info.plist key (production: `Bundle.main`).
+    private let infoPlist: (String) -> Any?
+    /// Contacts, Calendar, tracking, photo-library and camera/microphone authorisation, reached at
+    /// runtime so the SDK binary carries no link-time reference to them (SPEC-497 §13i).
+    private let runtime: PermissionRuntime
+
+    public init() {
+        self.infoPlist = { Bundle.main.object(forInfoDictionaryKey: $0) }
+        self.runtime = PermissionRuntime()
+    }
+
+    /// Test seam: an injected Info.plist reader and class resolver.
+    internal init(infoPlist: @escaping (String) -> Any?, resolver: PermissionClassResolving) {
+        self.infoPlist = infoPlist
+        self.runtime = PermissionRuntime(resolver: resolver)
+    }
 
     // MARK: Info.plist crash-guard (pure, testable)
 
@@ -141,7 +152,7 @@ public final class PermissionManager {
     }
 
     private func liveKeyPresent(_ key: String) -> Bool {
-        Bundle.main.object(forInfoDictionaryKey: key) != nil
+        infoPlist(key) != nil
     }
 
     /// Applies the crash-guard against the live main bundle.
@@ -167,60 +178,31 @@ public final class PermissionManager {
             }
 
         case "att":
-            #if canImport(AppTrackingTransparency)
-            switch ATTrackingManager.trackingAuthorizationStatus {
-            case .authorized: return .granted
-            case .denied, .restricted: return .denied
-            case .notDetermined: return .undetermined
-            @unknown default: return .undetermined
-            }
-            #else
-            return .granted
-            #endif
+            guard let raw = runtime.trackingStatus() else { return .unavailable }
+            return Self.mapTracking(raw)
 
         case "camera":
-            return Self.mapAV(AVCaptureDevice.authorizationStatus(for: .video))
+            guard let raw = runtime.captureStatus(mediaType: AVMediaType.video.rawValue) else { return .unavailable }
+            return Self.mapAV(AVAuthorizationStatus(rawValue: raw) ?? .notDetermined)
 
         case "microphone":
-            return Self.mapAV(AVCaptureDevice.authorizationStatus(for: .audio))
+            guard let raw = runtime.captureStatus(mediaType: AVMediaType.audio.rawValue) else { return .unavailable }
+            return Self.mapAV(AVAuthorizationStatus(rawValue: raw) ?? .notDetermined)
 
         case "photos":
-            switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
-            case .authorized, .limited: return .granted
-            case .denied, .restricted: return .denied
-            case .notDetermined: return .undetermined
-            @unknown default: return .undetermined
-            }
+            guard let raw = runtime.photosStatus() else { return .unavailable }
+            return Self.mapPhotos(raw)
 
         case "contacts":
-            switch CNContactStore.authorizationStatus(for: .contacts) {
-            case .authorized: return .granted
-            case .denied, .restricted: return .denied
-            case .notDetermined: return .undetermined
-            // `.limited` (iOS 18+) and any future access-granting case → granted.
-            @unknown default: return .granted
-            }
+            guard let raw = runtime.contactsStatus() else { return .unavailable }
+            return Self.mapContacts(raw)
 
         case "location":
             return location.currentStatus
 
         case "calendar":
-            let s = EKEventStore.authorizationStatus(for: .event)
-            if #available(iOS 17.0, *) {
-                switch s {
-                case .fullAccess, .authorized, .writeOnly: return .granted
-                case .denied, .restricted: return .denied
-                case .notDetermined: return .undetermined
-                @unknown default: return .undetermined
-                }
-            } else {
-                switch s {
-                case .authorized: return .granted
-                case .denied, .restricted: return .denied
-                case .notDetermined: return .undetermined
-                @unknown default: return .undetermined
-                }
-            }
+            guard let raw = runtime.calendarStatus() else { return .unavailable }
+            return Self.mapCalendar(raw)
 
         default:
             return .unavailable
@@ -245,29 +227,24 @@ public final class PermissionManager {
             return await requestATT()
 
         case "camera":
-            return await AVCaptureDevice.requestAccess(for: .video)
+            return await runtime.requestCapture(mediaType: AVMediaType.video.rawValue) ?? false
 
         case "microphone":
-            return await AVCaptureDevice.requestAccess(for: .audio)
+            return await runtime.requestCapture(mediaType: AVMediaType.audio.rawValue) ?? false
 
         case "photos":
-            let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            guard let raw = await runtime.requestPhotos() else { return false }
             // `.limited` is treated as granted (SPEC-421).
-            return status == .authorized || status == .limited
+            return Self.mapPhotos(raw) == .granted
 
         case "contacts":
-            do {
-                return try await CNContactStore().requestAccess(for: .contacts)
-            } catch {
-                Log.warning("[Permission] contacts request failed: \(error.localizedDescription)")
-                return false
-            }
+            return await runtime.requestContacts() ?? false
 
         case "location":
             return await location.request()
 
         case "calendar":
-            return await requestCalendar()
+            return await runtime.requestCalendar() ?? false
 
         default:
             return false
@@ -305,43 +282,58 @@ public final class PermissionManager {
         if Self.attGrantedWithoutPrompt(major: os.majorVersion, minor: os.minorVersion) {
             return true
         }
-        #if canImport(AppTrackingTransparency)
-        return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-            DispatchQueue.main.async {
-                #if canImport(UIKit)
-                guard UIApplication.shared.applicationState == .active else {
-                    // Not safe to prompt when backgrounded — report current status.
-                    cont.resume(returning: ATTrackingManager.trackingAuthorizationStatus == .authorized)
-                    return
-                }
-                #endif
-                ATTrackingManager.requestTrackingAuthorization { status in
-                    cont.resume(returning: status == .authorized)
-                }
-            }
+        #if canImport(UIKit)
+        let active = await MainActor.run { UIApplication.shared.applicationState == .active }
+        guard active else {
+            // Not safe to prompt when backgrounded — report current status.
+            return runtime.trackingStatus().map { Self.mapTracking($0) == .granted } ?? false
         }
-        #else
-        return true
         #endif
-    }
-
-    private func requestCalendar() async -> Bool {
-        let store = EKEventStore()
-        do {
-            if #available(iOS 17.0, *) {
-                return try await store.requestFullAccessToEvents()
-            } else {
-                return try await store.requestAccess(to: .event)
-            }
-        } catch {
-            Log.warning("[Permission] calendar request failed: \(error.localizedDescription)")
-            return false
-        }
+        guard let raw = await runtime.requestTracking() else { return false }
+        return Self.mapTracking(raw) == .granted
     }
 
     // MARK: - Mapping helpers
 
-    private static func mapAV(_ status: AVAuthorizationStatus) -> PermissionStatus {
+    /// `ATTrackingManager.AuthorizationStatus` raw values: 0 notDetermined, 1 restricted, 2 denied, 3 authorized.
+    static func mapTracking(_ raw: Int) -> PermissionStatus {
+        switch raw {
+        case 3: return .granted
+        case 1, 2: return .denied
+        default: return .undetermined
+        }
+    }
+
+    /// `PHAuthorizationStatus` raw values: 0 notDetermined, 1 restricted, 2 denied, 3 authorized, 4 limited.
+    static func mapPhotos(_ raw: Int) -> PermissionStatus {
+        switch raw {
+        case 3, 4: return .granted
+        case 1, 2: return .denied
+        default: return .undetermined
+        }
+    }
+
+    /// `CNAuthorizationStatus` raw values: 0 notDetermined, 1 restricted, 2 denied, 3 authorized,
+    /// 4 limited (iOS 18). Any future access-granting value → granted, as before.
+    static func mapContacts(_ raw: Int) -> PermissionStatus {
+        switch raw {
+        case 0: return .undetermined
+        case 1, 2: return .denied
+        default: return .granted
+        }
+    }
+
+    /// `EKAuthorizationStatus` raw values: 0 notDetermined, 1 restricted, 2 denied, 3 fullAccess
+    /// (the pre-17 `authorized`), 4 writeOnly.
+    static func mapCalendar(_ raw: Int) -> PermissionStatus {
+        switch raw {
+        case 3, 4: return .granted
+        case 1, 2: return .denied
+        default: return .undetermined
+        }
+    }
+
+    static func mapAV(_ status: AVAuthorizationStatus) -> PermissionStatus {
         switch status {
         case .authorized: return .granted
         case .denied, .restricted: return .denied
