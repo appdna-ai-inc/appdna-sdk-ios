@@ -73,11 +73,13 @@ extension AppDNA {
         private var _ownershipPolicy: BillingOwnershipPolicy = BillingOwnership.unavailable
         private var _configured = false
 
-        /// One consistent read of the three (a `purchase` must not see a bridge from one configure and a
-        /// policy from another).
-        private func snapshot() -> (configured: Bool, bridge: BillingBridgeProtocol?, policy: BillingOwnershipPolicy) {
+        /// One consistent read of the four (a `purchase` must not see a bridge from one configure and a
+        /// policy from another). The tracker is read under the SAME lock hold as `configured`: `wire` sets
+        /// both and `teardown()` clears both in one hold, so a snapshot with `configured == false` has a
+        /// nil tracker unless one was injected directly (tests). The returned tracker is a strong pin.
+        private func snapshot() -> (configured: Bool, bridge: BillingBridgeProtocol?, policy: BillingOwnershipPolicy, tracker: EventTracker?) {
             stateLock.lock(); defer { stateLock.unlock() }
-            return (_configured, _bridge, _ownershipPolicy)
+            return (_configured, _bridge, _ownershipPolicy, _eventTracker)
         }
 
         /// The tracker this facade emits purchase events with. Weak: `shared` owns it.
@@ -206,16 +208,17 @@ extension AppDNA {
             // `eventTracker` is `weak`, and `teardown()` nils it — so if `shutdown()` lands mid-purchase,
             // the charge goes through and `if let eventTracker` reads nil: money taken, ZERO metered
             // events. Pin the tracker to the purchase the instant we commit to it.
-            let tracker = eventTracker
             let state = snapshot()
+            let tracker = state.tracker
             let ownershipPolicy = state.policy
             guard state.configured else {
                 // SPEC-497 §3.2 rule 3 (R65) — no new error type: an NSError the mappers send to `unknown`.
-                // ⚠️ SPEC-497 I3 m1 — in production this emit never happens: the tracker is wired by
-                // `configure` and nilled by `teardown()`, so whenever billing is not configured `tracker` is
-                // nil and `trackPurchaseFailed` is a no-op. The `reason` is kept for parity with Android and is
-                // only observable with an injected tracker (BillingModuleNoProviderTests) — not proof of what
-                // a device emits. Behaviour deliberately unchanged.
+                // ⚠️ SPEC-497 I3 m1 — in production this emit never happens: `tracker` and `configured` come
+                // from ONE locked snapshot, and `wire` sets / `teardown()` clears both in one lock hold, so
+                // whenever billing is not configured `tracker` is nil and `trackPurchaseFailed` is a no-op
+                // (a `shutdown()` racing this call cannot split them). The `reason` is kept for parity with
+                // Android and is only observable with an injected tracker (BillingModuleNoProviderTests) —
+                // not proof of what a device emits.
                 let error = Self.notConfiguredError()
                 trackPurchaseFailed(tracker, productId: productId, error: error, reason: "not_configured")
                 throw error
@@ -312,8 +315,8 @@ extension AppDNA {
         /// `CancellationError` (the host cancelled its Task) is not a failure: rethrown as-is, untracked.
         public func restorePurchases() async throws -> [String] {
             // Pinned before any await, as in `purchase` — `teardown()` nils the weak tracker.
-            let tracker = eventTracker
             let state = snapshot()
+            let tracker = state.tracker
             guard state.configured else { throw Self.notConfiguredError() }
             do {
                 guard let bridge = state.bridge else {
