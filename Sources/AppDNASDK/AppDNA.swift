@@ -108,6 +108,10 @@ public final class AppDNA: @unchecked Sendable {
     /// nil before `configure()`, which the store treats as "no refresh possible" rather than
     /// an error, so the fallback ladder still renders.
     static var optionSetClient: APIClient? { shared.apiClient }
+    /// The client billing's server calls (`/billing/verify`, `/billing/entitlements`) use. Nil before
+    /// `configure()` and after `shutdown()`: a verification then stays queued, and an entitlement
+    /// refresh falls back to local StoreKit state.
+    static var billingAPIClient: APIClient? { shared.apiClient }
 
     // MARK: - Module Namespaces (v1.0)
 
@@ -1625,7 +1629,14 @@ public final class AppDNA: @unchecked Sendable {
             let observer = SubscriptionStatusObserver(
                 eventTracker: tracker,
                 mode: observerMode,
-                emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents
+                emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents,
+                // After every pass (launch, foreground, `Transaction.updates`, provider callback): the
+                // diff-guarded entitlement refresh — so a renewal, an expiry or a refund reaches
+                // `onEntitlementsChanged` — and a retry of unverified purchases (§17-4).
+                afterPass: {
+                    await AppDNA.billing.refreshEntitlementCache()
+                    await PurchaseVerificationQueue.shared.retryPending()
+                }
             )
             self.subscriptionObserver = observer
             observer.start()

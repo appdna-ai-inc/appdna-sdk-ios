@@ -15,6 +15,8 @@
 //   late_purchase              REAL: LatePurchaseProcessor.process (LatePurchaseFilter.decide + the queue
 //                              write + the emit) into a real PurchaseDeliveryQueue.
 //   rebuy_already_owned        REAL: StoreKit2Bridge.isAlreadyOwned + PurchaseSuccessEvents.emitAlreadyOwned.
+//   decode_verify_reply        REAL: the `/billing/verify` reply decoder (`VerifyReply` + VerifiedPurchase.parse)
+//                              that ReceiptVerifier.verify runs on the server's bytes.
 //   delivery_queue             REAL: PurchaseDeliveryQueue (identity rule, drain) + LatePurchaseProcessor
 //                              for `report` steps. The queue's triggers (setDelegate / identify) are
 //                              emulated by calling the drain they call — the trigger wiring itself is
@@ -39,6 +41,7 @@ extension SharedFixtureTests {
         case "late_purchase":               await runLatePurchase(f, h)
         case "rebuy_already_owned":         await runRebuyAlreadyOwned(f, h)
         case "delivery_queue":              await runDeliveryQueue(f, h)
+        case "decode_verify_reply":         runDecodeVerifyReply(f, h)
         default:
             return false
         }
@@ -199,10 +202,42 @@ extension SharedFixtureTests {
                 purchaseTime: Int64(o["purchase_time"]?.doubleValue ?? 0),
                 isAutoRenewing: o["is_auto_renewing"]?.boolValue ?? false,
                 transactionId: o["transaction_id"]?.stringValue,
-                originalTransactionId: o["original_transaction_id"]?.stringValue
+                originalTransactionId: o["original_transaction_id"]?.stringValue,
+                price: o["price"]?.doubleValue,
+                currency: o["currency"]?.stringValue
             )
         }
         return out
+    }
+
+    // MARK: - decode_verify_reply
+
+    /// Each case's reply goes through the SAME bytes → `VerifyReply` → `VerifiedPurchase.parse` path
+    /// `ReceiptVerifier.verify` runs; the result is written under the DTO's snake_case names.
+    private func runDecodeVerifyReply(_ f: Fixture, _ h: Harness) {
+        var parsed: [String: Any] = [:]
+        for item in f.action.raw["cases"]?.arrayValue ?? [] {
+            guard let c = item.objectValue, let name = c["name"]?.stringValue, let reply = c["reply"] else { continue }
+            do {
+                let data = try JSONSerialization.data(withJSONObject: reply.foundation)
+                let v = VerifiedPurchase.parse(try JSONDecoder().decode(VerifyReply.self, from: data).data)   // REAL
+                parsed[name] = [
+                    "entitled": v.entitled,
+                    "product_id": v.productId,
+                    "product_type": SharedFixtureTests.orNull(v.productType),
+                    "store": v.store,
+                    "status": v.status,
+                    "expires_at": SharedFixtureTests.orNull(v.expiresAt),
+                    "is_trial": v.isTrial,
+                    "original_transaction_id": SharedFixtureTests.orNull(v.originalTransactionId),
+                    "consume": v.consume,
+                    "environment": SharedFixtureTests.orNull(v.environment),
+                ]
+            } catch {
+                XCTFail("[\(f.id)] case \(name): the reply did not decode: \(error)")
+            }
+        }
+        h.state["parsed"] = parsed
     }
 
     // MARK: - trial_price

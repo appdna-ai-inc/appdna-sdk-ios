@@ -35,6 +35,9 @@ struct TransactionFacts: Equatable {
     /// The id is already in the reported set (the purchase path reported it).
     let alreadyReported: Bool
     let purchaseDate: Date
+    /// The StoreKit environment (`StoreKitEnvironment.name`), carried to the delegate's
+    /// `TransactionInfo.environment`. Nil (fixtures) reports `"production"`.
+    var environment: String? = nil
 }
 
 enum LateDecision: String, Equatable {
@@ -123,7 +126,8 @@ extension TransactionFacts {
             currentToken: currentToken,
             currentUserId: currentUserId,
             alreadyReported: alreadyReported,
-            purchaseDate: transaction.purchaseDate
+            purchaseDate: transaction.purchaseDate,
+            environment: StoreKitEnvironment.name(of: transaction)
         )
     }
 
@@ -200,6 +204,9 @@ struct OwnedTransactionUpdate {
     let facts: (_ ownerUserId: String?, _ currentToken: UUID?, _ currentUserId: String?, _ alreadyReported: Bool) -> TransactionFacts
     let envelope: (TransactionFacts) async -> LateEnvelope
     let finish: () async -> Void
+    /// The signed transaction (`VerificationResult.jwsRepresentation`) — what `/billing/verify` takes. Nil
+    /// in fixtures: nothing is then sent for verification.
+    var signedTransaction: String? = nil
 }
 
 extension OwnedTransactionUpdate {
@@ -274,7 +281,8 @@ enum LatePurchaseProcessor {
                 ownerToken: LatePurchaseFilter.ownerToken(for: facts, decision: decision)?.uuidString.lowercased(),
                 emitPending: false,
                 properties: nil,
-                isSubscription: env.result.isSubscription
+                isSubscription: env.result.isSubscription,
+                environment: facts.environment
             )
             // Q1 — the reported set and the queue entry in ONE write, before the emit.
             await queue.recordReport(entry)
@@ -293,7 +301,8 @@ enum LatePurchaseProcessor {
                 ownerToken: LatePurchaseFilter.ownerToken(for: facts, decision: decision)?.uuidString.lowercased(),
                 emitPending: true,
                 properties: props.mapValues { AnyCodable($0) },
-                isSubscription: env.result.isSubscription
+                isSubscription: env.result.isSubscription,
+                environment: facts.environment
             )
             // R46 (1) — persist first; the caller then finishes, so nothing stays unfinished (no StoreKit
             // re-delivery, no re-buy blocking, no cross-user misgrant).
@@ -312,6 +321,20 @@ enum TransactionUpdatesSource {
             let task = Task {
                 for await update in Transaction.updates {
                     continuation.yield(update)
+                }
+                continuation.finish()
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
+    /// One `Void` per `Transaction.updates` item — the read-only signal the `.providerOwned` observer
+    /// listens to. The item itself is dropped here, never finished.
+    static func signals() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let task = Task {
+                for await _ in Transaction.updates {
+                    continuation.yield(())
                 }
                 continuation.finish()
             }

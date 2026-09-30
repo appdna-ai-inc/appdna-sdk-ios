@@ -87,6 +87,17 @@ final class APIClient {
 
     /// Execute a request with automatic retry on 5xx and network errors.
     func request<T: Decodable>(_ endpoint: Endpoint) async throws -> T {
+        let data = try await requestData(endpoint)
+        do {
+            return try JSONDecoder().decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
+        }
+    }
+
+    /// The raw 2xx body of `endpoint`, with the retry rules of `request(_:)` (5xx and network errors
+    /// retried, a 4xx thrown at once as `APIError.httpError`). `request(_:)` decodes this.
+    func requestData(_ endpoint: Endpoint) async throws -> Data {
         let urlRequest = try buildRequest(for: endpoint)
         var lastError: Error?
 
@@ -107,12 +118,7 @@ final class APIClient {
                 let statusCode = httpResponse.statusCode
 
                 if (200..<300).contains(statusCode) {
-                    do {
-                        let decoded = try JSONDecoder().decode(T.self, from: data)
-                        return decoded
-                    } catch {
-                        throw APIError.decodingError(error)
-                    }
+                    return data
                 }
 
                 // 4xx — client error, no retry

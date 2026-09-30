@@ -36,6 +36,9 @@ struct PendingDelivery: Codable {
     /// The stored `purchase_completed` envelope of a deferred entry.
     let properties: [String: AnyCodable]?
     let isSubscription: Bool
+    /// The StoreKit environment of the transaction (`TransactionInfo.environment`). Optional, so a store
+    /// written by an older SDK still decodes; nil is delivered as `"production"`.
+    var environment: String? = nil
 
     init(
         transactionId: String,
@@ -46,7 +49,8 @@ struct PendingDelivery: Codable {
         queuedAt: Int64 = 0,
         emitPending: Bool,
         properties: [String: AnyCodable]?,
-        isSubscription: Bool
+        isSubscription: Bool,
+        environment: String? = nil
     ) {
         self.transactionId = transactionId
         self.productId = productId
@@ -57,6 +61,7 @@ struct PendingDelivery: Codable {
         self.emitPending = emitPending
         self.properties = properties
         self.isSubscription = isSubscription
+        self.environment = environment
     }
 }
 
@@ -290,7 +295,7 @@ actor PurchaseDeliveryQueue {
                 transactionId: entry.transactionId,
                 productId: entry.productId,
                 purchaseDate: Date(timeIntervalSince1970: TimeInterval(entry.purchaseTime) / 1000),
-                environment: "production"
+                environment: entry.environment ?? StoreKitEnvironment.fallback
             )
             let didDeliver: Bool = await MainActor.run {
                 guard Self.isDeliverable(
@@ -336,9 +341,15 @@ actor PurchaseDeliveryQueue {
     private func load() -> DeliveryStore {
         if let cached { return cached }
         var store = DeliveryStore()
-        if let data = env.defaults.data(forKey: Self.storageKey),
-           let decoded = try? JSONDecoder().decode(DeliveryStore.self, from: data) {
-            store = decoded
+        if let data = env.defaults.data(forKey: Self.storageKey) {
+            do {
+                store = try JSONDecoder().decode(DeliveryStore.self, from: data)
+            } catch {
+                // 🔴 This used to be `try?` → an empty store, SILENTLY — and the next write replaced the
+                // unreadable payload for good, taking every undelivered purchase and the reported set with
+                // it. Now it is logged and the payload is kept under `<key>.corrupt` first.
+                CorruptStore.preserve(data, key: Self.storageKey, defaults: env.defaults, error: error)
+            }
         }
         cached = store
         return store

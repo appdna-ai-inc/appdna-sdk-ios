@@ -20,19 +20,29 @@ struct SubSnapshot: Codable, Equatable {
     /// event keys are OMITTED, never sent empty.
     var transactionId: String? = nil
     var originalTransactionId: String? = nil
+    /// The price CHARGED for the current period (`transaction.price`, the product's price when StoreKit
+    /// has none) and its ISO currency — what `subscription_renewed` reports as `price` / `currency`, the
+    /// same property names `purchase_completed` uses. Optional for the same reason as the ids: an older
+    /// snapshot lacks them, and the keys are then omitted, never sent as 0.
+    var price: Double? = nil
+    var currency: String? = nil
 
     init(
         productId: String,
         purchaseTime: Int64,
         isAutoRenewing: Bool,
         transactionId: String? = nil,
-        originalTransactionId: String? = nil
+        originalTransactionId: String? = nil,
+        price: Double? = nil,
+        currency: String? = nil
     ) {
         self.productId = productId
         self.purchaseTime = purchaseTime
         self.isAutoRenewing = isAutoRenewing
         self.transactionId = transactionId
         self.originalTransactionId = originalTransactionId
+        self.price = price
+        self.currency = currency
     }
 }
 
@@ -100,6 +110,10 @@ final class SubscriptionStatusObserver {
     /// real `Transaction` captured from an `SKTestSession` purchase.
     typealias UpdatesSource = () -> AsyncStream<VerificationResult<Transaction>>
 
+    /// Under `.providerOwned`: one signal per `Transaction.updates` item, read-only (the item is never
+    /// finished — the provider does that). Injectable for tests.
+    typealias UpdateSignals = () -> AsyncStream<Void>
+
     private let eventTracker: EventTracker
     private let defaults: UserDefaults
     private let mode: SubscriptionObserverMode
@@ -109,7 +123,13 @@ final class SubscriptionStatusObserver {
     /// switch to `storeKit2` diffs against a current baseline instead of a burst of stale events.
     private let emitsLifecycleEvents: Bool
     private let updatesSource: UpdatesSource
+    private let updateSignals: UpdateSignals
     private let deliveryQueue: PurchaseDeliveryQueue
+    private let verificationQueue: PurchaseVerificationQueue
+    /// Runs after EVERY pass (detached, outside the serial chain): the entitlement refresh — which fires
+    /// `onEntitlementsChanged` when renewal, expiry or a refund changed them — and the verification retry.
+    /// Nil in tests that do not need it.
+    private let afterPass: (@Sendable () async -> Void)?
 
     private var updatesTask: Task<Void, Never>?
     private var foregroundToken: NSObjectProtocol?
@@ -127,7 +147,10 @@ final class SubscriptionStatusObserver {
         emitsLifecycleEvents: Bool = true,
         loadCurrent: EntitlementLoader? = nil,
         updatesSource: UpdatesSource? = nil,
-        deliveryQueue: PurchaseDeliveryQueue = .shared
+        updateSignals: UpdateSignals? = nil,
+        deliveryQueue: PurchaseDeliveryQueue = .shared,
+        verificationQueue: PurchaseVerificationQueue = .shared,
+        afterPass: (@Sendable () async -> Void)? = nil
     ) {
         self.eventTracker = eventTracker
         self.defaults = defaults
@@ -135,7 +158,10 @@ final class SubscriptionStatusObserver {
         self.emitsLifecycleEvents = emitsLifecycleEvents
         self.loadCurrent = loadCurrent ?? { await SubscriptionStatusObserver.storeKitSnapshot() }
         self.updatesSource = updatesSource ?? TransactionUpdatesSource.storeKit
+        self.updateSignals = updateSignals ?? TransactionUpdatesSource.signals
         self.deliveryQueue = deliveryQueue
+        self.verificationQueue = verificationQueue
+        self.afterPass = afterPass
     }
 
     // MARK: - Lifecycle
@@ -161,7 +187,11 @@ final class SubscriptionStatusObserver {
                     // Apple redelivers an unfinished transaction on every launch forever. StoreKit2Bridge
                     // finishes the ones it purchases; renewals, interrupted / Ask-to-Buy purchases and
                     // offer codes arrive here and nothing else would.
-                    await self.handleOwnedUpdate(transaction)
+                    var update = OwnedTransactionUpdate(transaction: transaction)
+                    update.signedTransaction = result.jwsRepresentation
+                    await self.handleOwnedUpdate(update)
+                    // A renewal, a refund / revocation or a late purchase: the pass below diffs the
+                    // subscription snapshot and (via `afterPass`) refreshes the entitlements.
                     await self.reconcile()
                 }
             }
@@ -174,8 +204,18 @@ final class SubscriptionStatusObserver {
             // updates and never calls `finish()`. It reconciles from `Transaction.currentEntitlements`
             // (read-only, and populated for provider purchases too, since they are still Apple
             // purchases) on: start, every foreground, and every provider subscriber-state callback.
+            //
+            // `Transaction.updates` is still LISTENED to — read-only, as a signal: each item (a renewal, a
+            // refund / revocation, a purchase the provider made) triggers a pass, so entitlement changes
+            // report when they happen instead of at the next foreground. The item is never finished and
+            // never inspected here; the provider finishes it after posting it to its backend.
             updatesTask = Task { [weak self] in
                 await self?.reconcile()
+                guard let signals = self?.updateSignals else { return }
+                for await _ in signals() {
+                    guard let self else { return }
+                    await self.reconcile()
+                }
             }
         }
 
@@ -243,6 +283,21 @@ final class SubscriptionStatusObserver {
             await update.envelope(facts)
         }
         await update.finish()
+        // §17-4 — a late purchase is verified by the server like any other (in the background; never
+        // awaited). A deferred one is sent as its OWNER's; a renewal (`finishSilently`) is not sent — the
+        // store's server notifications carry renewals.
+        if decision != .finishSilently, let jws = update.signedTransaction {
+            let entry = PendingVerification(
+                transactionId: transactionId,
+                productId: update.productId,
+                signedTransaction: jws,
+                productType: facts.productType == "autoRenewable" ? "subs" : "inapp",
+                appUserId: decision == .deferToOwner ? facts.ownerUserId : facts.currentUserId,
+                queuedAt: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+            let queue = verificationQueue
+            Task.detached { await queue.submit(entry) }
+        }
         if decision == .report {
             await deliveryQueue.drain()   // trigger (i)
         }
@@ -281,6 +336,11 @@ final class SubscriptionStatusObserver {
         let previous = loadSnapshot()
         diffAndEmit(previous: previous, current: current)
         saveSnapshot(current)
+        if let afterPass {
+            // Detached from the chain: the entitlement refresh may make a network call, and the next pass
+            // must not wait for it. The refresh has its own serial chain.
+            Task.detached { await afterPass() }
+        }
     }
 
     /// The StoreKit half of a pass: build the current snapshot from `Transaction.currentEntitlements`.
@@ -309,13 +369,23 @@ final class SubscriptionStatusObserver {
                 break
             }
 
-            let willAutoRenew = await autoRenewStatus(for: transaction.productID)
+            let facts = await productFacts(for: transaction.productID)
+            // The CHARGED price, as `purchase_completed` reports it: `transaction.price` (StoreKit's price of
+            // this period), else the product's list price; omitted when neither is known.
+            var price: Double?
+            if let productPrice = facts.price {
+                price = chargedPrice(transactionPrice: transaction.price, productPrice: productPrice)
+            } else if let transactionPrice = transaction.price {
+                price = chargedPrice(transactionPrice: transactionPrice, productPrice: transactionPrice)
+            }
             current[transaction.productID] = SubSnapshot(
                 productId: transaction.productID,
                 purchaseTime: Int64(transaction.purchaseDate.timeIntervalSince1970 * 1000),
-                isAutoRenewing: willAutoRenew,
+                isAutoRenewing: facts.willAutoRenew,
                 transactionId: String(transaction.id),
-                originalTransactionId: String(transaction.originalID)
+                originalTransactionId: String(transaction.originalID),
+                price: price,
+                currency: transaction.currency?.identifier ?? facts.currency
             )
         }
         return current
@@ -353,6 +423,12 @@ final class SubscriptionStatusObserver {
                     "purchase_time": now.purchaseTime,
                 ]
                 Self.addIds(now, to: &props)   // the CURRENT ids
+                // §17-5 — the renewal's revenue, under `purchase_completed`'s names. Both or neither: a price
+                // without a currency is not revenue anyone can convert.
+                if let price = now.price, let currency = now.currency, !currency.isEmpty {
+                    props["price"] = price
+                    props["currency"] = currency
+                }
                 eventTracker.track(event: "subscription_renewed", properties: BillingEventProps.marked(props))
             }
         }
@@ -372,17 +448,22 @@ final class SubscriptionStatusObserver {
     /// product later vanishes. Unknown (offline, unresolvable product) defaults to `true`, which is what
     /// an active subscription normally is; the alternative would mis-label a billing-retry as a
     /// deliberate cancel.
-    private static func autoRenewStatus(for productID: String) async -> Bool {
+    ///
+    /// The same product lookup also yields the list price and currency (the renewal price's fallback).
+    private static func productFacts(for productID: String) async -> (willAutoRenew: Bool, price: Decimal?, currency: String?) {
         do {
             let products = try await Product.products(for: [productID])
-            guard let subscription = products.first?.subscription else { return true }
+            let product = products.first
+            let price = product?.price
+            let currency = product?.priceFormatStyle.currencyCode
+            guard let subscription = product?.subscription else { return (true, price, currency) }
             let statuses = try await subscription.status
-            guard let status = statuses.first else { return true }
-            guard case .verified(let renewalInfo) = status.renewalInfo else { return true }
-            return renewalInfo.willAutoRenew
+            guard let status = statuses.first,
+                  case .verified(let renewalInfo) = status.renewalInfo else { return (true, price, currency) }
+            return (renewalInfo.willAutoRenew, price, currency)
         } catch {
             Log.debug("SubscriptionStatusObserver: could not resolve auto-renew status for \(productID): \(error)")
-            return true
+            return (true, nil, nil)
         }
     }
 

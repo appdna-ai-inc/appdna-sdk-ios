@@ -35,7 +35,9 @@ class EntitlementCache {
     /// per-product lookup so they can't disagree — matches Android's one `ACTIVE_STATUSES`. Previously
     /// `hasActiveSubscription` included `grace_period` but `entitlement(for:)` did not, so a grace-period
     /// subscriber reported subscribed globally yet had every per-product feature locked.
-    private static let activeStatuses: Set<String> = ["active", "trialing", "grace_period"]
+    /// `billing_retry` counts as entitled, as on the server (`entitlement.ts`) and on Android: Apple keeps
+    /// access through billing retry (with its grace period) until the retry ends.
+    static let activeStatuses: Set<String> = ["active", "trialing", "grace_period", "billing_retry"]
 
     var hasActiveSubscription: Bool {
         entitlements.contains { Self.activeStatuses.contains($0.status) }

@@ -349,7 +349,8 @@ final class PaywallManager {
                             transaction: TransactionInfo(
                                 transactionId: result.transactionId,
                                 productId: result.productId,
-                                purchaseDate: Date()
+                                purchaseDate: Date(),
+                                environment: result.environment ?? StoreKitEnvironment.fallback
                             )
                         )
                     }
