@@ -47,7 +47,10 @@ enum PurchaseSuccessEvents {
         ]
         // Round-34 — emit transaction_id (Android includes purchase.orderId). A dashboard de-duping by
         // transaction_id dropped every iOS row.
-        if !result.transactionId.isEmpty {
+        // A synthetic id (`adapty:<uuid>`, impl audit round 2 I3) is for the host's idempotent grant only:
+        // it names no store transaction, so it is never a §13e.5 dedupe key — the key is omitted, as for
+        // an unknown id (rule 1: NULL for empty).
+        if !result.transactionId.isEmpty, !SyntheticTransactionId.isSynthetic(result.transactionId) {
             props["transaction_id"] = result.transactionId
         }
         if let original = result.originalTransactionId, !original.isEmpty {
@@ -104,7 +107,9 @@ enum PurchaseSuccessEvents {
             "product_id": result.productId,
             "reason": "item_already_owned",
         ]
-        if !result.transactionId.isEmpty { props["transaction_id"] = result.transactionId }
+        if !result.transactionId.isEmpty, !SyntheticTransactionId.isSynthetic(result.transactionId) {
+            props["transaction_id"] = result.transactionId
+        }
         if let paywallId { props["paywall_id"] = paywallId }
         tracker.track(event: "purchase_restored", properties: BillingEventProps.marked(props))
     }
@@ -122,5 +127,26 @@ enum PurchaseSuccessEvents {
             return false
         }
         return product.subscription != nil
+    }
+}
+
+/// SPEC-497 impl audit round 2 (I3) — the transaction id of a purchase whose provider reported none.
+///
+/// `PurchaseResult.transactionId` and `TransactionInfo.transactionId` are non-optional, and the docs tell
+/// a host to grant idempotently BY `transactionId`. An empty string made every such purchase share one id,
+/// so a host's dedupe swallowed the second one. The id is instead unique per purchase and clearly marked
+/// as not a store id — `<provider>:<lowercased UUID>`, e.g. `adapty:6f1c…` — so it cannot collide with a
+/// real one (Apple's are digits). It never reaches analytics: `PurchaseSuccessEvents` omits a synthetic
+/// id, so §13e.5 dedupe sees the same NULL key as an unknown id (a made-up key would match no provider row).
+enum SyntheticTransactionId {
+    static let providers: Set<String> = ["adapty"]
+
+    static func make(provider: String) -> String {
+        "\(provider):\(UUID().uuidString.lowercased())"
+    }
+
+    static func isSynthetic(_ id: String) -> Bool {
+        guard let colon = id.firstIndex(of: ":") else { return false }
+        return providers.contains(String(id[..<colon]))
     }
 }

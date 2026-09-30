@@ -85,7 +85,14 @@ extension AppDNA {
         /// A direct `AppDNA.billing.purchase(...)` — which is exactly what the React Native and Flutter
         /// wrappers call, and what any host with a JS/Dart-authored paywall calls — emitted NOTHING.
         /// See `purchase(_:options:)`.
-        internal weak var eventTracker: EventTracker?
+        ///
+        /// Under `stateLock` (impl audit round 2, I7): `wire` / `teardown` write it on the SDK queue while
+        /// `purchase` and the delivery queue's drain read it from any thread.
+        internal var eventTracker: EventTracker? {
+            get { stateLock.lock(); defer { stateLock.unlock() }; return _eventTracker }
+            set { stateLock.lock(); _eventTracker = newValue; stateLock.unlock() }
+        }
+        private weak var _eventTracker: EventTracker?
 
         /// Is billing actually usable right now? Read by `subsystemsUp()` so the diagnostic and the
         /// host see the same object.
@@ -114,8 +121,8 @@ extension AppDNA {
             _bridge = bridge
             _ownershipPolicy = policy
             _configured = true
+            _eventTracker = tracker
             stateLock.unlock()
-            self.eventTracker = tracker
         }
 
         /// Released by `AppDNA.shutdown()`. Nothing else may call this.
@@ -124,8 +131,8 @@ extension AppDNA {
             _bridge = nil
             _configured = false
             _ownershipPolicy = BillingOwnership.unavailable
+            _eventTracker = nil
             stateLock.unlock()
-            eventTracker = nil
             // Entitlement handlers are dropped SYNCHRONOUSLY by `AppDNA.shutdown()`, before this async
             // teardown is even queued. Clearing them again here would remove a handler the caller
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`

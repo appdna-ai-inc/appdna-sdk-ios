@@ -670,6 +670,10 @@ final class Spec497PushFixTests: XCTestCase {
         // The main thread (this test) waits for the background call — the old `main.sync` deadlocked here.
         XCTAssertEqual(done.wait(timeout: .now() + 3), .success, "handleMessageData blocked on the main thread")
         XCTAssertEqual(returned.value, true)
+        // Round 2 I5: TRACKED synchronously, before the call returned — the main thread has not run yet
+        // (it is this test, blocked in `done.wait` above); only `onPushReceived` waits for main.
+        XCTAssertEqual(log.names, ["push_delivered"], "tracked before handleMessageData returned")
+        XCTAssertEqual(spy.received.value, [], "onPushReceived waits for the main thread")
         settle(0.3)
         XCTAssertEqual(log.names, ["push_delivered"])
         XCTAssertEqual(spy.received.value, ["bg"])

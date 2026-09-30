@@ -325,26 +325,48 @@ extension SharedFixtureTests {
     // MARK: - rebuy_already_owned
 
     private func runRebuyAlreadyOwned(_ f: Fixture, _ h: Harness) async {
-        let preCall = Set((f.setup.raw["pre_call_entitlement_ids"]?.arrayValue ?? []).compactMap(\.stringValue))
-        let transactionId = f.action.raw["transaction_id"]?.stringValue ?? ""
-        let owned = StoreKit2Bridge.isAlreadyOwned(preCallIds: preCall, transactionId: transactionId)   // REAL
+        let config = f.setup.config?.objectValue ?? [:]
+        let owned = await Self.driveRebuy(
+            preCallIds: Set((f.setup.raw["pre_call_entitlement_ids"]?.arrayValue ?? []).compactMap(\.stringValue)),
+            transactionId: f.action.raw["transaction_id"]?.stringValue ?? "",
+            productId: f.action.raw["product_id"]?.stringValue ?? "",
+            price: config["price"]?.doubleValue ?? 0,
+            currency: config["currency"]?.stringValue ?? "USD",
+            tracker: h.tracker,
+            delegate: BillingDelegateSpy(harness: h)
+        )
+        h.state["already_owned"] = owned
+    }
+
+    /// The `rebuy_already_owned` pipeline, shared with its positive control
+    /// (`RebuyDriverPositiveControlTests`, impl audit round 2 I8): `alreadyOwned == false` must deliver
+    /// exactly one `onPurchaseCompleted`, so a driver that never delivers cannot pass the re-buy fixture
+    /// vacuously. Returns `alreadyOwned`.
+    static func driveRebuy(
+        preCallIds: Set<String>,
+        transactionId: String,
+        productId: String,
+        price: Double,
+        currency: String,
+        tracker: EventTracker,
+        delegate: AppDNABillingDelegate
+    ) async -> Bool {
+        let owned = StoreKit2Bridge.isAlreadyOwned(preCallIds: preCallIds, transactionId: transactionId)   // REAL
         // REAL — the live caller's `onPurchaseCompleted` delivery `StoreKit2Bridge.purchase` makes after
         // `finish()`, with a recording delegate: `delegate_calls: []` fails if a re-buy delivers.
-        let spy = BillingDelegateSpy(harness: h)
         let txInfo = TransactionInfo(
             transactionId: transactionId,
-            productId: f.action.raw["product_id"]?.stringValue ?? "",
+            productId: productId,
             purchaseDate: Date(timeIntervalSince1970: 0)
         )
         await MainActor.run {
-            _ = StoreKit2Bridge.deliverToLiveCaller(alreadyOwned: owned, transaction: txInfo, delegate: spy)
+            _ = StoreKit2Bridge.deliverToLiveCaller(alreadyOwned: owned, transaction: txInfo, delegate: delegate)
         }
-        let config = f.setup.config?.objectValue ?? [:]
         let result = PurchaseResult(
-            productId: f.action.raw["product_id"]?.stringValue ?? "",
+            productId: productId,
             transactionId: transactionId,
-            price: config["price"]?.doubleValue ?? 0,
-            currency: config["currency"]?.stringValue ?? "USD",
+            price: price,
+            currency: currency,
             provider: "storekit2",
             isSubscription: false,
             isConsumable: false,
@@ -353,11 +375,11 @@ extension SharedFixtureTests {
         )
         // REAL — what both callers (BillingModule.purchase, PaywallManager) do with an owned result.
         if result.alreadyOwned {
-            PurchaseSuccessEvents.emitAlreadyOwned(tracker: h.tracker, paywallId: nil, result: result)
+            PurchaseSuccessEvents.emitAlreadyOwned(tracker: tracker, paywallId: nil, result: result)
         } else {
-            PurchaseSuccessEvents.emit(tracker: h.tracker, paywallId: nil, result: result)
+            PurchaseSuccessEvents.emit(tracker: tracker, paywallId: nil, result: result)
         }
-        h.state["already_owned"] = owned
+        return owned
     }
 
     // MARK: - delivery_queue

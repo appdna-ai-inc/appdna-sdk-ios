@@ -101,6 +101,10 @@ final class PushGate {
         let actionIdentifier: String?
         let fromLaunchOptions: Bool
         var capturedAt: Date = Date()
+        /// A delivered entry's foreground state, as its caller saw it (impl audit round 2, I4) — the
+        /// proxy's `willPresent` is foreground, a host forward may not be. `nil`: not known where it
+        /// arrived (off the main thread); the drain reads it on main when it handles the entry.
+        var inForeground: Bool? = true
     }
 
     static let bufferCapacity = 8
@@ -174,12 +178,16 @@ final class PushGate {
         scheduleDrainLocked()
     }
 
-    /// `shutdown()`: the proxy becomes pass-through for AppDNA pushes until the next configure.
+    /// `shutdown()`: the proxy becomes pass-through for AppDNA pushes until the next configure. The
+    /// launch buffer is CLEARED (impl audit round 2, I6): a push buffered before `shutdown()` belongs to
+    /// the session that ended — the next `configure()` (possibly another user, after a sign-out) must
+    /// not track, deliver or route it.
     func markShutDown(epoch: Int? = nil) {
         lock.lock(); defer { lock.unlock() }
         if let epoch { shutDownThrough = max(shutDownThrough, epoch) }
         configured = false
         shutDown = true
+        buffer.removeAll()
     }
 
     /// Drains run on the main queue, one at a time (`draining`); an extra scheduled drain finds the
@@ -221,8 +229,12 @@ final class PushGate {
             lock.unlock()
             switch head.kind {
             case .delivered:
-                // They arrived in `willPresent`, i.e. in the foreground.
-                AppDNA.pushModule.processDelivered(head.userInfo, inForeground: true)
+                // The state each entry was buffered with (I4); one that arrived off the main thread is
+                // read now, on main.
+                AppDNA.pushModule.processDelivered(
+                    head.userInfo,
+                    inForeground: head.inForeground ?? AppDNA.PushModule.applicationIsActiveOnMain() ?? false
+                )
             case .tapped:
                 AppDNA.pushModule.processTapped(head.userInfo, actionIdentifier: head.actionIdentifier)
             }
@@ -256,15 +268,13 @@ extension AppDNA.PushModule {
     @discardableResult
     public func handleMessageData(_ userInfo: [AnyHashable: Any]) -> Bool {
         guard PushMarker.isAppDNA(userInfo) else { return false }
-        if let active = Self.applicationIsActiveOnMain() {
-            return handleMessageData(userInfo, inForeground: active, requestId: nil)
-        }
-        // Off the main thread (a host's FCM callback): read the application state on main, never with a
-        // blocking `main.sync`, and handle it there.
-        DispatchQueue.main.async {
-            self.handleMessageData(userInfo, inForeground: Self.applicationIsActiveOnMain() ?? false, requestId: nil)
-        }
-        return true
+        // Off the main thread (a host's FCM callback) the application state cannot be read here.
+        // §8.2 says `DispatchQueue.main.sync { read }`; that DEADLOCKS when the main thread is waiting on
+        // this thread (impl audit round 1, minor 30 — proven by
+        // `testHandleMessageDataOffMainDoesNotBlockOnMain`). So (round 2, I5): the delivery is still
+        // TRACKED synchronously, on this thread, before this returns — only the foreground state and
+        // `onPushReceived` wait for the main thread (async).
+        return handleMessageData(userInfo, inForeground: Self.applicationIsActiveOnMain(), requestId: nil)
     }
 
     /// Forward a notification tap (e.g. from your own `didReceive`, with `response.actionIdentifier`).
@@ -277,11 +287,13 @@ extension AppDNA.PushModule {
 
     /// The one delivered path — host forwarding, the proxy's `willPresent` and the launch-buffer drain
     /// all come here.
+    /// `inForeground` nil: the caller is off the main thread and could not read it (read on main later).
     @discardableResult
-    func handleMessageData(_ userInfo: [AnyHashable: Any], inForeground: Bool, requestId: String?) -> Bool {
+    func handleMessageData(_ userInfo: [AnyHashable: Any], inForeground: Bool?, requestId: String?) -> Bool {
         guard PushMarker.isAppDNA(userInfo) else { return false }
         if PushGate.shared.bufferIfNotConfigured(.init(
-            kind: .delivered, userInfo: userInfo, requestId: requestId, actionIdentifier: nil, fromLaunchOptions: false
+            kind: .delivered, userInfo: userInfo, requestId: requestId, actionIdentifier: nil, fromLaunchOptions: false,
+            inForeground: inForeground
         )) {
             return true
         }
@@ -289,8 +301,10 @@ extension AppDNA.PushModule {
         return true
     }
 
-    /// Past the gate: track once, fire `onPushReceived`.
-    func processDelivered(_ userInfo: [AnyHashable: Any], inForeground: Bool) {
+    /// Past the gate: track once (synchronously, on the calling thread), fire `onPushReceived` — directly
+    /// on main when the foreground state is known there, else on main asynchronously with the state read
+    /// on main.
+    func processDelivered(_ userInfo: [AnyHashable: Any], inForeground: Bool?) {
         if let key = PushMarker.key(userInfo), !PushIdempotency.claim(.delivered, key: key) {
             return
         }
@@ -299,10 +313,21 @@ extension AppDNA.PushModule {
         // Fold push_id into the 30-min window so subsequent events carry context.push_id (mirrors
         // Android's PushSessionContext.recordPushReceived on delivery).
         PushSessionContext.recordPushReceived(pushId)
-        PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
-        let (title, body) = PushMarker.titleAndBody(userInfo)
-        let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
-        AppDNA.pushDelegate?.onPushReceived(notification: payload, inForeground: inForeground)
+        // The rest — category registration (it interpolates labels with the template engine) and the
+        // delegate — stays on the main thread, as before.
+        let notify: (Bool) -> Void = { foreground in
+            PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
+            let (title, body) = PushMarker.titleAndBody(userInfo)
+            let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
+            AppDNA.pushDelegate?.onPushReceived(notification: payload, inForeground: foreground)
+        }
+        if Thread.isMainThread {
+            notify(inForeground ?? Self.applicationIsActiveOnMain() ?? false)
+            return
+        }
+        DispatchQueue.main.async {
+            notify(inForeground ?? Self.applicationIsActiveOnMain() ?? false)
+        }
     }
 
     /// The one tap path — host forwarding, the proxy's `didReceive` and the launch-buffer drain.

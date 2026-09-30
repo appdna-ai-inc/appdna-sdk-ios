@@ -193,6 +193,39 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(recorder.tapped.first?.1, "view", "the response's action id wins")
     }
 
+    // MARK: - Impl audit round 2 (I4, I6)
+
+    /// I4: a buffered delivery keeps the foreground state it arrived with. NEGATIVE CONTROL: the drain
+    /// used to pass `inForeground: true` for every buffered delivery — this reported `true`.
+    func testABufferedDeliveryKeepsItsForegroundState() {
+        XCTAssertTrue(AppDNA.pushModule.handleMessageData(marked, inForeground: false, requestId: nil))
+        let other: [AnyHashable: Any] = ["appdna": "1", "push_id": "p2", "delivery_id": "d2"]
+        XCTAssertTrue(AppDNA.pushModule.handleMessageData(other, inForeground: true, requestId: nil))
+        XCTAssertEqual(PushGate.shared.bufferCount, 2)
+        PushGate.shared.markConfigured()
+        settle()
+        XCTAssertEqual(recorder.received.map(\.0), ["p1", "p2"])
+        XCTAssertEqual(recorder.received.map(\.1), [false, true])
+    }
+
+    /// I6: `shutdown()` clears the launch buffer — a tap buffered before it is not tracked, delivered or
+    /// routed after the next `configure()`. NEGATIVE CONTROL: without the clear, the next configure's
+    /// drain tracked it (one `push_tapped`).
+    func testABufferedTapFollowedByShutdownIsNotTrackedAfterTheNextConfigure() {
+        var routed: (String, String)?
+        PushTapRouter.routeSink = { routed = ($0, $1) }
+        let tap: [AnyHashable: Any] = ["appdna": "1", "push_id": "p1", "delivery_id": "d1", "deep_link": "x://y"]
+        XCTAssertTrue(AppDNA.pushModule.handleNotificationTap(tap))
+        XCTAssertEqual(PushGate.shared.bufferCount, 1)
+        PushGate.shared.markShutDown(epoch: 1)          // what `AppDNA.shutdown()` calls
+        XCTAssertEqual(PushGate.shared.bufferCount, 0)
+        PushGate.shared.markConfigured(epoch: 2)        // the next `configure()`
+        settle(1.5)                                     // past any launch-tap grace
+        XCTAssertTrue(events.isEmpty, "\(events.map(\.event_name))")
+        XCTAssertTrue(recorder.tapped.isEmpty)
+        XCTAssertNil(routed)
+    }
+
     // MARK: - Idempotency
 
     func testIdempotencyIsPerKindAndCapped() {

@@ -108,10 +108,14 @@ struct GoogleInteractiveMap: UIViewRepresentable {
     /// SPEC-497 §7.2 — as `mapStaticURL(…, rawResolved:)`: a raw host polyline containing `{{` is kept.
     var rawResolved: Bool = false
 
+    /// Computed from the block on every read — so each pass reads it ONCE into a local and hands that
+    /// to everything it calls (impl audit round 1 minor 28 / round 2 I10: `updateUIView` used to decode
+    /// the plan twice, once for the overlays and once for the camera).
     var plan: MapInteractivePlan { MapInteractivePlan.compute(block: block, rawResolved: rawResolved) }
 
     func makeUIView(context: Context) -> InteractiveMapContainer {
-        let container = InteractiveMapContainer(mapView: buildMapView())
+        let plan = self.plan
+        let container = InteractiveMapContainer(mapView: buildMapView(plan: plan))
         container.setCamera(plan.camera)
         return container
     }
@@ -124,7 +128,8 @@ struct GoogleInteractiveMap: UIViewRepresentable {
      and a test that rebuilt the same map itself would be a copy agreeing with a copy — which is how
      #671 stayed invisible: everything we measured was measuring something other than the map.
      */
-    internal func buildMapView() -> GMSMapView {
+    internal func buildMapView(plan givenPlan: MapInteractivePlan? = nil) -> GMSMapView {
+        let plan = givenPlan ?? self.plan
         let initial = Self.initialCamera(for: plan.camera)
         let camera = GMSCameraPosition.camera(
             withLatitude: initial.lat,
@@ -180,15 +185,16 @@ struct GoogleInteractiveMap: UIViewRepresentable {
         mapView.settings.myLocationButton = false
         mapView.settings.indoorPicker = false
 
-        draw(on: mapView)
+        draw(on: mapView, plan: plan)
         return mapView
     }
 
     func updateUIView(_ container: InteractiveMapContainer, context: Context) {
         // Re-drawing on update rather than diffing: a step's map config is authored, not animated,
         // so an update here means the author (or the host's late route) changed something.
+        let plan = self.plan // decoded once for this update
         container.mapView.clear()
-        draw(on: container.mapView)
+        draw(on: container.mapView, plan: plan)
         // The camera moves only when its INPUT changed (e.g. host `mapRoutes` arriving after first
         // paint) — styling changes and recompositions never override the user's pan/zoom.
         container.setCamera(plan.camera)
@@ -227,8 +233,7 @@ struct GoogleInteractiveMap: UIViewRepresentable {
 
     // MARK: - overlays
 
-    private func draw(on mapView: GMSMapView) {
-        let plan = self.plan
+    private func draw(on mapView: GMSMapView, plan: MapInteractivePlan) {
 
         // Route BEFORE markers, so pins draw over the line — the same ordering both static builders
         // use, so changing tier does not reorder the map. Styling applies to whichever source won.
@@ -262,8 +267,7 @@ struct GoogleInteractiveMap: UIViewRepresentable {
 /// and again only when the camera input changes (SPEC-497 §7.2 rule 4).
 final class InteractiveMapContainer: UIView {
     let mapView: GMSMapView
-    private var pending: MapInteractivePlan.Camera?
-    private var applied: MapInteractivePlan.Camera?
+    private var gate = MapCameraGate()
 
     init(mapView: GMSMapView) {
         self.mapView = mapView
@@ -275,8 +279,7 @@ final class InteractiveMapContainer: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func setCamera(_ camera: MapInteractivePlan.Camera) {
-        guard camera != applied, camera != pending else { return }
-        pending = camera
+        guard gate.request(camera) else { return }
         applyIfSized()
     }
 
@@ -287,9 +290,31 @@ final class InteractiveMapContainer: UIView {
     }
 
     private func applyIfSized() {
-        guard let camera = pending, bounds.width > 0, bounds.height > 0 else { return }
+        guard let camera = gate.take(width: bounds.width, height: bounds.height) else { return }
         GoogleInteractiveMap.apply(camera, to: mapView)
+    }
+}
+
+/// SPEC-497 §7.2 rule 4 — when the container may move the camera: the first time it has a non-zero size,
+/// and afterwards ONLY when the camera INPUT changes. Re-requesting the camera already applied (every
+/// `updateUIView`, a styling change, a recomposition) is a no-op, so it never overrides the user's
+/// pan / zoom. Pure, so the rule is testable without a live Google map.
+struct MapCameraGate {
+    private(set) var pending: MapInteractivePlan.Camera?
+    private(set) var applied: MapInteractivePlan.Camera?
+
+    /// Asks for `camera`. False (nothing to do) when it is the camera already applied or already pending.
+    mutating func request(_ camera: MapInteractivePlan.Camera) -> Bool {
+        guard camera != applied, camera != pending else { return false }
+        pending = camera
+        return true
+    }
+
+    /// The camera to apply now, if one is pending and the view has a size; marks it applied.
+    mutating func take(width: CGFloat, height: CGFloat) -> MapInteractivePlan.Camera? {
+        guard let camera = pending, width > 0, height > 0 else { return nil }
         applied = camera
         pending = nil
+        return camera
     }
 }

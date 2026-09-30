@@ -61,9 +61,13 @@ final class AdaptyBridge: BillingBridgeProtocol {
             let result = try await Adapty.makePurchase(product: productId)
             let purchaseResult = PurchaseResult(
                 productId: productId,
-                // Never an invented id: a fabricated UUID would reach `transaction_id` and dedupe as a
-                // purchase that does not exist. Empty = unknown, and the envelope omits the key.
-                transactionId: result.transactionId ?? "",
+                // Adapty's store transaction id when it has one. Otherwise NOT "" (impl audit round 2, I3):
+                // every such purchase shared that id, so a host granting idempotently by `transactionId`
+                // dropped the second one. A unique, clearly-marked `adapty:<uuid>` instead — never a
+                // plausible store id, and never sent as the event's `transaction_id` (the envelope omits
+                // a synthetic id, so §13e.5 dedupe sees an unknown id, as before).
+                transactionId: result.transactionId.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? SyntheticTransactionId.make(provider: "adapty"),
                 price: result.price ?? 0,
                 currency: result.currencyCode ?? "USD",
                 provider: "adapty",

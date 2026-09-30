@@ -716,8 +716,9 @@ extension StepAdvanceResult {
     }
 
     /// The wait a wrapper bridge applies to `onBeforeStepAdvance`: `max(configured, floor)` — the one
-    /// line §4.2 prescribes, here so it has one implementation (and one test) instead of one per bridge.
-    public static func bridgeTimeout(configured: TimeInterval, stepData: [String: Any]?) -> TimeInterval {
+    /// line §4.2 prescribes. INTERNAL (impl audit round 2, I2): the §4.3 public API is
+    /// `minimumBridgeTimeout(stepData:)` only; each wrapper computes the max itself.
+    static func bridgeTimeout(configured: TimeInterval, stepData: [String: Any]?) -> TimeInterval {
         max(configured, minimumBridgeTimeout(stepData: stepData) ?? 0)
     }
 }
