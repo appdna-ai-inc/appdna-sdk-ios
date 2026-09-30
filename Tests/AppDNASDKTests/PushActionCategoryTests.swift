@@ -65,7 +65,7 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(registeredAtCompletion, ["appdna_abc"])
 
         var completedWithoutButtons = false
-        NotificationService.registerActionCategory(from: ["aps": [:]], slot: slot) { completedWithoutButtons = true }
+        NotificationService.registerActionCategory(from: ["aps": [String: Any]()], slot: slot) { completedWithoutButtons = true }
         XCTAssertTrue(completedWithoutButtons)
     }
 
