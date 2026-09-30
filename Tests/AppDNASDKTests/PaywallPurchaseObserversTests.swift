@@ -44,6 +44,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
         weak var weakHolder = holder
         let notDelivered = expectation(description: "nothing delivered after deinit")
         notDelivered.isInverted = true
+        notDelivered.expectedFulfillmentCount = 3 // one per post: a leak fails cleanly, not as an API violation
         register(holder!, success: { notDelivered.fulfill() }, ended: { notDelivered.fulfill() },
                  failure: { notDelivered.fulfill() })
         holder = nil
