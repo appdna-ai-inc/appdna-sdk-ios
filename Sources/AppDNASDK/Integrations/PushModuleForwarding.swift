@@ -359,6 +359,11 @@ extension AppDNA.PushModule {
 
         let (title, body) = PushMarker.titleAndBody(userInfo)
         let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
+        // SPEC-497 §17 item 28 — a push tapped from the background (no extension registered its
+        // category): register it now, so the next push with the same buttons shows them.
+        DispatchQueue.main.async {
+            PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
+        }
         let tappedAction = (actionIdentifier == nil || actionIdentifier == UNNotificationDefaultActionIdentifier)
             ? nil : actionIdentifier
         // I4 minor 5 — the delegate is a UI callback: on main, like `onPushReceived` above. A host forwarding
