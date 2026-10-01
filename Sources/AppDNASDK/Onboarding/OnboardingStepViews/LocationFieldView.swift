@@ -309,6 +309,10 @@ struct LocationFieldView: View {
             request.httpBody = jsonData
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.setValue(client.apiKey, forHTTPHeaderField: "x-api-key")
+            // The server answers null for a missing coordinate / zone only to an SDK that says it reads
+            // null (iOS >= 1.0.82); without these headers it sends the legacy 0 / "UTC" shape.
+            request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
+            request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
 
             let (data, _) = try await URLSession.shared.data(for: request)
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
