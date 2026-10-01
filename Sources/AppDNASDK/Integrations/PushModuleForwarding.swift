@@ -1,4 +1,7 @@
 import Foundation
+#if SWIFT_PACKAGE
+@_spi(AppDNAInternal) import AppDNANotificationExtension
+#endif
 import UIKit
 import UserNotifications
 

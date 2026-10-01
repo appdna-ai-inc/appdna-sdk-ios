@@ -181,17 +181,41 @@ actor PurchaseVerificationQueue {
     }
 }
 
-/// An undecodable persisted store is LOGGED and COPIED to `<key>.corrupt` before the caller carries on
-/// with an empty one — which its next write persists over the original. Without the copy the undelivered
-/// purchases in it were lost without a trace. One copy per key: the newest unreadable payload wins.
+/// An undecodable persisted store is LOGGED and COPIED before the caller carries on with an empty one —
+/// which its next write persists over the original. Without the copy the undelivered purchases in it were
+/// lost without a trace.
+///
+/// Each copy is timestamped, `<key>.corrupt.<epoch-ms>`, and at most `maxCopies` are kept per key: the
+/// oldest is removed when a fourth arrives. (There used to be one `<key>.corrupt`, so a second unreadable
+/// payload overwrote the first.) A payload equal to the newest copy is not copied again. The copy keys,
+/// oldest first, are listed under `<key>.corrupt.index`.
 enum CorruptStore {
-    static func key(for key: String) -> String { key + ".corrupt" }
+    static let maxCopies = 3
 
-    static func preserve(_ data: Data, key: String, defaults: UserDefaults, error: Error) {
-        let copyKey = Self.key(for: key)
-        if defaults.data(forKey: copyKey) != data {
+    static func indexKey(for key: String) -> String { key + ".corrupt.index" }
+
+    /// The keys of the copies kept for `key`, oldest first.
+    static func copyKeys(for key: String, defaults: UserDefaults) -> [String] {
+        defaults.stringArray(forKey: indexKey(for: key)) ?? []
+    }
+
+    static func preserve(_ data: Data, key: String, defaults: UserDefaults, error: Error, now: Date = Date()) {
+        var copies = copyKeys(for: key, defaults: defaults)
+        let copyKey: String
+        if let newest = copies.last, defaults.data(forKey: newest) == data {
+            copyKey = newest
+        } else {
+            var stamp = Int64((now.timeIntervalSince1970 * 1000).rounded())
+            // Two copies in the same millisecond still get distinct keys.
+            while copies.contains("\(key).corrupt.\(stamp)") { stamp += 1 }
+            copyKey = "\(key).corrupt.\(stamp)"
             defaults.set(data, forKey: copyKey)
+            copies.append(copyKey)
+            while copies.count > maxCopies {
+                defaults.removeObject(forKey: copies.removeFirst())
+            }
+            defaults.set(copies, forKey: indexKey(for: key))
         }
-        Log.error("AppDNA: the persisted store '\(key)' could not be decoded (\(error.localizedDescription)); a copy of the \(data.count)-byte payload was kept under '\(copyKey)' and the store starts empty.")
+        Log.error("AppDNA: the persisted store '\(key)' could not be decoded (\(error.localizedDescription)); a copy of the \(data.count)-byte payload was kept under '\(copyKey)' (the newest \(maxCopies) copies are kept) and the store starts empty.")
     }
 }

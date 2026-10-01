@@ -39,6 +39,12 @@ class EntitlementCache {
     /// access through billing retry (with its grace period) until the retry ends.
     static let activeStatuses: Set<String> = ["active", "trialing", "grace_period", "billing_retry"]
 
+    /// The entitled statuses whose period end has ALREADY passed by definition: Apple keeps the access
+    /// after `expirationDate` while it retries the payment, and the server writes these rows with a past
+    /// `current_period_end`. An expiry check never applies to them (server `isEntitled` returns true for
+    /// every active status; Android reads the status alone).
+    static let pastExpiryStatuses: Set<String> = ["grace_period", "billing_retry"]
+
     var hasActiveSubscription: Bool {
         entitlements.contains { Self.activeStatuses.contains($0.status) }
     }

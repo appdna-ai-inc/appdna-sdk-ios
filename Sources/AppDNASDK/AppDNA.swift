@@ -1,4 +1,7 @@
 import Foundation
+#if SWIFT_PACKAGE
+@_spi(AppDNAInternal) import AppDNANotificationExtension
+#endif
 import UIKit
 import SwiftUI
 import UserNotifications
@@ -1309,7 +1312,7 @@ public final class AppDNA: @unchecked Sendable {
             let consent = ConsentStore.decision
             let consentLabel = consent.map { $0 ? "granted" : "DENIED" } ?? "no decision yet"
             lines.append("║ ℹ️ Analytics consent: \(consentLabel) (requireConsent=\(shared.options.requireConsent))")
-            lines.append("║ ℹ️ Veto timeout: \(Int(shared.options.vetoTimeout))s · timed out \(VetoTimeoutCounter.count) time(s)")
+            lines.append("║ ℹ️ Veto timeout: \(DiagnoseFormat.seconds(shared.options.vetoTimeout))s · timed out \(VetoTimeoutCounter.count) time(s)")
             if let err = lastInitError {
                 lines.append("║ ⚠️ Init degraded: \(err.localizedDescription)")
             }
@@ -2179,4 +2182,14 @@ public struct BootstrapRuntimeLock: Codable, Sendable {
     /// ISO-8601 string the lock was first observed (per-key suspended_at when
     /// available, else the moment the bootstrap saw org=cancelled).
     public let locked_at: String
+}
+
+/// `diagnose()` number formatting.
+enum DiagnoseFormat {
+    /// Seconds as given: 0.5 → "0.5", 5 → "5". (The veto wait used to print `Int(...)`, so 0.5 s read "0s".)
+    static func seconds(_ value: TimeInterval) -> String {
+        guard value.isFinite else { return String(value) }
+        if value == value.rounded(), abs(value) < 1e15 { return String(Int64(value)) }
+        return String(value)
+    }
 }

@@ -42,6 +42,7 @@
 import Foundation
 import XCTest
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 final class SharedFixtureTests: XCTestCase {
 
@@ -2003,17 +2004,18 @@ final class SharedFixtureTests: XCTestCase {
         AppDNA.installEventTrackerForTest(h.tracker)
         defer { AppDNA.installEventTrackerForTest(previous) }
 
-        // `setup.device_timezone` — installed as the process default zone, which is what
-        // `TimeZone.current` reports, and restored after. The SDK reads it through the platform API;
-        // the driver never hands it to the SDK.
-        let savedZone = NSTimeZone.default
+        // `setup.device_timezone` — installed as the zone the envelope builder reads
+        // (`EventEnvelopeBuilder.timeZoneProvider`, `TimeZone.current` in production) and restored after.
+        // `NSTimeZone.default` does not reach `TimeZone.current` on the iOS 26.2 simulator. The driver never
+        // hands the zone to the event itself.
+        let savedProvider = EventEnvelopeBuilder.timeZoneProvider
         if let zoneId = f.setup.raw["device_timezone"]?.stringValue {
             guard let zone = TimeZone(identifier: zoneId) else {
                 return XCTFail("[\(f.id)] setup.device_timezone '\(zoneId)' is not an IANA zone")
             }
-            NSTimeZone.default = zone
+            EventEnvelopeBuilder.timeZoneProvider = { zone }
         }
-        defer { NSTimeZone.default = savedZone }
+        defer { EventEnvelopeBuilder.timeZoneProvider = savedProvider }
 
         AppDNA.track(event: name, properties: props)
         AppDNA.drainSDKQueueForTesting()

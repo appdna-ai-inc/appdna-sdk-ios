@@ -11,6 +11,7 @@ import XCTest
 import ObjectiveC
 import UserNotifications
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 private final class OpenSettingsPrevious: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, openSettingsFor notification: UNNotification?) {}

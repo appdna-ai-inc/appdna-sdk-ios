@@ -13,7 +13,11 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   # SPEC-497 B6 — the ObjC launch hook that installs the notification proxy. A `.m` with no public
   # header, so nothing in it reaches the module's umbrella header. This file and
   # Sources/AppDNASDK/AppDNASDK.podspec must stay byte-identical (check:native-pins).
-  s.source_files     = ['Sources/AppDNASDK/**/*.swift', 'Sources/AppDNASDKLoader/**/*.m']
+  # Sources/AppDNANotificationExtension is the extension-safe Notification Service Extension helper; it is
+  # also published alone as the AppDNANotificationExtension pod (AppDNANotificationExtension.podspec) for the
+  # extension target. Compiled into this module here, so the app registers push button categories
+  # through the same code as the extension.
+  s.source_files     = ['Sources/AppDNASDK/**/*.swift', 'Sources/AppDNANotificationExtension/**/*.swift', 'Sources/AppDNASDKLoader/**/*.m']
   s.resource_bundles = { 'AppDNASDK' => ['Sources/AppDNASDK/PrivacyInfo.xcprivacy'] }
   s.platform         = :ios, '16.0'
   s.swift_version    = '5.9'

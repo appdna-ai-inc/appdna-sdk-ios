@@ -1,45 +1,89 @@
+import Foundation
 import UserNotifications
 
 /// UNNotificationServiceExtension for rich push content: downloads the image attachment and registers
 /// the push's action-button category before the notification is shown (without it, buttons of a button
-/// set the app has not seen yet do not appear). Add as a separate target:
-/// AppDNANotificationServiceExtension, whose principal class subclasses this one.
+/// set the app has not seen yet do not appear). Add a Notification Service Extension target whose
+/// principal class subclasses this one, and link the extension-safe `AppDNANotificationExtension` library
+/// (SwiftPM product / CocoaPods pod) to it — not `AppDNASDK`, which uses API unavailable in an app
+/// extension (`UIApplication.shared`) and installs its notification handler at launch. This module builds
+/// with application-extension-only API.
 open class NotificationService: UNNotificationServiceExtension {
+    /// Guards `contentHandler`, `bestAttempt` and `delivered`: the download completes on a URLSession
+    /// queue while `serviceExtensionTimeWillExpire` runs on the extension's own thread.
+    private let stateLock = NSLock()
     private var contentHandler: ((UNNotificationContent) -> Void)?
     private var bestAttempt: UNMutableNotificationContent?
+    /// The content handler may be called once. Both the normal path and the time-out path end in
+    /// `deliver()`, and only the first call reaches the handler — the time-out used to hand the content
+    /// back and the download, finishing later, handed it back a second time.
+    private var delivered = false
+
+    /// Test seam: loads the image attachment (default: `downloadAttachment`).
+    var attachmentLoader: ((URL, @escaping (UNNotificationAttachment?) -> Void) -> Void)?
 
     override open func didReceive(
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
     ) {
-        self.contentHandler = contentHandler
-        guard let bestAttempt = request.content.mutableCopy() as? UNMutableNotificationContent else {
+        guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
             contentHandler(request.content)
             return
         }
-        self.bestAttempt = bestAttempt
+        stateLock.lock()
+        self.contentHandler = contentHandler
+        self.bestAttempt = content
+        self.delivered = false
+        stateLock.unlock()
+        let userInfo = content.userInfo
 
         // SPEC-497 §17 item 28 — register the action buttons' category BEFORE the notification is shown:
         // iOS displays buttons only for a category that is already registered, and this extension is the
         // one place that runs before display while the app is not running. The server marks every push
         // with buttons `mutable-content`, so this runs for them.
-        Self.registerActionCategory(from: bestAttempt.userInfo, slot: SystemNotificationCenterSlot()) {
-            if let category = PushActionCategories.category(from: bestAttempt.userInfo) {
-                bestAttempt.categoryIdentifier = category.identifier
+        Self.registerActionCategory(from: userInfo, slot: SystemNotificationCenterSlot()) {
+            if let category = PushActionCategories.category(from: userInfo) {
+                self.updateBestAttempt { $0.categoryIdentifier = category.identifier }
             }
             // Download image attachment if present
-            if let imageUrlString = bestAttempt.userInfo["image_url"] as? String,
+            if let imageUrlString = userInfo["image_url"] as? String,
                let url = URL(string: imageUrlString) {
-                self.downloadAttachment(url: url) { attachment in
+                let load = self.attachmentLoader ?? { [weak self] url, done in
+                    guard let self else { return done(nil) }
+                    self.downloadAttachment(url: url, completion: done)
+                }
+                load(url) { attachment in
                     if let attachment = attachment {
-                        bestAttempt.attachments = [attachment]
+                        self.updateBestAttempt { $0.attachments = [attachment] }
                     }
-                    contentHandler(bestAttempt)
+                    self.deliver()
                 }
             } else {
-                contentHandler(bestAttempt)
+                self.deliver()
             }
         }
+    }
+
+    /// Mutates the best attempt under the lock; a no-op once the content was handed back.
+    private func updateBestAttempt(_ change: (UNMutableNotificationContent) -> Void) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !delivered, let bestAttempt else { return }
+        change(bestAttempt)
+    }
+
+    /// Hands the best attempt to the content handler — once (see `delivered`).
+    private func deliver() {
+        stateLock.lock()
+        guard !delivered, let handler = contentHandler, let bestAttempt else {
+            stateLock.unlock()
+            return
+        }
+        delivered = true
+        contentHandler = nil
+        let content = bestAttempt.copy() as? UNNotificationContent ?? bestAttempt
+        stateLock.unlock()
+        handler(content)
     }
 
     /// Registers the payload's button category and calls `completion` once the centre holds it: the set
@@ -57,10 +101,8 @@ open class NotificationService: UNNotificationServiceExtension {
     }
 
     override open func serviceExtensionTimeWillExpire() {
-        // Deliver best attempt before time runs out
-        if let contentHandler = contentHandler, let bestAttempt = bestAttempt {
-            contentHandler(bestAttempt)
-        }
+        // Deliver the best attempt before time runs out (once; a later download completion is ignored).
+        deliver()
     }
 
     private func downloadAttachment(url: URL, completion: @escaping (UNNotificationAttachment?) -> Void) {

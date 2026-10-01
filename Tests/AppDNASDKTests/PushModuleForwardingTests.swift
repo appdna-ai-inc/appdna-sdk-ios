@@ -9,6 +9,7 @@
 import XCTest
 import UserNotifications
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 final class PushModuleForwardingTests: XCTestCase {
 

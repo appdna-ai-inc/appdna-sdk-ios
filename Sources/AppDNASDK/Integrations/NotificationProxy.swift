@@ -1,6 +1,9 @@
 import Foundation
 import UIKit
 import UserNotifications
+#if SWIFT_PACKAGE
+@_spi(AppDNAInternal) import AppDNANotificationExtension
+#endif
 
 // SPEC-497 B6 (§9a) — the iOS SDK installs its notification handler itself, as a DELEGATE PROXY that
 // holds the previous `UNUserNotificationCenter` delegate and forwards everything that is not an AppDNA
@@ -10,35 +13,8 @@ import UserNotifications
 
 // MARK: - The notification-centre seam
 
-/// Get/set the notification-centre delegate and its categories. Production wraps
-/// `UNUserNotificationCenter.current()`; hostless tests inject an in-memory slot, because
-/// `UNUserNotificationCenter.current()` raises "bundleProxyForCurrentProcess is nil" there.
-protocol NotificationCenterSlot: AnyObject {
-    var delegate: UNUserNotificationCenterDelegate? { get set }
-    func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void)
-    func setCategories(_ categories: Set<UNNotificationCategory>)
-    /// The ONLY route by which the SDK may post a notification itself. iOS never does from a received
-    /// push (the OS or the host presents; `handleMessageData` never displays — SPEC-497 §8.7), so
-    /// nothing calls it today; the push fixtures read `notification_posted` from this slot instead of
-    /// asserting a constant.
-    func add(_ request: UNNotificationRequest)
-}
-
-final class SystemNotificationCenterSlot: NotificationCenterSlot {
-    var delegate: UNUserNotificationCenterDelegate? {
-        get { UNUserNotificationCenter.current().delegate }
-        set { UNUserNotificationCenter.current().delegate = newValue }
-    }
-    func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void) {
-        UNUserNotificationCenter.current().getNotificationCategories(completionHandler: completion)
-    }
-    func setCategories(_ categories: Set<UNNotificationCategory>) {
-        UNUserNotificationCenter.current().setNotificationCategories(categories)
-    }
-    func add(_ request: UNNotificationRequest) {
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-}
+// `NotificationCenterSlot` and `SystemNotificationCenterSlot` live in the extension-safe
+// `AppDNANotificationExtension` module (`PushActionCategories.swift`).
 
 // MARK: - Pure decisions
 

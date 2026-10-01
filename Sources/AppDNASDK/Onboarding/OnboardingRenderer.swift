@@ -2357,14 +2357,8 @@ func fireElementInteraction(
     return (current, mergedOverrides, applied.advance)
 }
 
-// MARK: - Auth Action Policy
+// MARK: - Social login step data
 
-/// Single source of truth for which button actions REQUIRE an
-/// `AppDNAOnboardingDelegate` to be set before the SDK will advance the user
-/// past a credential-collection step. If a host fires one of these actions
-/// without a delegate, `handleStepCompleted` logs a warning and stays on the
-/// step — credentials never silently flow into `responses` without a side
-/// effect (sign in, register, send OTP, etc.) actually being performed.
 /// The step data a `social_login` tap hands to `onNext`: the step's input values, then the SDK's own
 /// `provider` and `action` keys LAST, so an input field whose id happens to be `action` or `provider`
 /// cannot override them. It used to be the other way round — an input named `action` replaced
@@ -2379,6 +2373,14 @@ enum SocialLoginStepData {
     }
 }
 
+// MARK: - Auth Action Policy
+
+/// Single source of truth for which button actions REQUIRE an
+/// `AppDNAOnboardingDelegate` to be set before the SDK will advance the user
+/// past a credential-collection step. If a host fires one of these actions
+/// without a delegate, `handleStepCompleted` logs a warning and stays on the
+/// step — credentials never silently flow into `responses` without a side
+/// effect (sign in, register, send OTP, etc.) actually being performed.
 enum AuthActionPolicy {
     static let delegateRequiredActions: Set<String> = [
         // existing

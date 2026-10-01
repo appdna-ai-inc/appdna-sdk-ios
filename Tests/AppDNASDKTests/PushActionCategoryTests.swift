@@ -1,6 +1,7 @@
 import XCTest
 import UserNotifications
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 /// SPEC-497 §17 item 28 — the console's action buttons show on iOS: the server sends each button set
 /// under its own `aps.category`, the SDK registers that category (in the Notification Service Extension
@@ -59,13 +60,13 @@ final class PushActionCategoryTests: XCTestCase {
     func testServiceExtensionRegistersBeforeCompleting() {
         let slot = InMemoryNotificationCenterSlot()
         var registeredAtCompletion: Set<String>?
-        NotificationService.registerActionCategory(from: userInfo(), slot: slot) {
+        AppDNANotificationExtension.NotificationService.registerActionCategory(from: userInfo(), slot: slot) {
             registeredAtCompletion = Set(slot.categories.map(\.identifier))
         }
         XCTAssertEqual(registeredAtCompletion, ["appdna_abc"])
 
         var completedWithoutButtons = false
-        NotificationService.registerActionCategory(from: ["aps": [String: Any]()], slot: slot) { completedWithoutButtons = true }
+        AppDNANotificationExtension.NotificationService.registerActionCategory(from: ["aps": [String: Any]()], slot: slot) { completedWithoutButtons = true }
         XCTAssertTrue(completedWithoutButtons)
     }
 
@@ -86,5 +87,121 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(PushTapRouter.route(payload: payload, userInfo: info, tappedActionId: "view"), .deepLink("https://example.test/p"))
         XCTAssertEqual(PushTapRouter.route(payload: payload, userInfo: info, tappedActionId: "later"), .ignored)
         XCTAssertEqual(PushTapRouter.route(payload: payload, userInfo: info, tappedActionId: "reply"), .ignored)
+    }
+
+    // MARK: - Round 18
+
+    /// NEGATIVE CONTROL: a `dismiss` button sent with `foreground: true` got `[.foreground, .destructive]`,
+    /// so tapping "Dismiss" launched the app.
+    func testDismissWithForegroundTrueNeverOpensTheApp() throws {
+        var info = userInfo()
+        info["actions"] = [["id": "close", "label": "Close", "action_type": "dismiss", "foreground": true]]
+        let action = try XCTUnwrap(PushActionCategories.category(from: info)?.actions.first)
+        XCTAssertEqual(action.options, [.destructive])
+        XCTAssertFalse(action.options.contains(.foreground))
+    }
+
+    /// A slot whose reads answer later, on another queue — as the real centre does.
+    final class AsyncSlot: NotificationCenterSlot {
+        private let lock = NSLock()
+        private var stored: Set<UNNotificationCategory> = []
+        var categories: Set<UNNotificationCategory> { lock.lock(); defer { lock.unlock() }; return stored }
+        var delegate: UNUserNotificationCenterDelegate?
+        func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void) {
+            let snapshot = categories
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { completion(snapshot) }
+        }
+        func setCategories(_ categories: Set<UNNotificationCategory>) { lock.lock(); stored = categories; lock.unlock() }
+        func deliveredCategoryIds(_ completion: @escaping (Set<String>) -> Void) { completion([]) }
+        func add(_ request: UNNotificationRequest) {}
+    }
+
+    /// NEGATIVE CONTROL: two overlapping registrations both read the empty set, and the second write
+    /// dropped the first one's category (one id registered instead of two).
+    func testOverlappingRegistrationsKeepBothCategories() {
+        let slot = AsyncSlot()
+        let both = expectation(description: "both registered")
+        both.expectedFulfillmentCount = 2
+        PushActionCategories.register(from: userInfo(category: "appdna_one"), slot: slot) { both.fulfill() }
+        PushActionCategories.register(from: userInfo(category: "appdna_two"), slot: slot) { both.fulfill() }
+        wait(for: [both], timeout: 3)
+        XCTAssertEqual(Set(slot.categories.map(\.identifier)), ["appdna_one", "appdna_two"])
+    }
+
+    /// The extension (no SDK context) and the app (the user's context) must register the same titles.
+    /// NEGATIVE CONTROL: the app interpolated with its own context, so the same category read
+    /// "Hi Ada" from the app and "Hi there" from the extension.
+    func testButtonTitlesDoNotDependOnTheAppContext() throws {
+        SessionDataStore.shared.setSessionData(key: "r18_name", value: "Ada")
+        defer { SessionDataStore.shared.clearSessionData() }
+        var info = userInfo()
+        info["actions"] = [["id": "hi", "label": "Hi {{session.r18_name | there}}", "action_type": "deep_link",
+                            "action_value": "app://x", "foreground": true]]
+        let action = try XCTUnwrap(PushActionCategories.category(from: info)?.actions.first)
+        XCTAssertEqual(action.title, "Hi there")
+        // The host's payload is still personalised.
+        XCTAssertEqual(PushPayloadParser.parse(userInfo: info, title: "T", body: "B").actions.first?.label, "Hi Ada")
+    }
+
+    /// NEGATIVE CONTROL: every distinct button set stayed registered forever (17 categories here).
+    func testRegisteredCategoriesArePruned() {
+        let suite = "ai.appdna.sdk.test.push.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        let previous = PushActionCategories.recencyDefaults
+        PushActionCategories.recencyDefaults = defaults
+        defer { PushActionCategories.recencyDefaults = previous; defaults.removePersistentDomain(forName: suite) }
+
+        let slot = InMemoryNotificationCenterSlot()
+        slot.setCategories([UNNotificationCategory(identifier: "HOST_CAT", actions: [], intentIdentifiers: [], options: [])])
+        slot.delivered = ["appdna_0"]
+        let max = PushActionCategories.maxRegisteredCategories
+        for i in 0...max { PushActionCategories.register(from: userInfo(category: "appdna_\(i)"), slot: slot) }
+        let ids = Set(slot.categories.map(\.identifier))
+        XCTAssertEqual(ids.filter { $0.hasPrefix("appdna_") }.count, max, "at most \(max) of ours")
+        XCTAssertTrue(ids.contains("HOST_CAT"), "the host's category is never pruned")
+        XCTAssertTrue(ids.contains("appdna_0"), "a delivered notification's category is kept")
+        XCTAssertTrue(ids.contains("appdna_\(max)"), "the new one is kept")
+        XCTAssertFalse(ids.contains("appdna_1"), "the oldest undelivered one goes")
+    }
+
+    /// NEGATIVE CONTROL: the time-out handed the content back and the download, finishing later, handed
+    /// it back again — the content handler ran twice.
+    func testServiceExtensionHandsTheContentBackOnce() {
+        // Both public classes: `NotificationService` and the older `AppDNANotificationService`, which had
+        // its own copy of the same double hand-back (it is a subclass now).
+        handsTheContentBackOnce(AppDNANotificationExtension.NotificationService())
+        handsTheContentBackOnce(AppDNANotificationExtension.AppDNANotificationService())
+    }
+
+    private func handsTheContentBackOnce(_ service: AppDNANotificationExtension.NotificationService) {
+        var pendingLoad: ((UNNotificationAttachment?) -> Void)?
+        service.attachmentLoader = { _, done in pendingLoad = done }
+        let content = UNMutableNotificationContent()
+        content.userInfo = ["appdna": "1", "image_url": "https://example.test/i.png"]
+        var handed = 0
+        service.didReceive(UNNotificationRequest(identifier: "r", content: content, trigger: nil)) { _ in handed += 1 }
+        XCTAssertEqual(handed, 0, "waiting for the download")
+        service.serviceExtensionTimeWillExpire()
+        XCTAssertEqual(handed, 1)
+        pendingLoad?(nil)
+        service.serviceExtensionTimeWillExpire()
+        XCTAssertEqual(handed, 1, "the content handler runs once")
+    }
+
+    /// `buttonTitle` re-implements `TemplateEngine.interpolate` with an empty context (the extension module
+    /// cannot link the engine). Pinned against the engine itself.
+    func testButtonTitleMatchesTheTemplateEngineWithAnEmptyContext() {
+        let empty = TemplateContext(userTraits: nil, remoteConfig: { _ in nil }, onboardingResponses: [:],
+                                    computedData: [:], sessionData: [:], deviceInfo: [:])
+        for raw in ["Plain", "Hi {{user.name | there}}", "{{x}}!", "{{ a.b |  fb  }} and {{c|d}}", "{{broken", "{{}}"] {
+            XCTAssertEqual(PushActionCategories.buttonTitle(raw), TemplateEngine.shared.interpolate(raw, context: empty), raw)
+        }
+    }
+
+    /// Icons map through the shared table, so the extension and the app pick the same SF Symbol.
+    func testIconTablesAreShared() {
+        XCTAssertEqual(IconMapping.lucideToSFSymbol, SFSymbolTables.lucide)
+        XCTAssertEqual(IconMapping.materialToSFSymbol, SFSymbolTables.material)
+        XCTAssertEqual(SFSymbolTables.lucide["check"], "checkmark")
     }
 }

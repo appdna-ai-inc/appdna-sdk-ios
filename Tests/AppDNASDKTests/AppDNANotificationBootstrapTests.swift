@@ -12,6 +12,7 @@ import ObjectiveC
 import UIKit
 import UserNotifications
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 final class AppDNANotificationBootstrapTests: XCTestCase {
 

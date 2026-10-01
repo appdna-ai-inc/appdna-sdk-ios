@@ -23,7 +23,9 @@ enum StoreKitEnvironment {
 
     /// For a provider bridge (RevenueCat / Adapty) whose purchase result does not expose StoreKit's
     /// transaction: the environment of the latest verified transaction for `productId`, read locally. Nil
-    /// when StoreKit has none.
+    /// when StoreKit has none. (`Transaction.latest(for:)` + `Transaction.environment`: compiled in the SDK
+    /// target and, beside the RevenueCat bridge, in a scratch package against RevenueCat 4.44.3 / 5.92.0;
+    /// `AppStore.Environment` needs iOS 16, the SDK's floor.)
     static func latest(for productId: String) async -> String? {
         guard let result = await Transaction.latest(for: productId),
               case .verified(let transaction) = result else { return nil }
@@ -32,20 +34,49 @@ enum StoreKitEnvironment {
 }
 
 extension StoreKitEntitlementReader {
+    /// One `Transaction.currentEntitlements` entry, as `expirations` reads it (pure, so it is tested).
+    struct ExpiryFact {
+        let productId: String
+        let appAccountToken: UUID?
+        let revoked: Bool
+        let expirationDate: Date?
+    }
+
     /// The expiry StoreKit holds for each of `productIds`: the latest `expirationDate` among the verified,
-    /// unrevoked `Transaction.currentEntitlements` of that product. A product without an expiry (a
-    /// non-consumable, a lifetime unlock) has no key. Read-only; never finishes anything.
-    static func expirations(for productIds: [String]) async -> [String: Date] {
-        let wanted = Set(productIds)
-        guard !wanted.isEmpty else { return [:] }
-        var out: [String: Date] = [:]
+    /// unrevoked `Transaction.currentEntitlements` of that product that BELONG to the current user — the
+    /// same `EntitlementOwnerFilter` as `productIds(appAccountToken:)`, so another user's transaction of
+    /// the same product can never lend its expiry. A product without an expiry (a non-consumable, a
+    /// lifetime unlock) has no key. Read-only; never finishes anything.
+    static func expirations(for productIds: [String], appAccountToken: UUID?) async -> [String: Date] {
+        guard !productIds.isEmpty else { return [:] }
+        var facts: [ExpiryFact] = []
         for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result,
-                  wanted.contains(transaction.productID),
-                  transaction.revocationDate == nil,
-                  let expiry = transaction.expirationDate else { continue }
-            if let known = out[transaction.productID], known >= expiry { continue }
-            out[transaction.productID] = expiry
+            guard case .verified(let transaction) = result else { continue }
+            facts.append(ExpiryFact(productId: transaction.productID, appAccountToken: transaction.appAccountToken,
+                                    revoked: transaction.revocationDate != nil, expirationDate: transaction.expirationDate))
+        }
+        return expirations(of: facts, for: productIds, appAccountToken: appAccountToken,
+                           firstIdentifiedToken: AppAccountTokenResolver.firstIdentifiedToken())
+    }
+
+    /// Pure core of `expirations(for:appAccountToken:)`.
+    static func expirations(
+        of facts: [ExpiryFact],
+        for productIds: [String],
+        appAccountToken: UUID?,
+        firstIdentifiedToken: UUID?
+    ) -> [String: Date] {
+        let wanted = Set(productIds)
+        var out: [String: Date] = [:]
+        for fact in facts {
+            guard wanted.contains(fact.productId), !fact.revoked, let expiry = fact.expirationDate else { continue }
+            switch EntitlementOwnerFilter.decide(transactionToken: fact.appAccountToken, expectedToken: appAccountToken,
+                                                 firstIdentifiedToken: firstIdentifiedToken) {
+            case .grant, .grantAnonymousPolicy, .grantUntaggedMigration: break
+            case .denyOtherUser, .denyUntaggedOtherUser: continue
+            }
+            if let known = out[fact.productId], known >= expiry { continue }
+            out[fact.productId] = expiry
         }
         return out
     }

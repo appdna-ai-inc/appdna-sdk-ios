@@ -156,7 +156,10 @@ extension AppDNA {
         /// The server-only entitlements (`/billing/entitlements` rows StoreKit on this device does not
         /// hold, e.g. a purchase made on another platform) of the last successful server read, and whose
         /// they were — reused when the server is unreachable, so going offline is not an entitlement
-        /// change. Guarded by `entitlementHandlerLock`.
+        /// change. Persisted beside the fingerprint (`ServerOnlyEntitlementCache`, the same defaults):
+        /// the fingerprint survives a relaunch, so the server-only rows must too — an offline relaunch
+        /// used to drop them and report the cross-platform purchase as gone. Nil until first read, which
+        /// seeds it from the persisted copy. Guarded by `entitlementHandlerLock`.
         private var cachedServerOnly: (userId: String, items: [ServerEntitlement])?
         /// The observer that delivers `.entitlementsChanged` to the billing delegate.
         private var delegateObserverToken: NSObjectProtocol?
@@ -402,8 +405,10 @@ extension AppDNA {
         /// Read from the bridge (StoreKit `Transaction.currentEntitlements`, or the provider's customer
         /// info), with each product's StoreKit `expirationDate` as `expiresAt` — nil for a product without
         /// one (a non-consumable, a lifetime unlock) or one StoreKit on this device does not hold. It used to
-        /// be nil always. `isActive` follows the same rule as `onEntitlementsChanged`: true unless the expiry
-        /// has passed. Local only — `refreshEntitlementCache` is the path that also reads the server.
+        /// be nil always. `isActive` is always true: every product the bridge returns is one the store
+        /// still entitles, and `Transaction.currentEntitlements` keeps a subscription in its billing grace
+        /// period although its `expirationDate` has passed (`localEntitlement`). Local only —
+        /// `refreshEntitlementCache` is the path that also reads the server.
         public func getEntitlements() async -> [Entitlement] {
             guard let bridge = bridge else {
                 Log.warning("BillingModule: No billing provider configured")
@@ -412,15 +417,8 @@ extension AppDNA {
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             let expirations = await entitlementSources.localExpirations(productIds)
             let now = entitlementSources.now()
-            return productIds.map { productId in
-                let expiresAt = expirations[productId]
-                return Entitlement(
-                    identifier: productId,
-                    isActive: expiresAt.map { $0 > now } ?? true,
-                    expiresAt: expiresAt,
-                    productId: productId
-                )
-            }
+            return Self.publicEntitlements(productIds.map { Self.localEntitlement($0, expiresAt: expirations[$0], now: now) },
+                                           now: now)
         }
 
         /// Check if the user has any active subscription.
@@ -472,14 +470,17 @@ extension AppDNA {
 
         /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
         /// cache of the same user; otherwise none.
-        private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>) -> [ServerEntitlement] {
+        private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>,
+                                            defaults: UserDefaults) -> [ServerEntitlement] {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
             if let server {
                 let serverOnly = server.filter { !localIds.contains($0.productId) }
                 cachedServerOnly = (userId, serverOnly)
+                ServerOnlyEntitlementCache.save(userId: userId, items: serverOnly, defaults)
                 return serverOnly
             }
+            if cachedServerOnly == nil { cachedServerOnly = ServerOnlyEntitlementCache.load(defaults) }
             if let cached = cachedServerOnly, cached.userId == userId {
                 return cached.items.filter { !localIds.contains($0.productId) }
             }
@@ -525,18 +526,16 @@ extension AppDNA {
             var seen = Set<String>()
             let localIds = productIds.filter { seen.insert($0).inserted }
             let expirations = await sources.localExpirations(localIds)
+            let now = sources.now()
             var entitlements: [ServerEntitlement] = localIds.map { id in
-                ServerEntitlement(productId: id, store: "app_store", status: "active",
-                                  expiresAt: expirations[id].map(ISO8601.string(from:)),
-                                  isTrial: false, offerType: nil)
+                Self.localEntitlement(id, expiresAt: expirations[id], now: now)
             }
 
             if let userId = sources.currentUserId(), !userId.isEmpty {
                 let server = await sources.server(userId)
-                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen)
+                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults)
             }
 
-            let now = sources.now()
             let fingerprint = EntitlementFingerprint.make(entitlements, now: now)
             let changed = swapFingerprint(fingerprint, defaults: sources.defaults)
 
@@ -578,20 +577,42 @@ extension AppDNA {
         }
 
         /// The public `Entitlement` of each posted `ServerEntitlement` — ONE conversion for the closure
-        /// handlers and the delegate, so the two can never disagree. `isActive`: an entitled status
-        /// (`EntitlementCache.activeStatuses` — `active` / `trialing` / `grace_period` / `billing_retry`, the
-        /// server's and Android's set) whose `expiresAt`, when known, has not passed.
+        /// handlers and the delegate, so the two can never disagree. `isActive` is `isActive(status:…)`.
         static func publicEntitlements(_ entitlements: [ServerEntitlement], now: Date = Date()) -> [Entitlement] {
             entitlements.map { e in
                 let expiresAt = e.expiresAt.flatMap(ISO8601.date(from:))
-                let entitledStatus = EntitlementCache.activeStatuses.contains(e.status)
                 return Entitlement(
                     identifier: e.productId,
-                    isActive: entitledStatus && (expiresAt.map { $0 > now } ?? true),
+                    isActive: isActive(status: e.status, expiresAt: expiresAt, now: now),
                     expiresAt: expiresAt,
                     productId: e.productId
                 )
             }
+        }
+
+        /// An entitled status (`EntitlementCache.activeStatuses` — `active` / `trialing` / `grace_period` /
+        /// `billing_retry`, the server's and Android's set). `grace_period` / `billing_retry` are active
+        /// whatever their expiry: the period end has passed by definition while the store retries the
+        /// payment (server `entitlement.ts` `isEntitled`, Android `EntitlementCache`). `active` /
+        /// `trialing` additionally need an expiry that, when known, has not passed — a canceled-but-paid
+        /// row the server reported as `active` stops at its period end even while the device is offline.
+        static func isActive(status: String, expiresAt: Date?, now: Date) -> Bool {
+            guard EntitlementCache.activeStatuses.contains(status) else { return false }
+            if EntitlementCache.pastExpiryStatuses.contains(status) { return true }
+            return expiresAt.map { $0 > now } ?? true
+        }
+
+        /// The row of a product the bridge returned (StoreKit `Transaction.currentEntitlements`, or the
+        /// provider's active set). The store still entitles it, so it is active. StoreKit keeps a
+        /// subscription in `currentEntitlements` during its billing grace period although its
+        /// `expirationDate` has passed: such a row is `grace_period`, never an expired `active` row, so the
+        /// scheduled expiry re-check that finds it still held reports no change.
+        static func localEntitlement(_ productId: String, expiresAt: Date?, now: Date) -> ServerEntitlement {
+            let pastExpiry = expiresAt.map { $0 <= now } ?? false
+            return ServerEntitlement(productId: productId, store: "app_store",
+                                     status: pastExpiry ? "grace_period" : "active",
+                                     expiresAt: expiresAt.map(ISO8601.string(from:)),
+                                     isTrial: false, offerType: nil)
         }
 
         /// Register a callback that fires when entitlements change.
@@ -1157,11 +1178,36 @@ struct EntitlementSources {
                 guard let client = AppDNA.billingAPIClient else { return nil }
                 return await ReceiptVerifier(apiClient: client).fetchEntitlements(appUserId: userId)
             },
-            localExpirations: { await StoreKitEntitlementReader.expirations(for: $0) },
+            localExpirations: {
+                await StoreKitEntitlementReader.expirations(for: $0, appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
+            },
             currentUserId: { AppDNA.identityManagerRef?.currentIdentity.userId },
             defaults: .standard,
             now: Date.init
         )
+    }
+}
+
+/// The persisted copy of `BillingModule.cachedServerOnly`: the server-only rows of the last successful
+/// `/billing/entitlements` read and the user they belong to. Stored in the same defaults as the
+/// fingerprint and read back only for the same user.
+enum ServerOnlyEntitlementCache {
+    static let storageKey = "appdna.billing.server_only_entitlements_v1"
+
+    private struct Stored: Codable {
+        let userId: String
+        let items: [ServerEntitlement]
+    }
+
+    static func load(_ defaults: UserDefaults) -> (userId: String, items: [ServerEntitlement])? {
+        guard let data = defaults.data(forKey: storageKey),
+              let stored = try? JSONDecoder().decode(Stored.self, from: data) else { return nil }
+        return (stored.userId, stored.items)
+    }
+
+    static func save(userId: String, items: [ServerEntitlement], _ defaults: UserDefaults) {
+        guard let data = try? JSONEncoder().encode(Stored(userId: userId, items: items)) else { return }
+        defaults.set(data, forKey: storageKey)
     }
 }
 

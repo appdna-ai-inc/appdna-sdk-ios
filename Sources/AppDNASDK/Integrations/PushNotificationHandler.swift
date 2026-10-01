@@ -1,5 +1,8 @@
 import Foundation
 import UserNotifications
+#if SWIFT_PACKAGE
+@_spi(AppDNAInternal) import AppDNANotificationExtension
+#endif
 
 /// Handles push notification display and tracking.
 ///
@@ -52,99 +55,11 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
     }
 }
 
-// MARK: - Action categories
+// MARK: - Action categories (app side)
 
-/// SPEC-084 / SPEC-497 §17 item 28 — registers the push's action buttons as a notification category.
-/// iOS shows buttons only for a category registered BEFORE the notification is displayed, so the server
-/// sends every distinct button set under its own id (`aps.category` = `appdna_` + a hash of the set) and
-/// the SDK registers it:
-///   - in the Notification Service Extension (`NotificationService`), on receipt, before display —
-///     the only point that works for the FIRST push with a new button set while the app is not running;
-///   - when the app sees the push (foreground delivery, a tap) and at `configure` from the notifications
-///     still in Notification Centre, so a later push with the same set shows its buttons without the
-///     extension.
-/// Goes through a `NotificationCenterSlot` (SPEC-497 §9a.8) so it never touches
-/// `UNUserNotificationCenter.current()` in a hostless test, where that call raises.
-enum PushActionCategories {
-    /// The category id a payload's buttons register under: `aps.category`, else a top-level `category`,
-    /// else `appdna_default`.
-    static func categoryId(from userInfo: [AnyHashable: Any]) -> String {
-        if let aps = userInfo["aps"] as? [String: Any], let id = aps["category"] as? String, !id.isEmpty { return id }
-        if let id = userInfo["category"] as? String, !id.isEmpty { return id }
-        return "appdna_default"
-    }
-
-    /// The category for the payload's buttons, or nil when it has none. Buttons are the server's SDK shape
-    /// `{id, label, action_type, action_value?, foreground}`: `foreground` → `.foreground`; `dismiss` →
-    /// `.destructive`; `text_reply` → a text-input action whose placeholder is `action_value`.
-    static func category(from userInfo: [AnyHashable: Any]) -> UNNotificationCategory? {
-        guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else { return nil }
-
-        // SPEC-088: Interpolate action button labels
-        let pushCtx = TemplateEngine.shared.buildContext()
-        let actions: [UNNotificationAction] = actionsData.compactMap { actionData in
-            guard let id = actionData["id"] as? String,
-                  let rawLabel = actionData["label"] as? String else { return nil }
-            let label = TemplateEngine.shared.interpolate(rawLabel, context: pushCtx)
-            let type = actionData["action_type"] as? String
-            let foreground = actionData["foreground"] as? Bool ?? false
-            var options: UNNotificationActionOptions = foreground ? [.foreground] : []
-            if type == "dismiss" { options.insert(.destructive) }
-
-            if type == "text_reply" {
-                let placeholder = actionData["action_value"] as? String ?? ""
-                return UNTextInputNotificationAction(
-                    identifier: id, title: label, options: options,
-                    textInputButtonTitle: label, textInputPlaceholder: placeholder
-                )
-            }
-
-            // SPEC-085: Action button icon support (iOS 15+)
-            if #available(iOS 15.0, *) {
-                if let iconData = actionData["icon"] as? [String: Any],
-                   let iconLib = iconData["library"] as? String,
-                   let iconName = iconData["name"] as? String {
-                    let sfSymbolName: String
-                    if iconLib == "sf-symbols" {
-                        sfSymbolName = iconName
-                    } else if iconLib == "lucide", let mapped = IconMapping.lucideToSFSymbol[iconName] {
-                        sfSymbolName = mapped
-                    } else if iconLib == "material", let mapped = IconMapping.materialToSFSymbol[iconName] {
-                        sfSymbolName = mapped
-                    } else {
-                        sfSymbolName = iconName
-                    }
-                    let icon = UNNotificationActionIcon(systemImageName: sfSymbolName)
-                    return UNNotificationAction(identifier: id, title: label, options: options, icon: icon)
-                }
-            }
-            return UNNotificationAction(identifier: id, title: label, options: options)
-        }
-        guard !actions.isEmpty else { return nil }
-        return UNNotificationCategory(
-            identifier: categoryId(from: userInfo),
-            actions: actions,
-            intentIdentifiers: [],
-            options: []
-        )
-    }
-
-    /// Registers the payload's category (replacing one with the same id; every other category — the
-    /// host's own included — is kept). `completion` runs once the set has been handed to the centre.
-    static func register(
-        from userInfo: [AnyHashable: Any],
-        slot: NotificationCenterSlot?,
-        completion: (() -> Void)? = nil
-    ) {
-        guard let slot, let category = category(from: userInfo) else { completion?(); return }
-        slot.getCategories { existing in
-            var categories = existing.filter { $0.identifier != category.identifier }
-            categories.insert(category)
-            slot.setCategories(categories)
-            completion?()
-        }
-    }
-
+/// The app-only part of `PushActionCategories` (which lives in the extension-safe
+/// `AppDNANotificationExtension` module so a Notification Service Extension can link it alone).
+extension PushActionCategories {
     /// At `configure`: registers the categories of the AppDNA notifications still in Notification Centre
     /// (delivered while the app was not running, with no Notification Service Extension to register them).
     static func registerFromDeliveredNotifications() {

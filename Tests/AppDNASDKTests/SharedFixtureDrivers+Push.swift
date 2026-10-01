@@ -20,6 +20,7 @@ import UserNotifications
 import XCTest
 import ObjectiveC
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 /// The in-memory notification-centre slot hostless tests inject (the real centre raises there).
 final class InMemoryNotificationCenterSlot: NotificationCenterSlot {
@@ -37,6 +38,9 @@ final class InMemoryNotificationCenterSlot: NotificationCenterSlot {
 
     func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void) { completion(categories) }
     func setCategories(_ categories: Set<UNNotificationCategory>) { self.categories = categories }
+    /// The category ids of the "delivered" notifications `deliveredCategoryIds` reports.
+    var delivered: Set<String> = []
+    func deliveredCategoryIds(_ completion: @escaping (Set<String>) -> Void) { completion(delivered) }
     /// Every notification the SDK posted through the slot (`notification_posted`).
     private(set) var posted: [UNNotificationRequest] = []
     func add(_ request: UNNotificationRequest) { posted.append(request) }

@@ -8,9 +8,10 @@ import Adapty
 ///
 /// Usage: Configure via `AppDNA.configure(billing: .adapty(apiKey: "..."))`
 ///
-/// Requires Adapty SDK to be available (conditionally imported). Compiles against Adapty 3.x (checked
-/// against 3.17) and the 2.x APIs it shares: `Adapty.activate(_:)`, `Adapty.restorePurchases()`,
-/// `Adapty.getProfile()`, `AdaptyProfile.accessLevels`. The SDK does not BUY through Adapty (see `purchase`).
+/// Requires Adapty SDK to be available (conditionally imported). Compiled against Adapty 3.17.3 in a
+/// scratch package (this file verbatim): `Adapty.activate(_:)`, `Adapty.restorePurchases()`,
+/// `Adapty.getProfile()`, `AdaptyProfile.accessLevels`, `AccessLevel.vendorProductId`. The 2.x releases
+/// share these APIs but were not compiled against. The SDK does not BUY through Adapty (see `purchase`).
 /// If Adapty is not linked, this bridge logs a warning and returns empty results.
 ///
 /// **Subscription lifecycle** (`subscription_renewed` / `_canceled` / `_renewal_failed`) is NOT emitted

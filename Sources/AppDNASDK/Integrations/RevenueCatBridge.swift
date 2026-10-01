@@ -1,5 +1,31 @@
 import Foundation
 
+/// How a RevenueCat purchase failure is typed. Outside `#if canImport(RevenueCat)` so it is tested
+/// without RevenueCat linked.
+///
+/// RevenueCat's async `purchase(package:)` (4.x and 5.x, `Purchases+async.swift`) THROWS when the user
+/// cancels: the completion's error is RevenueCat's `ErrorCode.purchaseCancelledError` (raw value 1), which
+/// reaches Swift as an `NSError` in the `ErrorCode` domain (`"RevenueCat.ErrorCode"`, the default
+/// `CustomNSError` domain of `RevenueCat.ErrorCode`). The bridge used to rethrow it raw, so
+/// `billingErrorType` read `unknown`: a cancel was tracked as `purchase_failed`, React Native rejected
+/// with a generic code and Flutter returned an error instead of `{status: "cancelled"}`.
+enum RevenueCatErrors {
+    static let errorDomain = "RevenueCat.ErrorCode"
+    static let purchaseCancelledCode = 1
+
+    /// Whether `error` is RevenueCat's `purchaseCancelledError`.
+    static func isPurchaseCancelled(_ error: Error) -> Bool {
+        let ns = error as NSError
+        return ns.domain == errorDomain && ns.code == purchaseCancelledCode
+    }
+
+    /// The error a failed RevenueCat purchase is reported with: a user cancel becomes
+    /// `BillingError.userCancelled` (the SDK's one typed cancel); anything else is kept as it is.
+    static func purchaseFailure(_ error: Error) -> Error {
+        isPurchaseCancelled(error) ? BillingError.userCancelled : error
+    }
+}
+
 #if canImport(RevenueCat)
 import RevenueCat
 
@@ -46,13 +72,24 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         // SPEC-497 §11.9 (R74) — keep the StoreTransaction: its `transactionIdentifier` is the STORE
         // transaction id revenue dedupe matches against the RevenueCat webhook. This used to be discarded
         // and the RevenueCat app-user id was reported as `transaction_id` instead. (`customerInfo` is not
-        // needed any more.) Review-only: no CI job compiles this file (RevenueCat is not linked).
+        // needed any more.) No CI job compiles this file (RevenueCat is not linked); it was compiled against
+        // RevenueCat 4.x and 5.x in a scratch package when the cancel mapping was added.
         let storeTransaction: StoreTransaction?
+        let userCancelled: Bool
         do {
-            (storeTransaction, _, _) = try await Purchases.shared.purchase(package: package)
+            let data = try await Purchases.shared.purchase(package: package)
+            storeTransaction = data.transaction
+            userCancelled = data.userCancelled
         } catch {
-            await fireBillingPurchaseFailed(productId: productId, error: error)
-            throw error
+            // A cancel throws `ErrorCode.purchaseCancelledError` — typed as `BillingError.userCancelled`.
+            let failure = RevenueCatErrors.purchaseFailure(error)
+            await fireBillingPurchaseFailed(productId: productId, error: failure)
+            throw failure
+        }
+        // Belt and braces: a result that reports the cancel without throwing.
+        if userCancelled {
+            await fireBillingPurchaseFailed(productId: productId, error: BillingError.userCancelled)
+            throw BillingError.userCancelled
         }
 
         let product = package.storeProduct

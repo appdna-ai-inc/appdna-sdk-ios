@@ -10,6 +10,7 @@
 
 import XCTest
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 // MARK: - I8
 

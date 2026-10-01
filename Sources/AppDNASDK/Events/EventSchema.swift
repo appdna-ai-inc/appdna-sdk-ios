@@ -186,10 +186,15 @@ enum EventEnvelopeBuilder {
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
     }()
 
+    /// Where the device's zone is read from: `TimeZone.current` in production, called on EVERY event.
+    /// Test seam — tests set it and restore it: `NSTimeZone.default` does not reach `TimeZone.current` on
+    /// every simulator (iOS 26.2 reports the host Mac's zone), so tests cannot steer the zone through it.
+    static var timeZoneProvider: () -> TimeZone = { TimeZone.current }
+
     /// The device's IANA zone id, or nil when the platform reports none. Read per event (not cached) so a
     /// user who travels is scheduled in the zone they are in now.
     static func deviceTimeZoneId() -> String? {
-        let id = TimeZone.current.identifier
+        let id = timeZoneProvider().identifier
         return id.isEmpty ? nil : id
     }
 

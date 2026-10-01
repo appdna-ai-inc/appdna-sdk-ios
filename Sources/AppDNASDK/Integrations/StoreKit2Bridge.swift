@@ -73,6 +73,10 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         let products: [Product]
         do {
             products = try await loadProducts([productId])
+        } catch let cancellation as CancellationError {
+            // The host cancelled its own Task: not a failed purchase. Rethrown as-is and not reported to
+            // `onPurchaseFailed` — the same rule as `AppDNA.billing.purchase` (no `purchase_failed`).
+            throw cancellation
         } catch {
             // A THROWN lookup (network, StoreKit unavailable) used to leave the purchase with no
             // `onPurchaseFailed` — only a lookup that returned nothing fired it.
@@ -111,7 +115,10 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             result = try await product.purchase(options: options)
         } catch {
             await deliveryQueue.endPurchase(productId: product.id)
-            await fireBillingPurchaseFailed(productId: productId, error: error)
+            // A Task cancellation is not a failed purchase (see the lookup above).
+            if !(error is CancellationError) {
+                await fireBillingPurchaseFailed(productId: productId, error: error)
+            }
             throw error
         }
 

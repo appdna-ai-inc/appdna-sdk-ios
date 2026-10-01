@@ -55,7 +55,7 @@ public enum BillingError: LocalizedError {
 }
 
 /// Map ANY billing error — `BillingError`, the active `StoreKit2Bridge`'s `StoreKit2Error`, a raw
-/// `SKError`, or a transport failure — onto the same discriminator vocabulary. Unrecognized errors
+/// `SKError`, RevenueCat's `purchaseCancelledError`, or a transport failure — onto the same discriminator vocabulary. Unrecognized errors
 /// are "unknown" rather than being force-fit into a category the host would act on wrongly.
 ///
 /// **Public** because it is the wrappers' only way to type a failure. React Native and Flutter receive
@@ -80,6 +80,11 @@ public func billingErrorType(_ error: Error) -> String {
         }
     }
     if let skError = error as? SKError, skError.code == .paymentCancelled {
+        return "userCancelled"
+    }
+    // RevenueCat's `purchaseCancelledError` (the bridge maps it to `BillingError.userCancelled`; this
+    // covers one that reaches a caller untranslated).
+    if RevenueCatErrors.isPurchaseCancelled(error) {
         return "userCancelled"
     }
     if error is URLError {

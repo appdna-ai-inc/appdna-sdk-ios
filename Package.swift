@@ -7,7 +7,12 @@ let package = Package(
     products: [
         // SPEC-497 B6 — the product carries the ObjC `AppDNASDKLoader` target (the `+load` launch hook
         // that installs the notification proxy). Consumers' `Package.swift` lines are unchanged.
-        .library(name: "AppDNASDK", targets: ["AppDNASDK", "AppDNASDKLoader"])
+        .library(name: "AppDNASDK", targets: ["AppDNASDK", "AppDNASDKLoader"]),
+        // The extension-safe Notification Service Extension helper (`NotificationService` + the push
+        // action-button categories). No dependencies and no app-only API, so a Notification Service
+        // Extension links it alone; AppDNASDK depends on it, so the app and the extension register
+        // button categories through the same code.
+        .library(name: "AppDNANotificationExtension", targets: ["AppDNANotificationExtension"]),
     ],
     dependencies: [
         .package(url: "https://github.com/kishikawakatsumi/KeychainAccess.git", from: "4.2.2"),
@@ -38,6 +43,7 @@ let package = Package(
         .target(
             name: "AppDNASDK",
             dependencies: [
+                "AppDNANotificationExtension",
                 "KeychainAccess",
                 .product(name: "FirebaseFirestore", package: "firebase-ios-sdk"),
                 // One product, because 9.x publishes exactly one. See the note above the
@@ -55,6 +61,14 @@ let package = Package(
         // ("include") directory path … is invalid"), so an empty `include/` is committed with a
         // `.gitkeep` (hidden files are ignored by SwiftPM and by the podspec's `*.m` glob).
         .target(
+            name: "AppDNANotificationExtension",
+            // Application-extension-only API: an extension target compiles it with
+            // APPLICATION_EXTENSION_API_ONLY. (Not an `unsafeFlags` setting — SwiftPM refuses a remote
+            // package that uses one; `scripts/__tests__/ios-notification-service-extension-safe.test.ts`
+            // keeps app-only API out of it.)
+            path: "Sources/AppDNANotificationExtension"
+        ),
+        .target(
             name: "AppDNASDKLoader",
             path: "Sources/AppDNASDKLoader"
         ),
@@ -62,6 +76,7 @@ let package = Package(
             name: "AppDNASDKTests",
             dependencies: [
                 "AppDNASDK",
+                "AppDNANotificationExtension",
                 // Linked so the tests can prove the real loader class is present.
                 "AppDNASDKLoader",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),

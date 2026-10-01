@@ -20,6 +20,7 @@
 
 import XCTest
 @testable import AppDNASDK
+@_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
 final class BillingEntitlementAndVerificationTests: XCTestCase {
 
@@ -167,6 +168,70 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         cache.update(row)
         XCTAssertTrue(cache.hasActiveSubscription)
         XCTAssertNotNil(cache.entitlement(for: "m"))
+    }
+
+    // MARK: - 1b. Grace period / billing retry stay active
+
+    /// StoreKit keeps a subscription in `Transaction.currentEntitlements` during its billing grace period
+    /// although its `expirationDate` has passed. NEGATIVE CONTROL: `getEntitlements` and the refresh applied
+    /// `expiresAt > now` to it, so a paying user in grace read `isActive == false`.
+    func testLocalProductWithAPastExpiryStaysActive() async {
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        let module = makeModule(bridge, world, spy: spy)
+        bridge.ids = ["monthly"]
+        world.expirations = ["monthly": world.now.addingTimeInterval(-3_600)]
+        let direct = await module.getEntitlements()
+        XCTAssertEqual(direct.map(\.isActive), [true], "getEntitlements: held by the store → active")
+        await module.refreshEntitlementCache()
+        let ok = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(spy.changes.first?.map(\.isActive), [true], "onEntitlementsChanged: held by the store → active")
+        XCTAssertEqual(spy.changes.first?.first?.expiresAt, world.expirations["monthly"], "the real (past) expiry is still carried")
+    }
+
+    /// The scheduled expiry re-check must not flip a product the store still holds after its expiry.
+    /// NEGATIVE CONTROL: the re-check found the product still in `currentEntitlements` past its expiry,
+    /// computed `isActive == false` and fired a second callback reporting the subscriber as inactive.
+    func testScheduledRecheckDoesNotFlipAGracePeriodProduct() async {
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        let module = makeModule(bridge, world, spy: spy)
+        module.expiryRecheckLeeway = 0.05
+        module.entitlementSources.now = { Date() }
+        bridge.ids = ["weekly"]
+        world.expirations = ["weekly": Date().addingTimeInterval(0.3)]
+        await module.refreshEntitlementCache()
+        let ok = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok)
+        // The expiry passes; StoreKit still holds the transaction (billing grace period).
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        await settle()
+        XCTAssertEqual(spy.changes.count, 1, "no change reported: the product is still entitled")
+        XCTAssertEqual(spy.changes.last?.map(\.isActive), [true])
+        let direct = await module.getEntitlements()
+        XCTAssertEqual(direct.map(\.isActive), [true])
+        module.teardown()
+    }
+
+    /// Server rows: `grace_period` / `billing_retry` have a past `current_period_end` by definition.
+    /// NEGATIVE CONTROL: `publicEntitlements` applied the expiry check to every status, so both read
+    /// inactive. An `active` row past its expiry (a canceled-but-paid row cached offline) still ends.
+    func testServerRetryRowsWithAPastExpiryStayActive() async {
+        let past = "2020-01-01T00:00:00.000Z"
+        let rows = ["billing_retry", "grace_period", "active", "trialing", "expired"].map {
+            ServerEntitlement(productId: $0, store: "app_store", status: $0, expiresAt: past, isTrial: false, offerType: nil)
+        }
+        XCTAssertEqual(AppDNA.BillingModule.publicEntitlements(rows).map(\.isActive), [true, true, false, false, false])
+
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        let module = makeModule(bridge, world, spy: spy)
+        world.userId = "user-1"
+        world.server = [ServerEntitlement(productId: "cross", store: "google_play", status: "billing_retry",
+                                          expiresAt: past, isTrial: false, offerType: nil)]
+        await module.refreshEntitlementCache()
+        let ok = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(spy.changes.first?.map(\.productId), ["cross"])
+        XCTAssertEqual(spy.changes.first?.map(\.isActive), [true], "a billing_retry row from the server stays active")
     }
 
     // MARK: - 2. Real changes only — renewal, expiry, refund
@@ -551,8 +616,9 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
             deliveringDelegate: { nil }, tracker: { nil }
         ))
         await queue.markReported("1")
-        XCTAssertEqual(defaults.data(forKey: CorruptStore.key(for: PurchaseDeliveryQueue.storageKey)), garbage,
-                       "the unreadable payload is preserved")
+        let copies = CorruptStore.copyKeys(for: PurchaseDeliveryQueue.storageKey, defaults: defaults)
+        XCTAssertEqual(copies.count, 1)
+        XCTAssertEqual(copies.first.flatMap { defaults.data(forKey: $0) }, garbage, "the unreadable payload is preserved")
         let reported = await queue.isReported("1")
         XCTAssertTrue(reported, "the queue carries on with a fresh store")
     }
@@ -574,5 +640,106 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         await queue.drain()
         let env = await MainActor.run { spy.infos.first?.environment }
         XCTAssertEqual(env, "sandbox")
+    }
+
+    // MARK: - Round 18
+
+    /// NEGATIVE CONTROL: one `<key>.corrupt` slot, so a second unreadable payload overwrote the first.
+    func testCorruptCopiesAreTimestampedAndCappedAtThree() {
+        let key = "ai.appdna.test.store"
+        struct Bad: Error {}
+        for i in 0..<5 {
+            CorruptStore.preserve(Data("bad-\(i)".utf8), key: key, defaults: defaults, error: Bad(),
+                                  now: Date(timeIntervalSince1970: 1_000 + Double(i)))
+        }
+        // The same payload again is not a new copy.
+        CorruptStore.preserve(Data("bad-4".utf8), key: key, defaults: defaults, error: Bad(), now: Date(timeIntervalSince1970: 2_000))
+        let copies = CorruptStore.copyKeys(for: key, defaults: defaults)
+        XCTAssertEqual(copies, ["\(key).corrupt.1002000", "\(key).corrupt.1003000", "\(key).corrupt.1004000"])
+        XCTAssertEqual(copies.map { String(decoding: defaults.data(forKey: $0) ?? Data(), as: UTF8.self) }, ["bad-2", "bad-3", "bad-4"])
+        XCTAssertNil(defaults.data(forKey: "\(key).corrupt.1000000"), "the oldest copies are pruned")
+    }
+
+    /// RevenueCat's async purchase THROWS `ErrorCode.purchaseCancelledError` (NSError, domain
+    /// "RevenueCat.ErrorCode", code 1) on a cancel. NEGATIVE CONTROL: it was rethrown raw, typed `unknown`,
+    /// and the direct purchase tracked `purchase_failed` instead of `purchase_canceled`.
+    func testRevenueCatCancelIsAUserCancel() async {
+        let rcCancel = NSError(domain: "RevenueCat.ErrorCode", code: 1)
+        XCTAssertEqual(billingErrorType(rcCancel), "userCancelled")
+        XCTAssertEqual(billingErrorType(NSError(domain: "RevenueCat.ErrorCode", code: 2)), "unknown", "another RevenueCat error is not a cancel")
+        let mapped = RevenueCatErrors.purchaseFailure(rcCancel)
+        guard case BillingError.userCancelled? = mapped as? BillingError else { return XCTFail("mapped to \(mapped)") }
+
+        let bridge = FakeBridge(); bridge.purchaseError = mapped
+        let module = AppDNA.BillingModule()
+        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        do { _ = try await module.purchase("p"); XCTFail("must throw") } catch {}
+        XCTAssertEqual(events.map(\.event_name), ["purchase_started", "purchase_canceled"])
+    }
+
+    /// NEGATIVE CONTROL: a Task cancellation during the product lookup fired `onPurchaseFailed`.
+    func testTaskCancellationDuringLookupIsNotAFailedPurchase() async {
+        let spy = Spy()
+        let previous = AppDNA.billing.currentDelegate
+        AppDNA.billing.setDelegate(spy, deliversPurchases: false)
+        defer { AppDNA.billing.setDelegate(previous, deliversPurchases: false) }
+        let bridge = StoreKit2Bridge(loadProducts: { _ in throw CancellationError() })
+        do {
+            _ = try await bridge.purchase(productId: "p1", appAccountToken: nil)
+            XCTFail("must throw")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        await settle()
+        XCTAssertEqual(spy.failed, [])
+    }
+
+    /// NEGATIVE CONTROL: `expirations(for:)` read every user's transactions, so another user's later expiry
+    /// of the same product became this user's `expiresAt`.
+    func testExpirationsApplyTheOwnerFilter() {
+        let me = UUID(), other = UUID()
+        let d1 = Date(timeIntervalSince1970: 1_000), d2 = Date(timeIntervalSince1970: 2_000)
+        let facts = [
+            StoreKitEntitlementReader.ExpiryFact(productId: "m", appAccountToken: me, revoked: false, expirationDate: d1),
+            StoreKitEntitlementReader.ExpiryFact(productId: "m", appAccountToken: other, revoked: false, expirationDate: d2),
+            StoreKitEntitlementReader.ExpiryFact(productId: "u", appAccountToken: nil, revoked: false, expirationDate: d2),
+        ]
+        XCTAssertEqual(StoreKitEntitlementReader.expirations(of: facts, for: ["m", "u"], appAccountToken: me, firstIdentifiedToken: other),
+                       ["m": d1], "another user's transaction and an untagged one (not the first identifier) are skipped")
+        XCTAssertEqual(StoreKitEntitlementReader.expirations(of: facts, for: ["m", "u"], appAccountToken: me, firstIdentifiedToken: me),
+                       ["m": d1, "u": d2], "the first identifier inherits untagged history")
+        XCTAssertEqual(StoreKitEntitlementReader.expirations(of: facts, for: ["m"], appAccountToken: nil, firstIdentifiedToken: nil),
+                       ["m": d2], "anonymous: every transaction (the anonymous policy)")
+    }
+
+    /// The fingerprint is persisted, so the server-only rows must be too. NEGATIVE CONTROL: the server-only
+    /// cache lived in memory only, so an OFFLINE relaunch dropped the cross-platform purchase and fired
+    /// `onEntitlementsChanged` without it.
+    func testOfflineRelaunchKeepsServerOnlyEntitlements() async {
+        let bridge = FakeBridge(); let world = World()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [ServerEntitlement(productId: "cross", store: "google_play", status: "active",
+                                          expiresAt: nil, isTrial: false, offerType: nil)]
+        let firstLaunch = Spy()
+        let module1 = makeModule(bridge, world, spy: firstLaunch)
+        await module1.refreshEntitlementCache()
+        let ok = await waitUntil { firstLaunch.changes.count == 1 }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(Set(firstLaunch.changes[0].map(\.productId)), ["monthly", "cross"])
+        module1.setDelegate(nil)
+
+        world.server = nil                              // offline
+        let relaunch = Spy()
+        let module2 = makeModule(bridge, world, spy: relaunch)
+        await module2.refreshEntitlementCache()
+        await settle()
+        XCTAssertEqual(relaunch.changes.count, 0, "offline after a relaunch is not a change")
+
+        world.userId = "user-2"                         // another user never inherits them
+        await module2.refreshEntitlementCache()
+        let ok2 = await waitUntil { relaunch.changes.count == 1 }
+        XCTAssertTrue(ok2)
+        XCTAssertEqual(relaunch.changes.last?.map(\.productId), ["monthly"])
     }
 }
