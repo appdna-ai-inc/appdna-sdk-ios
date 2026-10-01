@@ -52,7 +52,14 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
             return result
         }
         func restore(appAccountToken: UUID?) async throws -> [String] { ids }
-        func getEntitlements(appAccountToken: UUID?) async -> [String] { ids }
+        private let readsLock = NSLock()
+        private var _reads = 0
+        /// How many times a refresh read the device's entitlements.
+        var reads: Int { readsLock.lock(); defer { readsLock.unlock() }; return _reads }
+        func getEntitlements(appAccountToken: UUID?) async -> [String] {
+            readsLock.lock(); _reads += 1; readsLock.unlock()
+            return ids
+        }
     }
 
     /// Mutable inputs the injected entitlement sources read.
@@ -895,6 +902,94 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
         let reported = await waitUntil { spy.changes.last?.contains { $0.productId == "cross" } == true }
         XCTAssertTrue(reported)
+    }
+
+    /// Round 21 (I4+I5 m1) — sign-out and sign-in again while a refresh is in flight. NEGATIVE CONTROL: the
+    /// overtaken pass still swapped the fingerprint and posted what it had read (the device set, without the
+    /// server rows its stale answer lost), then the sign-in's own refresh posted the full set — two changes,
+    /// the first one wrong. Now the overtaken pass publishes nothing and the sign-in's refresh reports once.
+    func testResetAndReIdentifyDuringARefreshFiresExactlyOneChange() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        let stale = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended, "the refresh never reached the server read")
+
+        // `AppDNA.reset()`, then `AppDNA.identify("user-1")`, which queues its own refresh behind the stale one.
+        world.userId = nil
+        module.clearServerOnlyEntitlementCache()
+        world.userId = "user-1"
+        let signIn = Task { await module.refreshEntitlementCache() }
+        gate.open()
+        await stale.value
+        await signIn.value
+        await settle()
+
+        XCTAssertEqual(spy.changes.count, 1, "reset + re-identify must report one change, not the stale pass's too")
+        XCTAssertEqual(Set(spy.changes.first?.map(\.productId) ?? []), ["monthly", "cross"],
+                       "the one change is the signed-in user's full state")
+        XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
+    }
+
+    /// Round 21 (I4+I5 m1/m2) — a pass a sign-out overtook publishes nothing: no change, no persisted
+    /// fingerprint, no expiry re-check. NEGATIVE CONTROL: it posted the signed-out user's StoreKit set (read
+    /// under their `appAccountToken`), saved it as the last-known state and scheduled a re-check for its expiry.
+    func testAStalePassPublishesNothing() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = []
+        // An expiry 0.2 s ahead of the pass's clock: a scheduled re-check would read again within ~0.2 s.
+        world.expirations = ["monthly": world.now.addingTimeInterval(0.2)]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        module.expiryRecheckLeeway = 0
+        let refresh = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended, "the refresh never reached the server read")
+
+        world.userId = nil                         // `AppDNA.reset()`
+        module.clearServerOnlyEntitlementCache()
+        gate.open()
+        await refresh.value
+        try? await Task.sleep(nanoseconds: 700_000_000)  // past the expiry a re-check would have been set for
+        await settle()
+
+        XCTAssertEqual(spy.changes.count, 0, "the signed-out user's entitlements were published after reset()")
+        XCTAssertNil(defaults.stringArray(forKey: EntitlementFingerprint.storageKey), "the stale pass recorded its answer as the last-known state")
+        XCTAssertEqual(bridge.reads, 1, "the stale pass scheduled an expiry re-check")
+
+        // Control: the next (fresh) pass reports the anonymous state against the untouched baseline.
+        await module.refreshEntitlementCache()
+        let reported = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(reported, "a fresh pass after the stale one must still report")
+    }
+
+    /// Control: a switch to another user with no sign-out (identify user-2 while user-1's pass is in flight)
+    /// makes the pass stale too — user-1's server row is never published, and user-2's refresh reports once.
+    func testAUserSwitchDuringARefreshFiresOnlyTheNewUsersChange() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        let stale = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended)
+        world.userId = "user-2"
+        world.server = []
+        let signIn = Task { await module.refreshEntitlementCache() }
+        gate.open()
+        await stale.value
+        await signIn.value
+        await settle()
+        XCTAssertEqual(spy.changes.count, 1)
+        XCTAssertEqual(spy.changes.first?.map(\.productId), ["monthly"], "user-2's state, without user-1's server row")
     }
 
     /// RevenueCat / Adapty purchases do not carry the SDK's `appAccountToken`. NEGATIVE CONTROL: the owner

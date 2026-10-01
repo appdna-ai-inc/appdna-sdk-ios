@@ -475,8 +475,9 @@ extension AppDNA {
 
         /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
         /// cache of the same user; otherwise none. A pass that a sign-out overtook (`resetGeneration` moved
-        /// since the pass began) or whose user is no longer the current one gets none and writes nothing: its
-        /// answer is the signed-out (or previous) user's, and `reset()` has already cleared their rows.
+        /// since the pass began) or whose user is no longer the current one saves nothing here: its answer is
+        /// the signed-out (or previous) user's, and `reset()` has already cleared their rows. Such a pass is
+        /// stale, and `performEntitlementRefresh` then stops at `commitRefresh` without publishing anything.
         private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>,
                                             defaults: UserDefaults, generation: Int,
                                             currentUserId: String?) -> [ServerEntitlement] {
@@ -523,14 +524,35 @@ extension AppDNA {
             return resetGeneration
         }
 
-        /// Record `fingerprint` as the last-known state; returns whether it differs from the previous one
-        /// (seeded from the persisted copy on the first call).
-        private func swapFingerprint(_ fingerprint: [String], defaults: UserDefaults) -> Bool {
+        /// What a finished refresh pass may do with its answer (`commitRefresh`).
+        enum RefreshCommit: Equatable {
+            /// A sign-out happened, or the current user changed, while the pass was awaiting: its answer is
+            /// the previous user's. It changes nothing and publishes nothing.
+            case stale
+            /// The answer is the last-known state.
+            case unchanged
+            /// The answer differs from the last-known state, which it now is.
+            case changed
+        }
+
+        /// Record `fingerprint` as the last-known state, unless the pass is stale: a sign-out since it began
+        /// (`generation` is not `resetGeneration`) or a user other than the one it read for (`passUserId` is not
+        /// `currentUserId`). Seeded from the persisted copy on the first call. The stale check and the swap are
+        /// one critical section, so a `reset()` cannot land between them.
+        private func commitRefresh(_ fingerprint: [String], defaults: UserDefaults, generation: Int,
+                                   passUserId: String?, currentUserId: String?) -> RefreshCommit {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
+            guard generation == resetGeneration, passUserId == currentUserId else { return .stale }
             let before = lastKnownFingerprint ?? EntitlementFingerprint.load(defaults)
             lastKnownFingerprint = fingerprint
-            return fingerprint != before
+            return fingerprint != before ? .changed : .unchanged
+        }
+
+        /// A user id as a pass compares it: nil or empty is anonymous.
+        private static func passUser(_ id: String?) -> String? {
+            guard let id, !id.isEmpty else { return nil }
+            return id
         }
 
         /// One refresh pass. What it reads:
@@ -551,14 +573,23 @@ extension AppDNA {
         /// `SubscriptionStatusObserver` pass (launch, app foreground, `Transaction.updates` — renewals,
         /// refunds / revocations, late purchases — and a provider's subscriber-state callback), and the
         /// expiry re-check scheduled below at the earliest future `expiresAt`.
+        ///
+        /// 🔴 A STALE pass returns before any of that. A pass awaits StoreKit and the server; when a sign-out
+        /// (`reset()`) or a user switch lands meanwhile, everything it read is the previous user's — the
+        /// StoreKit set under their `appAccountToken`, their server rows. It used to record that as the
+        /// last-known state, post it, and schedule an expiry re-check for it: after `reset()` + `identify` the
+        /// app saw the signed-out user's set, then the new session's — two changes, one of them wrong. Now it
+        /// returns with no fingerprint swap, no post and no re-check; the sign-in's own refresh (queued behind
+        /// it) reports the new user's state once.
         private func performEntitlementRefresh() async {
             guard let bridge = bridge else {
                 Log.warning("BillingModule.refreshEntitlementCache: no billing provider configured")
                 return
             }
             let sources = entitlementSources
-            // Before any await: a sign-out after this point voids this pass's server answer.
+            // Before any await: a sign-out or user switch after this point makes the pass stale.
             let generation = currentResetGeneration()
+            let passUserId = Self.passUser(sources.currentUserId())
             // The token filters out the previous user's transactions — this runs on every `identify`.
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             var seen = Set<String>()
@@ -569,17 +600,22 @@ extension AppDNA {
                 Self.localEntitlement(id, expiresAt: expirations[id], now: now)
             }
 
-            if let userId = sources.currentUserId(), !userId.isEmpty {
+            if let userId = passUserId {
                 let server = await sources.server(userId)
                 entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults,
                                                        generation: generation, currentUserId: sources.currentUserId())
             }
 
             let fingerprint = EntitlementFingerprint.make(entitlements, now: now)
-            let changed = swapFingerprint(fingerprint, defaults: sources.defaults)
+            let commit = commitRefresh(fingerprint, defaults: sources.defaults, generation: generation,
+                                       passUserId: passUserId, currentUserId: Self.passUser(sources.currentUserId()))
+            guard commit != .stale else {
+                Log.debug("BillingModule.refreshEntitlementCache: a sign-out or user switch overtook this pass; dropped")
+                return
+            }
 
             scheduleExpiryCheck(entitlements, now: now)
-            guard changed else { return }
+            guard commit == .changed else { return }
             EntitlementFingerprint.save(fingerprint, sources.defaults)
             NotificationCenter.default.post(name: .entitlementsChanged, object: nil,
                                             userInfo: ["entitlements": entitlements])
