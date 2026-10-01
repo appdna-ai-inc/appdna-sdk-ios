@@ -34,6 +34,11 @@ struct EventDevice: Codable {
     /// Optional, and Codable omits it when nil — so a native host's envelope is byte-identical to
     /// what it was, and no existing consumer sees a new key.
     let framework_version: String?
+    /// The device's IANA time-zone id (`TimeZone.current.identifier`, e.g. "Europe/Berlin"), so the
+    /// server can send time-zone-aware pushes, quiet hours and journey waits in the user's own zone
+    /// without the host passing a `timezone` trait. Optional: an event persisted by an older SDK decodes
+    /// without it, and nil is omitted from the JSON.
+    let timezone: String?
 }
 
 struct EventContext: Codable {
@@ -181,6 +186,13 @@ enum EventEnvelopeBuilder {
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
     }()
 
+    /// The device's IANA zone id, or nil when the platform reports none. Read per event (not cached) so a
+    /// user who travels is scheduled in the zone they are in now.
+    static func deviceTimeZoneId() -> String? {
+        let id = TimeZone.current.identifier
+        return id.isEmpty ? nil : id
+    }
+
     static func build(
         event: String,
         properties: [String: Any]?,
@@ -214,7 +226,8 @@ enum EventEnvelopeBuilder {
             locale: Locale.current.identifier(.bcp47),
             country: (Locale.current as NSLocale).countryCode ?? "",
             framework: AppDNA.framework,
-            framework_version: AppDNA.frameworkVersion
+            framework_version: AppDNA.frameworkVersion,
+            timezone: Self.deviceTimeZoneId()
         )
 
         let props: [String: AnyCodable]? = properties?.mapValues { AnyCodable($0) }

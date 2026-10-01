@@ -2002,6 +2002,19 @@ final class SharedFixtureTests: XCTestCase {
         let previous = AppDNA.eventTrackerForTesting
         AppDNA.installEventTrackerForTest(h.tracker)
         defer { AppDNA.installEventTrackerForTest(previous) }
+
+        // `setup.device_timezone` — installed as the process default zone, which is what
+        // `TimeZone.current` reports, and restored after. The SDK reads it through the platform API;
+        // the driver never hands it to the SDK.
+        let savedZone = NSTimeZone.default
+        if let zoneId = f.setup.raw["device_timezone"]?.stringValue {
+            guard let zone = TimeZone(identifier: zoneId) else {
+                return XCTFail("[\(f.id)] setup.device_timezone '\(zoneId)' is not an IANA zone")
+            }
+            NSTimeZone.default = zone
+        }
+        defer { NSTimeZone.default = savedZone }
+
         AppDNA.track(event: name, properties: props)
         AppDNA.drainSDKQueueForTesting()
     }
@@ -2239,6 +2252,11 @@ final class SharedFixtureTests: XCTestCase {
                     assertContext(expectedValue, of: actual, prefix: "\(prefix) event[\(i)]")
                     continue
                 }
+                // `device` is the envelope's device block, not a property.
+                if key == "device" {
+                    assertDevice(expectedValue, of: actual, prefix: "\(prefix) event[\(i)]")
+                    continue
+                }
                 let actualValue = actual.properties?[key]?.value
                 assertEqualJSON(
                     expected: expectedValue,
@@ -2318,6 +2336,18 @@ final class SharedFixtureTests: XCTestCase {
         ]
         for (key, value) in expectedContext {
             assertEqualJSON(expected: value, actual: actual[key], label: "\(prefix).context.\(key)")
+        }
+    }
+
+    private func assertDevice(_ expected: AnyJSON, of event: SDKEvent, prefix: String) {
+        guard let expectedDevice = expected.objectValue else { return }
+        // Read off the ENCODED envelope — the JSON the SDK ships — so a field the Codable drops (or
+        // never declares) fails here rather than passing on an in-memory property.
+        let data = (try? JSONEncoder().encode(event)) ?? Data()
+        let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let actual = json?["device"] as? [String: Any] ?? [:]
+        for (key, value) in expectedDevice {
+            assertEqualJSON(expected: value, actual: actual[key], label: "\(prefix).device.\(key)")
         }
     }
 
