@@ -12,6 +12,8 @@ dependencies and application-extension-only API, so it links into the extension 
   s.author           = { 'AppDNA' => 'hello@appdna.ai' }
   s.source           = { :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => "v#{s.version}" }
   s.source_files     = ['Sources/AppDNANotificationExtension/**/*.swift']
+  # The extension links only this pod, so it ships this pod's privacy manifest (UserDefaults, CA92.1).
+  s.resource_bundles = { 'AppDNANotificationExtension' => ['Sources/AppDNANotificationExtension/PrivacyInfo.xcprivacy'] }
   s.platform         = :ios, '16.0'
   s.swift_version    = '5.9'
   s.frameworks       = 'UIKit', 'UserNotifications', 'Foundation'

@@ -698,6 +698,8 @@ public final class AppDNA: @unchecked Sendable {
             // next user's first reconcile does not diff their entitlements against this user's snapshot
             // and fabricate a phantom subscription_canceled/_renewal_failed. See clearPersistedSnapshot().
             SubscriptionStatusObserver.clearPersistedSnapshot()
+            // The server-only entitlement rows (a purchase on another platform) of the signed-out user.
+            AppDNA.billing.clearServerOnlyEntitlementCache()
 
             // 🔴 USER A'S ONBOARDING ANSWERS SURVIVED THE SIGN-OUT AND RENDERED INTO USER B'S PAYWALL.
             //

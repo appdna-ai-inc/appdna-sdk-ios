@@ -62,6 +62,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         var userId: String? = nil
         var now = Date(timeIntervalSince1970: 1_800_000_000)
         var serverCalls = 0
+        /// The `ownerFiltered` flag of every `localExpirations` read.
+        var ownerFiltered: [Bool] = []
     }
 
     private var events: [SDKEvent] = []
@@ -83,12 +85,13 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeModule(_ bridge: FakeBridge, _ world: World, spy: Spy) -> AppDNA.BillingModule {
+    private func makeModule(_ bridge: FakeBridge, _ world: World, spy: Spy,
+                            provider: BillingProvider = .storeKit2) -> AppDNA.BillingModule {
         let module = AppDNA.BillingModule()
-        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: provider, bridgeLinked: true), tracker: tracker)
         module.entitlementSources = EntitlementSources(
             server: { _ in world.serverCalls += 1; return world.server },
-            localExpirations: { ids in world.expirations.filter { ids.contains($0.key) } },
+            localExpirations: { ids, ownerFiltered in world.ownerFiltered.append(ownerFiltered); return world.expirations.filter { ids.contains($0.key) } },
             currentUserId: { world.userId },
             defaults: defaults,
             now: { world.now }
@@ -741,5 +744,95 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let ok2 = await waitUntil { relaunch.changes.count == 1 }
         XCTAssertTrue(ok2)
         XCTAssertEqual(relaunch.changes.last?.map(\.productId), ["monthly"])
+    }
+
+    // MARK: - Round 19
+
+    /// NEGATIVE CONTROL: `reset()` (sign-out) left the signed-out user's server-only rows persisted.
+    func testResetClearsTheServerOnlyEntitlementCache() {
+        let saved = AppDNA.billing.entitlementSources
+        AppDNA.billing.entitlementSources.defaults = defaults
+        defer { AppDNA.billing.entitlementSources = saved }
+        ServerOnlyEntitlementCache.save(userId: "user-1", items: [ServerEntitlement(
+            productId: "cross", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)], defaults)
+        XCTAssertNotNil(ServerOnlyEntitlementCache.load(defaults))
+        AppDNA.reset()
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline, ServerOnlyEntitlementCache.load(defaults) != nil {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertNil(ServerOnlyEntitlementCache.load(defaults), "the signed-out user's server-only rows outlived reset()")
+    }
+
+    /// NEGATIVE CONTROL: the in-memory copy survived the clear, so the same user signing back in while
+    /// offline still got the signed-out session's cross-platform rows.
+    func testClearedServerOnlyCacheIsNotReusedOffline() async {
+        let bridge = FakeBridge(); let world = World()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [ServerEntitlement(productId: "cross", store: "google_play", status: "active",
+                                          expiresAt: nil, isTrial: false, offerType: nil)]
+        let spy = Spy()
+        let module = makeModule(bridge, world, spy: spy)
+        await module.refreshEntitlementCache()
+        let ok = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(ok)
+
+        module.clearServerOnlyEntitlementCache()
+        world.server = nil // offline
+        await module.refreshEntitlementCache()
+        let ok2 = await waitUntil { spy.changes.count == 2 }
+        XCTAssertTrue(ok2)
+        XCTAssertEqual(spy.changes.last?.map(\.productId), ["monthly"])
+    }
+
+    /// RevenueCat / Adapty purchases do not carry the SDK's `appAccountToken`. NEGATIVE CONTROL: the owner
+    /// filter ran on them too, so for any user but the first identifier every one was denied as
+    /// "untagged, another user" and `expiresAt` was always nil.
+    func testProviderProductExpiriesSkipTheOwnerFilter() {
+        let me = UUID(), first = UUID()
+        let d = Date(timeIntervalSince1970: 3_000)
+        let facts = [StoreKitEntitlementReader.ExpiryFact(productId: "rc_monthly", appAccountToken: nil, revoked: false, expirationDate: d),
+                     StoreKitEntitlementReader.ExpiryFact(productId: "rc_monthly", appAccountToken: nil, revoked: true,
+                                                          expirationDate: d.addingTimeInterval(99))]
+        XCTAssertEqual(StoreKitEntitlementReader.expirations(of: facts, for: ["rc_monthly"], appAccountToken: me, firstIdentifiedToken: first),
+                       [:], "the StoreKit-owned path still filters")
+        XCTAssertEqual(StoreKitEntitlementReader.expirations(of: facts, for: ["rc_monthly"], appAccountToken: me, firstIdentifiedToken: first,
+                                                             applyOwnerFilter: false),
+                       ["rc_monthly": d], "a revoked transaction still never lends its expiry")
+    }
+
+    /// The refresh and `getEntitlements` read expiries owner-filtered only under `storeKit2`.
+    func testExpiryOwnerFilterFollowsTheProvider() async {
+        for (provider, expected) in [(BillingProvider.storeKit2, true), (.revenueCat, false), (.adapty(apiKey: "k"), false)] {
+            let bridge = FakeBridge(); let world = World()
+            bridge.ids = ["monthly"]
+            let module = makeModule(bridge, world, spy: Spy(), provider: provider)
+            _ = await module.getEntitlements()
+            await module.refreshEntitlementCache()
+            XCTAssertEqual(world.ownerFiltered, [expected, expected], "\(provider)")
+        }
+    }
+
+    /// An older SDK kept ONE `<key>.corrupt` copy. NEGATIVE CONTROL: it was outside the index, so it was never
+    /// listed and never pruned — a fourth copy beside the cap of three.
+    func testLegacyCorruptCopyIsFoldedIntoTheIndexAndPruned() {
+        let key = "ai.appdna.test.legacy"
+        struct Bad: Error {}
+        defaults.set(Data("legacy".utf8), forKey: "\(key).corrupt")
+        XCTAssertEqual(CorruptStore.copyKeys(for: key, defaults: defaults), ["\(key).corrupt"], "listed before any new copy")
+
+        CorruptStore.preserve(Data("bad-0".utf8), key: key, defaults: defaults, error: Bad(), now: Date(timeIntervalSince1970: 1))
+        XCTAssertEqual(CorruptStore.copyKeys(for: key, defaults: defaults), ["\(key).corrupt", "\(key).corrupt.1000"])
+        XCTAssertEqual(defaults.stringArray(forKey: CorruptStore.indexKey(for: key)), ["\(key).corrupt", "\(key).corrupt.1000"],
+                       "the index itself now holds it")
+
+        for i in 1..<3 {
+            CorruptStore.preserve(Data("bad-\(i)".utf8), key: key, defaults: defaults, error: Bad(),
+                                  now: Date(timeIntervalSince1970: 1 + Double(i)))
+        }
+        XCTAssertEqual(CorruptStore.copyKeys(for: key, defaults: defaults),
+                       ["\(key).corrupt.1000", "\(key).corrupt.2000", "\(key).corrupt.3000"])
+        XCTAssertNil(defaults.data(forKey: "\(key).corrupt"), "the legacy copy is pruned like any oldest copy")
     }
 }

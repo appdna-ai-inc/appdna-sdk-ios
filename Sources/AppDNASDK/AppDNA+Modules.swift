@@ -415,7 +415,7 @@ extension AppDNA {
                 return []
             }
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
-            let expirations = await entitlementSources.localExpirations(productIds)
+            let expirations = await entitlementSources.localExpirations(productIds, Self.expiryOwnerFiltered(ownershipPolicy))
             let now = entitlementSources.now()
             return Self.publicEntitlements(productIds.map { Self.localEntitlement($0, expiresAt: expirations[$0], now: now) },
                                            now: now)
@@ -487,6 +487,25 @@ extension AppDNA {
             return []
         }
 
+        /// Whether a product's StoreKit expiry is read through `EntitlementOwnerFilter`. Only when the SDK
+        /// owns StoreKit (`storeKit2`): it tags its purchases with the user's `appAccountToken`, and its
+        /// product ids passed the same filter. Under RevenueCat or Adapty the product ids are the provider's
+        /// answer for its current user and the provider's purchases do not carry the SDK's token, so the
+        /// filter would drop every one of them and `expiresAt` would always be nil.
+        static func expiryOwnerFiltered(_ policy: BillingOwnershipPolicy) -> Bool {
+            policy.provider == "storeKit2"
+        }
+
+        /// Sign-out (`AppDNA.reset()`): forget the server-only rows of the signed-out user, in memory and
+        /// persisted. They were reused only for the same user id, but they are that user's purchase data
+        /// and must not outlive the sign-out on the device.
+        internal func clearServerOnlyEntitlementCache() {
+            entitlementHandlerLock.lock()
+            cachedServerOnly = nil
+            ServerOnlyEntitlementCache.clear(entitlementSources.defaults)
+            entitlementHandlerLock.unlock()
+        }
+
         /// Record `fingerprint` as the last-known state; returns whether it differs from the previous one
         /// (seeded from the persisted copy on the first call).
         private func swapFingerprint(_ fingerprint: [String], defaults: UserDefaults) -> Bool {
@@ -525,7 +544,7 @@ extension AppDNA {
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             var seen = Set<String>()
             let localIds = productIds.filter { seen.insert($0).inserted }
-            let expirations = await sources.localExpirations(localIds)
+            let expirations = await sources.localExpirations(localIds, Self.expiryOwnerFiltered(ownershipPolicy))
             let now = sources.now()
             var entitlements: [ServerEntitlement] = localIds.map { id in
                 Self.localEntitlement(id, expiresAt: expirations[id], now: now)
@@ -1166,8 +1185,9 @@ enum DeepLinkAnalytics {
 struct EntitlementSources {
     /// The server's entitlements for `appUserId`; nil when the call failed or no client exists.
     var server: (_ appUserId: String) async -> [ServerEntitlement]?
-    /// StoreKit's expiry per product id (`StoreKitEntitlementReader.expirations`).
-    var localExpirations: (_ productIds: [String]) async -> [String: Date]
+    /// StoreKit's expiry per product id (`StoreKitEntitlementReader.expirations`); `ownerFiltered` is
+    /// `BillingModule.expiryOwnerFiltered(policy)`.
+    var localExpirations: (_ productIds: [String], _ ownerFiltered: Bool) async -> [String: Date]
     var currentUserId: () -> String?
     var defaults: UserDefaults
     var now: () -> Date
@@ -1178,8 +1198,9 @@ struct EntitlementSources {
                 guard let client = AppDNA.billingAPIClient else { return nil }
                 return await ReceiptVerifier(apiClient: client).fetchEntitlements(appUserId: userId)
             },
-            localExpirations: {
-                await StoreKitEntitlementReader.expirations(for: $0, appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
+            localExpirations: { productIds, ownerFiltered in
+                await StoreKitEntitlementReader.expirations(for: productIds, appAccountToken: AppAccountTokenResolver.tokenForCurrentUser(),
+                                                            applyOwnerFilter: ownerFiltered)
             },
             currentUserId: { AppDNA.identityManagerRef?.currentIdentity.userId },
             defaults: .standard,
@@ -1208,6 +1229,10 @@ enum ServerOnlyEntitlementCache {
     static func save(userId: String, items: [ServerEntitlement], _ defaults: UserDefaults) {
         guard let data = try? JSONEncoder().encode(Stored(userId: userId, items: items)) else { return }
         defaults.set(data, forKey: storageKey)
+    }
+
+    static func clear(_ defaults: UserDefaults) {
+        defaults.removeObject(forKey: storageKey)
     }
 }
 

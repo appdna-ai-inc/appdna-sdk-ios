@@ -194,9 +194,17 @@ enum CorruptStore {
 
     static func indexKey(for key: String) -> String { key + ".corrupt.index" }
 
-    /// The keys of the copies kept for `key`, oldest first.
+    /// The single copy key an older SDK used (`<key>.corrupt`, overwritten by each new unreadable payload).
+    static func legacyKey(for key: String) -> String { key + ".corrupt" }
+
+    /// The keys of the copies kept for `key`, oldest first. A legacy `<key>.corrupt` copy left by an older
+    /// SDK is folded in as the OLDEST entry, so it is listed and counts toward (and is pruned by) the cap;
+    /// the next `preserve` writes it into the index.
     static func copyKeys(for key: String, defaults: UserDefaults) -> [String] {
-        defaults.stringArray(forKey: indexKey(for: key)) ?? []
+        let indexed = defaults.stringArray(forKey: indexKey(for: key)) ?? []
+        let legacy = legacyKey(for: key)
+        guard !indexed.contains(legacy), defaults.object(forKey: legacy) != nil else { return indexed }
+        return [legacy] + indexed
     }
 
     static func preserve(_ data: Data, key: String, defaults: UserDefaults, error: Error, now: Date = Date()) {

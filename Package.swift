@@ -61,7 +61,11 @@ let package = Package(
             // APPLICATION_EXTENSION_API_ONLY. (Not an `unsafeFlags` setting — SwiftPM refuses a remote
             // package that uses one; `scripts/__tests__/ios-notification-extension-safe.test.ts`
             // keeps app-only API out of it.)
-            path: "Sources/AppDNANotificationExtension"
+            path: "Sources/AppDNANotificationExtension",
+            // An extension that links only this module ships only this manifest (it uses UserDefaults).
+            resources: [
+                .copy("PrivacyInfo.xcprivacy")
+            ]
         ),
         // SPEC-497 B6 — a `.m` only, NO public header, so nothing here is exposed to Swift hosts.
         // `publicHeadersPath` is omitted, so SwiftPM uses the default `include/` — and SwiftPM (Xcode

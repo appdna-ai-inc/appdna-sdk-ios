@@ -163,10 +163,22 @@ import UserNotifications
     /// Registers the payload's category (replacing one with the same id; every other category — the
     /// host's own included — is kept). `completion` runs once the set has been handed to the centre.
     ///
-    /// Serialised: each registration is a read (`getCategories`) followed by a write (`setCategories`),
-    /// and two that overlapped (two pushes, or the extension's and the app's paths at once) both read
-    /// the same set and the second write dropped the first one's category. A registration starts only
-    /// after the previous one has written.
+    /// Each registration is a read (`getCategories`) followed by a write (`setCategories`) of the whole
+    /// set, so two registrations that overlap both read the same set and the later write drops the
+    /// earlier one's category.
+    ///   - Within one process they are serialised (`RegistrationQueue`): a registration starts only after
+    ///     the previous one has written.
+    ///   - Across processes (the Notification Service Extension and the app) nothing can serialise them:
+    ///     the SDK has no App Group, so there is no shared lock or file. Instead every write is merged
+    ///     into what is registered at that moment and then re-checked: after writing, the registration
+    ///     reads the set again and, if its category is gone (the other process wrote a set it had read
+    ///     before this write), merges it into that newer set and writes again — up to
+    ///     `maxReMergeAttempts` times.
+    ///   - The race that remains: the other process writes a set it read BEFORE this registration's last
+    ///     write, and that write lands AFTER this registration's last re-check. The category is then
+    ///     missing until a process registers it again — the app does when it sees a push with those
+    ///     buttons (foreground delivery, a tap) and at `configure` for the notifications still in
+    ///     Notification Centre.
     ///
     /// Pruned: when more than `maxRegisteredCategories` `appdna_*` categories would be registered, the
     /// ones kept are the new one, those of notifications still in Notification Centre, and the most
@@ -180,24 +192,35 @@ import UserNotifications
         guard let slot, let category = category(from: userInfo) else { completion?(); return }
         RegistrationQueue.run { done in
             let recent = touchRecency(category.identifier)
-            slot.getCategories { existing in
+            let finish = { completion?(); done() }
+            // One merge-and-write of `category` into `existing`, then the re-check (see `register`).
+            func write(into existing: Set<UNNotificationCategory>, attempt: Int) {
                 var categories = existing.filter { $0.identifier != category.identifier }
-                let write: (Set<String>) -> Void = { delivered in
+                let commit: (Set<String>) -> Void = { delivered in
                     categories = prune(categories, newId: category.identifier, recent: recent, delivered: delivered)
                     categories.insert(category)
                     slot.setCategories(categories)
-                    completion?()
-                    done()
+                    slot.getCategories { after in
+                        if attempt < maxReMergeAttempts, !after.contains(where: { $0.identifier == category.identifier }) {
+                            write(into: after, attempt: attempt + 1)
+                        } else {
+                            finish()
+                        }
+                    }
                 }
                 let ours = categories.filter { isOurs($0.identifier) }.count
                 if ours + (isOurs(category.identifier) ? 1 : 0) > maxRegisteredCategories {
-                    slot.deliveredCategoryIds(write)
+                    slot.deliveredCategoryIds(commit)
                 } else {
-                    write([])
+                    commit([])
                 }
             }
+            slot.getCategories { existing in write(into: existing, attempt: 0) }
         }
     }
+
+    /// How many times a registration re-merges its category after another process's write dropped it.
+    public static let maxReMergeAttempts = 3
 
     public static func isOurs(_ identifier: String) -> Bool { identifier.hasPrefix("appdna_") }
 

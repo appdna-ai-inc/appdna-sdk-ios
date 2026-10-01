@@ -128,6 +128,51 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(Set(slot.categories.map(\.identifier)), ["appdna_one", "appdna_two"])
     }
 
+    /// The other process (the Notification Service Extension, or the app) as the centre sees it: right
+    /// after this process's `clobberOnWrite`-th write it writes the set IT read before that write, plus its
+    /// own category — so this process's category is dropped. `RegistrationQueue` cannot serialise that.
+    final class OtherProcessSlot: NotificationCenterSlot {
+        private(set) var categories: Set<UNNotificationCategory> = []
+        var delegate: UNUserNotificationCenterDelegate?
+        let otherCategory: UNNotificationCategory
+        var clobberOnWrite: Set<Int>
+        private var writes = 0
+        init(other: String, clobberOnWrite: Set<Int>) {
+            otherCategory = UNNotificationCategory(identifier: other, actions: [], intentIdentifiers: [], options: [])
+            self.clobberOnWrite = clobberOnWrite
+        }
+        func getCategories(_ completion: @escaping (Set<UNNotificationCategory>) -> Void) { completion(categories) }
+        func setCategories(_ new: Set<UNNotificationCategory>) {
+            let before = categories
+            writes += 1
+            categories = new
+            if clobberOnWrite.contains(writes) { categories = before.union([otherCategory]) }
+        }
+        func deliveredCategoryIds(_ completion: @escaping (Set<String>) -> Void) { completion([]) }
+        func add(_ request: UNNotificationRequest) {}
+    }
+
+    /// NEGATIVE CONTROL: the registration wrote once and trusted it, so the other process's write — built
+    /// from a set read before ours — dropped `appdna_ours` and only `appdna_theirs` stayed registered.
+    func testAnotherProcessesOverlappingWriteIsReMerged() {
+        let slot = OtherProcessSlot(other: "appdna_theirs", clobberOnWrite: [])
+        slot.setCategories([UNNotificationCategory(identifier: "HOST_CAT", actions: [], intentIdentifiers: [], options: [])])
+        slot.clobberOnWrite = [2] // the first write above was the host's seed
+        PushActionCategories.register(from: userInfo(category: "appdna_ours"), slot: slot)
+        XCTAssertEqual(Set(slot.categories.map(\.identifier)), ["HOST_CAT", "appdna_ours", "appdna_theirs"])
+    }
+
+    /// The re-check is bounded: a centre that drops the category on every write ends the registration
+    /// after `maxReMergeAttempts` re-merges (it still completes).
+    func testReMergeIsBounded() {
+        let max = PushActionCategories.maxReMergeAttempts
+        let slot = OtherProcessSlot(other: "appdna_theirs", clobberOnWrite: Set(1...(max + 5)))
+        var completed = 0
+        PushActionCategories.register(from: userInfo(category: "appdna_ours"), slot: slot) { completed += 1 }
+        XCTAssertEqual(completed, 1)
+        XCTAssertFalse(slot.categories.contains { $0.identifier == "appdna_ours" }, "the documented remaining race")
+    }
+
     /// The extension (no SDK context) and the app (the user's context) must register the same titles.
     /// NEGATIVE CONTROL: the app interpolated with its own context, so the same category read
     /// "Hi Ada" from the app and "Hi there" from the extension.

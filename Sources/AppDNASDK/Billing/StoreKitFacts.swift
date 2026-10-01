@@ -47,7 +47,12 @@ extension StoreKitEntitlementReader {
     /// same `EntitlementOwnerFilter` as `productIds(appAccountToken:)`, so another user's transaction of
     /// the same product can never lend its expiry. A product without an expiry (a non-consumable, a
     /// lifetime unlock) has no key. Read-only; never finishes anything.
-    static func expirations(for productIds: [String], appAccountToken: UUID?) async -> [String: Date] {
+    ///
+    /// `applyOwnerFilter: false` is for product ids a provider (RevenueCat, Adapty) returned: the provider
+    /// already decided they are the current user's, and its transactions do not carry the SDK's
+    /// `appAccountToken`, so the filter would deny every one (untagged, not the first identifier) and the
+    /// expiry would never show. Every verified, unrevoked transaction of those products counts then.
+    static func expirations(for productIds: [String], appAccountToken: UUID?, applyOwnerFilter: Bool = true) async -> [String: Date] {
         guard !productIds.isEmpty else { return [:] }
         var facts: [ExpiryFact] = []
         for await result in Transaction.currentEntitlements {
@@ -56,7 +61,8 @@ extension StoreKitEntitlementReader {
                                     revoked: transaction.revocationDate != nil, expirationDate: transaction.expirationDate))
         }
         return expirations(of: facts, for: productIds, appAccountToken: appAccountToken,
-                           firstIdentifiedToken: AppAccountTokenResolver.firstIdentifiedToken())
+                           firstIdentifiedToken: AppAccountTokenResolver.firstIdentifiedToken(),
+                           applyOwnerFilter: applyOwnerFilter)
     }
 
     /// Pure core of `expirations(for:appAccountToken:)`.
@@ -64,16 +70,19 @@ extension StoreKitEntitlementReader {
         of facts: [ExpiryFact],
         for productIds: [String],
         appAccountToken: UUID?,
-        firstIdentifiedToken: UUID?
+        firstIdentifiedToken: UUID?,
+        applyOwnerFilter: Bool = true
     ) -> [String: Date] {
         let wanted = Set(productIds)
         var out: [String: Date] = [:]
         for fact in facts {
             guard wanted.contains(fact.productId), !fact.revoked, let expiry = fact.expirationDate else { continue }
-            switch EntitlementOwnerFilter.decide(transactionToken: fact.appAccountToken, expectedToken: appAccountToken,
-                                                 firstIdentifiedToken: firstIdentifiedToken) {
-            case .grant, .grantAnonymousPolicy, .grantUntaggedMigration: break
-            case .denyOtherUser, .denyUntaggedOtherUser: continue
+            if applyOwnerFilter {
+                switch EntitlementOwnerFilter.decide(transactionToken: fact.appAccountToken, expectedToken: appAccountToken,
+                                                     firstIdentifiedToken: firstIdentifiedToken) {
+                case .grant, .grantAnonymousPolicy, .grantUntaggedMigration: break
+                case .denyOtherUser, .denyUntaggedOtherUser: continue
+                }
             }
             if let known = out[fact.productId], known >= expiry { continue }
             out[fact.productId] = expiry
