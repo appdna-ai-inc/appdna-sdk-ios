@@ -55,19 +55,19 @@ let package = Package(
                 .copy("PrivacyInfo.xcprivacy")
             ]
         ),
+        .target(
+            name: "AppDNANotificationExtension",
+            // Application-extension-only API: an extension target compiles it with
+            // APPLICATION_EXTENSION_API_ONLY. (Not an `unsafeFlags` setting — SwiftPM refuses a remote
+            // package that uses one; `scripts/__tests__/ios-notification-extension-safe.test.ts`
+            // keeps app-only API out of it.)
+            path: "Sources/AppDNANotificationExtension"
+        ),
         // SPEC-497 B6 — a `.m` only, NO public header, so nothing here is exposed to Swift hosts.
         // `publicHeadersPath` is omitted, so SwiftPM uses the default `include/` — and SwiftPM (Xcode
         // 26) REFUSES to resolve the package when that directory is missing ("public headers
         // ("include") directory path … is invalid"), so an empty `include/` is committed with a
         // `.gitkeep` (hidden files are ignored by SwiftPM and by the podspec's `*.m` glob).
-        .target(
-            name: "AppDNANotificationExtension",
-            // Application-extension-only API: an extension target compiles it with
-            // APPLICATION_EXTENSION_API_ONLY. (Not an `unsafeFlags` setting — SwiftPM refuses a remote
-            // package that uses one; `scripts/__tests__/ios-notification-service-extension-safe.test.ts`
-            // keeps app-only API out of it.)
-            path: "Sources/AppDNANotificationExtension"
-        ),
         .target(
             name: "AppDNASDKLoader",
             path: "Sources/AppDNASDKLoader"
