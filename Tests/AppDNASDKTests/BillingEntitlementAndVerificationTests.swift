@@ -44,6 +44,10 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
     final class FakeBridge: BillingBridgeProtocol {
         var ids: [String] = []
+        /// When set, `getEntitlements` answers this instead of `ids` — evaluated at the read, so a test can
+        /// make the device's set depend on who the current user is (as StoreKit's does, through the
+        /// `appAccountToken` filter).
+        var idsAtRead: (() -> [String])?
         var purchaseError: Error?
         var result = PurchaseResult(productId: "p", transactionId: "1", price: 1, currency: "USD",
                                     provider: "storekit2", isSubscription: false, isConsumable: false)
@@ -58,7 +62,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         var reads: Int { readsLock.lock(); defer { readsLock.unlock() }; return _reads }
         func getEntitlements(appAccountToken: UUID?) async -> [String] {
             readsLock.lock(); _reads += 1; readsLock.unlock()
-            return ids
+            return idsAtRead?() ?? ids
         }
     }
 
@@ -969,12 +973,18 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertTrue(reported, "a fresh pass after the stale one must still report")
     }
 
-    /// Control: a switch to another user with no sign-out (identify user-2 while user-1's pass is in flight)
-    /// makes the pass stale too — user-1's server row is never published, and user-2's refresh reports once.
+    /// A switch to another user with no sign-out (identify user-2 while user-1's pass is in flight) makes the
+    /// pass stale too — user-1's state is never published, and user-2's refresh reports once.
+    ///
+    /// Round 22 (m1): the device set depends on the user, as StoreKit's does through the `appAccountToken`
+    /// filter — user-1 holds `[monthly, legacy]`, user-2 `[monthly]`. Before, both passes read the same
+    /// `[monthly]`, so the stale pass posting its answer was indistinguishable from user-2's and the test
+    /// passed without the user check. NEGATIVE CONTROL: with `passUserId == currentUserId` removed from
+    /// `commitRefresh`, the stale pass posts user-1's `[monthly, legacy]` first — two changes.
     func testAUserSwitchDuringARefreshFiresOnlyTheNewUsersChange() async {
         let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
         world.userId = "user-1"
-        bridge.ids = ["monthly"]
+        bridge.idsAtRead = { world.userId == "user-2" ? ["monthly"] : ["monthly", "legacy"] }
         world.server = [crossRow]
         let spy = Spy()
         let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
@@ -988,8 +998,108 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         await stale.value
         await signIn.value
         await settle()
-        XCTAssertEqual(spy.changes.count, 1)
-        XCTAssertEqual(spy.changes.first?.map(\.productId), ["monthly"], "user-2's state, without user-1's server row")
+        XCTAssertEqual(bridge.reads, 2, "the stale pass read user-1's set before the switch, user-2's pass its own")
+        XCTAssertEqual(spy.changes.count, 1, "only user-2's state is reported, not the stale pass's user-1 set too")
+        XCTAssertEqual(spy.changes.first?.map(\.productId), ["monthly"],
+                       "user-2's state, without user-1's legacy product or server row")
+    }
+
+    // MARK: - Round 22 — sign-out reports the signed-out state
+
+    /// Round 22 (M1) — a sign-out with no sign-in after it. NEGATIVE CONTROL: `reset()` only cleared the
+    /// server-only rows and queued no refresh, so the host was never told the signed-out user's
+    /// cross-platform purchase was gone (Android fires `[]` from `EntitlementCache.clear()`). Now one change,
+    /// with the anonymous state: on iOS the device's StoreKit set, without the server-only row.
+    func testSignOutWithNoSignInFiresExactlyOneChangeWithoutTheServerRow() async {
+        let bridge = FakeBridge(); let world = World()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeModule(bridge, world, spy: spy)
+        await module.refreshEntitlementCache()
+        let signedIn = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(signedIn)
+        XCTAssertEqual(Set(spy.changes[0].map(\.productId)), ["monthly", "cross"])
+
+        world.userId = nil                         // `AppDNA.reset()`: the identity goes anonymous …
+        module.signOut()                           // … and billing signs out. No refresh is called here.
+        let reported = await waitUntil { spy.changes.count == 2 }
+        XCTAssertTrue(reported, "the sign-out reported no entitlement change")
+        await settle()
+        XCTAssertEqual(spy.changes.count, 2, "exactly one change for the sign-out")
+        XCTAssertEqual(spy.changes.last?.map(\.productId), ["monthly"],
+                       "the anonymous state is the device's StoreKit set, without the signed-out user's server row")
+        XCTAssertNil(ServerOnlyEntitlementCache.load(defaults))
+    }
+
+    /// Round 22 (M1) — the sign-out refresh does not add a second change when the user signs straight back
+    /// in while an earlier pass is in flight (the round-21 case, now with the refresh `signOut()` queues).
+    func testSignOutRefreshAndReIdentifyDuringARefreshStillFireExactlyOneChange() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        let stale = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended, "the refresh never reached the server read")
+
+        world.userId = nil
+        module.signOut()                           // `AppDNA.reset()`: queues the sign-out refresh
+        world.userId = "user-1"
+        let signIn = Task { await module.refreshEntitlementCache() }   // `identify("user-1")`
+        gate.open()
+        await stale.value
+        await signIn.value
+        await settle()
+
+        XCTAssertEqual(spy.changes.count, 1, "reset + re-identify must report one change")
+        XCTAssertEqual(Set(spy.changes.first?.map(\.productId) ?? []), ["monthly", "cross"],
+                       "the one change is the signed-in user's full state")
+    }
+
+    /// Round 22 (M1) — the same through the public `AppDNA.reset()`, on the process-wide `AppDNA.billing`.
+    /// NEGATIVE CONTROL: as above — `reset()` posted nothing.
+    func testAppDNAResetReportsTheSignedOutState() async {
+        let billing = AppDNA.billing
+        let prior = (configured: billing.configured, bridge: billing.bridge, policy: billing.ownershipPolicy,
+                     tracker: billing.eventTracker, sources: billing.entitlementSources, delegate: billing.currentDelegate)
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        // Unique ids: the process-wide module keeps its last-known state from earlier tests.
+        let device = "r22-\(UUID().uuidString)", cross = "r22-cross-\(UUID().uuidString)"
+        bridge.ids = [device]
+        world.userId = "user-1"
+        world.server = [ServerEntitlement(productId: cross, store: "google_play", status: "active",
+                                          expiresAt: nil, isTrial: false, offerType: nil)]
+        billing.wire(bridge: bridge, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true), tracker: tracker)
+        billing.entitlementSources = EntitlementSources(
+            server: { _ in world.server }, localExpirations: { _, _ in [:] },
+            currentUserId: { world.userId }, defaults: defaults, now: { world.now })
+        billing.setDelegate(spy, deliversPurchases: false)
+        await billing.refreshEntitlementCache()
+        let signedIn = await waitUntil { spy.changes.count == 1 }
+        XCTAssertTrue(signedIn)
+
+        world.userId = nil
+        AppDNA.reset()
+        let reported = await waitUntil(10) { spy.changes.count == 2 }
+        XCTAssertTrue(reported, "AppDNA.reset() reported no entitlement change")
+        await settle()
+        XCTAssertEqual(spy.changes.count, 2, "exactly one change for the sign-out")
+        XCTAssertEqual(spy.changes.last?.map(\.productId), [device], "without the signed-out user's server row")
+
+        await billing.refreshEntitlementCache()    // drain the chain before restoring
+        billing.setDelegate(prior.delegate, deliversPurchases: false)
+        billing.entitlementSources = prior.sources
+        if prior.configured {
+            billing.wire(bridge: prior.bridge, policy: prior.policy, tracker: prior.tracker)
+        } else {
+            billing.teardown()
+            billing.bridge = prior.bridge
+            billing.eventTracker = prior.tracker
+        }
     }
 
     /// RevenueCat / Adapty purchases do not carry the SDK's `appAccountToken`. NEGATIVE CONTROL: the owner

@@ -478,12 +478,14 @@ extension AppDNA {
         /// since the pass began) or whose user is no longer the current one saves nothing here: its answer is
         /// the signed-out (or previous) user's, and `reset()` has already cleared their rows. Such a pass is
         /// stale, and `performEntitlementRefresh` then stops at `commitRefresh` without publishing anything.
+        /// `currentUserId` is read while `entitlementHandlerLock` is held (see `commitRefresh` for what that
+        /// does and does not make atomic).
         private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>,
                                             defaults: UserDefaults, generation: Int,
-                                            currentUserId: String?) -> [ServerEntitlement] {
+                                            currentUserId: () -> String?) -> [ServerEntitlement] {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
-            guard generation == resetGeneration, currentUserId == userId else { return [] }
+            guard generation == resetGeneration, Self.passUser(currentUserId()) == userId else { return [] }
             if let server {
                 let serverOnly = server.filter { !localIds.contains($0.productId) }
                 cachedServerOnly = (userId, serverOnly)
@@ -506,9 +508,26 @@ extension AppDNA {
             policy.provider == "storeKit2"
         }
 
-        /// Sign-out (`AppDNA.reset()`): forget the server-only rows of the signed-out user, in memory and
-        /// persisted. They were reused only for the same user id, but they are that user's purchase data
-        /// and must not outlive the sign-out on the device.
+        /// Sign-out (`AppDNA.reset()`): forget the signed-out user's server-only rows, then queue one refresh
+        /// so the host hears the signed-out state. Without that refresh nothing reported the sign-out: the
+        /// cleared rows simply stopped appearing at the NEXT trigger (a foreground, a purchase), long after
+        /// the user had gone. The refresh is the ordinary diff-guarded pass, appended to the serial chain
+        /// synchronously here, so it runs before the refresh of any `identify` that follows:
+        ///   - sign-out with no sign-in: one `onEntitlementsChanged` with the anonymous state — on iOS the
+        ///     device's StoreKit set (`Transaction.currentEntitlements`, which belongs to the Apple ID, not
+        ///     to the app's user) WITHOUT the signed-out user's server-only rows; nothing when that is
+        ///     already the last-known state;
+        ///   - sign-out then `identify` before the pass reads: the pass reads the signed-in user, or is
+        ///     stale (`commitRefresh`); either way one change in all, not two.
+        internal func signOut() {
+            clearServerOnlyEntitlementCache()
+            _ = enqueueEntitlementRefresh()
+        }
+
+        /// The billing half of a sign-out without the refresh (`signOut()` is what `reset()` calls): forget
+        /// the server-only rows of the signed-out user, in memory and persisted. They were reused only for
+        /// the same user id, but they are that user's purchase data and must not outlive the sign-out on the
+        /// device.
         internal func clearServerOnlyEntitlementCache() {
             entitlementHandlerLock.lock()
             resetGeneration += 1
@@ -536,14 +555,25 @@ extension AppDNA {
         }
 
         /// Record `fingerprint` as the last-known state, unless the pass is stale: a sign-out since it began
-        /// (`generation` is not `resetGeneration`) or a user other than the one it read for (`passUserId` is not
-        /// `currentUserId`). Seeded from the persisted copy on the first call. The stale check and the swap are
-        /// one critical section, so a `reset()` cannot land between them.
+        /// (`generation` is not `resetGeneration`) or a current user other than the one it read for
+        /// (`currentUserId()` is not `passUserId`). Seeded from the persisted copy on the first call.
+        ///
+        /// What is atomic: the generation check, the call to `currentUserId()` and the fingerprint swap all run
+        /// inside one hold of `entitlementHandlerLock`. `clearServerOnlyEntitlementCache` (the billing half of
+        /// `reset()`) bumps `resetGeneration` under the same lock, so a sign-out lands either before the check
+        /// (this pass is stale) or after the swap (and the refresh `signOut()` queues behind this pass reports
+        /// the signed-out state).
+        ///
+        /// What is NOT atomic: the identity. The user id lives in `IdentityManager`, behind its own serial
+        /// queue, not this lock; `identify` can change it the instant after `currentUserId()` returns. This
+        /// pass then commits what it read for the previous user — a state that was true when it was read —
+        /// and the switch is still reported: `identify` queues its own refresh behind this one on the serial
+        /// chain, and that pass reads the new user.
         private func commitRefresh(_ fingerprint: [String], defaults: UserDefaults, generation: Int,
-                                   passUserId: String?, currentUserId: String?) -> RefreshCommit {
+                                   passUserId: String?, currentUserId: () -> String?) -> RefreshCommit {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
-            guard generation == resetGeneration, passUserId == currentUserId else { return .stale }
+            guard generation == resetGeneration, passUserId == Self.passUser(currentUserId()) else { return .stale }
             let before = lastKnownFingerprint ?? EntitlementFingerprint.load(defaults)
             lastKnownFingerprint = fingerprint
             return fingerprint != before ? .changed : .unchanged
@@ -569,7 +599,8 @@ extension AppDNA {
         /// state (every identify, every foreground) is not. The fingerprint is persisted, so the first refresh
         /// after a launch compares against the last one the app saw, not against "nothing".
         ///
-        /// Triggers (each diff-guarded here): a purchase, a restore, `identify`, every
+        /// Triggers (each diff-guarded here): a purchase, a restore, `identify`, a sign-out (`reset()` →
+        /// `signOut()`), every
         /// `SubscriptionStatusObserver` pass (launch, app foreground, `Transaction.updates` — renewals,
         /// refunds / revocations, late purchases — and a provider's subscriber-state callback), and the
         /// expiry re-check scheduled below at the earliest future `expiresAt`.
@@ -603,12 +634,12 @@ extension AppDNA {
             if let userId = passUserId {
                 let server = await sources.server(userId)
                 entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults,
-                                                       generation: generation, currentUserId: sources.currentUserId())
+                                                       generation: generation, currentUserId: sources.currentUserId)
             }
 
             let fingerprint = EntitlementFingerprint.make(entitlements, now: now)
             let commit = commitRefresh(fingerprint, defaults: sources.defaults, generation: generation,
-                                       passUserId: passUserId, currentUserId: Self.passUser(sources.currentUserId()))
+                                       passUserId: passUserId, currentUserId: sources.currentUserId)
             guard commit != .stale else {
                 Log.debug("BillingModule.refreshEntitlementCache: a sign-out or user switch overtook this pass; dropped")
                 return
