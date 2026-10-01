@@ -137,9 +137,9 @@ struct GoogleInteractiveMap: UIViewRepresentable {
             zoom: Float(initial.zoom)
         )
 
-        // `GMSMapViewOptions`, not the `init(frame:camera:)` pair — that initialiser is gone in the
-        // Maps SDK 11.x this package pins, and the options object is how a Cloud map ID is supplied
-        // at all.
+        // `GMSMapViewOptions`, not the older `init(frame:camera:)` pair — the options object is how a
+        // Cloud map ID is supplied at all. (The package pins Maps SDK 9.x: CocoaPods `~> 9.4`, SwiftPM
+        // `from: "9.4.0"` — see Package.swift.)
         let options = GMSMapViewOptions()
         options.camera = camera
         options.frame = .zero
