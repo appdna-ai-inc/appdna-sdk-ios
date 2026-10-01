@@ -9,7 +9,7 @@ import XCTest
 /// iOS + Android goldens are directly comparable (cross-platform parity, both systems 100%).
 ///
 /// Record the goldens (first run / after an intended render change):
-///   xcodebuild test -scheme AppDNASDK \
+///   xcodebuild test -scheme AppDNASDK-Package \
 ///     -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
 ///     -only-testing:AppDNASDKTests/VisualSnapshotTests RECORD_SNAPSHOTS=YES
 /// Then commit Tests/__Snapshots__/. CI re-runs without RECORD_SNAPSHOTS and fails on pixel deltas.

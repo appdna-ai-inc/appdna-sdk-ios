@@ -66,12 +66,13 @@ final class RebuyDriverPositiveControlTests: XCTestCase {
 /// that went around it would make that assertion meaningless.
 final class NotificationPostChokepointTests: XCTestCase {
 
-    /// `packages/appdna-sdk-ios/Sources`, found by walking up from this file.
+    /// `packages/appdna-sdk-ios/Sources` (every module — the slot lives in AppDNANotificationExtension),
+    /// found by walking up from this file.
     private func sourcesRoot() throws -> URL {
         var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         for _ in 0..<6 {
             let candidate = dir.appendingPathComponent("Sources/AppDNASDK")
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate.deletingLastPathComponent() }
             dir = dir.deletingLastPathComponent()
         }
         throw XCTSkip("Sources/AppDNASDK not found above \(#filePath) — the source tree is not next to the tests")

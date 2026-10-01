@@ -31,7 +31,7 @@ Add a new committed snapshot in the **same PR** that introduces or modifies a re
 cd packages/appdna-sdk-ios
 # Re-record all goldens in a target test class:
 xcodebuild test \
-  -scheme AppDNASDK \
+  -scheme AppDNASDK-Package \
   -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
   -only-testing:AppDNASDKTests/VisualSnapshotTests \
   RECORD_SNAPSHOTS=YES
