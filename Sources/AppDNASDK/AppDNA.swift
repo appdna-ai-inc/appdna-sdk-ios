@@ -699,8 +699,9 @@ public final class AppDNA: @unchecked Sendable {
             // and fabricate a phantom subscription_canceled/_renewal_failed. See clearPersistedSnapshot().
             SubscriptionStatusObserver.clearPersistedSnapshot()
             // The server-only entitlement rows (a purchase on another platform) of the signed-out user are
-            // cleared, and one entitlement refresh is queued so `onEntitlementsChanged` reports the
-            // signed-out state (the device's StoreKit set without those rows). It used to post nothing.
+            // cleared, and — when the SDK owns StoreKit — one entitlement refresh is queued so
+            // `onEntitlementsChanged` reports the signed-out state (the device's StoreKit set without those
+            // rows). Under RevenueCat / Adapty, or with no billing provider, none (`signOutRefreshes`).
             AppDNA.billing.signOut()
 
             // 🔴 USER A'S ONBOARDING ANSWERS SURVIVED THE SIGN-OUT AND RENDERED INTO USER B'S PAYWALL.

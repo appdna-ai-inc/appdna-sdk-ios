@@ -519,9 +519,29 @@ extension AppDNA {
         ///     already the last-known state;
         ///   - sign-out then `identify` before the pass reads: the pass reads the signed-in user, or is
         ///     stale (`commitRefresh`); either way one change in all, not two.
+        ///
+        /// The refresh is queued only when the SDK owns StoreKit (`storeKit2`) — see `signOutRefreshes`.
         internal func signOut() {
             clearServerOnlyEntitlementCache()
+            guard Self.signOutRefreshes(hasProvider: bridge != nil, policy: ownershipPolicy) else { return }
             _ = enqueueEntitlementRefresh()
+        }
+
+        /// Whether a sign-out queues its own entitlement refresh.
+        ///
+        /// - No billing provider configured: no. There is nothing to read, and the pass only logged
+        ///   "no billing provider configured" on every `reset()`.
+        /// - RevenueCat / Adapty: no. Their entitlements are the provider's answer for the provider's
+        ///   CURRENT user, and `reset()` does not sign the provider out — the host does, with
+        ///   `Purchases.logOut()` / `Adapty.logout()`, before or after `reset()`. A pass queued here would
+        ///   report whichever user the provider held at that moment, often the one who just signed out.
+        ///   RevenueCat's logout delivers its `receivedUpdated` callback, whose reconcile pass runs this
+        ///   same refresh for the provider's new (anonymous) user; under Adapty the next pass reports it —
+        ///   the next app foreground, `identify`, or a `refreshEntitlementCache()` the host calls after
+        ///   `Adapty.logout()`.
+        /// - StoreKit 2 (the SDK owns StoreKit): yes — the device's set is read for the now-anonymous user.
+        static func signOutRefreshes(hasProvider: Bool, policy: BillingOwnershipPolicy) -> Bool {
+            hasProvider && policy.provider == "storeKit2"
         }
 
         /// The billing half of a sign-out without the refresh (`signOut()` is what `reset()` calls): forget
@@ -817,6 +837,19 @@ extension AppDNA {
             if delegate != nil && delivers {
                 Task { await PurchaseDeliveryQueue.shared.drain() }   // trigger (ii)
             }
+        }
+
+        /// Whether the current delegate delivers queued purchases (tests restore it with the delegate).
+        internal var currentDelegateDelivers: Bool {
+            delegateLock.lock(); defer { delegateLock.unlock() }
+            return storedDelegateDelivers
+        }
+
+        /// The last-known entitlement fingerprint, for tests that borrow the process-wide module and must
+        /// leave it as they found it.
+        internal var lastKnownFingerprintForTesting: [String]? {
+            get { entitlementHandlerLock.lock(); defer { entitlementHandlerLock.unlock() }; return lastKnownFingerprint }
+            set { entitlementHandlerLock.lock(); lastKnownFingerprint = newValue; entitlementHandlerLock.unlock() }
         }
 
         /// The current delegate (the public `AppDNA.billingDelegate` getter).

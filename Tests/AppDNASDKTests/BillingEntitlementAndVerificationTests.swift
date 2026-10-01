@@ -1062,10 +1062,17 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
     /// Round 22 (M1) — the same through the public `AppDNA.reset()`, on the process-wide `AppDNA.billing`.
     /// NEGATIVE CONTROL: as above — `reset()` posted nothing.
+    ///
+    /// It borrows process-wide state and leaves it as it found it: the billing module's wiring, sources,
+    /// delegate AND that delegate's `deliversPurchases` flag, its last-known fingerprint, and — because
+    /// `AppDNA.reset()` clears them — `SessionDataStore.shared` and the persisted subscription snapshot.
     func testAppDNAResetReportsTheSignedOutState() async {
         let billing = AppDNA.billing
         let prior = (configured: billing.configured, bridge: billing.bridge, policy: billing.ownershipPolicy,
-                     tracker: billing.eventTracker, sources: billing.entitlementSources, delegate: billing.currentDelegate)
+                     tracker: billing.eventTracker, sources: billing.entitlementSources, delegate: billing.currentDelegate,
+                     delivers: billing.currentDelegateDelivers, fingerprint: billing.lastKnownFingerprintForTesting)
+        let globals = GlobalSignOutState.save()
+        defer { globals.restore() }
         let bridge = FakeBridge(); let world = World(); let spy = Spy()
         // Unique ids: the process-wide module keeps its last-known state from earlier tests.
         let device = "r22-\(UUID().uuidString)", cross = "r22-cross-\(UUID().uuidString)"
@@ -1091,8 +1098,9 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(spy.changes.last?.map(\.productId), [device], "without the signed-out user's server row")
 
         await billing.refreshEntitlementCache()    // drain the chain before restoring
-        billing.setDelegate(prior.delegate, deliversPurchases: false)
+        billing.assignBillingDelegate(prior.delegate, delivers: prior.delivers)
         billing.entitlementSources = prior.sources
+        billing.lastKnownFingerprintForTesting = prior.fingerprint
         if prior.configured {
             billing.wire(bridge: prior.bridge, policy: prior.policy, tracker: prior.tracker)
         } else {
@@ -1100,6 +1108,126 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
             billing.bridge = prior.bridge
             billing.eventTracker = prior.tracker
         }
+    }
+
+    /// What `AppDNA.reset()` clears beyond billing, saved and put back byte for byte: the three
+    /// `SessionDataStore` buckets (in memory and persisted) and the persisted subscription snapshot.
+    struct GlobalSignOutState {
+        static let sessionKeys = ["appdna.session.onboarding_responses", "appdna.session.computed_data",
+                                  "appdna.session.session_data"]
+        let onboarding: [String: [String: Any]]
+        let computed: [String: Any]
+        let session: [String: Any]
+        let persisted: [String: Any?]
+
+        static func save() -> GlobalSignOutState {
+            let store = SessionDataStore.shared
+            var persisted: [String: Any?] = [:]
+            for key in sessionKeys + [SubscriptionStatusObserver.snapshotKey] {
+                persisted.updateValue(UserDefaults.standard.object(forKey: key), forKey: key)   // nil kept as "absent"
+            }
+            return GlobalSignOutState(onboarding: store.onboardingResponses, computed: store.computedData,
+                                      session: store.sessionData, persisted: persisted)
+        }
+
+        func restore() {
+            let store = SessionDataStore.shared
+            store.clearAll()
+            if !onboarding.isEmpty { store.setOnboardingResponses(onboarding) }
+            if !computed.isEmpty { store.mergeComputedData(computed) }
+            for (key, value) in session { store.setSessionData(key: key, value: value) }
+            for (key, value) in persisted {     // the exact stored bytes, whatever the setters wrote
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+        }
+    }
+
+    /// The borrowed-state guard above works. NEGATIVE CONTROL: without `GlobalSignOutState.restore()` the
+    /// session value and the snapshot written here are gone after `AppDNA.reset()`.
+    func testGlobalSignOutStateRestoresWhatResetClears() async {
+        let key = "r24-probe-\(UUID().uuidString)"
+        let saved = GlobalSignOutState.save()
+        SessionDataStore.shared.setSessionData(key: key, value: "kept")
+        let snapshot = Data("r24".utf8)
+        UserDefaults.standard.set(snapshot, forKey: SubscriptionStatusObserver.snapshotKey)
+        let probe = GlobalSignOutState.save()
+
+        AppDNA.reset()
+        let cleared = await waitUntil(5) { SessionDataStore.shared.getSessionData(key: key) == nil }
+        XCTAssertTrue(cleared, "precondition: reset() clears session data")
+        probe.restore()
+
+        XCTAssertEqual(SessionDataStore.shared.getSessionData(key: key) as? String, "kept")
+        XCTAssertEqual(UserDefaults.standard.data(forKey: SubscriptionStatusObserver.snapshotKey), snapshot)
+        saved.restore()
+        XCTAssertNil(SessionDataStore.shared.getSessionData(key: key))
+    }
+
+    // MARK: - Sign-out refresh: only when the SDK owns StoreKit
+
+    /// Under RevenueCat or Adapty a sign-out queues no refresh: the provider's entitlements are for the
+    /// provider's current user, which `reset()` does not change. NEGATIVE CONTROL: `signOut()` queued the
+    /// refresh under every provider, so `bridge.reads` went 1 → 2 and the provider's (signed-out) user's set
+    /// was reported as the signed-out state.
+    func testSignOutQueuesNoRefreshUnderAProvider() async {
+        for provider in [BillingProvider.revenueCat, .adapty(apiKey: "k")] {
+            defaults.removePersistentDomain(forName: suite)   // each provider starts from no last-known state
+            let bridge = FakeBridge(); let world = World(); let spy = Spy()
+            world.userId = "user-1"
+            bridge.ids = ["rc_monthly"]
+            let module = makeModule(bridge, world, spy: spy, provider: provider)
+            await module.refreshEntitlementCache()
+            XCTAssertEqual(bridge.reads, 1)
+
+            world.userId = nil
+            module.signOut()
+            await settle()
+            await settle()
+            XCTAssertEqual(bridge.reads, 1, "\(provider): sign-out must not read the provider's current user")
+            XCTAssertEqual(spy.changes.count, 1, "\(provider): nothing reported for the sign-out by the SDK")
+            XCTAssertNil(ServerOnlyEntitlementCache.load(defaults), "\(provider): the server-only rows are still forgotten")
+        }
+    }
+
+    /// Under StoreKit 2 the sign-out still refreshes (the round-22 behaviour, kept).
+    func testSignOutStillRefreshesUnderStoreKit2() async {
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        bridge.ids = ["monthly"]
+        let module = makeModule(bridge, world, spy: spy, provider: .storeKit2)
+        await module.refreshEntitlementCache()
+        module.signOut()
+        let read = await waitUntil { bridge.reads == 2 }
+        XCTAssertTrue(read, "storeKit2: the sign-out queues one refresh")
+    }
+
+    func testSignOutRefreshesOnlyWithAStoreKit2Provider() {
+        XCTAssertTrue(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: true, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true)))
+        XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: false, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true)))
+        XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: true, policy: BillingOwnership.policy(for: .revenueCat, bridgeLinked: true)))
+        XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: true, policy: BillingOwnership.policy(for: .adapty(apiKey: "k"), bridgeLinked: true)))
+    }
+
+    /// With no billing provider configured a sign-out queues nothing. NEGATIVE CONTROL: it queued a pass that
+    /// logged "no billing provider configured" on every `reset()`.
+    func testSignOutWithoutAProviderQueuesNothingAndLogsNothing() async {
+        var logged: [String] = []
+        let lock = NSLock()
+        let savedLevel = Log.level
+        Log.level = .warning
+        Log.testSink = { line in lock.lock(); logged.append(line); lock.unlock() }
+        defer { Log.testSink = nil; Log.level = savedLevel }
+
+        let module = AppDNA.BillingModule()          // never wired: no bridge
+        module.signOut()
+        await settle()
+        await settle()
+        lock.lock(); let lines = logged; lock.unlock()
+        XCTAssertFalse(lines.contains { $0.contains("no billing provider configured") },
+                       "a sign-out without a billing provider must not queue a refresh: \(lines)")
     }
 
     /// RevenueCat / Adapty purchases do not carry the SDK's `appAccountToken`. NEGATIVE CONTROL: the owner
