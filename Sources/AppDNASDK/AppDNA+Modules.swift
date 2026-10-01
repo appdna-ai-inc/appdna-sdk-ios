@@ -161,6 +161,11 @@ extension AppDNA {
         /// used to drop them and report the cross-platform purchase as gone. Nil until first read, which
         /// seeds it from the persisted copy. Guarded by `entitlementHandlerLock`.
         private var cachedServerOnly: (userId: String, items: [ServerEntitlement])?
+        /// Bumped by every sign-out (`clearServerOnlyEntitlementCache`). A refresh pass records it before its
+        /// awaits and keeps the server's answer only if it is unchanged: a refresh in flight across `reset()`
+        /// otherwise saved the signed-out user's server-only rows again, after the reset had cleared them.
+        /// Guarded by `entitlementHandlerLock`.
+        private var resetGeneration = 0
         /// The observer that delivers `.entitlementsChanged` to the billing delegate.
         private var delegateObserverToken: NSObjectProtocol?
         /// The tail of the refresh chain: refreshes run one after another, so an older read can never
@@ -469,11 +474,15 @@ extension AppDNA {
         }
 
         /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
-        /// cache of the same user; otherwise none.
+        /// cache of the same user; otherwise none. A pass that a sign-out overtook (`resetGeneration` moved
+        /// since the pass began) or whose user is no longer the current one gets none and writes nothing: its
+        /// answer is the signed-out (or previous) user's, and `reset()` has already cleared their rows.
         private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>,
-                                            defaults: UserDefaults) -> [ServerEntitlement] {
+                                            defaults: UserDefaults, generation: Int,
+                                            currentUserId: String?) -> [ServerEntitlement] {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
+            guard generation == resetGeneration, currentUserId == userId else { return [] }
             if let server {
                 let serverOnly = server.filter { !localIds.contains($0.productId) }
                 cachedServerOnly = (userId, serverOnly)
@@ -501,9 +510,17 @@ extension AppDNA {
         /// and must not outlive the sign-out on the device.
         internal func clearServerOnlyEntitlementCache() {
             entitlementHandlerLock.lock()
+            resetGeneration += 1
             cachedServerOnly = nil
             ServerOnlyEntitlementCache.clear(entitlementSources.defaults)
             entitlementHandlerLock.unlock()
+        }
+
+        /// The sign-out count a refresh pass records before its awaits (see `resetGeneration`).
+        private func currentResetGeneration() -> Int {
+            entitlementHandlerLock.lock()
+            defer { entitlementHandlerLock.unlock() }
+            return resetGeneration
         }
 
         /// Record `fingerprint` as the last-known state; returns whether it differs from the previous one
@@ -540,6 +557,8 @@ extension AppDNA {
                 return
             }
             let sources = entitlementSources
+            // Before any await: a sign-out after this point voids this pass's server answer.
+            let generation = currentResetGeneration()
             // The token filters out the previous user's transactions — this runs on every `identify`.
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             var seen = Set<String>()
@@ -552,7 +571,8 @@ extension AppDNA {
 
             if let userId = sources.currentUserId(), !userId.isEmpty {
                 let server = await sources.server(userId)
-                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults)
+                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults,
+                                                       generation: generation, currentUserId: sources.currentUserId())
             }
 
             let fingerprint = EntitlementFingerprint.make(entitlements, now: now)

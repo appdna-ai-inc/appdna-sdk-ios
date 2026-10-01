@@ -786,6 +786,117 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(spy.changes.last?.map(\.productId), ["monthly"])
     }
 
+    /// A one-shot gate a test opens by hand: `wait()` suspends until `open()`.
+    final class AwaitGate {
+        private let lock = NSLock()
+        private var opened = false
+        private var waiters: [CheckedContinuation<Void, Never>] = []
+        private var _entered = 0
+        var entered: Int { lock.lock(); defer { lock.unlock() }; return _entered }
+        func wait() async {
+            await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+                lock.lock(); _entered += 1
+                if opened { lock.unlock(); c.resume() } else { waiters.append(c); lock.unlock() }
+            }
+        }
+        func open() {
+            lock.lock(); opened = true; let w = waiters; waiters = []; lock.unlock()
+            w.forEach { $0.resume() }
+        }
+    }
+
+    /// A module whose server read suspends on `gate` until the test opens it, then answers `world.server`.
+    private func makeGatedModule(_ bridge: FakeBridge, _ world: World, spy: Spy, gate: AwaitGate) -> AppDNA.BillingModule {
+        let module = makeModule(bridge, world, spy: spy)
+        module.entitlementSources.server = { _ in world.serverCalls += 1; await gate.wait(); return world.server }
+        return module
+    }
+
+    private let crossRow = ServerEntitlement(productId: "cross", store: "google_play", status: "active",
+                                             expiresAt: nil, isTrial: false, offerType: nil)
+
+    /// Round 20 — a refresh in flight across a sign-out. NEGATIVE CONTROL: the pass read the server for user-1,
+    /// `reset()` cleared user-1's server-only rows while it was suspended, and when the answer arrived the pass
+    /// saved them again — the signed-out user's cross-platform purchase back on the device, and reported.
+    func testARefreshInFlightAcrossResetDoesNotReSaveTheSignedOutUsersRows() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        bridge.ids = ["monthly"]
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        let refresh = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended, "the refresh never reached the server read")
+
+        // `AppDNA.reset()`: the identity goes anonymous, the billing module clears the server-only rows.
+        world.userId = nil
+        module.clearServerOnlyEntitlementCache()
+        gate.open()
+        await refresh.value
+        await settle()
+
+        XCTAssertNil(ServerOnlyEntitlementCache.load(defaults), "the in-flight refresh re-saved the signed-out user's rows")
+        XCTAssertFalse(spy.changes.flatMap { $0 }.contains { $0.productId == "cross" },
+                       "the signed-out user's server-only row was reported after reset()")
+        // Nothing in memory either: the same user back, offline, does not get them.
+        world.userId = "user-1"; world.server = nil
+        await module.refreshEntitlementCache()
+        await settle()
+        XCTAssertFalse(spy.changes.flatMap { $0 }.contains { $0.productId == "cross" })
+    }
+
+    /// The same, when the user signs straight back in while the old pass is suspended: the user id matches
+    /// again, but a sign-out happened in between, so the old pass's answer is still dropped (the new user
+    /// session's own refresh reads the server afresh).
+    func testARefreshOvertakenByResetAndSameUserSignInDoesNotSave() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        world.server = [crossRow]
+        let module = makeGatedModule(bridge, world, spy: Spy(), gate: gate)
+        let refresh = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended)
+        module.clearServerOnlyEntitlementCache() // reset(); then identify("user-1") again
+        gate.open()
+        await refresh.value
+        XCTAssertNil(ServerOnlyEntitlementCache.load(defaults))
+    }
+
+    /// A user switch with no reset (identify user-2 while user-1's read is in flight) does not save user-1's
+    /// rows as the current cache either.
+    func testARefreshWhoseUserChangedDoesNotSave() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        world.server = [crossRow]
+        let module = makeGatedModule(bridge, world, spy: Spy(), gate: gate)
+        let refresh = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended)
+        world.userId = "user-2"
+        gate.open()
+        await refresh.value
+        XCTAssertNil(ServerOnlyEntitlementCache.load(defaults))
+    }
+
+    /// Control: with no sign-out and the same user, the gated pass saves the server-only rows as before.
+    func testAnUninterruptedGatedRefreshStillSaves() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
+        world.userId = "user-1"
+        world.server = [crossRow]
+        let spy = Spy()
+        let module = makeGatedModule(bridge, world, spy: spy, gate: gate)
+        let refresh = Task { await module.refreshEntitlementCache() }
+        let suspended = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(suspended)
+        gate.open()
+        await refresh.value
+        XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.userId, "user-1")
+        XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
+        let reported = await waitUntil { spy.changes.last?.contains { $0.productId == "cross" } == true }
+        XCTAssertTrue(reported)
+    }
+
     /// RevenueCat / Adapty purchases do not carry the SDK's `appAccountToken`. NEGATIVE CONTROL: the owner
     /// filter ran on them too, so for any user but the first identifier every one was denied as
     /// "untagged, another user" and `expiresAt` was always nil.
