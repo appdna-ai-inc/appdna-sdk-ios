@@ -1286,15 +1286,53 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
                        ["rc_monthly": d], "a revoked transaction still never lends its expiry")
     }
 
-    /// The refresh and `getEntitlements` read expiries owner-filtered only under `storeKit2`.
-    func testExpiryOwnerFilterFollowsTheProvider() async {
-        for (provider, expected) in [(BillingProvider.storeKit2, true), (.revenueCat, false), (.adapty(apiKey: "k"), false)] {
+    /// The refresh and `getEntitlements` read expiries owner-filtered exactly when the product ids were: when
+    /// the SDK reads StoreKit itself — `storeKit2`, or RevenueCat / Adapty NOT linked (`ExternalProviderBridge`,
+    /// whose ids pass `EntitlementOwnerFilter`). Unfiltered only when a linked provider SDK answers.
+    /// NEGATIVE CONTROL: the flag keyed on the REQUESTED provider (`provider == "storeKit2"`), so the unlinked
+    /// RevenueCat / Adapty rows read `false` — ids filtered, expiries not.
+    func testExpiryOwnerFilterFollowsTheBridgeThatReadsTheIds() async {
+        let cases: [(BillingProvider, Bool, Bool)] = [
+            (.storeKit2, true, true),
+            (.revenueCat, true, false), (.adapty(apiKey: "k"), true, false),     // linked: the provider's answer
+            (.revenueCat, false, true), (.adapty(apiKey: "k"), false, true),     // unlinked: StoreKit, filtered ids
+        ]
+        for (provider, linked, expected) in cases {
+            let policy = BillingOwnership.policy(for: provider, bridgeLinked: linked)
+            XCTAssertEqual(AppDNA.BillingModule.expiryOwnerFiltered(policy), policy.sdkReadsStoreKitEntitlements,
+                           "\(provider) linked=\(linked)")
             let bridge = FakeBridge(); let world = World()
             bridge.ids = ["monthly"]
-            let module = makeModule(bridge, world, spy: Spy(), provider: provider)
+            let module = makeModule(bridge, world, spy: Spy(), provider: provider, bridgeLinked: linked)
             _ = await module.getEntitlements()
             await module.refreshEntitlementCache()
-            XCTAssertEqual(world.ownerFiltered, [expected, expected], "\(provider)")
+            XCTAssertEqual(world.ownerFiltered, [expected, expected], "\(provider) linked=\(linked)")
+        }
+        XCTAssertFalse(AppDNA.BillingModule.expiryOwnerFiltered(BillingOwnership.unavailable))
+    }
+
+    /// Under an unlinked provider (`ExternalProviderBridge`) the ids and the expiry agree on WHICH transaction
+    /// is the current user's: two transactions of one product (the current user's, and another app user's with
+    /// a later expiry — e.g. Family Sharing, or a second app account on the same Apple ID) give the product
+    /// through the current user's transaction, so its expiry is that transaction's.
+    /// NEGATIVE CONTROL: unfiltered, the other user's later expiry was lent to the current user.
+    func testUnlinkedProviderExpiryComesFromTheTransactionThatGrantedTheId() {
+        let me = UUID(), other = UUID()
+        let mine = Date(timeIntervalSince1970: 10_000), theirs = Date(timeIntervalSince1970: 90_000)
+        let facts = [
+            StoreKitEntitlementReader.ExpiryFact(productId: "monthly", appAccountToken: me, revoked: false, expirationDate: mine),
+            StoreKitEntitlementReader.ExpiryFact(productId: "monthly", appAccountToken: other, revoked: false, expirationDate: theirs),
+        ]
+        // The id filter grants only the current user's transaction …
+        XCTAssertEqual(EntitlementOwnerFilter.decide(transactionToken: me, expectedToken: me, firstIdentifiedToken: other), .grant)
+        XCTAssertEqual(EntitlementOwnerFilter.decide(transactionToken: other, expectedToken: me, firstIdentifiedToken: other), .denyOtherUser)
+        for provider in [BillingProvider.revenueCat, .adapty(apiKey: "k")] {
+            let policy = BillingOwnership.policy(for: provider, bridgeLinked: false)
+            // … so the expiry is read from that transaction only.
+            XCTAssertEqual(StoreKitEntitlementReader.expirations(
+                of: facts, for: ["monthly"], appAccountToken: me, firstIdentifiedToken: other,
+                applyOwnerFilter: AppDNA.BillingModule.expiryOwnerFiltered(policy)),
+                ["monthly": mine], "\(provider) unlinked: another user's later expiry must not be lent")
         }
     }
 

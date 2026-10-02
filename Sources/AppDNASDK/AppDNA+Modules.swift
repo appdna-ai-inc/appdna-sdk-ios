@@ -499,13 +499,19 @@ extension AppDNA {
             return []
         }
 
-        /// Whether a product's StoreKit expiry is read through `EntitlementOwnerFilter`. Only when the SDK
-        /// owns StoreKit (`storeKit2`): it tags its purchases with the user's `appAccountToken`, and its
-        /// product ids passed the same filter. Under RevenueCat or Adapty the product ids are the provider's
-        /// answer for its current user and the provider's purchases do not carry the SDK's token, so the
-        /// filter would drop every one of them and `expiresAt` would always be nil.
+        /// Whether a product's StoreKit expiry is read through `EntitlementOwnerFilter` — exactly when the
+        /// product ids were: when the SDK reads the device's StoreKit set itself
+        /// (`policy.sdkReadsStoreKitEntitlements`). That is `storeKit2` (`StoreKit2Bridge`) and RevenueCat /
+        /// Adapty NOT linked into this build (`ExternalProviderBridge`, every published channel): both read
+        /// the ids through `StoreKitEntitlementReader.productIds`, which applies the filter, so the expiry of
+        /// a product must come from a transaction that passed the same filter — never from another user's
+        /// transaction of the same product.
+        ///
+        /// Unfiltered only when a LINKED provider SDK answers (`RevenueCatBridge` / `AdaptyBridge`, source
+        /// builds): the ids are the provider's answer for its current user and the provider's purchases do
+        /// not carry the SDK's token, so the filter would drop every one and `expiresAt` would always be nil.
         static func expiryOwnerFiltered(_ policy: BillingOwnershipPolicy) -> Bool {
-            policy.provider == "storeKit2"
+            policy.sdkReadsStoreKitEntitlements
         }
 
         /// Sign-out (`AppDNA.reset()`): forget the signed-out user's server-only rows, then queue one refresh

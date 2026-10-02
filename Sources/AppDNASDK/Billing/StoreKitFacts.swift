@@ -48,10 +48,12 @@ extension StoreKitEntitlementReader {
     /// the same product can never lend its expiry. A product without an expiry (a non-consumable, a
     /// lifetime unlock) has no key. Read-only; never finishes anything.
     ///
-    /// `applyOwnerFilter: false` is for product ids a provider (RevenueCat, Adapty) returned: the provider
-    /// already decided they are the current user's, and its transactions do not carry the SDK's
+    /// `applyOwnerFilter: false` is for product ids a LINKED provider SDK (RevenueCat, Adapty) returned: the
+    /// provider already decided they are the current user's, and its transactions do not carry the SDK's
     /// `appAccountToken`, so the filter would deny every one (untagged, not the first identifier) and the
-    /// expiry would never show. Every verified, unrevoked transaction of those products counts then.
+    /// expiry would never show. Every verified, unrevoked transaction of those products counts then. When
+    /// the provider is requested but not linked (`ExternalProviderBridge`) the ids come from
+    /// `productIds(appAccountToken:)`, so the filter applies here too (`BillingModule.expiryOwnerFiltered`).
     static func expirations(for productIds: [String], appAccountToken: UUID?, applyOwnerFilter: Bool = true) async -> [String: Date] {
         guard !productIds.isEmpty else { return [:] }
         var facts: [ExpiryFact] = []
