@@ -100,91 +100,119 @@ final class BackgroundUploader {
         }
 
         Task { [weak self] in
-            guard let self, let apiClient = self.apiClient else {
+            guard let self else {
                 task.setTaskCompleted(success: false)
                 return
             }
-
-            // The queue's failure pause holds for this uploader too (`UploadPauseGate`): nothing is uploaded
-            // until a foreground or `AppDNA.flush()`, and nothing is rescheduled — the next backgrounding of an
-            // unpaused queue schedules a fresh run.
-            guard Self.uploadAllowed else {
-                Log.info("Background upload skipped — uploads are paused after repeated failures")
-                task.setTaskCompleted(success: true)
-                return
-            }
-
-            // SPEC-428 CL-9/D4: single upload owner — if the in-process flush holds the claim, skip
-            // this background run so the same rows are never POSTed twice. `defer` releases on every
-            // subsequent exit path.
-            guard EventUploadCoordinator.tryAcquire() else {
-                // Another owner is uploading (e.g. the last upload `shutdown()` makes). Schedule the next run
-                // rather than leaving what that owner does not send for the next launch — the same rule as
-                // Android's `EventUploadWorker`, which answers retry here.
-                Log.info("Background upload deferred — another upload is active; rescheduled")
-                self.scheduleUploadIfNeeded()
-                task.setTaskCompleted(success: true)
-                return
-            }
-            defer { EventUploadCoordinator.release() }
-
-            // SPEC-428 CL-2/D5: this BGTask can fire hours/days after the events were queued — prune past
-            // the redelivery horizon BEFORE upload so a stale event isn't re-sent past the server dedup
-            // window (double-count). The in-process EventQueue prunes too; the store method covers both.
-            self.eventStore.pruneStale()
-            let events = self.eventStore.loadPending()
-            guard !events.isEmpty else {
-                task.setTaskCompleted(success: true)
-                return
-            }
-
-            // Send events in batches using adaptive batch size
-            let batchSize = NetworkMonitor.shared.adaptiveBatchSize
-            guard batchSize > 0 else {
-                // No network — reschedule
-                self.scheduleUploadIfNeeded()
-                task.setTaskCompleted(success: false)
-                return
-            }
-
-            let batch = Array(events.prefix(batchSize))
-            let payload: [String: Any] = ["batch": batch.compactMap { event -> [String: Any]? in
-                guard let data = try? JSONEncoder().encode(event),
-                      let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                    return nil
-                }
-                return dict
-            }]
-
-            guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-
-            let success = await apiClient.sendEvents(bodyData)
-
-            if success {
-                let eventIds = Set(batch.map(\.event_id))
-                self.eventStore.removeSent(eventIds: eventIds)
-                EventUploadCoordinator.markResolved(eventIds)
-                self.retryCount = 0
-                Log.info("Background upload successful: \(batch.count) events")
-
-                // If more events remain, reschedule
-                if events.count > batch.count {
-                    self.scheduleUploadIfNeeded()
-                }
-            } else {
-                self.retryCount += 1
-                if self.retryCount < self.maxRetries {
-                    self.scheduleUploadIfNeeded()
-                } else {
-                    self.retryCount = 0
-                    Log.warning("Background upload max retries reached")
-                }
-            }
-
-            task.setTaskCompleted(success: success)
+            let outcome = await self.runUpload(paused: UploadPauseGate.isPaused)
+            task.setTaskCompleted(success: outcome.taskSucceeded)
         }
+    }
+
+    /// What one background run came to.
+    enum RunOutcome: Equatable {
+        /// The SDK's API client is gone (the SDK was shut down).
+        case unavailable
+        /// The queue's failure pause holds: nothing uploaded, nothing rescheduled.
+        case skippedPaused
+        /// Another owner holds the upload claim: rescheduled.
+        case deferred
+        /// Nothing pending.
+        case nothingToUpload
+        /// No network: rescheduled.
+        case noNetwork
+        /// A batch was sent and accepted.
+        case uploaded
+        /// A batch could not be built or sent.
+        case failed
+
+        /// What the BGProcessingTask reports.
+        var taskSucceeded: Bool {
+            switch self {
+            case .skippedPaused, .deferred, .nothingToUpload, .uploaded: return true
+            case .unavailable, .noNetwork, .failed: return false
+            }
+        }
+
+        /// Whether the run tried to upload (sent a request).
+        var attemptedUpload: Bool { self == .uploaded || self == .failed }
+    }
+
+    /// One run of the background upload — the body of the BGProcessingTask. `paused` is the queue's failure
+    /// pause (`UploadPauseGate.isPaused` in production); `reschedule` replaces `scheduleUploadIfNeeded` (tests).
+    func runUpload(paused: Bool, reschedule: (() -> Void)? = nil) async -> RunOutcome {
+        let reschedule = reschedule ?? { [weak self] in self?.scheduleUploadIfNeeded() }
+        guard let apiClient = self.apiClient else { return .unavailable }
+
+        // The queue's failure pause holds for this uploader too (`UploadPauseGate`): nothing is uploaded
+        // until a foreground or `AppDNA.flush()`, and nothing is rescheduled — the next backgrounding of an
+        // unpaused queue schedules a fresh run.
+        guard !paused else {
+            Log.info("Background upload skipped — uploads are paused after repeated failures")
+            return .skippedPaused
+        }
+
+        // Single upload owner — if the in-process flush holds the claim, skip
+        // this background run so the same rows are never POSTed twice. `defer` releases on every
+        // subsequent exit path.
+        guard EventUploadCoordinator.tryAcquire() else {
+            // Another owner is uploading (e.g. the last upload `shutdown()` makes). Schedule the next run
+            // rather than leaving what that owner does not send for the next launch — the same rule as
+            // Android's `EventUploadWorker`, which answers retry here.
+            Log.info("Background upload deferred — another upload is active; rescheduled")
+            reschedule()
+            return .deferred
+        }
+        defer { EventUploadCoordinator.release() }
+
+        // This BGTask can fire hours/days after the events were queued — prune past
+        // the redelivery horizon BEFORE upload so a stale event isn't re-sent past the server dedup
+        // window (double-count). The in-process EventQueue prunes too; the store method covers both.
+        eventStore.pruneStale()
+        let events = eventStore.loadPending()
+        guard !events.isEmpty else { return .nothingToUpload }
+
+        // Send events in batches using adaptive batch size
+        let batchSize = NetworkMonitor.shared.adaptiveBatchSize
+        guard batchSize > 0 else {
+            // No network — reschedule
+            reschedule()
+            return .noNetwork
+        }
+
+        let batch = Array(events.prefix(batchSize))
+        let payload: [String: Any] = ["batch": batch.compactMap { event -> [String: Any]? in
+            guard let data = try? JSONEncoder().encode(event),
+                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
+            }
+            return dict
+        }]
+
+        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return .failed }
+
+        let success = await apiClient.sendEvents(bodyData)
+
+        if success {
+            let eventIds = Set(batch.map(\.event_id))
+            eventStore.removeSent(eventIds: eventIds)
+            EventUploadCoordinator.markResolved(eventIds)
+            retryCount = 0
+            Log.info("Background upload successful: \(batch.count) events")
+
+            // If more events remain, reschedule
+            if events.count > batch.count {
+                reschedule()
+            }
+            return .uploaded
+        }
+        retryCount += 1
+        if retryCount < maxRetries {
+            reschedule()
+        } else {
+            retryCount = 0
+            Log.warning("Background upload max retries reached")
+        }
+        return .failed
     }
 }
