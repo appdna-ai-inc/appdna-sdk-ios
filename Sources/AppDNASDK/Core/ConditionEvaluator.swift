@@ -72,7 +72,7 @@ internal enum ConditionEvaluator {
         return current
     }
 
-    private static func toDouble(_ value: Any?) -> Double? {
+    static func toDouble(_ value: Any?) -> Double? {
         guard let v = value else { return nil }
         if let n = v as? Double { return n }
         if let n = v as? Int { return Double(n) }
