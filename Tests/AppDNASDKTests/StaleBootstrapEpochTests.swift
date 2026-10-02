@@ -104,8 +104,12 @@ final class StaleBootstrapEpochTests: XCTestCase {
 
     private var server: BootstrapGateServer?
 
+    /// The dropped-events counter as it was before this test (see `ShutdownUploadIsolation`).
+    private var savedDropped = 0
+
     override func setUp() {
         super.setUp()
+        savedDropped = ShutdownUploadIsolation.save()
         let server = BootstrapGateServer()
         self.server = server
         if let server {
@@ -120,6 +124,7 @@ final class StaleBootstrapEpochTests: XCTestCase {
         AppDNA.shutdown()
         waitUntil("torn down") { AppDNA.subsystemsUp()["events"] == false }
         AppDNA.drainSDKQueueForTesting()
+        ShutdownUploadIsolation.restore(savedDropped)
         server?.stop()
         server = nil
         APIBaseURL.infoPlistReaderForTesting = nil

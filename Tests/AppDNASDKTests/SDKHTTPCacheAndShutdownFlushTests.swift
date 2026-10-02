@@ -119,6 +119,23 @@ final class LoopbackHTTPServer: @unchecked Sendable {
     func stop() { shutdown(fd, SHUT_RDWR); close(fd) }
 }
 
+/// For tests that configure the real SDK with a placeholder key. `shutdown()` uploads the queued events,
+/// and the 401 such a key gets drops them into the persisted dropped-events counter — after which every
+/// later test's tracker reports an `_sdk_events_dropped` event first (the counter lives in
+/// `UserDefaults.standard`, so it even survived into the next run on the same simulator). Save the counter in
+/// `setUp`; after the shutdown, wait for its upload to resolve, then put the counter back.
+enum ShutdownUploadIsolation {
+    static func save() -> Int { DroppedEventsCounter.peek() }
+
+    /// Blocks (polls) — call it from a synchronous tearDown or a detached task.
+    static func restore(_ saved: Int, timeout: TimeInterval = 30) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while EventQueue.uploadsInFlightForTesting > 0 && Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+        _ = DroppedEventsCounter.getAndReset()
+        if saved > 0 { DroppedEventsCounter.increment(saved) }
+    }
+}
+
 final class SDKHTTPCacheAndShutdownFlushTests: XCTestCase {
 
     private var server: LoopbackHTTPServer?

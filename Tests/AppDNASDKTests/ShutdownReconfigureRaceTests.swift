@@ -18,10 +18,19 @@ import XCTest
 /// This drives the exact back-to-back sequence a host issues and asserts the SDK comes back UP.
 final class ShutdownReconfigureRaceTests: XCTestCase {
 
+    /// The dropped-events counter as it was before this test (see `ShutdownUploadIsolation`).
+    private var savedDropped = 0
+
+    override func setUp() {
+        super.setUp()
+        savedDropped = ShutdownUploadIsolation.save()
+    }
+
     override func tearDown() {
         AppDNA.resetInitStateForTesting()
         AppDNA.shutdown()
         waitUntil("torn down") { AppDNA.subsystemsUp()["events"] == false }
+        ShutdownUploadIsolation.restore(savedDropped)
         super.tearDown()
     }
 

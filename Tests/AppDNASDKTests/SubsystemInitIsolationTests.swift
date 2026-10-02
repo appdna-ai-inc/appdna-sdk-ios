@@ -31,6 +31,14 @@ import XCTest
  */
 final class SubsystemInitIsolationTests: XCTestCase {
 
+    /// The dropped-events counter as it was before this test (see `ShutdownUploadIsolation`).
+    private var savedDropped = 0
+
+    override func setUp() {
+        super.setUp()
+        savedDropped = ShutdownUploadIsolation.save()
+    }
+
     override func tearDown() {
         super.tearDown()
         AppDNA.subsystemInitFailures = []
@@ -39,6 +47,7 @@ final class SubsystemInitIsolationTests: XCTestCase {
         // `shutdown()` hops onto the SDK's serial queue. Wait for it to actually take effect, or the
         // next `configure()` — here or in another file — is silently ignored by the isConfigured guard.
         waitUntil("the SDK is torn down") { AppDNA.subsystemsUp()["events"] == false }
+        ShutdownUploadIsolation.restore(savedDropped)
     }
 
     /// Poll a condition on the main run loop. Not a sleep: it returns as soon as the condition holds.

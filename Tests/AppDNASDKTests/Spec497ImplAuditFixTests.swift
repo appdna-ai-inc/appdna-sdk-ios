@@ -208,12 +208,15 @@ final class Spec497BillingFixTests: XCTestCase {
     private var server: HoldingHTTPServer?
     private var sdkConfigured = false
     private var savedIdentity: PersistedIdentity?
+    /// The dropped-events counter as it was before this test (see `ShutdownUploadIsolation`).
+    private var savedDropped = 0
 
     /// Each test starts from an anonymous device and its own first-identified anchor, whatever an earlier
     /// test in the process left in the keychain or in `UserDefaults.standard`.
     override func setUp() async throws {
         try await super.setUp()
         savedIdentity = PersistedIdentity.save()
+        savedDropped = ShutdownUploadIsolation.save()
         PersistedIdentity.clear()
         AppAccountTokenResolver.setDefaultsForTesting(
             UserDefaults(suiteName: "ai.appdna.sdk.fixr1.anchor.\(UUID().uuidString)")!)
@@ -231,6 +234,7 @@ final class Spec497BillingFixTests: XCTestCase {
             let down = await poll(timeout: 30) { AppDNA.subsystemsUp()["events"] == false }
             XCTAssertTrue(down, "tearDown: shutdown() never landed")
             await drainSDKQueue()
+            await Task.detached { [savedDropped] in ShutdownUploadIsolation.restore(savedDropped) }.value
         }
         server?.stop()
         server = nil

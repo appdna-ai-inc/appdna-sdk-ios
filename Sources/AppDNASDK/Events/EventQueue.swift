@@ -192,10 +192,24 @@ final class EventQueue {
     /// upload claim (`EventUploadCoordinator`) held, so no later queue in the process could upload.
     /// What the attempt does not send stays on disk for the next `configure`. Keeps the failure pause.
     func flushForShutdown() {
+        Self.uploadActivity.begin()
         queue.async { [self] in
             self.runFlush(.shutdown)
+            Self.uploadActivity.end()
         }
     }
+
+    /// Shutdown flushes not yet run plus uploads not yet resolved, process-wide. Test-only reader
+    /// (`uploadsInFlightForTesting`): a test that shuts a configured SDK down waits for this to reach 0
+    /// before it restores what the upload's outcome may have touched (the dropped-events counter).
+    final class ActivityCounter: @unchecked Sendable {
+        private let lock = NSLock(); private var n = 0
+        func begin() { lock.lock(); n += 1; lock.unlock() }
+        func end() { lock.lock(); n -= 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return n }
+    }
+    static let uploadActivity = ActivityCounter()
+    static var uploadsInFlightForTesting: Int { uploadActivity.value }
 
     func flush(_ trigger: FlushTrigger) {
         queue.async { [weak self] in
@@ -337,6 +351,7 @@ final class EventQueue {
         // Strong: the upload always finishes and releases the flush guard and the process-wide upload
         // claim below, even when the queue's owner let go meanwhile (`flushForShutdown`). With a weak
         // capture a released queue returned here and the claim stayed held for the rest of the process.
+        Self.uploadActivity.begin()
         Task { [self] in
             let success = await self.apiClient.sendEvents(bodyData)
 
@@ -410,6 +425,7 @@ final class EventQueue {
                 // (success removal, permanent-fail pause, or retry scheduled).
                 self.isFlushing = false
                 EventUploadCoordinator.release() // SPEC-428 CL-9: release the cross-path upload claim
+                Self.uploadActivity.end()
             }
         }
     }

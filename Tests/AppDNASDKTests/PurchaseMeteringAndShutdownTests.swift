@@ -58,10 +58,19 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
         func getEntitlements(appAccountToken: UUID?) async -> [String] { [] }
     }
 
+    /// The dropped-events counter as it was before this test (see `ShutdownUploadIsolation`).
+    private var savedDropped = 0
+
+    override func setUp() {
+        super.setUp()
+        savedDropped = ShutdownUploadIsolation.save()
+    }
+
     override func tearDown() {
         AppDNA.resetInitStateForTesting()
         AppDNA.shutdown()
         waitUntil("the SDK is torn down") { AppDNA.subsystemsUp()["events"] == false }
+        ShutdownUploadIsolation.restore(savedDropped)
         super.tearDown()
     }
 
