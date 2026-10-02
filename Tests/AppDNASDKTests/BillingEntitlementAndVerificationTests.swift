@@ -1098,9 +1098,15 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
         world.userId = nil
         AppDNA.reset()
-        let reported = await waitUntil(10) { spy.changes.count == 2 }
-        XCTAssertTrue(reported, "AppDNA.reset() reported no entitlement change")
+        // Wait on what the report depends on, not on a clock (round 28): `reset()` runs on the SDK queue and
+        // appends the sign-out pass to the serial refresh chain; a refresh appended after it returns once that
+        // pass has run. In CI order an earlier test's pass can still hold the chain on a server read — each pass
+        // now waits at most `serverReadDeadline` for it, where it used to wait out the 30 s timeout and retries,
+        // and this test's 10 s wait gave up first.
+        await Self.drainSDKQueue()
+        await billing.refreshEntitlementCache()
         await settle()
+        XCTAssertGreaterThanOrEqual(spy.changes.count, 2, "AppDNA.reset() reported no entitlement change")
         XCTAssertEqual(spy.changes.count, 2, "exactly one change for the sign-out")
         XCTAssertEqual(spy.changes.last?.map(\.productId), [device], "without the signed-out user's server row")
 

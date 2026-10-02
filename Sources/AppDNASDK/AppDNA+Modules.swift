@@ -166,6 +166,10 @@ extension AppDNA {
         /// otherwise saved the signed-out user's server-only rows again, after the reset had cleared them.
         /// Guarded by `entitlementHandlerLock`.
         private var resetGeneration = 0
+        /// The number of the last `/billing/entitlements` request a pass started, and of the last one whose
+        /// answer was applied (`serverOnlyEntitlements`). Guarded by `entitlementHandlerLock`.
+        private var serverRequestSequence = 0
+        private var appliedServerSequence = 0
         /// The observer that delivers `.entitlementsChanged` to the billing delegate.
         private var delegateObserverToken: NSObjectProtocol?
         /// The tail of the refresh chain: refreshes run one after another, so an older read can never
@@ -317,8 +321,12 @@ extension AppDNA {
             // diffs against the right baseline.
             if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }
             // Round-34 — refresh the entitlement cache so onEntitlementsChanged fires after a purchase,
-            // matching Android. Diff-guarded inside refreshEntitlementCache.
-            await refreshEntitlementCache()
+            // matching Android. Diff-guarded inside the refresh pass.
+            // 🔴 QUEUED, NOT AWAITED. The pass reads `GET /billing/entitlements` for an identified user
+            // (30 s timeout, 3 retries) and waits behind every earlier pass on the serial chain; awaiting it
+            // held the purchase result for up to ~2 minutes on a degraded network although StoreKit had
+            // already answered. Android returns after its local cache update. See `refreshInBackground`.
+            refreshInBackground()
             return TransactionInfo(
                 transactionId: result.transactionId,
                 productId: result.productId,
@@ -383,8 +391,10 @@ extension AppDNA {
                 }
                 let restored = try await bridge.restore(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
                 // Round-34 — refresh entitlements so onEntitlementsChanged fires after a restore, matching
-                // Android (restorePurchases → replaceAll → notifyBillingDelegate). Diff-guarded.
-                await refreshEntitlementCache()
+                // Android (restorePurchases → replaceAll → notifyBillingDelegate). Diff-guarded. Queued, not
+                // awaited: the restore's answer is StoreKit's and must not wait on the network
+                // (`refreshInBackground`).
+                refreshInBackground()
                 return restored
             } catch let cancellation as CancellationError {
                 // The host cancelled its own Task: not a failed restore. Rethrown as-is and not tracked,
@@ -454,23 +464,120 @@ extension AppDNA {
         /// chain without try/catch.
         ///
         /// Performance: one StoreKit read plus, for an identified user, one `GET /billing/entitlements`
-        /// (its failure falls back to local state). Identify hook should not be blocked on completion.
+        /// awaited for at most `serverReadDeadline` (2.5 s). A failed or slower read goes on with the last
+        /// server answer of the same user; a slower one that then succeeds is applied by one more pass when
+        /// it arrives (`deliverLateServerAnswer`). Identify hook should not be blocked on completion.
         public func refreshEntitlementCache() async {
             // Serialized: each refresh awaits the one before it (see `refreshChain`).
             await enqueueEntitlementRefresh().value
         }
 
+        /// SPEC-497 round 28 — queue one refresh and return at once: what a purchase, a restore and the
+        /// paywall's purchase / restore do after StoreKit has answered. Their result (the `TransactionInfo`,
+        /// the restored ids, `onPaywallPurchaseCompleted`, the restore auto-dismiss) never waits on the
+        /// network; `onEntitlementsChanged` reports the new state when the queued pass finishes — after the
+        /// passes ahead of it, each of which waits at most `serverReadDeadline` for the server.
+        @discardableResult
+        internal func refreshInBackground() -> Task<Void, Never> {
+            enqueueEntitlementRefresh()
+        }
+
+        /// How long a pass waits for `GET /billing/entitlements` (`APIClient`: 30 s per attempt, 3 retries)
+        /// before it goes on with the cached server-only rows of the same user, as if the server were
+        /// unreachable. The read itself keeps going; its answer, if it arrives and is still current, is
+        /// applied by one more pass (`deliverLateServerAnswer`) — one more change when it adds or removes a
+        /// row, none when it matches the cache. Bounds how long a pass holds the serial chain. Tests shorten it.
+        internal var serverReadDeadline: TimeInterval = 2.5
+
+        /// A `/billing/entitlements` answer that arrived after its pass's `serverReadDeadline`, with what the
+        /// pass knew when it asked: the user, the sign-out count and the request's place in the order of
+        /// server requests (`serverRequestSequence`).
+        struct LateServerAnswer {
+            let userId: String
+            let rows: [ServerEntitlement]
+            let generation: Int
+            let sequence: Int
+        }
+
         /// Append one refresh to the serial chain (synchronous: the lock is never held across an await).
-        private func enqueueEntitlementRefresh() -> Task<Void, Never> {
+        /// `late`: apply that late server answer instead of reading the server again.
+        @discardableResult
+        private func enqueueEntitlementRefresh(late: LateServerAnswer? = nil) -> Task<Void, Never> {
             refreshLock.lock()
             defer { refreshLock.unlock() }
             let previous = refreshChain
             let task = Task { [weak self] in
                 await previous?.value
-                await self?.performEntitlementRefresh()
+                await self?.performEntitlementRefresh(late: late)
             }
             refreshChain = task
             return task
+        }
+
+        /// The outcome of a pass's server read (`readServer`).
+        enum ServerReadOutcome {
+            /// The read finished in time: its rows, or nil when it failed.
+            case answered([ServerEntitlement]?)
+            /// `serverReadDeadline` passed first.
+            case timedOut
+        }
+
+        /// Whichever comes first: `request`'s answer, or `deadline`. The request is never cancelled — a
+        /// late answer is still wanted (`readServer`).
+        static func firstOf(_ request: Task<[ServerEntitlement]?, Never>, deadline: TimeInterval) async -> ServerReadOutcome {
+            final class Once: @unchecked Sendable {
+                private let lock = NSLock(); private var done = false
+                func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+            }
+            let once = Once()
+            return await withCheckedContinuation { (continuation: CheckedContinuation<ServerReadOutcome, Never>) in
+                let timer = Task {
+                    try? await Task.sleep(nanoseconds: UInt64(max(0, deadline) * 1_000_000_000))
+                    if once.claim() { continuation.resume(returning: .timedOut) }
+                }
+                Task {
+                    let rows = await request.value
+                    timer.cancel()
+                    if once.claim() { continuation.resume(returning: .answered(rows)) }
+                }
+            }
+        }
+
+        /// The pass's server read: `sources.server(userId)` for at most `serverReadDeadline`. Returns the
+        /// rows (nil: failed or too slow — the caller falls back to the cache) and the request's sequence
+        /// number. A read that misses the deadline keeps running; when it succeeds, its answer is queued as
+        /// one more pass (`deliverLateServerAnswer`).
+        private func readServer(_ userId: String, sources: EntitlementSources, generation: Int) async -> (rows: [ServerEntitlement]?, sequence: Int) {
+            let sequence = nextServerRequestSequence()
+            let request = Task { await sources.server(userId) }
+            switch await Self.firstOf(request, deadline: serverReadDeadline) {
+            case .answered(let rows):
+                return (rows, sequence)
+            case .timedOut:
+                Log.debug("BillingModule.refreshEntitlementCache: /billing/entitlements is slow; using the cached rows until it answers")
+                Task { [weak self] in
+                    guard let rows = await request.value else { return } // failed late: the cache stands
+                    self?.deliverLateServerAnswer(LateServerAnswer(userId: userId, rows: rows,
+                                                                   generation: generation, sequence: sequence))
+                }
+                return (nil, sequence)
+            }
+        }
+
+        /// Queue a pass that applies a late server answer — unless billing has been torn down since.
+        /// Whether the answer is still current (same user, no sign-out, no newer answer applied) is decided
+        /// by that pass, on the chain.
+        private func deliverLateServerAnswer(_ answer: LateServerAnswer) {
+            guard bridge != nil else { return }
+            enqueueEntitlementRefresh(late: answer)
+        }
+
+        /// The next server request's sequence number. Guarded by `entitlementHandlerLock`.
+        private func nextServerRequestSequence() -> Int {
+            entitlementHandlerLock.lock()
+            defer { entitlementHandlerLock.unlock() }
+            serverRequestSequence += 1
+            return serverRequestSequence
         }
 
         /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
@@ -480,13 +587,18 @@ extension AppDNA {
         /// stale, and `performEntitlementRefresh` then stops at `commitRefresh` without publishing anything.
         /// `currentUserId` is read while `entitlementHandlerLock` is held (see `commitRefresh` for what that
         /// does and does not make atomic).
-        private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, localIds: Set<String>,
+        ///
+        /// `sequence` orders the answers: one older than the last applied answer (a late answer overtaken by
+        /// a newer read) is not applied — the cache is used instead — so a slow read can never report an
+        /// older state back over a newer one.
+        private func serverOnlyEntitlements(userId: String, server: [ServerEntitlement]?, sequence: Int, localIds: Set<String>,
                                             defaults: UserDefaults, generation: Int,
                                             currentUserId: () -> String?) -> [ServerEntitlement] {
             entitlementHandlerLock.lock()
             defer { entitlementHandlerLock.unlock() }
             guard generation == resetGeneration, Self.passUser(currentUserId()) == userId else { return [] }
-            if let server {
+            if let server, sequence > appliedServerSequence {
+                appliedServerSequence = sequence
                 let serverOnly = server.filter { !localIds.contains($0.productId) }
                 cachedServerOnly = (userId, serverOnly)
                 ServerOnlyEntitlementCache.save(userId: userId, items: serverOnly, defaults)
@@ -645,7 +757,11 @@ extension AppDNA {
         /// app saw the signed-out user's set, then the new session's — two changes, one of them wrong. Now it
         /// returns with no fingerprint swap, no post and no re-check; the sign-in's own refresh (queued behind
         /// it) reports the new user's state once.
-        private func performEntitlementRefresh() async {
+        ///
+        /// The server read waits at most `serverReadDeadline` (`readServer`); a pass queued for a late answer
+        /// (`late`) uses that answer instead of reading again, and is dropped when a sign-out or a user switch
+        /// happened since the read began.
+        private func performEntitlementRefresh(late: LateServerAnswer? = nil) async {
             guard let bridge = bridge else {
                 Log.warning("BillingModule.refreshEntitlementCache: no billing provider configured")
                 return
@@ -654,6 +770,10 @@ extension AppDNA {
             // Before any await: a sign-out or user switch after this point makes the pass stale.
             let generation = currentResetGeneration()
             let passUserId = Self.passUser(sources.currentUserId())
+            if let late, late.generation != generation || late.userId != passUserId {
+                Log.debug("BillingModule.refreshEntitlementCache: a late server answer for a signed-out or previous user; dropped")
+                return
+            }
             // The token filters out the previous user's transactions — this runs on every `identify`.
             let productIds = await bridge.getEntitlements(appAccountToken: AppAccountTokenResolver.tokenForCurrentUser())
             var seen = Set<String>()
@@ -665,8 +785,14 @@ extension AppDNA {
             }
 
             if let userId = passUserId {
-                let server = await sources.server(userId)
-                entitlements += serverOnlyEntitlements(userId: userId, server: server, localIds: seen, defaults: sources.defaults,
+                let read: (rows: [ServerEntitlement]?, sequence: Int)
+                if let late {
+                    read = (late.rows, late.sequence)
+                } else {
+                    read = await readServer(userId, sources: sources, generation: generation)
+                }
+                entitlements += serverOnlyEntitlements(userId: userId, server: read.rows, sequence: read.sequence,
+                                                       localIds: seen, defaults: sources.defaults,
                                                        generation: generation, currentUserId: sources.currentUserId)
             }
 
