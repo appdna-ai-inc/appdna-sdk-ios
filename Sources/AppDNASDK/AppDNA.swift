@@ -494,14 +494,40 @@ public final class AppDNA: @unchecked Sendable {
     /// do anything — so it must never be used to answer "is the SDK usable yet".
     private var isConfigured = false
 
-    /// Monotonic configure generation, bumped under `initLock` on every accepted `configure()`.
-    /// `performConfigure` captures the value it was scheduled with and bails if a newer configure
-    /// has since superseded it. Without this, `configure(); shutdown(); configure()` on one tick
+    /// Monotonic configure generation, bumped under `initLock` on every accepted `configure()` AND on
+    /// every `shutdown()`. `performConfigure` captures the value it was scheduled with and bails if a
+    /// newer configure has since superseded it; `performBootstrap` carries the same value and drops its
+    /// result when the epoch has moved on (see `isCurrentConfigure(_:)`). Without this, `configure(); shutdown(); configure()` on one tick
     /// schedules the FIRST configure's `performConfigure` (which `shutdown` no longer no-ops away,
     /// now that isConfigured is cleared synchronously) to run right before the second's — building
     /// the pipeline, observers and timers twice with no teardown between. The epoch makes the stale
     /// build a no-op so exactly the latest configure wins.
     private var configureEpoch = 0
+
+    /// True while `epoch` is still the live configure: no `shutdown()` and no later `configure()` has
+    /// happened since it was accepted. Read under the lock `configure()` / `shutdown()` write under.
+    private func isCurrentConfigure(_ epoch: Int) -> Bool {
+        initLock.lock(); defer { initLock.unlock() }
+        return isConfigured && configureEpoch == epoch
+    }
+
+    /// Test-only: how many bootstrap results were applied (managers built, ready) and how many were
+    /// dropped as stale. Every `performBootstrap` ends in exactly one of the two, on `queue`.
+    private static let bootstrapOutcomeLock = NSLock()
+    private static var _bootstrapsApplied = 0
+    private static var _bootstrapsDropped = 0
+    internal static var bootstrapOutcomesForTesting: (applied: Int, dropped: Int) {
+        bootstrapOutcomeLock.lock(); defer { bootstrapOutcomeLock.unlock() }
+        return (_bootstrapsApplied, _bootstrapsDropped)
+    }
+    private static func recordBootstrapOutcome(applied: Bool) {
+        bootstrapOutcomeLock.lock()
+        if applied { _bootstrapsApplied += 1 } else { _bootstrapsDropped += 1 }
+        bootstrapOutcomeLock.unlock()
+    }
+    /// Test-only: the ready flag and the org id of the bootstrap that was applied, read on `queue`.
+    internal static var isReadyForTesting: Bool { shared.queue.sync { shared.isReady } }
+    internal static var bootstrapOrgIdForTesting: String? { shared.queue.sync { shared.bootstrapData?.orgId } }
 
     /// What `onReady` actually waits for: bootstrap has settled and the managers are wired.
     ///
@@ -1677,7 +1703,7 @@ public final class AppDNA: @unchecked Sendable {
 
         // 6. Bootstrap async (fetch orgId/appId, then Firestore configs)
         Task { [weak self] in
-            await self?.performBootstrap(client: client, configCache: configCache, identityMgr: identityMgr, tracker: tracker)
+            await self?.performBootstrap(client: client, configCache: configCache, identityMgr: identityMgr, tracker: tracker, epoch: epoch)
         }
     }
 
@@ -1685,15 +1711,21 @@ public final class AppDNA: @unchecked Sendable {
         client: APIClient,
         configCache: ConfigCache,
         identityMgr: IdentityManager,
-        tracker: EventTracker
+        tracker: EventTracker,
+        epoch: Int
     ) async {
         do {
             // Bootstrap with a 15-second timeout (allows 1 retry cycle: initial + 1s + retry = ~5-10s)
             let data: BootstrapData = try await withTimeout(seconds: 15) {
                 try await client.request(.bootstrap)
             }
-            queue.async { [weak self] in
-                self?.bootstrapData = data
+            // 🔴 A BOOTSTRAP THAT OUTLIVES ITS CONFIGURE IS DROPPED. The request can take seconds; a
+            // `shutdown()` (or `shutdown(); configure()`) in that window used to be ignored here, and
+            // the late answer rebuilt every manager and set `isReady` on a shut-down SDK — or, after a
+            // re-configure, overwrote the new configure's bootstrap with the old one's. Checked here so
+            // none of the side effects below run, and again on `queue` (authoritative) before applying.
+            guard isCurrentConfigure(epoch) else {
+                return dropStaleBootstrap(epoch)
             }
             Log.info("Bootstrap successful: orgId=\(data.orgId), appId=\(data.appId)")
 
@@ -1734,6 +1766,8 @@ public final class AppDNA: @unchecked Sendable {
 
             queue.async { [weak self] in
                 guard let self else { return }
+                guard self.isCurrentConfigure(epoch) else { return self.dropStaleBootstrapOnQueue(epoch) }
+                self.bootstrapData = data
                 self.initializeManagers(
                     firestorePath: data.firestorePath,
                     configCache: configCache,
@@ -1742,6 +1776,11 @@ public final class AppDNA: @unchecked Sendable {
                 )
             }
         } catch {
+            // A failure that outlives its configure is just as stale as a success: no degraded report,
+            // no managers, no ready on a shut-down (or re-configured) SDK.
+            guard isCurrentConfigure(epoch) else {
+                return dropStaleBootstrap(epoch)
+            }
             let desc = error.localizedDescription
             if desc.contains("401") || desc.contains("UNAUTHORIZED") || desc.contains("Invalid API key") {
                 Log.error("❌ Bootstrap failed: Invalid API key. Check your key in Console → Settings → SDK → API Keys. Make sure it starts with 'adn_live_' or 'adn_test_'.")
@@ -1755,6 +1794,7 @@ public final class AppDNA: @unchecked Sendable {
             AppDNA.reportInitDegraded(AppDNAInitError.bootstrapFailed(desc))
             queue.async { [weak self] in
                 guard let self else { return }
+                guard self.isCurrentConfigure(epoch) else { return self.dropStaleBootstrapOnQueue(epoch) }
                 self.initializeManagers(
                     firestorePath: nil,
                     configCache: configCache,
@@ -1763,6 +1803,17 @@ public final class AppDNA: @unchecked Sendable {
                 )
             }
         }
+    }
+
+    /// A bootstrap whose configure has been ended by `shutdown()` or superseded by a later `configure()`.
+    /// Nothing of it is applied: no managers, no `isReady`, no `onReady` callbacks, no `sdk_initialized`.
+    private func dropStaleBootstrap(_ epoch: Int) {
+        queue.async { [weak self] in self?.dropStaleBootstrapOnQueue(epoch) }
+    }
+
+    private func dropStaleBootstrapOnQueue(_ epoch: Int) {
+        Log.info("Bootstrap result for configure #\(epoch), since shut down or replaced — dropped")
+        Self.recordBootstrapOutcome(applied: false)
     }
 
     /// Execute an async operation with a timeout. Throws CancellationError if the timeout is reached.
@@ -1917,6 +1968,7 @@ public final class AppDNA: @unchecked Sendable {
         // launch still becomes ready (with cached/bundled config) rather than hanging every host that
         // awaits it.
         self.isReady = true
+        Self.recordBootstrapOutcome(applied: true)
         tracker.track(event: "sdk_initialized", properties: nil)
         Log.info("SDK ready")
 
@@ -1997,6 +2049,10 @@ public final class AppDNA: @unchecked Sendable {
         shared.initLock.lock()
         shared.isConfigured = false
         let shutdownEpoch = shared.configureEpoch
+        // The shutdown is its own generation: a bootstrap still in flight for `shutdownEpoch` is stale
+        // from this instant, even if no `configure()` follows (see `performBootstrap`). The session-scoped
+        // gates below still receive `shutdownEpoch` — the configure this shutdown ends.
+        shared.configureEpoch &+= 1
         shared.initLock.unlock()
 
         // 🔴 DROP THE ENTITLEMENT HANDLERS SYNCHRONOUSLY, FOR THE SAME REASON `isConfigured` IS CLEARED
