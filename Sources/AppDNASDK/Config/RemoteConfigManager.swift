@@ -5,7 +5,15 @@ import FirebaseFirestore
 /// Uses stale-while-revalidate: always returns cached value, refreshes in background.
 final class RemoteConfigManager {
     private let queue = DispatchQueue(label: "ai.appdna.sdk.config")
-    private let firestorePath: String?
+    /// The tenant's Firestore path, from the bootstrap. Nil while the bootstrap has not succeeded: the
+    /// manager then serves cached and bundled config. Set later by `attachFirestorePath(_:)` when a failed
+    /// bootstrap recovers. Read from any thread, so behind a lock.
+    private let pathLock = NSLock()
+    private var _firestorePath: String?
+    private var firestorePath: String? {
+        pathLock.lock(); defer { pathLock.unlock() }
+        return _firestorePath
+    }
     private let configCache: ConfigCache
     private let configTTL: TimeInterval
     private weak var eventTracker: EventTracker?
@@ -85,7 +93,7 @@ final class RemoteConfigManager {
     private var surveyUpdateHandler: (([String: SurveyConfig]) -> Void)?
 
     init(firestorePath: String?, configCache: ConfigCache, configTTL: TimeInterval) {
-        self.firestorePath = firestorePath
+        self._firestorePath = firestorePath
         self.configCache = configCache
         self.configTTL = configTTL
 
@@ -320,6 +328,22 @@ final class RemoteConfigManager {
     func onSurveyConfigsUpdated(_ handler: @escaping ([String: SurveyConfig]) -> Void) {
         self.surveyUpdateHandler = handler
     }
+
+    /// A failed bootstrap recovered: the manager now knows the tenant's Firestore path, and fetches the
+    /// config at once — exactly the fetch a first-time bootstrap success starts. A path that is already
+    /// set is kept (the bootstrap of this configure already succeeded).
+    func attachFirestorePath(_ path: String) {
+        pathLock.lock()
+        let attach = _firestorePath == nil
+        if attach { _firestorePath = path }
+        pathLock.unlock()
+        guard attach else { return }
+        Log.info("Firestore path attached after the bootstrap recovered — fetching remote config")
+        fetchConfigs()
+    }
+
+    /// Test reader.
+    var firestorePathForTesting: String? { firestorePath }
 
     // MARK: - SPEC-067: Force Refresh
 

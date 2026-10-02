@@ -21,6 +21,54 @@ enum EventUploadCoordinator {
         defer { lock.unlock() }
         uploading = false
     }
+
+    /// The `event_id`s an upload owner resolved (delivered, or dropped on a permanent 4xx) in this process,
+    /// most recent `maxResolved`. The claim stops two owners POSTing at once, not one owner re-sending what
+    /// another already sent: a queue holds in-memory copies of the events it loaded from disk, and the
+    /// background uploader — or the last upload of a queue `shutdown()` ended, while the next `configure()`'s
+    /// queue loaded the same events — removes them from disk only. Every owner records what it resolved
+    /// here while it holds the claim; a queue drops those from memory before it uploads. Android
+    /// `EventUploadCoordinator.markResolved`, same rule.
+    static let maxResolved = 10_000
+    private static var resolved: [String] = []
+    private static var resolvedSet: Set<String> = []
+
+    static func markResolved<S: Sequence>(_ ids: S) where S.Element == String {
+        lock.lock()
+        defer { lock.unlock() }
+        for id in ids where !id.isEmpty && !resolvedSet.contains(id) {
+            resolved.append(id)
+            resolvedSet.insert(id)
+        }
+        if resolved.count > maxResolved {
+            let drop = resolved.count - maxResolved
+            for id in resolved.prefix(drop) { resolvedSet.remove(id) }
+            resolved.removeFirst(drop)
+        }
+    }
+
+    static func wasResolved(_ id: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return resolvedSet.contains(id)
+    }
+
+    static func clearResolvedForTesting() {
+        lock.lock(); resolved.removeAll(); resolvedSet.removeAll(); lock.unlock()
+    }
+}
+
+/// The event queue's failure pause (paused after `maxConsecutiveFailures` failed upload cycles), persisted so
+/// the background uploader can honour it. The pause lives in the queue's memory; the BGProcessingTask runs
+/// outside the queue and used to upload whatever the pause said, so backgrounding a paused app started exactly
+/// the uploads the pause stops. The queue writes the gate when it pauses and when a foreground or
+/// `AppDNA.flush()` clears the pause, and clears it when a new queue starts (a new `configure()` starts
+/// unpaused, in memory and here alike); the uploader reads it before it uploads. Android `UploadPauseGate`,
+/// same rule.
+enum UploadPauseGate {
+    private static let key = "ai.appdna.sdk.upload_paused"
+    static func set(_ paused: Bool) { UserDefaults.standard.set(paused, forKey: key) }
+    static var isPaused: Bool { UserDefaults.standard.bool(forKey: key) }
 }
 
 /// Manages in-memory + disk event queue with automatic flushing.
@@ -85,6 +133,9 @@ final class EventQueue {
         self.eventStore = eventStore
         self.baseBatchSize = batchSize
         self.flushInterval = flushInterval
+
+        // A new queue (a new `configure()`) starts unpaused; so does the gate the background uploader reads.
+        UploadPauseGate.set(false)
 
         // Load persisted events from disk
         let persisted = eventStore.loadPending()
@@ -219,7 +270,10 @@ final class EventQueue {
 
     /// On `queue`.
     private func runFlush(_ trigger: FlushTrigger) {
-        if trigger.clearsPauseGate { consecutiveFailures = 0 }
+        if trigger.clearsPauseGate {
+            consecutiveFailures = 0
+            UploadPauseGate.set(false)
+        }
         performFlush()
     }
 
@@ -259,20 +313,45 @@ final class EventQueue {
     }
 
     @objc private func appDidEnterBackground() {
-        // Guard against duplicate background tasks
-        guard backgroundTask == .invalid else { return }
+        enterBackground(holdBackgroundTask: true)
+    }
 
-        // Request background time to ensure flush completes before suspension
-        backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
-            self?.endBackgroundTask()
+    /// The app went to the background: flush, then schedule the background upload unless paused. A test drives
+    /// it with `holdBackgroundTask: false` (no `UIApplication` background task).
+    func enterBackground(holdBackgroundTask: Bool) {
+        if holdBackgroundTask {
+            // Guard against duplicate background tasks
+            guard backgroundTask == .invalid else { return }
+
+            // Request background time to ensure flush completes before suspension
+            backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
+                self?.endBackgroundTask()
+            }
         }
         flush(.background)
         // End background task after flush dispatch completes on the same serial queue
         queue.async { [weak self] in
-            self?.endBackgroundTask()
+            guard let self else { return }
+            self.endBackgroundTask()
+            // SPEC-067: Schedule background upload for remaining events — unless the queue is paused:
+            // backgrounding keeps the pause, and a background upload would bypass it.
+            if self.consecutiveFailures >= self.maxConsecutiveFailures {
+                Log.debug("Uploads paused — no background upload scheduled until the next foreground / AppDNA.flush()")
+            } else {
+                (Self.scheduleBackgroundUploadForTesting ?? { BackgroundUploader.shared?.scheduleUploadIfNeeded() })()
+            }
         }
-        // SPEC-067: Schedule background upload for remaining events
-        BackgroundUploader.shared?.scheduleUploadIfNeeded()
+    }
+
+    /// Test seam: replaces the background-upload schedule `appDidEnterBackground` makes (nil in production).
+    static var scheduleBackgroundUploadForTesting: (() -> Void)?
+
+    /// Test seam: the state after `maxConsecutiveFailures` failed cycles (the pause, and its persisted gate).
+    func pauseForTesting() {
+        queue.sync {
+            consecutiveFailures = maxConsecutiveFailures
+            UploadPauseGate.set(true)
+        }
     }
 
     private func endBackgroundTask() {
@@ -328,6 +407,20 @@ final class EventQueue {
             return
         }
 
+        // Events another upload owner already resolved — the background uploader, or the last upload of a
+        // queue `shutdown()` ended while this one loaded the same events from disk — are not sent again:
+        // that owner removed them from disk, but this queue still holds its in-memory copies.
+        let before = pendingEvents.count
+        pendingEvents.removeAll { EventUploadCoordinator.wasResolved($0.event_id) }
+        if pendingEvents.count != before {
+            Log.debug("Skipped \(before - pendingEvents.count) event(s) another upload already delivered")
+        }
+        guard !pendingEvents.isEmpty else {
+            isFlushing = false
+            EventUploadCoordinator.release()
+            return
+        }
+
         let batch = Array(pendingEvents.prefix(currentBatchSize > 0 ? currentBatchSize : pendingEvents.count))
         let eventIds = Set(batch.map(\.event_id))
 
@@ -360,6 +453,7 @@ final class EventQueue {
                     // Remove sent events from memory and disk
                     self.pendingEvents.removeAll { eventIds.contains($0.event_id) }
                     self.eventStore.removeSent(eventIds: eventIds)
+                    EventUploadCoordinator.markResolved(eventIds)
                     self.retryCount = 0
                     self.consecutiveFailures = 0
                     Log.debug("Flush successful: \(batch.count) events delivered")
@@ -385,6 +479,7 @@ final class EventQueue {
                     if loss > 0 { DroppedEventsCounter.increment(loss) }
                     self.pendingEvents.removeAll { eventIds.contains($0.event_id) }
                     self.eventStore.removeSent(eventIds: eventIds)
+                    EventUploadCoordinator.markResolved(eventIds)
                     // Round-31 — INCREMENT the failure latch (was: jump straight to
                     // maxConsecutiveFailures). The poison batch is already dropped above, so a
                     // single 400 (one malformed event) must NOT pause the whole queue for the
@@ -395,6 +490,7 @@ final class EventQueue {
                     self.consecutiveFailures += 1
                     self.retryCount = 0
                     if self.consecutiveFailures >= self.maxConsecutiveFailures {
+                        UploadPauseGate.set(true)
                         Log.error("Dropped batch of \(batch.count) after permanent 4xx; \(self.consecutiveFailures) consecutive failures — uploads paused until next foreground.")
                     } else {
                         Log.error("Dropping batch of \(batch.count) events after permanent 4xx (retry won't help); continuing with next batch.")
@@ -415,6 +511,7 @@ final class EventQueue {
                         self.consecutiveFailures += 1
                         self.retryCount = 0
                         if self.consecutiveFailures >= self.maxConsecutiveFailures {
+                            UploadPauseGate.set(true)
                             Log.warning("Too many consecutive flush failures (\(self.consecutiveFailures)). Event uploads paused until next session.")
                         } else {
                             Log.warning("Max retries reached (\(self.maxRetries)). Will try again on next flush cycle.")

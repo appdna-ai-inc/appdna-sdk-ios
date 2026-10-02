@@ -285,6 +285,51 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         XCTAssertNotEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
     }
 
+    /// The user check on a SHARED read (`joinOrStartServerRead`: `flight.userId == userId`). `identify(A)` →
+    /// `identify(B)` does not bump the sign-out count, so while A's request is still in flight the generation
+    /// alone would let B's pass join it — B would read nothing of its own, and A's rows would come back as B's
+    /// answer. B's pass must start its own request, and no change may carry A's rows.
+    /// NEGATIVE CONTROL: with `flight.userId == userId` deleted from the lookup, B's pass joins A's held read —
+    /// no `user-2` request is made and the first assertion fails.
+    func testAnotherUsersPassDoesNotShareAReadStillInFlightForThePreviousUser() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
+        world.userId = "user-1"
+        bridge.ids = ["p"]
+        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
+        let cross = crossRow
+        final class CallLog: @unchecked Sendable {
+            private let lock = NSLock(); private var _users: [String] = []
+            func add(_ u: String) { lock.lock(); _users.append(u); lock.unlock() }
+            var users: [String] { lock.lock(); defer { lock.unlock() }; return _users }
+        }
+        let calls = CallLog()
+        module.entitlementSources.server = { uid in
+            calls.add(uid)
+            if uid == "user-1" { await gate.wait(); return [cross] }   // user-1's read: held
+            return []                                                  // user-2: no server-only rows
+        }
+
+        await module.refreshEntitlementCache()        // user-1's pass times out; its read stays in flight
+        let held = await waitUntil { gate.entered == 1 }
+        XCTAssertTrue(held, "user-1's read never reached the server")
+        world.userId = "user-2"                       // `identify("user-2")`: same sign-out count
+        module.serverReadDeadline = 60                 // user-2's pass waits for the read it uses
+        let user2Pass = Task { await module.refreshEntitlementCache() }
+
+        let ownRead = await waitUntil(10) { calls.users.contains("user-2") }
+        XCTAssertTrue(ownRead, "user-2's pass shared user-1's read still in flight — no user-2 request: \(calls.users)")
+        gate.open()                                   // user-1's answer arrives (late)
+        await user2Pass.value
+        await settle()
+        await module.refreshEntitlementCache()        // drains the chain
+        await settle()
+        XCTAssertFalse(spy.changes.flatMap { $0 }.contains { $0.productId == "cross" },
+                       "user-1's server row was reported while user-2 is signed in: \(spy.changes.map { $0.map(\.productId) })")
+        let saved = ServerOnlyEntitlementCache.load(defaults)
+        XCTAssertFalse(saved?.userId == "user-2" && saved?.items.contains { $0.productId == "cross" } == true,
+                       "user-1's rows were saved as user-2's")
+    }
+
     /// Minor 6: N passes of one user while its `/billing/entitlements` read is held issue ONE request — each
     /// waits on it for at most the deadline — and its late answer is applied once: one more change, not N.
     /// NEGATIVE CONTROL: with every pass starting its own request (no `joinOrStartServerRead` lookup), five

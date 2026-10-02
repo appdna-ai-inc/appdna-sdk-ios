@@ -52,9 +52,21 @@ final class ResilienceFixtureTests: XCTestCase {
         // contract=flush_pause_gate
         let trigger: String?
         let clears_pause: Bool?
+        // contract=bootstrap_recovery
+        let attempt_index: Int?
+        let backoff_ms: Int?
+        let online: Bool?
+        let triggered: Bool?
+        let attempts_made: Int?
+        // contract=resolved_events_not_resent
+        let mark: [String]?
+        let query: String?
+        let resolved: Bool?
 
         private enum CodingKeys: String, CodingKey {
             case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
+            case attempt_index, backoff_ms, online, triggered, attempts_made
+            case mark, query, resolved
         }
 
         init(from decoder: Decoder) throws {
@@ -66,6 +78,14 @@ final class ResilienceFixtureTests: XCTestCase {
             disposition = try c.decodeIfPresent(String.self, forKey: .disposition)
             trigger = try c.decodeIfPresent(String.self, forKey: .trigger)
             clears_pause = try c.decodeIfPresent(Bool.self, forKey: .clears_pause)
+            attempt_index = try c.decodeIfPresent(Int.self, forKey: .attempt_index)
+            backoff_ms = try c.decodeIfPresent(Int.self, forKey: .backoff_ms)
+            online = try c.decodeIfPresent(Bool.self, forKey: .online)
+            triggered = try c.decodeIfPresent(Bool.self, forKey: .triggered)
+            attempts_made = try c.decodeIfPresent(Int.self, forKey: .attempts_made)
+            mark = try c.decodeIfPresent([String].self, forKey: .mark)
+            query = try c.decodeIfPresent(String.self, forKey: .query)
+            resolved = try c.decodeIfPresent(Bool.self, forKey: .resolved)
 
             // Plain statements, not a `&&` inside a ternary: `decodeNil` throws, and Swift will not
             // let a throwing call sit inside a short-circuit operand.
@@ -99,6 +119,19 @@ final class ResilienceFixtureTests: XCTestCase {
         let max_total_backoff_ms: Int?
         // contract=permanent_failure
         let latch: [LatchStep]?
+        // contract=bootstrap_recovery
+        let max_attempts: Int?
+        // contract=resolved_events_not_resent
+        let max_resolved: Int?
+        // contract=flush_pause_gate
+        let os_upload: OSUpload?
+    }
+
+    private struct OSUpload: Decodable {
+        let background_schedules_when_paused: Bool
+        let background_schedules_when_unpaused: Bool
+        let worker_uploads_when_paused: Bool
+        let worker_uploads_when_unpaused: Bool
     }
 
     private struct Fixture: Decodable {
@@ -269,6 +302,79 @@ final class ResilienceFixtureTests: XCTestCase {
                 }
                 XCTAssertEqual(named, Set(EventQueue.FlushTrigger.allCases), "[\(f.id)] the table must name every FlushTrigger")
 
+                // The pause holds for the OS background uploader: drives the real `enterBackground` of a real
+                // queue (paused / not) and the gate `BackgroundUploader` reads before it uploads.
+                guard let os = f.resilience.os_upload else {
+                    return XCTFail("[\(f.id)] flush_pause_gate needs `os_upload`")
+                }
+                for paused in [true, false] {
+                    let scheduled = Counter()
+                    EventQueue.scheduleBackgroundUploadForTesting = { scheduled.bump() }
+                    defer { EventQueue.scheduleBackgroundUploadForTesting = nil }
+                    let store = EventStore(fileName: "pause-os-\(UUID().uuidString).json")
+                    defer { store.clearAll() }
+                    let tracker = EventTracker(identityManager: IdentityManager(
+                        keychainStore: KeychainStore(service: "ai.appdna.sdk.test.pauseos.\(UUID().uuidString)")))
+                    let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
+                                       eventStore: store, eventTracker: tracker, batchSize: 20, flushInterval: 3600)
+                    if paused { q.pauseForTesting() }
+                    q.enterBackground(holdBackgroundTask: false)
+                    let deadline = Date().addingTimeInterval(1)
+                    while Date() < deadline && scheduled.value == 0 { Thread.sleep(forTimeInterval: 0.02) }
+                    XCTAssertEqual(scheduled.value > 0,
+                                   paused ? os.background_schedules_when_paused : os.background_schedules_when_unpaused,
+                                   "[\(f.id)] does backgrounding schedule the background upload (paused=\(paused))?")
+                    XCTAssertEqual(BackgroundUploader.uploadAllowed,
+                                   paused ? os.worker_uploads_when_paused : os.worker_uploads_when_unpaused,
+                                   "[\(f.id)] may a background run upload (paused=\(paused))?")
+                    withExtendedLifetime(q) {}
+                }
+                UploadPauseGate.set(false)
+
+            // The retry loop of a failed bootstrap: its backoff schedule and bound, and — driving the real
+            // `BootstrapRecovery` with a long backoff, so only a trigger can start an attempt — that an attempt
+            // is made only for a trigger while online.
+            case "bootstrap_recovery":
+                XCTAssertEqual(BootstrapRecovery.defaultMaxAttempts, f.resilience.max_attempts, "[\(f.id)] max_attempts")
+                for c in try requireCases(f) {
+                    if let index = c.attempt_index, let ms = c.backoff_ms {
+                        XCTAssertEqual(Int(BootstrapRecovery.defaultBackoff(index) * 1000), ms, "[\(f.id)] backoff before attempt \(index + 1)")
+                    } else if let online = c.online, let triggered = c.triggered, let want = c.attempts_made {
+                        let recovery = BootstrapRecovery(isOnline: { online }, backoff: { _ in 3600 }, tick: 0.02)
+                        let made = Counter()
+                        recovery.start { made.bump(); return true }
+                        if triggered { recovery.trigger() }
+                        let deadline = Date().addingTimeInterval(0.5)
+                        while Date() < deadline && made.value < max(want, 1) { Thread.sleep(forTimeInterval: 0.02) }
+                        Thread.sleep(forTimeInterval: 0.1)
+                        recovery.stop()
+                        XCTAssertEqual(made.value, want, "[\(f.id)] attempts with online=\(online) triggered=\(triggered)")
+                    } else {
+                        XCTFail("[\(f.id)] bootstrap_recovery case needs attempt_index+backoff_ms or online+triggered+attempts_made")
+                    }
+                }
+
+            // The process-wide registry every upload owner records its resolved event ids in (and a queue
+            // consults before it uploads). Drives the real `EventUploadCoordinator`; cases run in order.
+            case "resolved_events_not_resent":
+                XCTAssertEqual(EventUploadCoordinator.maxResolved, f.resilience.max_resolved, "[\(f.id)] max_resolved")
+                EventUploadCoordinator.clearResolvedForTesting()
+                defer { EventUploadCoordinator.clearResolvedForTesting() }
+                for c in try requireCases(f) {
+                    guard let query = c.query, let want = c.resolved else {
+                        return XCTFail("[\(f.id)] resolved_events_not_resent case needs `query` and `resolved`")
+                    }
+                    EventUploadCoordinator.markResolved(c.mark ?? [])
+                    XCTAssertEqual(EventUploadCoordinator.wasResolved(query), want, "[\(f.id)] is '\(query)' resolved?")
+                }
+                // The bound: the oldest id leaves once max_resolved newer ones are recorded.
+                if let max = f.resilience.max_resolved {
+                    EventUploadCoordinator.clearResolvedForTesting()
+                    EventUploadCoordinator.markResolved((0...max).map { "bound-\($0)" })
+                    XCTAssertFalse(EventUploadCoordinator.wasResolved("bound-0"), "[\(f.id)] the registry is not bounded")
+                    XCTAssertTrue(EventUploadCoordinator.wasResolved("bound-\(max)"))
+                }
+
             default:
                 XCTFail("[\(f.id)] unknown resilience contract '\(f.resilience.contract)' — this runner must assert it, never skip it")
             }
@@ -278,9 +384,16 @@ final class ResilienceFixtureTests: XCTestCase {
         // and this suite would still go green on the survivors.
         XCTAssertEqual(
             seenContracts,
-            ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff", "flush_pause_gate"],
+            ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff", "flush_pause_gate",
+             "bootstrap_recovery", "resolved_events_not_resent"],
             "every resilience contract must be covered by a fixture"
         )
+    }
+
+    final class Counter: @unchecked Sendable {
+        private let lock = NSLock(); private var n = 0
+        func bump() { lock.lock(); n += 1; lock.unlock() }
+        var value: Int { lock.lock(); defer { lock.unlock() }; return n }
     }
 
     /// The three table contracts require a case table; `backoff` does not carry one. A fixture that

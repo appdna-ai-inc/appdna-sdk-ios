@@ -8,7 +8,25 @@ import Foundation
 /// O(1) amortized instead of the old O(n) full-file decode+append+encode on every `track()` (a
 /// battery/CPU cliff at scale). Caps are enforced by periodic compaction, amortizing the O(n) rewrite.
 final class EventStore {
-    private let queue = DispatchQueue(label: "ai.appdna.sdk.eventstore")
+    /// ONE serial queue per store FILE, shared by every `EventStore` on it — not one per instance.
+    ///
+    /// `shutdown(); configure()` builds a new `EventStore` on the same file while the old queue's last
+    /// upload is still in flight; `BackgroundUploader` holds another. With a queue each, the old store's
+    /// `removeSent` (read the file, filter, rewrite it) could run between the new store's append and its
+    /// return, and the rewrite dropped the event the new store had just appended. Every read-modify-write
+    /// of one file now runs on that file's queue, whichever instance asks.
+    private static let queuesLock = NSLock()
+    private static var queuesByPath: [String: DispatchQueue] = [:]
+    static func sharedQueue(for url: URL) -> DispatchQueue {
+        queuesLock.lock(); defer { queuesLock.unlock() }
+        let key = url.standardizedFileURL.path
+        if let q = queuesByPath[key] { return q }
+        let q = DispatchQueue(label: "ai.appdna.sdk.eventstore.\(url.lastPathComponent)")
+        queuesByPath[key] = q
+        return q
+    }
+
+    private let queue: DispatchQueue
     private let fileURL: URL
     private let maxEvents: Int
     /// SPEC-067: Maximum disk usage for event storage (5 MB).
@@ -29,6 +47,7 @@ final class EventStore {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         Self.excludeFromBackup(dir)
         self.fileURL = dir.appendingPathComponent(fileName)
+        self.queue = Self.sharedQueue(for: self.fileURL)
     }
 
     /// Marks the SDK's storage directory as excluded from iCloud/iTunes backup.

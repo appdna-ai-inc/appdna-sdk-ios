@@ -30,10 +30,13 @@ final class LoopbackHTTPServer: @unchecked Sendable {
     private let fd: Int32
     private let lock = NSLock()
     private var _requests: [String] = []
+    private var _bodies: [(label: String, body: Data)] = []
     private let respond: @Sendable (String) -> Answer
 
     var requests: [String] { lock.lock(); defer { lock.unlock() }; return _requests }
     func count(_ prefix: String) -> Int { requests.filter { $0.hasPrefix(prefix) }.count }
+    /// Every request's body as sent, with its "METHOD path" label.
+    var bodies: [(label: String, body: Data)] { lock.lock(); defer { lock.unlock() }; return _bodies }
 
     init?(respond: @escaping @Sendable (String) -> Answer) {
         self.respond = respond
@@ -99,7 +102,9 @@ final class LoopbackHTTPServer: @unchecked Sendable {
         let requestLine = head.split(separator: "\r\n").first.map(String.init) ?? ""
         let parts = requestLine.split(separator: " ")
         let label = parts.count >= 2 ? "\(parts[0]) \(parts[1])" : requestLine
-        lock.lock(); _requests.append(label); lock.unlock()
+        let bodyStart = (headerEnd ?? 0) + 4
+        let body = data.count >= bodyStart ? Data(data[bodyStart..<min(data.count, bodyStart + contentLength)]) : Data()
+        lock.lock(); _requests.append(label); _bodies.append((label, body)); lock.unlock()
         let answer = respond(label)
         let payload = Array(answer.body.utf8)
         var reply = "HTTP/1.1 \(answer.status) X\r\n"

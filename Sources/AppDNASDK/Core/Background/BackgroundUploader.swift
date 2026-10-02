@@ -63,6 +63,9 @@ final class BackgroundUploader {
         }
     }
 
+    /// Whether a background run may upload now: not while the queue's failure pause holds.
+    static var uploadAllowed: Bool { !UploadPauseGate.isPaused }
+
     /// Schedule a background upload if there are pending events.
     func scheduleUploadIfNeeded() {
         guard #available(iOS 13.0, *) else { return }
@@ -102,11 +105,24 @@ final class BackgroundUploader {
                 return
             }
 
+            // The queue's failure pause holds for this uploader too (`UploadPauseGate`): nothing is uploaded
+            // until a foreground or `AppDNA.flush()`, and nothing is rescheduled — the next backgrounding of an
+            // unpaused queue schedules a fresh run.
+            guard Self.uploadAllowed else {
+                Log.info("Background upload skipped — uploads are paused after repeated failures")
+                task.setTaskCompleted(success: true)
+                return
+            }
+
             // SPEC-428 CL-9/D4: single upload owner — if the in-process flush holds the claim, skip
             // this background run so the same rows are never POSTed twice. `defer` releases on every
             // subsequent exit path.
             guard EventUploadCoordinator.tryAcquire() else {
-                Log.info("Background upload skipped — in-process flush is active")
+                // Another owner is uploading (e.g. the last upload `shutdown()` makes). Schedule the next run
+                // rather than leaving what that owner does not send for the next launch — the same rule as
+                // Android's `EventUploadWorker`, which answers retry here.
+                Log.info("Background upload deferred — another upload is active; rescheduled")
+                self.scheduleUploadIfNeeded()
                 task.setTaskCompleted(success: true)
                 return
             }
@@ -150,6 +166,7 @@ final class BackgroundUploader {
             if success {
                 let eventIds = Set(batch.map(\.event_id))
                 self.eventStore.removeSent(eventIds: eventIds)
+                EventUploadCoordinator.markResolved(eventIds)
                 self.retryCount = 0
                 Log.info("Background upload successful: \(batch.count) events")
 

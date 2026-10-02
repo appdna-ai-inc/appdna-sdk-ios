@@ -1707,6 +1707,54 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
+    /// The bootstrap request, with its 15-second limit (allows 1 retry cycle: initial + 1s + retry = ~5-10s).
+    private func fetchBootstrap(_ client: APIClient) async throws -> BootstrapData {
+        try await withTimeout(seconds: 15) {
+            try await client.request(.bootstrap)
+        }
+    }
+
+    /// The part of applying a successful bootstrap that does not need `queue`: map keys, the runtime lock
+    /// and geo traits. The first bootstrap and a later recovery (`startBootstrapRecovery`) both run it.
+    private func applyBootstrapSettings(_ data: BootstrapData, identityMgr: IdentityManager) {
+        Log.info("Bootstrap successful: orgId=\(data.orgId), appId=\(data.appId)")
+
+        // SPEC-404 — reconcile runtime lock state from the bootstrap
+        // response. Fire delegate callbacks ONLY on a state transition
+        // (idle → locked or locked → idle), not on every bootstrap.
+        // Repeated bootstraps in the same state are a no-op for delegate
+        // notification.
+        AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
+        // SPEC-495 §B — same path, same ownership rules, for the Google provider.
+        AppDNA.applyRemoteGoogleMapsKey(data.settings.googleMapsApiKey)
+        // SPEC-495 — the engine those two keys select between, same delivery path.
+        AppDNA.applyRemoteMapProvider(data.settings.mapProvider)
+
+        let previousLock = AppDNA.runtimeLock
+        let currentLock = data.runtime_lock
+        AppDNA.runtimeLock = currentLock
+        if previousLock == nil, let newLock = currentLock {
+            Log.warning("AppDNA runtime locked by backend (reason=\(newLock.reason), locked_at=\(newLock.locked_at)) — pausing paywall/message/survey presentation")
+            AppDNA.lifecycleDelegate?.onSdkRuntimeLocked(reason: newLock.reason, lockedAt: newLock.locked_at)
+        } else if previousLock != nil, currentLock == nil {
+            Log.info("AppDNA runtime lock cleared — restoring normal SDK behaviour")
+            AppDNA.lifecycleDelegate?.onSdkRuntimeUnlocked()
+        }
+
+        // Auto-inject geo traits from bootstrap response
+        if let geo = data.geo {
+            var geoTraits: [String: Any] = [:]
+            if let country = geo.country, !country.isEmpty { geoTraits["country"] = country }
+            if let region = geo.region, !region.isEmpty { geoTraits["region"] = region }
+            if let city = geo.city, !city.isEmpty { geoTraits["city"] = city }
+            if let tz = geo.timezone, !tz.isEmpty { geoTraits["timezone"] = tz }
+            if !geoTraits.isEmpty {
+                identityMgr.mergeTraits(geoTraits)
+                Log.info("Geo traits injected: \(geoTraits.keys.joined(separator: ", "))")
+            }
+        }
+    }
+
     private func performBootstrap(
         client: APIClient,
         configCache: ConfigCache,
@@ -1715,10 +1763,7 @@ public final class AppDNA: @unchecked Sendable {
         epoch: Int
     ) async {
         do {
-            // Bootstrap with a 15-second timeout (allows 1 retry cycle: initial + 1s + retry = ~5-10s)
-            let data: BootstrapData = try await withTimeout(seconds: 15) {
-                try await client.request(.bootstrap)
-            }
+            let data = try await fetchBootstrap(client)
             // 🔴 A BOOTSTRAP THAT OUTLIVES ITS CONFIGURE IS DROPPED. The request can take seconds; a
             // `shutdown()` (or `shutdown(); configure()`) in that window used to be ignored here, and
             // the late answer rebuilt every manager and set `isReady` on a shut-down SDK — or, after a
@@ -1727,42 +1772,7 @@ public final class AppDNA: @unchecked Sendable {
             guard isCurrentConfigure(epoch) else {
                 return dropStaleBootstrap(epoch)
             }
-            Log.info("Bootstrap successful: orgId=\(data.orgId), appId=\(data.appId)")
-
-            // SPEC-404 — reconcile runtime lock state from the bootstrap
-            // response. Fire delegate callbacks ONLY on a state transition
-            // (idle → locked or locked → idle), not on every bootstrap.
-            // Repeated bootstraps in the same state are a no-op for delegate
-            // notification.
-            AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
-            // SPEC-495 §B — same path, same ownership rules, for the Google provider.
-            AppDNA.applyRemoteGoogleMapsKey(data.settings.googleMapsApiKey)
-            // SPEC-495 — the engine those two keys select between, same delivery path.
-            AppDNA.applyRemoteMapProvider(data.settings.mapProvider)
-
-            let previousLock = AppDNA.runtimeLock
-            let currentLock = data.runtime_lock
-            AppDNA.runtimeLock = currentLock
-            if previousLock == nil, let newLock = currentLock {
-                Log.warning("AppDNA runtime locked by backend (reason=\(newLock.reason), locked_at=\(newLock.locked_at)) — pausing paywall/message/survey presentation")
-                AppDNA.lifecycleDelegate?.onSdkRuntimeLocked(reason: newLock.reason, lockedAt: newLock.locked_at)
-            } else if previousLock != nil, currentLock == nil {
-                Log.info("AppDNA runtime lock cleared — restoring normal SDK behaviour")
-                AppDNA.lifecycleDelegate?.onSdkRuntimeUnlocked()
-            }
-
-            // Auto-inject geo traits from bootstrap response
-            if let geo = data.geo {
-                var geoTraits: [String: Any] = [:]
-                if let country = geo.country, !country.isEmpty { geoTraits["country"] = country }
-                if let region = geo.region, !region.isEmpty { geoTraits["region"] = region }
-                if let city = geo.city, !city.isEmpty { geoTraits["city"] = city }
-                if let tz = geo.timezone, !tz.isEmpty { geoTraits["timezone"] = tz }
-                if !geoTraits.isEmpty {
-                    identityMgr.mergeTraits(geoTraits)
-                    Log.info("Geo traits injected: \(geoTraits.keys.joined(separator: ", "))")
-                }
-            }
+            applyBootstrapSettings(data, identityMgr: identityMgr)
 
             queue.async { [weak self] in
                 guard let self else { return }
@@ -1787,7 +1797,7 @@ public final class AppDNA: @unchecked Sendable {
             } else if desc.contains("Network error") || desc.contains("not connected") || desc.contains("timed out") {
                 Log.error("❌ Bootstrap failed: Network error (\(desc)). Check your device has internet access and can reach api.appdna.ai")
             } else {
-                Log.error("❌ Bootstrap failed: \(desc) — SDK will operate in degraded mode with cached/bundled config")
+                Log.error("❌ Bootstrap failed: \(desc) — SDK will operate in degraded mode with cached/bundled config until it is retried")
             }
             // SPEC-070-B PN row 2 (D-k): a failed bootstrap IS the degraded state. Surface it instead of
             // leaving the host to infer it from a log line. Managers still initialize below (row 17).
@@ -1801,8 +1811,93 @@ public final class AppDNA: @unchecked Sendable {
                     identityMgr: identityMgr,
                     tracker: tracker
                 )
+                // Ready now (on cached and bundled config); the bootstrap is retried for the rest of the
+                // session and applied when it answers.
+                self.startBootstrapRecovery(client: client, identityMgr: identityMgr, tracker: tracker, epoch: epoch)
             }
         }
+    }
+
+    // MARK: - Bootstrap recovery
+
+    /// The retry loop of the current configure's failed bootstrap. Under `initLock`; stopped by `shutdown()`.
+    private var bootstrapRecovery: BootstrapRecovery?
+
+    /// Test seams: the backoff and the network check the next `BootstrapRecovery` uses (nil: defaults).
+    internal static var bootstrapRetryBackoffForTesting: ((Int) -> TimeInterval)?
+    internal static var bootstrapRetryOnlineForTesting: (() -> Bool)?
+    private static let recoveredLock = NSLock()
+    private static var _bootstrapsRecovered = 0
+    /// Test reader: bootstrap recoveries applied since the process started.
+    internal static var bootstrapsRecoveredForTesting: Int { recoveredLock.lock(); defer { recoveredLock.unlock() }; return _bootstrapsRecovered }
+    /// Test reader: the current retry loop, if any.
+    internal static var bootstrapRecoveryForTesting: BootstrapRecovery? {
+        shared.initLock.lock(); defer { shared.initLock.unlock() }; return shared.bootstrapRecovery
+    }
+
+    /// The bootstrap of configure `epoch` failed and the SDK is ready on cached and bundled config: keep
+    /// trying it (`BootstrapRecovery` — when the network comes back, on foreground, after a bounded backoff).
+    /// The first answer is applied exactly as a first-time success: map keys, runtime lock and geo traits
+    /// (`applyBootstrapSettings`), then on `queue` `bootstrapData`, the Firestore path and its config fetch,
+    /// the deferred deep-link manager and the Firestore listeners of an identified user
+    /// (`applyRecoveredBootstrap`). The SDK is already ready: `onReady` does not fire again and
+    /// `sdk_initialized` is not tracked again. An attempt for a configure that has ended applies nothing.
+    /// On `queue`.
+    private func startBootstrapRecovery(client: APIClient, identityMgr: IdentityManager, tracker: EventTracker, epoch: Int) {
+        let recovery = BootstrapRecovery(
+            isOnline: Self.bootstrapRetryOnlineForTesting ?? { NetworkMonitor.shared.isConnected },
+            backoff: Self.bootstrapRetryBackoffForTesting ?? BootstrapRecovery.defaultBackoff
+        )
+        initLock.lock()
+        guard isConfigured, configureEpoch == epoch else { initLock.unlock(); return }
+        let previous = bootstrapRecovery
+        bootstrapRecovery = recovery
+        initLock.unlock()
+        previous?.stop()
+
+        recovery.start { [weak self] in
+            guard let self, self.isCurrentConfigure(epoch) else { return true }
+            let data: BootstrapData
+            do {
+                data = try await self.fetchBootstrap(client)
+            } catch {
+                Log.debug("Bootstrap retry failed: \(error.localizedDescription)")
+                return false
+            }
+            guard self.isCurrentConfigure(epoch) else { return true }
+            self.applyBootstrapSettings(data, identityMgr: identityMgr)
+            return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                self.queue.async {
+                    if self.isCurrentConfigure(epoch) {
+                        self.applyRecoveredBootstrap(data, tracker: tracker, recovery: recovery)
+                    }
+                    cont.resume(returning: true)
+                }
+            }
+        }
+    }
+
+    /// On `queue`. The `queue` half of a recovered bootstrap — what `initializeManagers` does with
+    /// `bootstrapData` on a first success, applied to the managers that already run.
+    private func applyRecoveredBootstrap(_ data: BootstrapData, tracker: EventTracker, recovery: BootstrapRecovery) {
+        bootstrapData = data
+        if deferredDeepLinkManager == nil {
+            deferredDeepLinkManager = DeferredDeepLinkManager(orgId: data.orgId, appId: data.appId, eventTracker: tracker)
+        }
+        if let userId = identityManager?.currentIdentity.userId {
+            webEntitlementManager?.startObserving(orgId: data.orgId, appId: data.appId, userId: userId)
+            pendingMessageListener?.startObserving(orgId: data.orgId, appId: data.appId, userId: userId)
+        }
+        remoteConfigManager?.attachFirestorePath(data.firestorePath)
+
+        Self.initErrorLock.lock()
+        if let e = Self._lastInitError as? AppDNAInitError, case .bootstrapFailed = e { Self._lastInitError = nil }
+        Self.initErrorLock.unlock()
+        initLock.lock()
+        if bootstrapRecovery === recovery { bootstrapRecovery = nil }
+        initLock.unlock()
+        Self.recoveredLock.lock(); Self._bootstrapsRecovered += 1; Self.recoveredLock.unlock()
+        Log.info("Bootstrap recovered — Firestore config and listeners are live")
     }
 
     /// A bootstrap whose configure has been ended by `shutdown()` or superseded by a later `configure()`.
@@ -2054,7 +2149,11 @@ public final class AppDNA: @unchecked Sendable {
         // from this instant, even if no `configure()` follows (see `performBootstrap`). The session-scoped
         // gates below still receive `shutdownEpoch` — the configure this shutdown ends.
         shared.configureEpoch &+= 1
+        // A failed bootstrap's retry loop belongs to the configure that just ended.
+        let recovery = shared.bootstrapRecovery
+        shared.bootstrapRecovery = nil
         shared.initLock.unlock()
+        recovery?.stop()
 
         // 🔴 DROP THE ENTITLEMENT HANDLERS SYNCHRONOUSLY, FOR THE SAME REASON `isConfigured` IS CLEARED
         // SYNCHRONOUSLY ABOVE. This used to live inside the async `billing.teardown()` below, which made

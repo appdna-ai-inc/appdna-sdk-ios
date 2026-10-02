@@ -22,6 +22,7 @@ final class NetworkMonitor {
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
+            let wasNone = self.currentConnectionType == .none
             if path.status == .satisfied {
                 if path.usesInterfaceType(.wifi) {
                     self.currentConnectionType = .wifi
@@ -36,8 +37,33 @@ final class NetworkMonitor {
             }
             self.isExpensive = path.isExpensive
             Log.debug("Network changed: \(self.currentConnectionType), expensive=\(self.isExpensive)")
+            if wasNone && self.currentConnectionType != .none { self.notifyRegained() }
         }
         monitor.start(queue: monitorQueue)
+    }
+
+    /// Whether a network is available now.
+    var isConnected: Bool { currentConnectionType != .none }
+
+    /// Observers called (on the monitor's queue) when a network comes back after none was available —
+    /// the SDK retries a failed bootstrap then.
+    private let observerLock = NSLock()
+    private var regainedObservers: [UUID: () -> Void] = [:]
+
+    @discardableResult
+    func addRegainedObserver(_ observer: @escaping () -> Void) -> UUID {
+        let id = UUID()
+        observerLock.lock(); regainedObservers[id] = observer; observerLock.unlock()
+        return id
+    }
+
+    func removeRegainedObserver(_ id: UUID) {
+        observerLock.lock(); regainedObservers[id] = nil; observerLock.unlock()
+    }
+
+    private func notifyRegained() {
+        observerLock.lock(); let observers = Array(regainedObservers.values); observerLock.unlock()
+        for observer in observers { observer() }
     }
 
     deinit {
