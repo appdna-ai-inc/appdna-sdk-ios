@@ -161,7 +161,7 @@ public struct AppDNAOptions: Sendable {
     /// The most events one upload sends, and the queue length that triggers a flush: a cap on the
     /// network-sized batch (100 on Wi-Fi or wired, 50 on cellular, 20 on an expensive connection). The value
     /// passed to `init`, or 100 (no cap) when none was; then the bootstrap answer's `settings.batchSize`
-    /// (if positive) is the cap. 0 holds every event on the device.
+    /// (if positive) is the cap. A value below 1 is ignored (logged) as if none was passed.
     public let batchSize: Int
     /// Remote config cache TTL in seconds: the value passed to `init`, or 3600 (1 hour) when none was; then
     /// the bootstrap answer's `settings.configTTL` (if positive) replaces the default.
@@ -214,9 +214,9 @@ public struct AppDNAOptions: Sendable {
         self.requestedFlushInterval = flushInterval
         self.requestedBatchSize = batchSize
         self.requestedConfigTTL = configTTL
-        self.flushInterval = flushInterval ?? RuntimeSettings.defaultFlushInterval
-        self.batchSize = batchSize ?? 100
-        self.configTTL = configTTL ?? RuntimeSettings.defaultConfigTTL
+        self.flushInterval = flushInterval.flatMap { $0 > 0 ? $0 : nil } ?? RuntimeSettings.defaultFlushInterval
+        self.batchSize = batchSize.flatMap { $0 > 0 ? $0 : nil } ?? 100
+        self.configTTL = configTTL.flatMap { $0 > 0 ? $0 : nil } ?? RuntimeSettings.defaultConfigTTL
         self.logLevel = logLevel
         self.billingProvider = billingProvider
         self.framework = framework

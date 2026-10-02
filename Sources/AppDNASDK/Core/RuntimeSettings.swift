@@ -6,12 +6,13 @@ import Foundation
 /// Precedence, per setting: a value the host passed to `configure` (`AppDNAOptions`) > the value the
 /// bootstrap answer carries in `settings` > the built-in default. The built-in default applies until a
 /// bootstrap answer arrives, and stays when none does or when it does not carry the field. A bootstrap value
-/// of 0 or less is ignored, so a server answer can never stop uploads; a host value is used as given.
+/// of 0 or less is ignored, so a server answer can never stop uploads; so is a host value of 0 or less (logged as a
+/// warning): the setting then resolves as if the host had not set it.
 ///
 /// `batchSize` is a cap on the adaptive, network-sized batch (100 on Wi-Fi or wired, 50 on cellular, 20 on an
 /// expensive connection, 0 offline): the effective size is the adaptive one when no cap is set, otherwise the
-/// smaller of the two. It is both the queue length that triggers a flush and the most one upload sends. A
-/// cap of 0 holds every event on the device. Android `RuntimeSettings`, same rules; both are pinned by the
+/// smaller of the two. It is both the queue length that triggers a flush and the most one upload sends. Only an
+/// internal test seam can install a cap of 0 (which holds every event on the device); no option or answer can. Android `RuntimeSettings`, same rules; both are pinned by the
 /// shared fixture `resilience/runtime_settings_precedence`.
 enum RuntimeSettings {
     static let defaultFlushInterval: TimeInterval = 30
@@ -25,16 +26,19 @@ enum RuntimeSettings {
         let configTTL: TimeInterval
     }
 
-    /// explicit > bootstrap (positive only) > fallback.
+    /// explicit (positive only) > bootstrap (positive only) > fallback.
     static func resolve<T: Comparable & Numeric>(explicit: T?, bootstrap: T?, fallback: T?) -> T? {
-        if let explicit { return explicit }
+        if let explicit, explicit > 0 { return explicit }
         if let bootstrap, bootstrap > 0 { return bootstrap }
         return fallback
     }
 
     /// Resolve all three settings. `bootstrap` is nil before (or without) a successful bootstrap.
     static func resolveAll(options: AppDNAOptions, bootstrap: BootstrapSettings?) -> Resolved {
-        Resolved(
+        warnIgnored("flushInterval", options.requestedFlushInterval)
+        warnIgnored("batchSize", options.requestedBatchSize)
+        warnIgnored("configTTL", options.requestedConfigTTL)
+        return Resolved(
             flushInterval: resolve(
                 explicit: options.requestedFlushInterval,
                 bootstrap: bootstrap?.flushInterval.map(TimeInterval.init),
@@ -47,6 +51,13 @@ enum RuntimeSettings {
                 fallback: defaultConfigTTL
             ) ?? defaultConfigTTL
         )
+    }
+
+    /// A host value below 1 is not used; say so once per resolve.
+    private static func warnIgnored<T: Comparable & Numeric>(_ name: String, _ value: T?) {
+        if let value, value <= 0 {
+            Log.warning("AppDNAOptions.\(name) must be 1 or more; \(value) is ignored and the default applies.")
+        }
     }
 
     /// The batch size in effect: the adaptive size, capped by `cap` when one is set (never below 0).

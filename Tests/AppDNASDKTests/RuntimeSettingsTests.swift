@@ -110,6 +110,18 @@ final class RuntimeSettingsTests: XCTestCase {
         XCTAssertEqual(set.batchSize, 5)
     }
 
+    /// A host value below 1 is ignored (as if not set): it can never make the cap 0 and stop uploads.
+    func testAHostValueBelowOneIsIgnored() {
+        let zero = AppDNAOptions(flushInterval: 0, batchSize: 0, configTTL: -1)
+        XCTAssertEqual(zero.batchSize, 100)
+        XCTAssertEqual(zero.flushInterval, 30)
+        XCTAssertEqual(zero.configTTL, 3600)
+        let resolved = RuntimeSettings.resolveAll(options: zero, bootstrap: nil)
+        XCTAssertNil(resolved.batchSizeCap, "batchSize 0 must not become a cap of 0")
+        XCTAssertEqual(resolved.flushInterval, 30)
+        XCTAssertEqual(resolved.configTTL, 3600)
+    }
+
     func testABootstrapAnswerWithoutRuntimeSettingsStillDecodes() throws {
         let data = #"{"orgId":"o","appId":"a","firestorePath":"orgs/o/apps/a","settings":{}}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(BootstrapData.self, from: data)
@@ -166,7 +178,8 @@ final class RuntimeSettingsTests: XCTestCase {
         withExtendedLifetime(q) {}
     }
 
-    /// A cap of 0 holds every event: no threshold upload, and even an explicit flush sends nothing.
+    /// The queue's internal cap seam at 0 holds every event (no option or answer can install it — see
+    /// `testAHostValueBelowOneIsIgnored`): no threshold upload, and even an explicit flush sends nothing.
     func testACapOfZeroHoldsEveryEvent() throws {
         let server = try XCTUnwrap(server, "could not open a local socket")
         let store = EventStore(fileName: "runtime-zero-\(UUID().uuidString).json")
