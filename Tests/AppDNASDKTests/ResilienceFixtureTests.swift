@@ -62,11 +62,19 @@ final class ResilienceFixtureTests: XCTestCase {
         let mark: [String]?
         let query: String?
         let resolved: Bool?
+        // contract=runtime_settings
+        let setting: String?
+        let explicit: Double?
+        let bootstrap: Double?
+        let adaptive: Int?
+        let cap: Int?
+        let expected: Double?
 
         private enum CodingKeys: String, CodingKey {
             case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
             case attempt_index, backoff_ms, online, triggered, attempts_made
             case mark, query, resolved
+            case setting, explicit, bootstrap, adaptive, cap, expected
         }
 
         init(from decoder: Decoder) throws {
@@ -86,6 +94,12 @@ final class ResilienceFixtureTests: XCTestCase {
             mark = try c.decodeIfPresent([String].self, forKey: .mark)
             query = try c.decodeIfPresent(String.self, forKey: .query)
             resolved = try c.decodeIfPresent(Bool.self, forKey: .resolved)
+            setting = try c.decodeIfPresent(String.self, forKey: .setting)
+            explicit = try c.decodeIfPresent(Double.self, forKey: .explicit)
+            bootstrap = try c.decodeIfPresent(Double.self, forKey: .bootstrap)
+            adaptive = try c.decodeIfPresent(Int.self, forKey: .adaptive)
+            cap = try c.decodeIfPresent(Int.self, forKey: .cap)
+            expected = try c.decodeIfPresent(Double.self, forKey: .expected)
 
             // Plain statements, not a `&&` inside a ternary: `decodeNil` throws, and Swift will not
             // let a throwing call sit inside a short-circuit operand.
@@ -125,6 +139,14 @@ final class ResilienceFixtureTests: XCTestCase {
         let max_resolved: Int?
         // contract=flush_pause_gate
         let os_upload: OSUpload?
+        // contract=runtime_settings
+        let defaults: RuntimeDefaults?
+    }
+
+    private struct RuntimeDefaults: Decodable {
+        let flush_interval: Double
+        let batch_size: Int?
+        let config_ttl: Double
     }
 
     private struct OSUpload: Decodable {
@@ -316,7 +338,7 @@ final class ResilienceFixtureTests: XCTestCase {
                     let tracker = EventTracker(identityManager: IdentityManager(
                         keychainStore: KeychainStore(service: "ai.appdna.sdk.test.pauseos.\(UUID().uuidString)")))
                     let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
-                                       eventStore: store, eventTracker: tracker, batchSize: 20, flushInterval: 3600)
+                                       eventStore: store, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
                     if paused { q.pauseForTesting() }
                     q.enterBackground(holdBackgroundTask: false)
                     let deadline = Date().addingTimeInterval(1)
@@ -375,6 +397,49 @@ final class ResilienceFixtureTests: XCTestCase {
                     XCTAssertTrue(EventUploadCoordinator.wasResolved("bound-\(max)"))
                 }
 
+            // Host option > bootstrap value (positive only) > default, and the batch size in effect. Drives the
+            // real `RuntimeSettings.resolveAll` (through `AppDNAOptions`, so the explicit / unset distinction
+            // is the one a host makes) and `RuntimeSettings.effectiveBatchSize`, the seam the queue and the
+            // background uploader both size batches with.
+            case "runtime_settings":
+                guard let d = f.resilience.defaults else { return XCTFail("[\(f.id)] runtime_settings needs `defaults`") }
+                XCTAssertEqual(RuntimeSettings.defaultFlushInterval, d.flush_interval, "[\(f.id)] default flushInterval")
+                XCTAssertEqual(RuntimeSettings.defaultConfigTTL, d.config_ttl, "[\(f.id)] default configTTL")
+                XCTAssertEqual(RuntimeSettings.resolveAll(options: AppDNAOptions(), bootstrap: nil).batchSizeCap, d.batch_size,
+                               "[\(f.id)] default batchSize cap")
+                for c in try requireCases(f) {
+                    guard let setting = c.setting else { return XCTFail("[\(f.id)] runtime_settings case needs `setting`") }
+                    if setting == "effective_batch_size" {
+                        guard let adaptive = c.adaptive, let want = c.expected else {
+                            return XCTFail("[\(f.id)] effective_batch_size case needs `adaptive` and `expected`")
+                        }
+                        XCTAssertEqual(RuntimeSettings.effectiveBatchSize(adaptive: adaptive, cap: c.cap), Int(want),
+                                       "[\(f.id)] effective batch size, adaptive=\(adaptive) cap=\(String(describing: c.cap))")
+                        continue
+                    }
+                    let b = c.bootstrap.map(Int.init)
+                    let options: AppDNAOptions
+                    let boot: BootstrapSettings
+                    switch setting {
+                    case "flush_interval":
+                        options = AppDNAOptions(flushInterval: c.explicit)
+                        boot = Self.bootstrapSettings(flushInterval: b)
+                    case "config_ttl":
+                        options = AppDNAOptions(configTTL: c.explicit)
+                        boot = Self.bootstrapSettings(configTTL: b)
+                    case "batch_size":
+                        options = AppDNAOptions(batchSize: c.explicit.map(Int.init))
+                        boot = Self.bootstrapSettings(batchSize: b)
+                    default:
+                        return XCTFail("[\(f.id)] unknown runtime setting '\(setting)'")
+                    }
+                    let r = RuntimeSettings.resolveAll(options: options, bootstrap: boot)
+                    let got: Double? = setting == "flush_interval" ? r.flushInterval
+                        : setting == "config_ttl" ? r.configTTL : r.batchSizeCap.map(Double.init)
+                    XCTAssertEqual(got, c.expected,
+                                   "[\(f.id)] \(setting): explicit=\(String(describing: c.explicit)) bootstrap=\(String(describing: c.bootstrap))")
+                }
+
             default:
                 XCTFail("[\(f.id)] unknown resilience contract '\(f.resilience.contract)' — this runner must assert it, never skip it")
             }
@@ -385,9 +450,19 @@ final class ResilienceFixtureTests: XCTestCase {
         XCTAssertEqual(
             seenContracts,
             ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff", "flush_pause_gate",
-             "bootstrap_recovery", "resolved_events_not_resent"],
+             "bootstrap_recovery", "resolved_events_not_resent", "runtime_settings"],
             "every resilience contract must be covered by a fixture"
         )
+    }
+
+    /// A decoded bootstrap `settings` object carrying only the given runtime values (what the server sends).
+    static func bootstrapSettings(flushInterval: Int? = nil, batchSize: Int? = nil, configTTL: Int? = nil) -> BootstrapSettings {
+        var o: [String: Any] = [:]
+        if let flushInterval { o["flushInterval"] = flushInterval }
+        if let batchSize { o["batchSize"] = batchSize }
+        if let configTTL { o["configTTL"] = configTTL }
+        let data = try! JSONSerialization.data(withJSONObject: o)
+        return try! JSONDecoder().decode(BootstrapSettings.self, from: data)
     }
 
     final class Counter: @unchecked Sendable {

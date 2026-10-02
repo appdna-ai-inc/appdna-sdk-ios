@@ -119,7 +119,7 @@ final class EventStoreSharedFileTests: XCTestCase {
         func makeQueue() -> EventQueue {
             EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
                        eventStore: EventStore(fileName: file), eventTracker: Self.tracker,
-                       batchSize: 50, flushInterval: 3600)
+                       batchSizeCap: nil, flushInterval: 3600)
         }
         var oldQueue: EventQueue? = makeQueue()
         oldQueue?.flushForShutdown()          // `AppDNA.shutdown()`

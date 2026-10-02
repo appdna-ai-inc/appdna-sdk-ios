@@ -3,7 +3,13 @@ import Foundation
 /// UserDefaults-based cache for Firestore remote configs.
 final class ConfigCache {
     private let defaults: UserDefaults
-    private let ttl: TimeInterval
+    private let ttlLock = NSLock()
+    private var _ttl: TimeInterval
+    /// Seconds after a fetch before the cache is stale. Changed by a bootstrap's `configTTL` (`RuntimeSettings`).
+    var ttl: TimeInterval {
+        get { ttlLock.lock(); defer { ttlLock.unlock() }; return _ttl }
+        set { ttlLock.lock(); _ttl = newValue; ttlLock.unlock() }
+    }
 
     private enum Keys {
         static let paywalls = "paywalls"
@@ -18,7 +24,7 @@ final class ConfigCache {
 
     init(ttl: TimeInterval, suiteName: String = "ai.appdna.sdk.config") {
         self.defaults = UserDefaults(suiteName: suiteName) ?? .standard
-        self.ttl = ttl
+        self._ttl = ttl
     }
 
     /// Whether the cached config is older than the TTL.

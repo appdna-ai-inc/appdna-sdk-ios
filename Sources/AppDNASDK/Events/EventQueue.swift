@@ -77,8 +77,10 @@ final class EventQueue {
     private let queue = DispatchQueue(label: "ai.appdna.sdk.eventqueue")
     private let apiClient: APIClient
     private let eventStore: EventStore
-    private let baseBatchSize: Int
-    private let flushInterval: TimeInterval
+    /// The host's / the bootstrap's cap on the adaptive batch size (`RuntimeSettings`); nil: no cap. On `queue`.
+    private var batchSizeCap: Int?
+    /// Seconds between scheduled flushes. On the main thread (the timer's run loop).
+    private var flushInterval: TimeInterval
     /// SPEC-070-B AC-35 (`backoff_bounded_and_jittered`) — the retry schedule is a STATIC seam, so the
     /// shared resilience fixture can assert the same three numbers against iOS and Android. As
     /// instance-private `let`s they were unreachable from a test, and the two platforms' schedules
@@ -117,22 +119,24 @@ final class EventQueue {
     private let maxConsecutiveFailures = 5
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
-    /// SPEC-067: Returns the current effective batch size based on network conditions.
+    /// SPEC-067: The current effective batch size — the network-sized one, capped by `batchSizeCap`. On `queue`.
     private var effectiveBatchSize: Int {
-        NetworkMonitor.shared.adaptiveBatchSize
+        RuntimeSettings.effectiveBatchSize(adaptive: NetworkMonitor.shared.adaptiveBatchSize, cap: batchSizeCap)
     }
 
     init(
         apiClient: APIClient,
         eventStore: EventStore,
         eventTracker: EventTracker,
-        batchSize: Int,
+        batchSizeCap: Int?,
         flushInterval: TimeInterval
     ) {
         self.apiClient = apiClient
         self.eventStore = eventStore
-        self.baseBatchSize = batchSize
+        self.batchSizeCap = batchSizeCap
         self.flushInterval = flushInterval
+        // The background uploader sends batches no larger than this queue does.
+        BatchSizeCapGate.set(batchSizeCap)
 
         // A new queue (a new `configure()`) starts unpaused; so does the gate the background uploader reads.
         UploadPauseGate.set(false)
@@ -288,6 +292,30 @@ final class EventQueue {
             self.eventStore.clearAll()
             Log.info("Event queue purged — analytics consent revoked")
         }
+    }
+
+    /// Apply runtime settings resolved after a bootstrap (`RuntimeSettings`): the cap takes effect at the
+    /// next threshold check and upload (and in the background uploader); a changed interval reschedules
+    /// the flush timer.
+    func applyRuntimeSettings(batchSizeCap: Int?, flushInterval: TimeInterval) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.batchSizeCap = batchSizeCap
+            BatchSizeCapGate.set(batchSizeCap)
+        }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.flushInterval != flushInterval else { return }
+            self.flushInterval = flushInterval
+            self.startFlushTimer()
+        }
+    }
+
+    /// Test readers: the cap in force (after pending `applyRuntimeSettings`) and the timer's interval.
+    var batchSizeCapForTesting: Int? { queue.sync { batchSizeCap } }
+    var effectiveBatchSizeForTesting: Int { queue.sync { effectiveBatchSize } }
+    var flushTimerIntervalForTesting: TimeInterval? {
+        let read = { self.flushTimer?.timeInterval }
+        return Thread.isMainThread ? read() : DispatchQueue.main.sync(execute: read)
     }
 
     // MARK: - Private

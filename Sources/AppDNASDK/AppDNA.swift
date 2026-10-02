@@ -489,6 +489,11 @@ public final class AppDNA: @unchecked Sendable {
     private var screenManager: ScreenManager?
 
     private var bootstrapData: BootstrapData?
+    /// The runtime settings in force (`RuntimeSettings`): resolved at configure, re-resolved when a bootstrap
+    /// answer is applied. On `queue`.
+    private var runtimeSettings: RuntimeSettings.Resolved?
+    /// The config cache of the current configure, so a recovered bootstrap can change its TTL. On `queue`.
+    private var runtimeConfigCache: ConfigCache?
 
     /// Double-`configure()` guard. Set the INSTANT `configure()` is entered, long before the SDK can
     /// do anything — so it must never be used to answer "is the SDK usable yet".
@@ -528,6 +533,10 @@ public final class AppDNA: @unchecked Sendable {
     /// Test-only: the ready flag and the org id of the bootstrap that was applied, read on `queue`.
     internal static var isReadyForTesting: Bool { shared.queue.sync { shared.isReady } }
     internal static var bootstrapOrgIdForTesting: String? { shared.queue.sync { shared.bootstrapData?.orgId } }
+    /// Test reader: the event queue of the current configure.
+    internal static var eventQueueForTesting: EventQueue? { shared.queue.sync { shared.eventQueue } }
+    /// Test reader: the runtime settings last resolved (at configure, then at each applied bootstrap).
+    internal static var runtimeSettingsForTesting: RuntimeSettings.Resolved? { shared.queue.sync { shared.runtimeSettings } }
 
     /// What `onReady` actually waits for: bootstrap has settled and the managers are wired.
     ///
@@ -1559,7 +1568,11 @@ public final class AppDNA: @unchecked Sendable {
         let client = APIClient(apiKey: apiKey, environment: environment)
         self.apiClient = client
 
-        let configCache = ConfigCache(ttl: options.configTTL)
+        // Runtime settings before any bootstrap: the host's values, else the built-in defaults.
+        let initialRuntime = RuntimeSettings.resolveAll(options: options, bootstrap: nil)
+        self.runtimeSettings = initialRuntime
+        let configCache = ConfigCache(ttl: initialRuntime.configTTL)
+        self.runtimeConfigCache = configCache
         let eventStore = EventStore()
 
         // 2. Initialize event system
@@ -1570,8 +1583,8 @@ public final class AppDNA: @unchecked Sendable {
             apiClient: client,
             eventStore: eventStore,
             eventTracker: tracker,
-            batchSize: options.batchSize,
-            flushInterval: options.flushInterval
+            batchSizeCap: initialRuntime.batchSizeCap,
+            flushInterval: initialRuntime.flushInterval
         )
         self.eventQueue = eq
         tracker.setEventQueue(eq)
@@ -1778,6 +1791,7 @@ public final class AppDNA: @unchecked Sendable {
                 guard let self else { return }
                 guard self.isCurrentConfigure(epoch) else { return self.dropStaleBootstrapOnQueue(epoch) }
                 self.bootstrapData = data
+                self.applyRuntimeSettings(data.settings)
                 self.initializeManagers(
                     firestorePath: data.firestorePath,
                     configCache: configCache,
@@ -1881,6 +1895,7 @@ public final class AppDNA: @unchecked Sendable {
     /// `bootstrapData` on a first success, applied to the managers that already run.
     private func applyRecoveredBootstrap(_ data: BootstrapData, tracker: EventTracker, recovery: BootstrapRecovery) {
         bootstrapData = data
+        applyRuntimeSettings(data.settings)
         if deferredDeepLinkManager == nil {
             deferredDeepLinkManager = DeferredDeepLinkManager(orgId: data.orgId, appId: data.appId, eventTracker: tracker)
         }
@@ -1898,6 +1913,17 @@ public final class AppDNA: @unchecked Sendable {
         initLock.unlock()
         Self.recoveredLock.lock(); Self._bootstrapsRecovered += 1; Self.recoveredLock.unlock()
         Log.info("Bootstrap recovered — Firestore config and listeners are live")
+    }
+
+    /// On `queue`. Resolve the runtime settings against a bootstrap answer (`RuntimeSettings`: host option >
+    /// bootstrap value > default; a non-positive bootstrap value is ignored) and apply them: the event queue's
+    /// batch cap and flush timer, and the config TTL of the cache and of the config manager.
+    private func applyRuntimeSettings(_ settings: BootstrapSettings) {
+        let resolved = RuntimeSettings.resolveAll(options: options, bootstrap: settings)
+        runtimeSettings = resolved
+        eventQueue?.applyRuntimeSettings(batchSizeCap: resolved.batchSizeCap, flushInterval: resolved.flushInterval)
+        runtimeConfigCache?.ttl = resolved.configTTL
+        remoteConfigManager?.setConfigTTL(resolved.configTTL)
     }
 
     /// A bootstrap whose configure has been ended by `shutdown()` or superseded by a later `configure()`.
@@ -1939,7 +1965,7 @@ public final class AppDNA: @unchecked Sendable {
         let remoteCfg = RemoteConfigManager(
             firestorePath: firestorePath,
             configCache: configCache,
-            configTTL: self.options.configTTL
+            configTTL: configCache.ttl
         )
         remoteCfg.setEventTracker(tracker)
         self.remoteConfigManager = remoteCfg
@@ -2201,6 +2227,7 @@ public final class AppDNA: @unchecked Sendable {
             // one attempt in `EventQueue.shutdown()`).
             shared.eventQueue?.flushForShutdown()
             shared.eventQueue = nil
+            shared.runtimeConfigCache = nil
             shared.eventTracker = nil
             // The `Transaction.updates` listener is a long-lived Task holding the tracker we just
             // released. Cancel it, or a re-configure()d SDK ends up with two live listeners.
@@ -2313,9 +2340,11 @@ struct BootstrapData: Codable {
 }
 
 struct BootstrapSettings: Codable {
-    let flushInterval: Int
-    let batchSize: Int
-    let configTTL: Int
+    /// Runtime settings the server may set (seconds / events / seconds). Optional so an answer that omits
+    /// one still decodes; a missing or non-positive value leaves the default (see `RuntimeSettings`).
+    let flushInterval: Int?
+    let batchSize: Int?
+    let configTTL: Int?
     /// SPEC-451 — the customer's own Mapbox token, set once in the console. Optional so every
     /// pre-451 backend response still decodes.
     let mapboxToken: String?

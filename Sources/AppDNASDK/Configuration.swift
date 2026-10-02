@@ -154,12 +154,24 @@ public enum BillingProvider: Sendable, Codable, Equatable {
 
 /// Configuration options for the AppDNA SDK.
 public struct AppDNAOptions: Sendable {
-    /// Automatic flush interval in seconds. Default: 30.
+    /// Automatic flush interval in seconds: the value passed to `init`, or 30 when none was. When the host
+    /// does not set it, the bootstrap answer's `settings.flushInterval` (if positive) replaces the default
+    /// once the bootstrap succeeds.
     public let flushInterval: TimeInterval
-    /// Number of events per flush batch. Default: 20.
+    /// The most events one upload sends, and the queue length that triggers a flush: a cap on the
+    /// network-sized batch (100 on Wi-Fi or wired, 50 on cellular, 20 on an expensive connection). The value
+    /// passed to `init`, or 100 (no cap) when none was; then the bootstrap answer's `settings.batchSize`
+    /// (if positive) is the cap. 0 holds every event on the device.
     public let batchSize: Int
-    /// Remote config cache TTL in seconds. Default: 3600 (1 hour). SPEC-067.
+    /// Remote config cache TTL in seconds: the value passed to `init`, or 3600 (1 hour) when none was; then
+    /// the bootstrap answer's `settings.configTTL` (if positive) replaces the default.
     public let configTTL: TimeInterval
+    /// The `flushInterval` the host passed to `init`; nil when it passed none.
+    public let requestedFlushInterval: TimeInterval?
+    /// The `batchSize` the host passed to `init`; nil when it passed none (no cap of its own).
+    public let requestedBatchSize: Int?
+    /// The `configTTL` the host passed to `init`; nil when it passed none.
+    public let requestedConfigTTL: TimeInterval?
     /// Log verbosity. Default: .warning.
     public let logLevel: LogLevel
     /// Billing provider for paywall purchases. Default: .storeKit2.
@@ -189,10 +201,9 @@ public struct AppDNAOptions: Sendable {
     public let vetoTimeout: TimeInterval
 
     public init(
-        flushInterval: TimeInterval = 30,
-        batchSize: Int = 20,
-        /// SPEC-067: Default TTL increased from 300s to 3600s (1 hour) to reduce Firestore reads.
-        configTTL: TimeInterval = 3600,
+        flushInterval: TimeInterval? = nil,
+        batchSize: Int? = nil,
+        configTTL: TimeInterval? = nil,
         logLevel: LogLevel = .warning,
         billingProvider: BillingProvider = .storeKit2,
         framework: String = "native",
@@ -200,9 +211,12 @@ public struct AppDNAOptions: Sendable {
         requireConsent: Bool = false,
         vetoTimeout: TimeInterval = 5
     ) {
-        self.flushInterval = flushInterval
-        self.batchSize = batchSize
-        self.configTTL = configTTL
+        self.requestedFlushInterval = flushInterval
+        self.requestedBatchSize = batchSize
+        self.requestedConfigTTL = configTTL
+        self.flushInterval = flushInterval ?? RuntimeSettings.defaultFlushInterval
+        self.batchSize = batchSize ?? 100
+        self.configTTL = configTTL ?? RuntimeSettings.defaultConfigTTL
         self.logLevel = logLevel
         self.billingProvider = billingProvider
         self.framework = framework

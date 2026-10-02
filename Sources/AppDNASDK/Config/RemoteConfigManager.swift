@@ -15,7 +15,8 @@ final class RemoteConfigManager {
         return _firestorePath
     }
     private let configCache: ConfigCache
-    private let configTTL: TimeInterval
+    /// The cache's TTL — one value for the staleness test and the refresh timer (`RuntimeSettings`).
+    private var configTTL: TimeInterval { configCache.ttl }
     private weak var eventTracker: EventTracker?
 
     /// Shared JSON decoder for all config parsing.
@@ -95,7 +96,7 @@ final class RemoteConfigManager {
     init(firestorePath: String?, configCache: ConfigCache, configTTL: TimeInterval) {
         self._firestorePath = firestorePath
         self.configCache = configCache
-        self.configTTL = configTTL
+        configCache.ttl = configTTL
 
         // Load from disk cache on init
         loadCachedConfigs()
@@ -219,6 +220,15 @@ final class RemoteConfigManager {
 
     func getAllConfig() -> [String: Any] {
         getAllFlags()
+    }
+
+    /// The TTL in force: the staleness test and the next refresh timer use it.
+    var currentConfigTTL: TimeInterval { configTTL }
+
+    /// Apply a TTL resolved after a bootstrap (`RuntimeSettings`). Takes effect at the next staleness test
+    /// and when the next refresh timer is armed (after the next fetch).
+    func setConfigTTL(_ ttl: TimeInterval) {
+        configCache.ttl = ttl
     }
 
     // MARK: - Bundled config (offline-first)

@@ -70,8 +70,12 @@ final class NetworkMonitor {
         monitor.cancel()
     }
 
+    /// Test seam: when set, `adaptiveBatchSize` returns it (the simulator's network is not a test input).
+    static var adaptiveBatchSizeOverrideForTesting: Int?
+
     /// Returns the adaptive batch size based on current network conditions.
     var adaptiveBatchSize: Int {
+        if let forced = Self.adaptiveBatchSizeOverrideForTesting { return forced }
         switch currentConnectionType {
         case .wifi:
             return 100

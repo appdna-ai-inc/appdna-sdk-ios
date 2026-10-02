@@ -66,6 +66,12 @@ final class BackgroundUploader {
     /// Whether a background run may upload now: not while the queue's failure pause holds.
     static var uploadAllowed: Bool { !UploadPauseGate.isPaused }
 
+    /// The most events one background upload sends: the network-sized batch, capped by the queue's
+    /// persisted `batchSize` cap (`BatchSizeCapGate`) — the same size the in-process queue uses.
+    static func uploadBatchSize(adaptive: Int) -> Int {
+        RuntimeSettings.effectiveBatchSize(adaptive: adaptive, cap: BatchSizeCapGate.cap)
+    }
+
     /// Schedule a background upload if there are pending events.
     func scheduleUploadIfNeeded() {
         guard #available(iOS 13.0, *) else { return }
@@ -138,8 +144,14 @@ final class BackgroundUploader {
                 return
             }
 
-            // Send events in batches using adaptive batch size
-            let batchSize = NetworkMonitor.shared.adaptiveBatchSize
+            // Send events in batches using the adaptive batch size, capped like the queue's.
+            let cap = BatchSizeCapGate.cap
+            if let cap, cap <= 0 {
+                // The host holds events on the device (batchSize 0): nothing to send, nothing to reschedule.
+                task.setTaskCompleted(success: true)
+                return
+            }
+            let batchSize = Self.uploadBatchSize(adaptive: NetworkMonitor.shared.adaptiveBatchSize)
             guard batchSize > 0 else {
                 // No network — reschedule
                 self.scheduleUploadIfNeeded()

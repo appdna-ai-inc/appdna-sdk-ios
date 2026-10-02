@@ -33,7 +33,7 @@ final class UploadPauseBackgroundTests: XCTestCase {
         let tracker = EventTracker(identityManager: IdentityManager(
             keychainStore: KeychainStore(service: "ai.appdna.sdk.test.pausebg.\(UUID().uuidString)")))
         return EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
-                          eventStore: store, eventTracker: tracker, batchSize: 20, flushInterval: 3600)
+                          eventStore: store, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
     }
 
     private func waitBriefly(_ seconds: TimeInterval = 1, until done: () -> Bool) {

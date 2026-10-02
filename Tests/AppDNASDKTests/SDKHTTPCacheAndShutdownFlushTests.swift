@@ -220,7 +220,7 @@ final class SDKHTTPCacheAndShutdownFlushTests: XCTestCase {
             keychainStore: KeychainStore(service: "ai.appdna.sdk.test.shutdownflush.\(UUID().uuidString)")))
         var queue: EventQueue? = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
                                             eventStore: store, eventTracker: tracker,
-                                            batchSize: 20, flushInterval: 3600)
+                                            batchSizeCap: nil, flushInterval: 3600)
         tracker.setEventQueue(queue!)
         tracker.track(event: "shutdown_flush_probe", properties: nil)   // below the batch size: not sent
         let persisted = await poll { store.loadPending().contains { $0.event_name == "shutdown_flush_probe" } }
