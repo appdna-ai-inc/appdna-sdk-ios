@@ -262,7 +262,7 @@ final class EventStoreBacklogTests: XCTestCase {
                                eventStore: EventStore(fileName: file),
                                eventTracker: EventTracker(identityManager: IdentityManager(
                                    keychainStore: KeychainStore(service: "ai.appdna.sdk.test.backlog.\(UUID().uuidString)"))),
-                               batchSize: 0, flushInterval: 3600)
+                               batchSizeCap: 0, flushInterval: 3600)
         let built = Date().timeIntervalSince(start)
         release.signal()
         XCTAssertLessThan(built, 1, "EventQueue.init waited for the store's file queue (\(built) s)")
