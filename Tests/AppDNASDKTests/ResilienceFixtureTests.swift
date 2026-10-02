@@ -16,6 +16,8 @@ import XCTest
                                                            (Android: ApiClient.dispositionFor)
    - backoff           → `EventQueue.jittered` / `.retryBaseDelays` / `.maxRetries`
                                                            (Android: EventQueue.jittered / RETRY_DELAYS_MS / MAX_RETRIES)
+   - flush_cost_bounded → `EventStore.decodedLinesForTesting` over prune / `loadOldest` / `removeSent`
+                                                           (Android: EventDatabase.jsonParsesForTest)
 
  `permanent_failure` is the one that matters most, and it is the one that did not exist. W1 was a LIVE
  iOS defect: a single 429 latched `eventUploadPermanentlyFailed` and halted every event upload until
@@ -135,6 +137,16 @@ final class ResilienceFixtureTests: XCTestCase {
         let queue: QueueRow?
         // contract=flush_pause_gate
         let os_upload: OSUpload?
+        // contract=flush_cost_bounded
+        let cost: Cost?
+    }
+
+    private struct Cost: Decodable {
+        let backlogs: [Int]
+        let stale: Int
+        let batch: Int
+        let flushes: Int
+        let extra_lines_decoded: Int
     }
 
     private struct QueueRow: Decodable {
@@ -443,6 +455,13 @@ final class ResilienceFixtureTests: XCTestCase {
                 }
                 try assertQueueDoesNotResend(row, id: f.id)
 
+            // A flush's store work decodes only the batch it returns, whatever the backlog (the store's index).
+            case "flush_cost_bounded":
+                guard let cost = f.resilience.cost else {
+                    return XCTFail("[\(f.id)] flush_cost_bounded needs the `cost` row")
+                }
+                assertFlushCostBounded(cost, id: f.id)
+
             default:
                 XCTFail("[\(f.id)] unknown resilience contract '\(f.resilience.contract)' — this runner must assert it, never skip it")
             }
@@ -453,9 +472,47 @@ final class ResilienceFixtureTests: XCTestCase {
         XCTAssertEqual(
             seenContracts,
             ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff", "flush_pause_gate",
-             "bootstrap_recovery", "resolved_events_not_resent"],
+             "bootstrap_recovery", "resolved_events_not_resent", "flush_cost_bounded"],
             "every resilience contract must be covered by a fixture"
         )
+    }
+
+    private func assertFlushCostBounded(_ cost: Cost, id: String) {
+        let savedDropped = DroppedEventsCounter.getAndReset()
+        defer {
+            _ = DroppedEventsCounter.getAndReset()
+            if savedDropped > 0 { DroppedEventsCounter.increment(savedDropped) }
+        }
+        func build(_ name: String, tsMs: Int64? = nil) -> SDKEvent {
+            let e = EventEnvelopeBuilder.build(event: name, properties: ["k": "v"],
+                                               identity: DeviceIdentity(anonId: "cost-anon", userId: nil, traits: nil),
+                                               sessionId: "cost-session", analyticsConsent: true)
+            guard let tsMs else { return e }
+            return SDKEvent(schema_version: e.schema_version, event_id: e.event_id, event_name: e.event_name, ts_ms: tsMs,
+                            user: e.user, device: e.device, context: e.context, properties: e.properties, privacy: e.privacy)
+        }
+        let old = Int64(Date().timeIntervalSince1970 * 1000) - EventStore.redeliveryHorizonMs - 60_000
+        for backlog in cost.backlogs {
+            _ = DroppedEventsCounter.getAndReset()
+            let store = EventStore(fileName: "flush-cost-\(UUID().uuidString).json")
+            defer { store.clearAll() }
+            store.save(events: (0..<cost.stale).map { build("stale_\($0)", tsMs: old) } + (0..<backlog).map { build("e_\($0)") })
+            XCTAssertEqual(store.pendingCount, cost.stale + backlog, "[\(id)] seeded")
+            let before = store.decodedLinesForTesting
+            var returned = 0, pruned = 0
+            for _ in 0..<cost.flushes {
+                pruned += store.pruneStale()
+                let batch = store.loadOldest(cost.batch)
+                returned += batch.count
+                store.removeSent(eventIds: Set(batch.map(\.event_id)))
+            }
+            let extra = store.decodedLinesForTesting - before - returned
+            XCTAssertEqual(extra, cost.extra_lines_decoded, "[\(id)] backlog \(backlog): \(extra) lines decoded beyond the batches")
+            XCTAssertEqual(pruned, cost.stale, "[\(id)] backlog \(backlog): stale events pruned")
+            XCTAssertEqual(DroppedEventsCounter.peek(), cost.stale, "[\(id)] backlog \(backlog): the prune is counted")
+            XCTAssertEqual(returned, cost.batch * cost.flushes, "[\(id)] backlog \(backlog): batches taken")
+            XCTAssertEqual(store.pendingCount, backlog - cost.batch * cost.flushes, "[\(id)] backlog \(backlog): events left")
+        }
     }
 
     private func assertQueueDoesNotResend(_ row: QueueRow, id: String) throws {

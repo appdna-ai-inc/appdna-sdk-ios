@@ -171,17 +171,22 @@ final class EventQueue {
         // which this queue owns from now on (a queue ended before it can no longer write it).
         self.pauseOwner = UploadPauseGate.claim()
 
-        // Load persisted events from disk
-        let persisted = eventStore.loadPending()
-        if !persisted.isEmpty {
-            // SPEC-428 P1: trim the in-memory window to maxInMemoryEvents on load — disk keeps them
-            // all, RAM holds only the most-recent 1000. iOS previously assigned the full disk load
-            // (up to the 10k disk cap) into RAM after restart, violating its own maxInMemoryEvents
-            // (Android already trims after load).
-            self.pendingEvents = persisted.count > maxInMemoryEvents
-                ? Array(persisted.suffix(maxInMemoryEvents))
-                : persisted
-            Log.info("Loaded \(persisted.count) persisted events from disk (\(self.pendingEvents.count) held in memory)")
+        // Load persisted events from disk — on this queue's own serial queue, not in `init`. `init` runs inside
+        // `configure()`, and the store's file queue can be busy (the last flush of a queue `shutdown()` ended, a
+        // background upload): the load waited for it there and so did the whole configure. Queued first, it
+        // still runs before any `enqueue` / flush of this queue, which are queued after it.
+        // SPEC-428 P1: only the in-memory window (the newest `maxInMemoryEvents`) is loaded — disk keeps them
+        // all, RAM holds the most recent 1000 — and only those lines are decoded.
+        let window = maxInMemoryEvents
+        queue.async { [weak self] in
+            guard let self else { return }
+            let persisted = self.eventStore.loadNewest(window)
+            guard !persisted.isEmpty else { return }
+            self.pendingEvents = persisted + self.pendingEvents
+            if self.pendingEvents.count > window {
+                self.pendingEvents.removeFirst(self.pendingEvents.count - window)
+            }
+            Log.info("Loaded \(persisted.count) persisted events from disk (\(self.eventStore.pendingCount) pending)")
         }
 
         // Start flush timer on main run loop
@@ -215,7 +220,8 @@ final class EventQueue {
     }
 
     /// Maximum in-memory events. Beyond this, oldest events are dropped (still on disk).
-    private let maxInMemoryEvents = 1000
+    private let maxInMemoryEvents = EventQueue.maxInMemoryEvents
+    static let maxInMemoryEvents = 1000
 
     /// Add an event to the queue. Triggers threshold flush if adaptive batch size reached.
     /// `onPersisted` (SPEC-428 STEP-4) fires on the serial queue AFTER the event is durably on disk —
