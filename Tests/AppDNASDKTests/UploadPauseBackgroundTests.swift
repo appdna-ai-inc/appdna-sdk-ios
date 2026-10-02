@@ -7,8 +7,13 @@
 // `AppDNA.flush()` clears it. Android `EventShutdownHandoffTest`, same contract; fixture
 // `resilience/flush_pause_gate` (`os_upload`).
 //
-// NEGATIVE CONTROLS (build Mac, status file round 30): without the pause check in `enterBackground` the
-// schedule runs; without `UploadPauseGate.set(true)` at the pause `uploadAllowed` stays true.
+// The pause here is set with the `pauseForTesting()` seam, which writes the gate itself — so this file does
+// NOT prove that the production pause writes the gate. `UploadPauseGatePersistenceTests` does: it drives five
+// real failed upload cycles.
+//
+// NEGATIVE CONTROLS (build Mac): without the pause check in `enterBackground` the schedule runs (round 30);
+// without the `guard !paused` in `BackgroundUploader.runUpload` the paused background run sends its batch
+// (round 31).
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -25,7 +30,7 @@ final class UploadPauseBackgroundTests: XCTestCase {
 
     override func tearDown() {
         EventQueue.scheduleBackgroundUploadForTesting = nil
-        UploadPauseGate.set(false)
+        UploadPauseGate.setForTesting(false)
         super.tearDown()
     }
 
@@ -62,5 +67,45 @@ final class UploadPauseBackgroundTests: XCTestCase {
         queue.enterBackground(holdBackgroundTask: false)
         waitBriefly { scheduled.value > 0 }
         XCTAssertEqual(scheduled.value, 1)
+    }
+
+    /// The BGProcessingTask's body (`runUpload`) with the gate production hands it: paused, it sends nothing
+    /// and reschedules nothing; not paused, it sends the batch.
+    func testTheBackgroundRunHonoursTheGateItIsGiven() throws {
+        let server = try XCTUnwrap(LoopbackHTTPServer { _ in .init(status: 200, headers: [:], body: "{}") },
+                                   "could not open a local socket")
+        defer {
+            server.stop()
+            APIBaseURL.infoPlistReaderForTesting = nil
+            APIBaseURL.gateForTesting = nil
+        }
+        APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? server.baseURL : nil }
+        APIBaseURL.gateForTesting = { true }
+        let store = EventStore(fileName: "pause-bg-run-\(UUID().uuidString).json")
+        defer { store.clearAll() }
+        store.save(events: [EventEnvelopeBuilder.build(
+            event: "pause_bg_run", properties: nil,
+            identity: DeviceIdentity(anonId: "pause-bg-anon", userId: nil, traits: nil),
+            sessionId: "pause-bg-session", analyticsConsent: true)])
+        let client = APIClient(apiKey: "adn_test_placeholder", environment: .sandbox)
+        let uploader = BackgroundUploader(apiClient: client, eventStore: store)
+        let rescheduled = Counter()
+
+        let paused = ResilienceFixtureTests.runBlocking {
+            await uploader.runUpload(paused: true, reschedule: { rescheduled.bump() })
+        }
+        XCTAssertEqual(paused, .skippedPaused)
+        XCTAssertEqual(paused?.taskSucceeded, true)
+        XCTAssertTrue(server.requests.filter { $0.contains("/ingest/events") }.isEmpty, "a paused background run uploaded")
+        XCTAssertEqual(rescheduled.value, 0, "a paused background run rescheduled itself")
+        XCTAssertEqual(store.loadPending().count, 1)
+
+        let unpaused = ResilienceFixtureTests.runBlocking {
+            await uploader.runUpload(paused: false, reschedule: { rescheduled.bump() })
+        }
+        XCTAssertEqual(unpaused, .uploaded)
+        XCTAssertEqual(server.requests.filter { $0.contains("/ingest/events") }.count, 1)
+        XCTAssertEqual(store.loadPending().count, 0, "the accepted batch is still pending")
+        withExtendedLifetime(client) {}
     }
 }

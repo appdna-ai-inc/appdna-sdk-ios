@@ -58,6 +58,10 @@ final class ResilienceFixtureTests: XCTestCase {
         let online: Bool?
         let triggered: Bool?
         let attempts_made: Int?
+        let triggers: Int?
+        let failure_status: Int?
+        let retry_after_s: Int?
+        let recovery: String?
         // contract=resolved_events_not_resent
         let mark: [String]?
         let query: String?
@@ -72,7 +76,7 @@ final class ResilienceFixtureTests: XCTestCase {
 
         private enum CodingKeys: String, CodingKey {
             case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
-            case attempt_index, backoff_ms, online, triggered, attempts_made
+            case attempt_index, backoff_ms, online, triggered, attempts_made, triggers, failure_status, retry_after_s, recovery
             case mark, query, resolved
             case setting, explicit, bootstrap, adaptive, cap, expected
         }
@@ -91,6 +95,10 @@ final class ResilienceFixtureTests: XCTestCase {
             online = try c.decodeIfPresent(Bool.self, forKey: .online)
             triggered = try c.decodeIfPresent(Bool.self, forKey: .triggered)
             attempts_made = try c.decodeIfPresent(Int.self, forKey: .attempts_made)
+            triggers = try c.decodeIfPresent(Int.self, forKey: .triggers)
+            failure_status = try c.decodeIfPresent(Int.self, forKey: .failure_status)
+            retry_after_s = try c.decodeIfPresent(Int.self, forKey: .retry_after_s)
+            recovery = try c.decodeIfPresent(String.self, forKey: .recovery)
             mark = try c.decodeIfPresent([String].self, forKey: .mark)
             query = try c.decodeIfPresent(String.self, forKey: .query)
             resolved = try c.decodeIfPresent(Bool.self, forKey: .resolved)
@@ -135,8 +143,10 @@ final class ResilienceFixtureTests: XCTestCase {
         let latch: [LatchStep]?
         // contract=bootstrap_recovery
         let max_attempts: Int?
+        let trigger_delay_max_ms: Int?
         // contract=resolved_events_not_resent
         let max_resolved: Int?
+        let queue: QueueRow?
         // contract=flush_pause_gate
         let os_upload: OSUpload?
         // contract=runtime_settings
@@ -147,6 +157,12 @@ final class ResilienceFixtureTests: XCTestCase {
         let flush_interval: Double
         let batch_size: Int?
         let config_ttl: Double
+    }
+
+    private struct QueueRow: Decodable {
+        let loaded: [String]
+        let resolved_elsewhere: [String]
+        let sent: [String]
     }
 
     private struct OSUpload: Decodable {
@@ -346,33 +362,79 @@ final class ResilienceFixtureTests: XCTestCase {
                     XCTAssertEqual(scheduled.value > 0,
                                    paused ? os.background_schedules_when_paused : os.background_schedules_when_unpaused,
                                    "[\(f.id)] does backgrounding schedule the background upload (paused=\(paused))?")
-                    XCTAssertEqual(BackgroundUploader.uploadAllowed,
+                    // The real background run (`BackgroundUploader.runUpload`, the BGProcessingTask's body) with
+                    // the gate production hands it, against a closed port: paused it stops at the gate; not
+                    // paused it goes on and tries (the send fails — the event stays).
+                    let uploadStore = EventStore(fileName: "pause-os-run-\(UUID().uuidString).json")
+                    defer { uploadStore.clearAll() }
+                    uploadStore.save(events: [EventEnvelopeBuilder.build(
+                        event: "pause_os", properties: nil,
+                        identity: DeviceIdentity(anonId: "pause-os-anon", userId: nil, traits: nil),
+                        sessionId: "pause-os-session", analyticsConsent: true)])
+                    APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? "http://127.0.0.1:9" : nil }
+                    APIBaseURL.gateForTesting = { true }
+                    let client = APIClient(apiKey: "adn_test_placeholder", environment: .sandbox)
+                    let uploader = BackgroundUploader(apiClient: client, eventStore: uploadStore)
+                    let outcome = Self.runBlocking { await uploader.runUpload(paused: UploadPauseGate.isPaused, reschedule: {}) }
+                    APIBaseURL.infoPlistReaderForTesting = nil
+                    APIBaseURL.gateForTesting = nil
+                    XCTAssertEqual(outcome != .skippedPaused,
                                    paused ? os.worker_uploads_when_paused : os.worker_uploads_when_unpaused,
-                                   "[\(f.id)] may a background run upload (paused=\(paused))?")
-                    withExtendedLifetime(q) {}
+                                   "[\(f.id)] does a background run upload (paused=\(paused))? outcome=\(String(describing: outcome))")
+                    XCTAssertEqual(uploadStore.loadPending().count, 1, "[\(f.id)] the background run lost the event")
+                    withExtendedLifetime((q, client)) {}
                 }
-                UploadPauseGate.set(false)
+                UploadPauseGate.setForTesting(false)
 
             // The retry loop of a failed bootstrap: its backoff schedule and bound, and — driving the real
             // `BootstrapRecovery` with a long backoff, so only a trigger can start an attempt — that an attempt
             // is made only for a trigger while online.
             case "bootstrap_recovery":
                 XCTAssertEqual(BootstrapRecovery.defaultMaxAttempts, f.resilience.max_attempts, "[\(f.id)] max_attempts")
+                XCTAssertEqual(BootstrapRecovery.jitterFraction, f.resilience.jitter_pct, "[\(f.id)] jitter_pct")
+                XCTAssertEqual(Int(BootstrapRecovery.defaultTriggerDelayMax * 1000), f.resilience.trigger_delay_max_ms,
+                               "[\(f.id)] trigger_delay_max_ms")
+                if let pct = f.resilience.jitter_pct {
+                    // The jitter spans exactly ±pct of the base, and is not a constant.
+                    XCTAssertEqual(BootstrapRecovery.jittered(10, unit: 0), 10 * (1 - pct), accuracy: 1e-9, "[\(f.id)] lowest jitter")
+                    XCTAssertEqual(BootstrapRecovery.jittered(10, unit: 0.5), 10, accuracy: 1e-9, "[\(f.id)] middle jitter")
+                    XCTAssertLessThan(BootstrapRecovery.jittered(10, unit: 0.999_999), 10 * (1 + pct) + 1e-9, "[\(f.id)] highest jitter")
+                }
+                func outcome(_ status: Int, _ retryAfter: Int?) -> BootstrapRecovery.Outcome {
+                    BootstrapRecovery.outcome(failureStatus: status == 0 ? nil : status, retryAfter: retryAfter.map(TimeInterval.init))
+                }
                 for c in try requireCases(f) {
                     if let index = c.attempt_index, let ms = c.backoff_ms {
                         XCTAssertEqual(Int(BootstrapRecovery.defaultBackoff(index) * 1000), ms, "[\(f.id)] backoff before attempt \(index + 1)")
-                    } else if let online = c.online, let triggered = c.triggered, let want = c.attempts_made {
-                        let recovery = BootstrapRecovery(isOnline: { online }, backoff: { _ in 3600 }, tick: 0.02)
+                    } else if let online = c.online, let want = c.attempts_made {
+                        let triggers = c.triggers ?? ((c.triggered ?? false) ? 1 : 0)
+                        let answer: BootstrapRecovery.Outcome = c.failure_status.map { outcome($0, c.retry_after_s) } ?? .done
+                        let recovery = BootstrapRecovery(isOnline: { online }, backoff: { _ in 3600 },
+                                                         random: { 0 }, triggerDelayMax: 0)
                         let made = Counter()
-                        recovery.start { made.bump(); return true }
-                        if triggered { recovery.trigger() }
-                        let deadline = Date().addingTimeInterval(0.5)
-                        while Date() < deadline && made.value < max(want, 1) { Thread.sleep(forTimeInterval: 0.02) }
+                        recovery.start { made.bump(); return answer }
+                        for t in 0..<triggers {
+                            recovery.trigger()
+                            let deadline = Date().addingTimeInterval(0.5)
+                            while Date() < deadline && made.value <= t { Thread.sleep(forTimeInterval: 0.02) }
+                        }
                         Thread.sleep(forTimeInterval: 0.1)
                         recovery.stop()
-                        XCTAssertEqual(made.value, want, "[\(f.id)] attempts with online=\(online) triggered=\(triggered)")
+                        XCTAssertEqual(made.value, want,
+                                       "[\(f.id)] attempts with online=\(online) triggers=\(triggers) failure=\(String(describing: c.failure_status))")
+                    } else if let status = c.failure_status, let want = c.recovery {
+                        let got: String
+                        switch outcome(status, c.retry_after_s) {
+                        case .stop: got = "stop"
+                        case .retry: got = "retry"
+                        case .retryAfter(let s):
+                            got = "retry_after"
+                            XCTAssertEqual(Int(s), c.retry_after_s, "[\(f.id)] the Retry-After honoured after \(status)")
+                        case .done: got = "done"
+                        }
+                        XCTAssertEqual(got, want, "[\(f.id)] what follows a failed attempt with \(status)")
                     } else {
-                        XCTFail("[\(f.id)] bootstrap_recovery case needs attempt_index+backoff_ms or online+triggered+attempts_made")
+                        XCTFail("[\(f.id)] bootstrap_recovery case needs attempt_index+backoff_ms, online+attempts_made, or failure_status+recovery")
                     }
                 }
 
@@ -396,6 +458,12 @@ final class ResilienceFixtureTests: XCTestCase {
                     XCTAssertFalse(EventUploadCoordinator.wasResolved("bound-0"), "[\(f.id)] the registry is not bounded")
                     XCTAssertTrue(EventUploadCoordinator.wasResolved("bound-\(max)"))
                 }
+                // A real queue: it loaded these events from its store; another owner then resolved some of
+                // them; its next upload sends only the rest.
+                guard let row = f.resilience.queue else {
+                    return XCTFail("[\(f.id)] resolved_events_not_resent needs the `queue` row")
+                }
+                try assertQueueDoesNotResend(row, id: f.id)
 
             // Host option > bootstrap value (positive only) > default, and the batch size in effect. Drives the
             // real `RuntimeSettings.resolveAll` (through `AppDNAOptions`, so the explicit / unset distinction
@@ -463,6 +531,65 @@ final class ResilienceFixtureTests: XCTestCase {
         if let configTTL { o["configTTL"] = configTTL }
         let data = try! JSONSerialization.data(withJSONObject: o)
         return try! JSONDecoder().decode(BootstrapSettings.self, from: data)
+    }
+
+    private func assertQueueDoesNotResend(_ row: QueueRow, id: String) throws {
+        EventUploadCoordinator.clearResolvedForTesting()
+        defer { EventUploadCoordinator.clearResolvedForTesting() }
+        let server = try XCTUnwrap(LoopbackHTTPServer { _ in .init(status: 200, headers: [:], body: "{}") },
+                                   "could not open a local socket")
+        APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? server.baseURL : nil }
+        APIBaseURL.gateForTesting = { true }
+        defer {
+            server.stop()
+            APIBaseURL.infoPlistReaderForTesting = nil
+            APIBaseURL.gateForTesting = nil
+        }
+        let store = EventStore(fileName: "resolved-queue-\(UUID().uuidString).json")
+        defer { store.clearAll() }
+        // The SDK assigns event ids: the fixture's names map to the ids the builder gave.
+        var idOf: [String: String] = [:]
+        var events: [SDKEvent] = []
+        for name in row.loaded {
+            let e = EventEnvelopeBuilder.build(event: "resolved_queue", properties: nil,
+                                               identity: DeviceIdentity(anonId: "resolved-anon", userId: nil, traits: nil),
+                                               sessionId: "resolved-session", analyticsConsent: true)
+            idOf[name] = e.event_id
+            events.append(e)
+        }
+        store.save(events: events)
+        let tracker = EventTracker(identityManager: IdentityManager(
+            keychainStore: KeychainStore(service: "ai.appdna.sdk.test.resolvedqueue.\(UUID().uuidString)")))
+        let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
+                           eventStore: store, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
+        EventUploadCoordinator.markResolved(row.resolved_elsewhere.compactMap { idOf[$0] })
+        q.flushClearingPause()
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline && !server.requests.contains(where: { $0.contains("/ingest/events") }) {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        Thread.sleep(forTimeInterval: 0.3)
+        var sent: [String] = []
+        for (label, body) in server.bodies where label.contains("/ingest/events") {
+            let raw = (try? (body as NSData).decompressed(using: .zlib) as Data) ?? body
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+            for e in (json["batch"] as? [[String: Any]]) ?? [] { if let i = e["event_id"] as? String { sent.append(i) } }
+        }
+        let nameOf = Dictionary(uniqueKeysWithValues: idOf.map { ($1, $0) })
+        XCTAssertEqual(sent.map { nameOf[$0] ?? $0 }.sorted(), row.sent.sorted(),
+                       "[\(id)] the queue sent events another owner had already resolved")
+        withExtendedLifetime(q) {}
+    }
+
+    final class Box<T>: @unchecked Sendable { var value: T?; init() {} }
+
+    /// Runs `body` to completion on a detached task and waits for it (the runner is synchronous).
+    static func runBlocking<T>(timeout: TimeInterval = 30, _ body: @escaping @Sendable () async -> T) -> T? {
+        let box = Box<T>()
+        let done = DispatchSemaphore(value: 0)
+        Task.detached { box.value = await body(); done.signal() }
+        _ = done.wait(timeout: .now() + timeout)
+        return box.value
     }
 
     final class Counter: @unchecked Sendable {

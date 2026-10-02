@@ -1430,7 +1430,9 @@ public final class AppDNA: @unchecked Sendable {
 
     // MARK: - Public API: Ready callback
 
-    /// Register a callback that fires when the SDK is fully initialized.
+    /// Register a callback that fires once the bootstrap has succeeded or failed and the modules are ready
+    /// (at once if that has already happened). The cached and bundled config are applied first; the remote
+    /// config fetch is started but not awaited — observe remote config changes for fresh values.
     public static func onReady(_ callback: @escaping () -> Void) {
         shared.queue.async {
             // `isReady`, NOT `isConfigured` — see the flag's definition. The guard flag is true
@@ -1826,8 +1828,13 @@ public final class AppDNA: @unchecked Sendable {
                     tracker: tracker
                 )
                 // Ready now (on cached and bundled config); the bootstrap is retried for the rest of the
-                // session and applied when it answers.
-                self.startBootstrapRecovery(client: client, identityMgr: identityMgr, tracker: tracker, epoch: epoch)
+                // session and applied when it answers — unless the server refused the key (401 / 403):
+                // retrying that cannot help.
+                if BootstrapRecovery.outcome(for: error) == .stop {
+                    Log.warning("Bootstrap not retried — the server refused the API key")
+                } else {
+                    self.startBootstrapRecovery(client: client, identityMgr: identityMgr, tracker: tracker, epoch: epoch)
+                }
             }
         }
     }
@@ -1870,22 +1877,23 @@ public final class AppDNA: @unchecked Sendable {
         previous?.stop()
 
         recovery.start { [weak self] in
-            guard let self, self.isCurrentConfigure(epoch) else { return true }
+            guard let self, self.isCurrentConfigure(epoch) else { return .done }
             let data: BootstrapData
             do {
                 data = try await self.fetchBootstrap(client)
             } catch {
                 Log.debug("Bootstrap retry failed: \(error.localizedDescription)")
-                return false
+                // 401 / 403 end the retries; a 429's Retry-After holds the next one back.
+                return BootstrapRecovery.outcome(for: error)
             }
-            guard self.isCurrentConfigure(epoch) else { return true }
+            guard self.isCurrentConfigure(epoch) else { return .done }
             self.applyBootstrapSettings(data, identityMgr: identityMgr)
-            return await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            return await withCheckedContinuation { (cont: CheckedContinuation<BootstrapRecovery.Outcome, Never>) in
                 self.queue.async {
                     if self.isCurrentConfigure(epoch) {
                         self.applyRecoveredBootstrap(data, tracker: tracker, recovery: recovery)
                     }
-                    cont.resume(returning: true)
+                    cont.resume(returning: .done)
                 }
             }
         }

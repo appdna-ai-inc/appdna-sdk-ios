@@ -65,9 +65,40 @@ enum EventUploadCoordinator {
 /// `AppDNA.flush()` clears the pause, and clears it when a new queue starts (a new `configure()` starts
 /// unpaused, in memory and here alike); the uploader reads it before it uploads. Android `UploadPauseGate`,
 /// same rule.
+///
+/// One queue owns the gate at a time: the newest. A queue `claim()`s it when it starts and writes with the
+/// owner token it got back; a write from any other token is ignored. A queue `shutdown()` ended can still
+/// fail its last upload after the next `configure()`'s queue cleared the gate — that stale write used to
+/// set the pause for the new session, and the background uploader then skipped its runs.
 enum UploadPauseGate {
     private static let key = "ai.appdna.sdk.upload_paused"
-    static func set(_ paused: Bool) { UserDefaults.standard.set(paused, forKey: key) }
+    private static let lock = NSLock()
+    private static var owner: UInt64 = 0
+
+    /// A new queue takes the gate: it is cleared, and from now on only the returned owner's writes count.
+    static func claim() -> UInt64 {
+        lock.lock(); defer { lock.unlock() }
+        owner &+= 1
+        UserDefaults.standard.set(false, forKey: key)
+        return owner
+    }
+
+    /// Set the gate — if `owner` still owns it (a queue that a newer one replaced writes nothing).
+    static func set(_ paused: Bool, owner token: UInt64) {
+        lock.lock(); defer { lock.unlock() }
+        guard token == owner else {
+            Log.debug("Upload pause from a replaced event queue ignored")
+            return
+        }
+        UserDefaults.standard.set(paused, forKey: key)
+    }
+
+    /// Test seam: set the gate whoever owns it.
+    static func setForTesting(_ paused: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        UserDefaults.standard.set(paused, forKey: key)
+    }
+
     static var isPaused: Bool { UserDefaults.standard.bool(forKey: key) }
 }
 
@@ -117,6 +148,8 @@ final class EventQueue {
     // twice (removal happens only AFTER the async upload awaits).
     private var isFlushing = false
     private let maxConsecutiveFailures = 5
+    /// This queue's token for `UploadPauseGate` (see `UploadPauseGate.claim()`).
+    private let pauseOwner: UInt64
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
     /// SPEC-067: The current effective batch size — the network-sized one, capped by `batchSizeCap`. On `queue`.
@@ -138,8 +171,9 @@ final class EventQueue {
         // The background uploader sends batches no larger than this queue does.
         BatchSizeCapGate.set(batchSizeCap)
 
-        // A new queue (a new `configure()`) starts unpaused; so does the gate the background uploader reads.
-        UploadPauseGate.set(false)
+        // A new queue (a new `configure()`) starts unpaused; so does the gate the background uploader reads,
+        // which this queue owns from now on (a queue ended before it can no longer write it).
+        self.pauseOwner = UploadPauseGate.claim()
 
         // Load persisted events from disk
         let persisted = eventStore.loadPending()
@@ -276,7 +310,7 @@ final class EventQueue {
     private func runFlush(_ trigger: FlushTrigger) {
         if trigger.clearsPauseGate {
             consecutiveFailures = 0
-            UploadPauseGate.set(false)
+            UploadPauseGate.set(false, owner: pauseOwner)
         }
         performFlush()
     }
@@ -378,9 +412,12 @@ final class EventQueue {
     func pauseForTesting() {
         queue.sync {
             consecutiveFailures = maxConsecutiveFailures
-            UploadPauseGate.set(true)
+            UploadPauseGate.set(true, owner: pauseOwner)
         }
     }
+
+    /// Test reader: failed upload cycles in a row (the queue pauses at `maxConsecutiveFailures`).
+    var consecutiveFailuresForTesting: Int { queue.sync { consecutiveFailures } }
 
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
@@ -518,7 +555,7 @@ final class EventQueue {
                     self.consecutiveFailures += 1
                     self.retryCount = 0
                     if self.consecutiveFailures >= self.maxConsecutiveFailures {
-                        UploadPauseGate.set(true)
+                        UploadPauseGate.set(true, owner: self.pauseOwner)
                         Log.error("Dropped batch of \(batch.count) after permanent 4xx; \(self.consecutiveFailures) consecutive failures — uploads paused until next foreground.")
                     } else {
                         Log.error("Dropping batch of \(batch.count) events after permanent 4xx (retry won't help); continuing with next batch.")
@@ -539,7 +576,7 @@ final class EventQueue {
                         self.consecutiveFailures += 1
                         self.retryCount = 0
                         if self.consecutiveFailures >= self.maxConsecutiveFailures {
-                            UploadPauseGate.set(true)
+                            UploadPauseGate.set(true, owner: self.pauseOwner)
                             Log.warning("Too many consecutive flush failures (\(self.consecutiveFailures)). Event uploads paused until next session.")
                         } else {
                             Log.warning("Max retries reached (\(self.maxRetries)). Will try again on next flush cycle.")

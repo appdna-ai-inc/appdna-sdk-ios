@@ -129,8 +129,18 @@ final class LoopbackHTTPServer: @unchecked Sendable {
 /// later test's tracker reports an `_sdk_events_dropped` event first (the counter lives in
 /// `UserDefaults.standard`, so it even survived into the next run on the same simulator). Save the counter in
 /// `setUp`; after the shutdown, wait for its upload to resolve, then put the counter back.
+///
+/// `save()` also starts the test on an EMPTY default event file. Every configured SDK in the test process
+/// persists to the same `pending_events.json`, and earlier tests left it near its cap; every store operation
+/// on it decodes the whole file (the final shutdown upload's `pruneStale`, the next queue's `loadPending`),
+/// and since one serial queue guards each file, the next `configure()` waited for the previous one's. On the
+/// Mac that made the first configure of a class take 15–23 s (sampled: `EventStore.pruneStale` →
+/// `loadFromDisk`); on the 3-core CI runner it passed the 30 s `onReady` wait.
 enum ShutdownUploadIsolation {
-    static func save() -> Int { DroppedEventsCounter.peek() }
+    static func save() -> Int {
+        EventStore().clearAll()
+        return DroppedEventsCounter.peek()
+    }
 
     /// Blocks (polls) — call it from a synchronous tearDown or a detached task.
     static func restore(_ saved: Int, timeout: TimeInterval = 30) {
