@@ -76,7 +76,7 @@ final class BackgroundUploader {
     func scheduleUploadIfNeeded() {
         guard #available(iOS 13.0, *) else { return }
 
-        let pendingCount = eventStore.loadPending().count
+        let pendingCount = eventStore.pendingCount
         guard pendingCount > 0 else {
             Log.debug("No pending events — skipping background upload schedule")
             return
@@ -175,8 +175,8 @@ final class BackgroundUploader {
         // the redelivery horizon BEFORE upload so a stale event isn't re-sent past the server dedup
         // window (double-count). The in-process EventQueue prunes too; the store method covers both.
         eventStore.pruneStale()
-        let events = eventStore.loadPending()
-        guard !events.isEmpty else { return .nothingToUpload }
+        let pendingCount = eventStore.pendingCount
+        guard pendingCount > 0 else { return .nothingToUpload }
 
         // Send events in batches using the adaptive batch size, capped like the queue's.
         if let cap = BatchSizeCapGate.cap, cap <= 0 {
@@ -190,7 +190,9 @@ final class BackgroundUploader {
             return .noNetwork
         }
 
-        let batch = Array(events.prefix(batchSize))
+        // Only the batch is read and decoded, not the whole backlog.
+        let batch = eventStore.loadOldest(batchSize)
+        guard !batch.isEmpty else { return .nothingToUpload }
         let payload: [String: Any] = ["batch": batch.compactMap { event -> [String: Any]? in
             guard let data = try? JSONEncoder().encode(event),
                   let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -211,7 +213,7 @@ final class BackgroundUploader {
             Log.info("Background upload successful: \(batch.count) events")
 
             // If more events remain, reschedule
-            if events.count > batch.count {
+            if pendingCount > batch.count {
                 reschedule()
             }
             return .uploaded
