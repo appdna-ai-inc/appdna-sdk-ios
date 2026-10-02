@@ -108,9 +108,9 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         XCTAssertTrue(held, "the predecessor never reached the server read")
 
         bridge.ids = ["p"]
-        let purchased = await finishes(within: 1) { try await module.purchase("p") }
+        let purchased = await finishes(within: 10) { try await module.purchase("p") }
         XCTAssertTrue(purchased, "purchase() waited on /billing/entitlements")
-        let restored = await finishes(within: 1) { try await module.restorePurchases() }
+        let restored = await finishes(within: 10) { try await module.restorePurchases() }
         XCTAssertTrue(restored, "restorePurchases() waited on /billing/entitlements")
         XCTAssertEqual(spy.changes.count, 0, "nothing can be reported while the chain is held")
 
@@ -131,7 +131,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         bridge.ids = ["p"]
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 60)
 
-        let purchased = await finishes(within: 1) { try await module.purchase("p") }
+        let purchased = await finishes(within: 10) { try await module.purchase("p") }
         XCTAssertTrue(purchased, "purchase() waited on /billing/entitlements")
         let reading = await waitUntil { gate.entered == 1 }
         XCTAssertTrue(reading, "the queued refresh never read the server")
@@ -157,9 +157,11 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         bridge.ids = ["p"]
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
 
-        let bounded = await finishes(within: 1.5) { await module.refreshEntitlementCache() }
+        // Generous windows: the gate never opens before them, so with no deadline they still fail; a loaded
+        // runner only needs time to run the 0.2 s pass.
+        let bounded = await finishes(within: 10) { await module.refreshEntitlementCache() }
         XCTAssertTrue(bounded, "the pass waited past serverReadDeadline")
-        let local = await waitUntil(1) { spy.changes.count == 1 }
+        let local = await waitUntil(10) { spy.changes.count == 1 }
         XCTAssertTrue(local, "the device's state was not reported before the server answered")
         XCTAssertEqual(spy.changes.first?.map(\.productId), ["p"])
 
@@ -182,7 +184,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
 
         await module.refreshEntitlementCache()
-        let first = await waitUntil(1) { spy.changes.count == 1 }
+        let first = await waitUntil(10) { spy.changes.count == 1 }
         XCTAssertTrue(first)
         XCTAssertEqual(Set(spy.changes.first?.map(\.productId) ?? []), ["p", "cross"], "the cached row stands in")
         gate.open()
@@ -203,7 +205,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
 
         await module.refreshEntitlementCache()
-        let first = await waitUntil(1) { spy.changes.count == 1 }
+        let first = await waitUntil(10) { spy.changes.count == 1 }
         XCTAssertTrue(first)
         world.userId = nil                           // `AppDNA.reset()`
         module.clearServerOnlyEntitlementCache()
@@ -225,14 +227,16 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
         world.userId = "user-1"
         bridge.ids = ["p"]
-        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
+        // The deadline is not under test (the older answer is queued by hand below): an immediate read must
+        // never miss it on a loaded runner, or request 1 itself turns into a late answer.
+        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 60)
         let old = ServerEntitlement(productId: "old", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)
         let new = ServerEntitlement(productId: "new", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)
         module.entitlementSources.server = { _ in [new] }
 
         await module.refreshEntitlementCache()        // request 1 answers at once: ["p", "new"]
         await module.refreshEntitlementCache()        // request 2: the same answer, no change
-        let first = await waitUntil(1) { spy.changes.count == 1 }
+        let first = await waitUntil { spy.changes.count == 1 }
         XCTAssertTrue(first, "\(spy.changes.map { $0.map(\.productId) })")
         // Request 1's answer, had it been slow: older than the applied request 2.
         await module.deliverLateServerAnswer(.init(userId: "user-1", rows: [old], generation: 0, sequence: 1))?.value
@@ -266,7 +270,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         }
 
         await module.refreshEntitlementCache()       // user-1's pass times out: ["p"]
-        let first = await waitUntil(1) { spy.changes.count == 1 }
+        let first = await waitUntil(10) { spy.changes.count == 1 }
         XCTAssertTrue(first)
         world.userId = "user-2"                      // `identify("user-2")`: no `clearServerOnlyEntitlementCache`
         gate.open()                                  // user-1's answer arrives late
@@ -293,6 +297,8 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
 
         for _ in 0..<5 { await module.refreshEntitlementCache() }   // each times out on the same held read
+        let reached = await waitUntil { gate.entered >= 1 }
+        XCTAssertTrue(reached, "the shared request never reached the server")
         XCTAssertEqual(gate.entered, 1, "\(gate.entered) /billing/entitlements requests in flight, not one")
         XCTAssertEqual(world.serverCalls, 1)
         XCTAssertEqual(spy.changes.count, 1, "the device's state, once")
@@ -323,12 +329,16 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         await module.refreshEntitlementCache()            // held: request 1
         module.clearServerOnlyEntitlementCache()          // `reset()`, then `identify("user-1")` again
         await module.refreshEntitlementCache()            // a new request, also held
-        XCTAssertEqual(gate.entered, 2, "the pass after the sign-out shared a read started before it")
+        // Wait for the second request to reach the server: the pass returned on its deadline, which says
+        // nothing about when its request's task got to run.
+        let both = await waitUntil { gate.entered == 2 }
+        XCTAssertTrue(both, "the pass after the sign-out shared a read started before it (\(gate.entered) requests)")
         gate.open()
+        module.serverReadDeadline = 60                    // from here the gate is open: no read may time out
         await settle()
         await module.refreshEntitlementCache()
-        await settle()
-        XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "cross"])
+        let reported = await waitUntil { Set(spy.changes.last?.map(\.productId) ?? []) == ["p", "cross"] }
+        XCTAssertTrue(reported, "\(spy.changes.map { $0.map(\.productId) })")
     }
 
     /// Minor 1: the answer arrives while the deadline timer is asleep. The answer must win — it used to cancel
@@ -415,14 +425,14 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
             manager.handlePurchase(paywallId: "pw_r28", plan: plan, config: paywall, delegate: paywallSpy,
                                    viewController: UIViewController())
         }
-        let completed = await waitUntil(1) { !paywallSpy.completed.isEmpty }
+        let completed = await waitUntil(10) { !paywallSpy.completed.isEmpty }
         XCTAssertTrue(completed, "onPaywallPurchaseCompleted waited on /billing/entitlements")
 
         await MainActor.run {
             manager.handleRestore(paywallId: "pw_r28", delegate: paywallSpy, viewController: UIViewController(),
                                   dismissGuard: PaywallDismissGuard())
         }
-        let restored = await waitUntil(1) { !paywallSpy.restored.isEmpty }
+        let restored = await waitUntil(10) { !paywallSpy.restored.isEmpty }
         XCTAssertTrue(restored, "onPaywallRestoreCompleted waited on /billing/entitlements")
 
         gate.open()

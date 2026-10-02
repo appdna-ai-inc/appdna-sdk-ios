@@ -89,7 +89,9 @@ final class PaywallManagerNoProviderTests: XCTestCase {
                 delegate: spy, viewController: UIViewController()
             )
         }
-        for _ in 0..<100 where spy.failed.isEmpty && spy.completed.isEmpty && purchaseEnded == 0 {
+        // A failure is reported to the delegate BEFORE the paywall's failure routing posts: wait for both, so
+        // the routing assertion never reads a route still on its way.
+        for _ in 0..<250 where (spy.failed.isEmpty || failureRoutes.isEmpty) && spy.completed.isEmpty && purchaseEnded == 0 {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
         return spy

@@ -2028,7 +2028,8 @@ public final class AppDNA: @unchecked Sendable {
     // MARK: - Lifecycle
 
     /// Shut down the SDK and release resources.
-    /// Flushes the event queue and resets internal state.
+    /// Makes one last upload attempt of the queued events (what it cannot send stays on disk and goes at
+    /// the next `configure`) and resets internal state.
     /// After calling shutdown the SDK must be re-configured before use.
     public static func shutdown() {
         // 🔴 CLEAR `isConfigured` SYNCHRONOUSLY, UNDER THE SAME LOCK `configure()` READS — OR A
@@ -2095,7 +2096,11 @@ public final class AppDNA: @unchecked Sendable {
             // activation is never undone by this late deactivation.)
             Task { await PurchaseDeliveryQueue.shared.deactivate(session: shutdownEpoch) }
 
-            shared.eventQueue?.flush()
+            // One last upload attempt of the queued events; what it cannot send stays on disk for the next
+            // `configure`. `flushForShutdown` keeps the queue alive until the attempt has finished — with
+            // `flush()` the queue was released before its weak-captured attempt ran (Android makes the same
+            // one attempt in `EventQueue.shutdown()`).
+            shared.eventQueue?.flushForShutdown()
             shared.eventQueue = nil
             shared.eventTracker = nil
             // The `Transaction.updates` listener is a long-lived Task holding the tracker we just

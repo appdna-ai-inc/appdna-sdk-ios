@@ -39,6 +39,16 @@ final class HostDataAuditFixTests: XCTestCase {
         }
     }
 
+    /// Wait for what an assertion depends on (a call reaching the host, a callback having run) instead of
+    /// a fixed ~40 ms: on a loaded runner a task can take longer than that to be scheduled at all.
+    private func waitFor(_ timeout: TimeInterval = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
     // MARK: - M1 — the step view does not depend on being the latest generation
 
     func testStepViewFiresForAStepLeftBeforeTheDelegateReplied() async {
@@ -51,15 +61,17 @@ final class HostDataAuditFixTests: XCTestCase {
         // Step A presented; its delegate call is in flight.
         coordinator.start(presentation: 1, call: { await host.call() },
                           onSettled: { viewed.append("A") }, onFinish: { _, _ in applied.append("A") })
-        await settle()
+        await waitFor { host.calls >= 1 }
         // The user leaves for step B before A's reply: B's start bumps the generation.
         coordinator.start(presentation: 2, call: { nil },
                           onSettled: { viewed.append("B") }, onFinish: { _, _ in applied.append("B") })
+        await waitFor { !viewed.isEmpty }
         await settle()
         XCTAssertEqual(viewed, ["B"])
 
         // A's (now superseded) reply lands.
         XCTAssertTrue(host.reply(StepConfigOverride(dataContext: ["x": 1])))
+        await waitFor { viewed.count >= 2 }
         await settle()
         XCTAssertEqual(viewed.sorted(), ["A", "B"], "step A was viewed — onboarding_step_viewed must fire for it")
         XCTAssertEqual(applied, ["B"], "a superseded reply must not end pending / apply its override")
@@ -90,12 +102,14 @@ final class HostDataAuditFixTests: XCTestCase {
         let host = ScriptedStepRenderDelegate()
         var viewed = 0
         coordinator.start(presentation: 1, call: { await host.call() }, onSettled: { viewed += 1 }, onFinish: { _, _ in })
-        await settle()
+        await waitFor { host.calls >= 1 }
         coordinator.cancelInFlight()
+        await waitFor { host.calls >= 2 }
         await settle()
         XCTAssertEqual(viewed, 0, "a cancelled call is not a step view")
         XCTAssertEqual(host.calls, 2, "re-fired once")
         XCTAssertTrue(host.reply(nil))
+        await waitFor { viewed >= 1 }
         await settle()
         XCTAssertEqual(viewed, 1)
         clock.advance(10_000)

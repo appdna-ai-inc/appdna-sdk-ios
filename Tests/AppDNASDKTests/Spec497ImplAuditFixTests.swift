@@ -135,6 +135,12 @@ private final class HoldingHTTPServer {
         close(client)
     }
 
+    /// The bootstrap reached the server (whether or not it has been answered).
+    var bootstrapReceived: Bool {
+        condition.lock(); defer { condition.unlock() }
+        return bootstrapsReceived > 0
+    }
+
     /// The bootstrap reached the server and has not been answered: it is in flight.
     var bootstrapHeld: Bool {
         condition.lock(); defer { condition.unlock() }
@@ -249,13 +255,20 @@ final class Spec497BillingFixTests: XCTestCase {
         sdkConfigured = true
         AppDNA.onReady { ready.value = true }
 
-        // Only as long as `configure`'s own build takes to wire billing — no bootstrap.
-        let wired = await poll { AppDNA.billing.configured }
+        // Only as long as `configure`'s own build takes to wire billing — no bootstrap. (30 s: on a starved
+        // runner the build itself, on the SDK queue, took longer than 10 s in a reproduction under load.)
+        let wired = await poll(timeout: 30) { AppDNA.billing.configured }
         XCTAssertTrue(wired, "configure never wired billing")
         XCTAssertTrue(AppDNA.billing.bridge is StoreKit2Bridge, "the default provider must wire the StoreKit 2 bridge")
         XCTAssertTrue(AppDNA.billing.ownershipPolicy.sdkCanPurchase)
         XCTAssertTrue(AppDNA.billing.ownershipPolicy.ownsTransactions)
         XCTAssertFalse(ready.value, "the bootstrap must still be in flight (the server has not answered)")
+        // `configure` starts the bootstrap on a task of its own: wait until the request has actually
+        // reached the server before purchasing, or "held" below asks about a request still on its way
+        // (CI, on a loaded runner: "the bootstrap must still be in flight when the purchase completes").
+        let arrived = await poll { server.bootstrapReceived }
+        XCTAssertTrue(arrived, "the bootstrap never reached the local server")
+        XCTAssertTrue(server.bootstrapHeld, "the server answered the bootstrap before it was released")
 
         let standIn = StoreKit2StandIn()
         AppDNA.billing.bridge = standIn
@@ -602,7 +615,8 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
             manager.handleRestore(paywallId: "pw_r", delegate: spy, viewController: UIViewController(),
                                   dismissGuard: PaywallDismissGuard())
         }
-        _ = await poll(timeout: waitFor) { !spy.failed.value.isEmpty }
+        // `messages` is appended after `failed` in the same callback: wait on the later one.
+        _ = await poll(timeout: waitFor) { !spy.messages.value.isEmpty }
         return spy
     }
 
@@ -632,7 +646,12 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         let log = EventLog()
         await MainActor.run { AppDNA.paywall.skipNextAutoDismissOnRestore = true }
         let spy = await restore(bridge: CancelledRestoreBridge(), provider: .storeKit2, log: log, waitFor: 1)
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        // Wait on what the assertions depend on (the start, then the flag cleared on main), not on a clock.
+        _ = await poll {
+            guard spy.started.value == 1 else { return false }
+            return await MainActor.run { !AppDNA.paywall.skipNextAutoDismissOnRestore }
+        }
+        try? await Task.sleep(nanoseconds: 200_000_000)   // the absence window for a stray failure
         await MainActor.run {}
         XCTAssertEqual(spy.started.value, 1)
         XCTAssertTrue(spy.failed.value.isEmpty, "no onPaywallRestoreFailed")

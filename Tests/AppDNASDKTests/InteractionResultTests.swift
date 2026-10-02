@@ -196,7 +196,7 @@ final class InteractionResultTests: XCTestCase {
         var seqs = 0
         var got: Int?
         c.start(presentation: 1, seq: { seqs += 1; return seqs + 40 }, call: { nil }, onFinish: { _, seq in got = seq })
-        for _ in 0..<20 { await Task.yield(); try? await Task.sleep(nanoseconds: 2_000_000) }
+        await waitFor { got != nil }
         XCTAssertEqual(got, 41, "the value drawn at the call's START")
     }
 
@@ -221,6 +221,16 @@ final class InteractionResultTests: XCTestCase {
 
     private func settle() async {
         for _ in 0..<20 { await Task.yield(); try? await Task.sleep(nanoseconds: 2_000_000) }
+    }
+
+    /// Wait for what an assertion depends on instead of a fixed ~40 ms (a loaded runner can take longer
+    /// than that to schedule the call's task at all).
+    private func waitFor(_ timeout: TimeInterval = 5, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            await Task.yield()
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
     }
 
     func testNoNativeDelegateMakesNoCallShowsNoLoadingAndLogs() {
@@ -299,11 +309,12 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertFalse(c.isTappable(blockId: "more", pending: false), "refresh is locked while ANY interaction is in flight")
         XCTAssertEqual(c.start(blockId: "more", action: "refresh", value: nil, pending: false, hasDelegate: true,
                                call: { nil }, onReply: { _, _ in }), .refusedInFlight)
-        await settle()
+        await waitFor { cont != nil }                    // the call has reached the host
         clock.advance(60_000)
         XCTAssertTrue(c.inFlight, "no SDK timeout for a non-refresh interaction")
+        XCTAssertNotNil(cont, "the call never reached the host")
         cont?.resume(returning: ElementInteractionResult(advance: false))
-        await settle()
+        await waitFor { got != nil }
         XCTAssertEqual(got, 1)
         XCTAssertFalse(c.inFlight)
     }
@@ -324,6 +335,7 @@ final class InteractionResultTests: XCTestCase {
         var replies = 0
         c.start(blockId: "more", action: "refresh", value: nil, pending: false, hasDelegate: true,
                 call: { throw Boom() }, onReply: { _, _ in replies += 1 })
+        await waitFor { !c.inFlight }
         await settle()
         XCTAssertEqual(replies, 0)
         XCTAssertFalse(c.inFlight)

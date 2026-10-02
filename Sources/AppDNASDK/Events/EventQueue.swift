@@ -149,34 +149,64 @@ final class EventQueue {
             self.eventStore.save(events: [event])
             onPersisted?() // SPEC-428 STEP-4: meta now durable → safe to decrement the drop counter
 
-            // SPEC-067: Check adaptive threshold
+            // SPEC-067: Check adaptive threshold. A threshold flush keeps the failure pause: during an
+            // outage every `track()` reaching the batch size would otherwise run a full upload cycle.
             let currentBatchSize = self.effectiveBatchSize
             if currentBatchSize > 0 && self.pendingEvents.count >= currentBatchSize {
-                self.performFlush()
+                self.runFlush(.threshold)
             }
         }
     }
 
-    /// Force flush all pending events. SHARED entrypoint — the 30s timer, the retry reschedule, and
-    /// backgrounding all call this, so it must NOT clear the failure-pause gate (that would reset the
-    /// backoff every 30s and let it hammer a failing server forever). Host-initiated flushes use
-    /// `flushClearingPause()`.
-    func flush() {
-        queue.async { [weak self] in
-            self?.performFlush()
+    /// Who asked for a flush — and so whether it clears the failure pause (`consecutiveFailures`,
+    /// paused at `maxConsecutiveFailures`). Only the app coming to the foreground and the host's own
+    /// `AppDNA.flush()` give a paused queue another chance; the batch threshold, the interval timer,
+    /// a retry's backoff, backgrounding and `shutdown()` keep the pause, so a failing server is not
+    /// hammered by every `track()` or every 30 s tick. Android's `EventQueue.FlushTrigger` is the same
+    /// table; the shared `flush_pause_gate` fixture asserts both.
+    enum FlushTrigger: String, CaseIterable {
+        case threshold, scheduled, background, shutdown, foreground, explicit
+
+        var clearsPauseGate: Bool {
+            switch self {
+            case .foreground, .explicit: return true
+            case .threshold, .scheduled, .background, .shutdown: return false
+            }
         }
     }
 
+    /// A scheduled flush — the interval timer and a retry's backoff. Keeps the failure pause.
+    func flush() {
+        flush(.scheduled)
+    }
+
     /// Host-initiated flush (`AppDNA.flush()`): clears the failure-pause gate first so a queue paused
-    /// after N permanent-4xx failures gets another chance. Round-32 — matches Android's public flush()
-    /// (SPEC-070-A A.16), which resets paused + consecutiveFailures before draining; iOS previously
-    /// no-op'd while paused. Deliberately NOT called by the timer/retry/background paths.
+    /// after N failures gets another chance. Matches Android's public `flush()`.
     func flushClearingPause() {
-        queue.async { [weak self] in
-            guard let self else { return }
-            self.consecutiveFailures = 0
-            self.performFlush()
+        flush(.explicit)
+    }
+
+    /// `AppDNA.shutdown()`'s one last upload attempt of the queued events. The queue is captured
+    /// strongly until the attempt has finished: `shutdown()` drops its reference right after this call,
+    /// and with a weak capture the attempt never ran — or ran without its queue and left the process-wide
+    /// upload claim (`EventUploadCoordinator`) held, so no later queue in the process could upload.
+    /// What the attempt does not send stays on disk for the next `configure`. Keeps the failure pause.
+    func flushForShutdown() {
+        queue.async { [self] in
+            self.runFlush(.shutdown)
         }
+    }
+
+    func flush(_ trigger: FlushTrigger) {
+        queue.async { [weak self] in
+            self?.runFlush(trigger)
+        }
+    }
+
+    /// On `queue`.
+    private func runFlush(_ trigger: FlushTrigger) {
+        if trigger.clearsPauseGate { consecutiveFailures = 0 }
+        performFlush()
     }
 
     /// SPEC-424 STEP-1a (CL-7): purge ALL pending events (in-memory + on-disk) WITHOUT uploading —
@@ -210,8 +240,7 @@ final class EventQueue {
             if self.consecutiveFailures >= self.maxConsecutiveFailures {
                 Log.info("Foregrounded — clearing event-upload pause and retrying")
             }
-            self.consecutiveFailures = 0
-            self.performFlush()
+            self.runFlush(.foreground)
         }
     }
 
@@ -223,7 +252,7 @@ final class EventQueue {
         backgroundTask = UIApplication.shared.beginBackgroundTask { [weak self] in
             self?.endBackgroundTask()
         }
-        flush()
+        flush(.background)
         // End background task after flush dispatch completes on the same serial queue
         queue.async { [weak self] in
             self?.endBackgroundTask()
@@ -305,8 +334,10 @@ final class EventQueue {
             return
         }
 
-        Task { [weak self] in
-            guard let self else { return }
+        // Strong: the upload always finishes and releases the flush guard and the process-wide upload
+        // claim below, even when the queue's owner let go meanwhile (`flushForShutdown`). With a weak
+        // capture a released queue returned here and the claim stayed held for the rest of the process.
+        Task { [self] in
             let success = await self.apiClient.sendEvents(bodyData)
 
             self.queue.async {
@@ -363,7 +394,7 @@ final class EventQueue {
                         self.retryCount += 1
                         Log.debug("Flush failed, retrying in \(String(format: "%.2f", delay))s (attempt \(self.retryCount)/\(self.maxRetries))")
                         DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                            self?.flush()
+                            self?.flush(.scheduled)
                         }
                     } else {
                         self.consecutiveFailures += 1

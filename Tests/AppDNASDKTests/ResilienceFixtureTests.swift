@@ -49,9 +49,12 @@ final class ResilienceFixtureTests: XCTestCase {
         let age_ms: Int64?
         let stale: Bool?
         let disposition: String?
+        // contract=flush_pause_gate
+        let trigger: String?
+        let clears_pause: Bool?
 
         private enum CodingKeys: String, CodingKey {
-            case status, transient, header, seconds, age_ms, stale, disposition
+            case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
         }
 
         init(from decoder: Decoder) throws {
@@ -61,6 +64,8 @@ final class ResilienceFixtureTests: XCTestCase {
             age_ms = try c.decodeIfPresent(Int64.self, forKey: .age_ms)
             stale = try c.decodeIfPresent(Bool.self, forKey: .stale)
             disposition = try c.decodeIfPresent(String.self, forKey: .disposition)
+            trigger = try c.decodeIfPresent(String.self, forKey: .trigger)
+            clears_pause = try c.decodeIfPresent(Bool.self, forKey: .clears_pause)
 
             // Plain statements, not a `&&` inside a ternary: `decodeNil` throws, and Swift will not
             // let a throwing call sit inside a short-circuit operand.
@@ -248,6 +253,22 @@ final class ResilienceFixtureTests: XCTestCase {
                     "[\(f.id)] worst-case total backoff \(Int(worstCaseTotalMs))ms exceeds the \(maxTotal)ms bound"
                 )
 
+            // Which flush triggers clear the paused-after-N-failures gate. Drives the real
+            // `EventQueue.FlushTrigger` every flush path goes through; the table must name every case.
+            case "flush_pause_gate":
+                var named = Set<EventQueue.FlushTrigger>()
+                for c in try requireCases(f) {
+                    guard let name = c.trigger, let want = c.clears_pause else {
+                        return XCTFail("[\(f.id)] flush_pause_gate case needs `trigger` and `clears_pause`")
+                    }
+                    guard let trigger = EventQueue.FlushTrigger(rawValue: name) else {
+                        return XCTFail("[\(f.id)] unknown flush trigger '\(name)'")
+                    }
+                    named.insert(trigger)
+                    XCTAssertEqual(trigger.clearsPauseGate, want, "[\(f.id)] does a \(name) flush clear the pause?")
+                }
+                XCTAssertEqual(named, Set(EventQueue.FlushTrigger.allCases), "[\(f.id)] the table must name every FlushTrigger")
+
             default:
                 XCTFail("[\(f.id)] unknown resilience contract '\(f.resilience.contract)' — this runner must assert it, never skip it")
             }
@@ -257,7 +278,7 @@ final class ResilienceFixtureTests: XCTestCase {
         // and this suite would still go green on the survivors.
         XCTAssertEqual(
             seenContracts,
-            ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff"],
+            ["transient_status", "retry_after", "stale_horizon", "permanent_failure", "backoff", "flush_pause_gate"],
             "every resilience contract must be covered by a fixture"
         )
     }

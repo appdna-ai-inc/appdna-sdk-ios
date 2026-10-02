@@ -79,10 +79,26 @@ final class APIClient {
         self.apiKey = apiKey
         self.environment = environment
 
+        self.session = URLSession(configuration: Self.sessionConfiguration())
+    }
+
+    /// The SDK's session: 30 s per request, 60 s per resource, and NO HTTP cache.
+    ///
+    /// Every answer the SDK reads from its own API has to be the server's answer now: the bootstrap
+    /// (`runtime_lock`, geo, map keys), `/billing/entitlements`, option-set pages. The default
+    /// configuration used `URLCache.shared` with the protocol cache policy, and the bootstrap was sent
+    /// with `Cache-Control: private, max-age=86400` — so for 24 hours after one successful bootstrap,
+    /// every later one (each launch, each re-configure) was answered from the cache without reaching
+    /// the server, online or offline: a runtime lock set in that window did not reach the device.
+    /// With no cache, an unreachable server is a failed bootstrap (degraded mode), the same as Android,
+    /// whose OkHttp client has no cache.
+    static func sessionConfiguration() -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 60
-        self.session = URLSession(configuration: config)
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return config
     }
 
     /// Execute a request with automatic retry on 5xx and network errors.

@@ -360,7 +360,7 @@ final class DeliveryQueueTests: XCTestCase {
 
         let host = Recorder()
         AppDNA.billingDelegate = host                 // = setDelegate(host, deliversPurchases: true)
-        for _ in 0..<50 where host.delivered.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
+        for _ in 0..<500 where host.delivered.isEmpty { try await Task.sleep(nanoseconds: 20_000_000) }
         XCTAssertEqual(host.delivered, ["s1"], "setting a delivering delegate drains the queue")
 
         await shared.deactivate()

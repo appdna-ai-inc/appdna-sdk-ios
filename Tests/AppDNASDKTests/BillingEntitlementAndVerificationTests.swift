@@ -109,6 +109,10 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
             now: { world.now }
         )
         module.setDelegate(spy, deliversPurchases: false)
+        // No test here is about the server-read deadline (`BillingResultNetworkIndependenceTests` is). At
+        // the 2.5 s default a loaded CI runner let an immediate read miss it: the pass reported without the
+        // server rows and the late answer came as one more pass — an extra read and an extra change.
+        module.serverReadDeadline = 60
         return module
     }
 
@@ -321,12 +325,15 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let module = makeModule(bridge, world, spy: spy)
         module.expiryRecheckLeeway = 0.05
         module.entitlementSources.now = { Date() }
-        bridge.ids = ["weekly"]
+        // StoreKit drops the expired transaction: the re-check (the second read) finds nothing. Decided at
+        // the read, not by the test thread after the first change — the re-check fires ~0.45 s in, and a
+        // loaded runner could reach that before the test thread changed the set.
+        bridge.idsAtRead = { bridge.reads >= 2 ? [] : ["weekly"] }
         world.expirations = ["weekly": Date().addingTimeInterval(0.4)]
         await module.refreshEntitlementCache()
-        let ok8 = await waitUntil { spy.changes.count == 1 }
+        let ok8 = await waitUntil { spy.changes.count >= 1 }
         XCTAssertTrue(ok8)
-        bridge.ids = []                                // StoreKit drops the expired transaction
+        XCTAssertEqual(spy.changes.first?.map(\.productId), ["weekly"])
         let ok9 = await waitUntil(3) { spy.changes.count == 2 }
         XCTAssertTrue(ok9, "the expiry re-check reports it")
         XCTAssertEqual(spy.changes.last?.count, 0)
@@ -1077,9 +1084,11 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let billing = AppDNA.billing
         let prior = (configured: billing.configured, bridge: billing.bridge, policy: billing.ownershipPolicy,
                      tracker: billing.eventTracker, sources: billing.entitlementSources, delegate: billing.currentDelegate,
-                     delivers: billing.currentDelegateDelivers, fingerprint: billing.lastKnownFingerprintForTesting)
+                     delivers: billing.currentDelegateDelivers, fingerprint: billing.lastKnownFingerprintForTesting,
+                     deadline: billing.serverReadDeadline)
         let globals = GlobalSignOutState.save()
         defer { globals.restore() }
+        billing.serverReadDeadline = 60    // not under test; see `makeModule`
         let bridge = FakeBridge(); let world = World(); let spy = Spy()
         // Unique ids: the process-wide module keeps its last-known state from earlier tests.
         let device = "r22-\(UUID().uuidString)", cross = "r22-cross-\(UUID().uuidString)"
@@ -1114,6 +1123,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         billing.assignBillingDelegate(prior.delegate, delivers: prior.delivers)
         billing.entitlementSources = prior.sources
         billing.lastKnownFingerprintForTesting = prior.fingerprint
+        billing.serverReadDeadline = prior.deadline
         if prior.configured {
             billing.wire(bridge: prior.bridge, policy: prior.policy, tracker: prior.tracker)
         } else {
