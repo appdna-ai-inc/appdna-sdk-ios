@@ -1105,7 +1105,15 @@ struct ExperimentConfig: Codable {
     let salt: String?
     let platforms: [String]?
     let variants: [ExperimentVariant]?
+    /// Legacy top-level key that nothing writes; kept so an old cached doc still decodes. Not evaluated (there is no
+    /// segment targeting — see `targeting`).
     var segments: [String]? = nil
+    /// Share of users in the experiment (0…1). Absent on docs written before it was served = everyone.
+    var traffic_allocation: Double? = nil
+    /// The audience rules the device evaluates (`ExperimentEligibility`); nested, as the server has always written it.
+    var targeting: ExperimentTargeting? = nil
+    /// When the experiment started (epoch ms) — "new users only" compares the install date with it.
+    var started_at_ms: Int64? = nil
 }
 
 public struct ExperimentVariant: Codable {

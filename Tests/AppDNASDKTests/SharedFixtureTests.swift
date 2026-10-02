@@ -486,6 +486,7 @@ final class SharedFixtureTests: XCTestCase {
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
+        case "get_variant":                    runGetVariant(fixture, harness)
         case "receive_push":                   await runReceivePush(fixture, harness)
         case "tap_push":                       await runTapPush(fixture, harness)
         // SPEC-496 — the raw host-data pass (HostDataResolver) and the step pipeline around it.
@@ -2080,8 +2081,14 @@ final class SharedFixtureTests: XCTestCase {
             type: experiment.type,
             salt: experiment.salt,
             platforms: experiment.platforms,
-            variants: forcedVariants
+            variants: forcedVariants,
+            traffic_allocation: experiment.traffic_allocation,
+            targeting: experiment.targeting,
+            started_at_ms: experiment.started_at_ms
         )
+        if let userId = f.setup.session_data?.objectValue?["user_id"]?.stringValue {
+            h.identityManager.identify(userId: userId, traits: [:])
+        }
 
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixture.\(UUID().uuidString)")
         let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
@@ -2095,8 +2102,10 @@ final class SharedFixtureTests: XCTestCase {
         let manager = ExperimentManager(
             remoteConfigManager: rcm,
             identityManager: h.identityManager,
-            eventTracker: h.tracker
+            eventTracker: h.tracker,
+            eligibilityContext: SharedFixtureTests.eligibilityContext(f)
         )
+        h.events.removeAll() // the identify above is plumbing, not part of the expectation
         let resolution = manager.resolveSurfacePresentation(surfaceType: surfaceType, entityId: entityId)
 
         // The SDK emits the exposure itself (ExperimentManager.trackExposure) — its presence is what
@@ -2110,6 +2119,57 @@ final class SharedFixtureTests: XCTestCase {
         case .renderActive:
             h.state["resolution"] = exposed ? "control" : "active"
             h.state["presented_config_id"] = activeEntityId
+        }
+    }
+
+    // MARK: - Driver: get_variant
+    //
+    // REAL, END TO END: the served doc decodes through the SDK's own `ExperimentConfig` Codable (so the nested
+    // `targeting`, `traffic_allocation` and `started_at_ms` are read exactly as in production), the user is identified
+    // with the fixture's `session_data.user_id` (so both buckets are deterministic), the device facts the targeting
+    // rules read come from `session_data` (app_version, device_region, install_epoch_ms) and the traits from
+    // `user_traits`; then `ExperimentManager.getVariant` runs and emits the exposure itself. The two buckets are
+    // also reported so a mismatch shows which hash diverged.
+
+    private func runGetVariant(_ f: Fixture, _ h: Harness) {
+        guard let experimentJSON = f.setup.config?.objectValue?["experiment"],
+              let data = try? JSONSerialization.data(withJSONObject: experimentJSON.foundation),
+              let experiment = try? JSONDecoder().decode(ExperimentConfig.self, from: data),
+              let experimentId = f.action.raw["experiment_id"]?.stringValue,
+              let userId = f.setup.session_data?.objectValue?["user_id"]?.stringValue else {
+            return XCTFail("[\(f.id)] get_variant needs setup.config.experiment (decodable), action.experiment_id, session_data.user_id")
+        }
+        let traits = (f.setup.user_traits?.objectValue ?? [:]).mapValues { $0.foundation }
+        h.identityManager.identify(userId: userId, traits: traits)
+
+        let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixture.\(UUID().uuidString)")
+        let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
+        rcm._injectExperimentsForTesting([experimentId: experiment])
+        let manager = ExperimentManager(
+            remoteConfigManager: rcm,
+            identityManager: h.identityManager,
+            eventTracker: h.tracker,
+            eligibilityContext: SharedFixtureTests.eligibilityContext(f)
+        )
+
+        h.events.removeAll()
+        let variant = manager.getVariant(experimentId: experimentId)
+        // A second call must not track a second exposure.
+        _ = manager.getVariant(experimentId: experimentId)
+        h.state["variant"] = SharedFixtureTests.orNull(variant)
+        let salt = (experiment.salt?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) ? experimentId : experiment.salt!
+        h.state["variant_bucket"] = Int(ExperimentBucketer.hash32("\(experimentId).\(salt).\(userId)") % 10000)
+        h.state["allocation_bucket"] = Int(ExperimentEligibility.allocationBucket(experimentId: experimentId, salt: salt, userId: userId))
+    }
+
+    /// The device facts a fixture declares in `session_data` (absent / null = unknown), with the identity's traits.
+    static func eligibilityContext(_ f: Fixture) -> ([String: Any]) -> ExperimentEligibilityContext {
+        let session = f.setup.session_data?.objectValue ?? [:]
+        let appVersion = session["app_version"]?.stringValue
+        let region = session["device_region"]?.stringValue
+        let installed = session["install_epoch_ms"]?.doubleValue.map { Int64($0) }
+        return { traits in
+            ExperimentEligibilityContext(platform: "ios", appVersion: appVersion, deviceRegion: region, installEpochMs: installed, traits: traits)
         }
     }
 
