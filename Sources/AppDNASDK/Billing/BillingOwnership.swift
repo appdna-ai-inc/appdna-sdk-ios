@@ -44,6 +44,22 @@ struct BillingOwnershipPolicy: Equatable {
     let emitsLifecycleEvents: Bool
     /// The wire name of the requested provider (`storeKit2`, `revenueCat`, `adapty`, `none`).
     let provider: String
+    /// RevenueCat's or Adapty's own SDK is compiled into this build and answers entitlements
+    /// (`RevenueCatBridge` / `AdaptyBridge` — source builds only; published channels link neither).
+    /// False for `storeKit2`, `none`, and an unlinked provider (`ExternalProviderBridge`).
+    let providerSDKLinked: Bool
+
+    /// The SDK's entitlement read is the device's StoreKit set (`Transaction.currentEntitlements`):
+    /// `storeKit2` (`StoreKit2Bridge`), or RevenueCat / Adapty whose SDK is NOT linked into this build
+    /// (`ExternalProviderBridge`, every published channel). False when a linked provider SDK answers
+    /// (`RevenueCatBridge` / `AdaptyBridge`, source builds only) and for `none`.
+    var sdkReadsStoreKitEntitlements: Bool {
+        switch provider {
+        case "storeKit2": return true
+        case "revenueCat", "adapty": return !providerSDKLinked
+        default: return false
+        }
+    }
 
     /// The message a refused purchase or restore carries (§3.2 rule 2, §3.3).
     var refusalMessage: String {
@@ -72,12 +88,14 @@ enum BillingOwnership {
         case .storeKit2:
             return BillingOwnershipPolicy(
                 ownsTransactions: true, sdkCanPurchase: true, sdkCanRestore: true,
-                observerMode: .storeKitOwned, emitsLifecycleEvents: true, provider: provider.type
+                observerMode: .storeKitOwned, emitsLifecycleEvents: true, provider: provider.type,
+                providerSDKLinked: false
             )
         case .revenueCat:
             return BillingOwnershipPolicy(
                 ownsTransactions: false, sdkCanPurchase: bridgeLinked, sdkCanRestore: bridgeLinked,
-                observerMode: .providerOwned, emitsLifecycleEvents: false, provider: provider.type
+                observerMode: .providerOwned, emitsLifecycleEvents: false, provider: provider.type,
+                providerSDKLinked: bridgeLinked
             )
         case .adapty:
             // No purchase even when Adapty is linked: Adapty (2.x and 3.x) buys only an
@@ -85,12 +103,14 @@ enum BillingOwnership {
             // Restore goes through `Adapty.restorePurchases()`.
             return BillingOwnershipPolicy(
                 ownsTransactions: false, sdkCanPurchase: false, sdkCanRestore: bridgeLinked,
-                observerMode: .providerOwned, emitsLifecycleEvents: true, provider: provider.type
+                observerMode: .providerOwned, emitsLifecycleEvents: true, provider: provider.type,
+                providerSDKLinked: bridgeLinked
             )
         case .none:
             return BillingOwnershipPolicy(
                 ownsTransactions: false, sdkCanPurchase: false, sdkCanRestore: false,
-                observerMode: .none, emitsLifecycleEvents: false, provider: provider.type
+                observerMode: .none, emitsLifecycleEvents: false, provider: provider.type,
+                providerSDKLinked: false
             )
         }
     }

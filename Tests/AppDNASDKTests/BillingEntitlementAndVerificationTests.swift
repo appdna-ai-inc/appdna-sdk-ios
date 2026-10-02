@@ -97,9 +97,10 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
     }
 
     private func makeModule(_ bridge: FakeBridge, _ world: World, spy: Spy,
-                            provider: BillingProvider = .storeKit2) -> AppDNA.BillingModule {
+                            provider: BillingProvider = .storeKit2,
+                            bridgeLinked: Bool = true) -> AppDNA.BillingModule {
         let module = AppDNA.BillingModule()
-        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: provider, bridgeLinked: true), tracker: tracker)
+        module.wire(bridge: bridge, policy: BillingOwnership.policy(for: provider, bridgeLinked: bridgeLinked), tracker: tracker)
         module.entitlementSources = EntitlementSources(
             server: { _ in world.serverCalls += 1; return world.server },
             localExpirations: { ids, ownerFiltered in world.ownerFiltered.append(ownerFiltered); return world.expirations.filter { ids.contains($0.key) } },
@@ -1163,9 +1164,9 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertNil(SessionDataStore.shared.getSessionData(key: key))
     }
 
-    // MARK: - Sign-out refresh: only when the SDK owns StoreKit
+    // MARK: - Sign-out refresh: only when the SDK reads StoreKit itself
 
-    /// Under RevenueCat or Adapty a sign-out queues no refresh: the provider's entitlements are for the
+    /// Under RevenueCat or Adapty LINKED into the build a sign-out queues no refresh: the provider's entitlements are for the
     /// provider's current user, which `reset()` does not change. NEGATIVE CONTROL: `signOut()` queued the
     /// refresh under every provider, so `bridge.reads` went 1 → 2 and the provider's (signed-out) user's set
     /// was reported as the signed-out state.
@@ -1200,7 +1201,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertTrue(read, "storeKit2: the sign-out queues one refresh")
     }
 
-    func testSignOutRefreshesOnlyWithAStoreKit2Provider() {
+    func testSignOutRefreshesOnlyWhenTheSDKReadsStoreKit() {
         XCTAssertTrue(AppDNA.BillingModule.signOutRefreshes(
             hasProvider: true, policy: BillingOwnership.policy(for: .storeKit2, bridgeLinked: true)))
         XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
@@ -1209,6 +1210,45 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
             hasProvider: true, policy: BillingOwnership.policy(for: .revenueCat, bridgeLinked: true)))
         XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
             hasProvider: true, policy: BillingOwnership.policy(for: .adapty(apiKey: "k"), bridgeLinked: true)))
+        // Published builds: the provider SDK is not linked, `ExternalProviderBridge` reads StoreKit.
+        XCTAssertTrue(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: true, policy: BillingOwnership.policy(for: .revenueCat, bridgeLinked: false)))
+        XCTAssertTrue(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: true, policy: BillingOwnership.policy(for: .adapty(apiKey: "k"), bridgeLinked: false)))
+        XCTAssertFalse(AppDNA.BillingModule.signOutRefreshes(
+            hasProvider: false, policy: BillingOwnership.unavailable))
+    }
+
+    /// Under RevenueCat or Adapty NOT linked into the build — every published channel, where
+    /// `ExternalProviderBridge` reads the device's StoreKit set — the sign-out refreshes like StoreKit 2 and
+    /// reports exactly one change: the anonymous state, without the signed-out user's server-only row.
+    /// NEGATIVE CONTROL: `signOutRefreshes` keyed on the REQUESTED provider, so no refresh was queued,
+    /// `bridge.reads` stayed 1 and nothing reported the sign-out until the next foreground or purchase.
+    func testSignOutRefreshesUnderAnUnlinkedProvider() async {
+        for provider in [BillingProvider.revenueCat, .adapty(apiKey: "k")] {
+            defaults.removePersistentDomain(forName: suite)   // each provider starts from no last-known state
+            let bridge = FakeBridge(); let world = World(); let spy = Spy()
+            world.userId = "user-1"
+            bridge.ids = ["monthly"]
+            world.server = [crossRow]
+            let module = makeModule(bridge, world, spy: spy, provider: provider, bridgeLinked: false)
+            await module.refreshEntitlementCache()
+            let signedIn = await waitUntil { spy.changes.count == 1 }
+            XCTAssertTrue(signedIn, "\(provider)")
+            XCTAssertEqual(bridge.reads, 1)
+
+            world.userId = nil
+            module.signOut()
+            let reported = await waitUntil { spy.changes.count == 2 }
+            XCTAssertTrue(reported, "\(provider): the sign-out reported no entitlement change")
+            await settle()
+            await settle()
+            XCTAssertEqual(bridge.reads, 2, "\(provider): the sign-out queues exactly one refresh")
+            XCTAssertEqual(spy.changes.count, 2, "\(provider): exactly one change for the sign-out")
+            XCTAssertEqual(spy.changes.last?.map(\.productId), ["monthly"],
+                           "\(provider): the device's StoreKit set, without the signed-out user's server row")
+            XCTAssertNil(ServerOnlyEntitlementCache.load(defaults), "\(provider)")
+        }
     }
 
     /// With no billing provider configured a sign-out queues nothing. NEGATIVE CONTROL: it queued a pass that
