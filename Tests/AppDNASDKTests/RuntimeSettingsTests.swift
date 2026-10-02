@@ -27,7 +27,8 @@ final class RuntimeSettingsTests: XCTestCase {
         func set(_ i: Int, _ a: @escaping () -> LoopbackHTTPServer.Answer) { lock.lock(); answers[i] = a; lock.unlock() }
         func next() -> LoopbackHTTPServer.Answer {
             lock.lock(); let i = received; received += 1; let a = answers[i]; lock.unlock()
-            return a?() ?? .init(status: 401, headers: [:], body: "{}")
+            // An unplanned bootstrap fails with a 503: retried (a 401 / 403 now ends the recovery loop).
+            return a?() ?? .init(status: 503, headers: [:], body: "{}")
         }
     }
 
