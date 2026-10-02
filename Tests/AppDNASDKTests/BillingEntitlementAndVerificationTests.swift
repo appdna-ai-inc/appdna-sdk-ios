@@ -121,6 +121,12 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         return condition()
     }
 
+    /// Wait for every block already on the SDK's serial queue (`AppDNA.reset()` is one such block) — off the
+    /// cooperative pool, since the wait blocks its thread.
+    static func drainSDKQueue() async {
+        await Task.detached { AppDNA.drainSDKQueueForTesting() }.value
+    }
+
     /// Let queued main-queue deliveries run, then return.
     private func settle() async {
         try? await Task.sleep(nanoseconds: 150_000_000)
@@ -761,18 +767,18 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
     // MARK: - Round 19
 
     /// NEGATIVE CONTROL: `reset()` (sign-out) left the signed-out user's server-only rows persisted.
-    func testResetClearsTheServerOnlyEntitlementCache() {
+    func testResetClearsTheServerOnlyEntitlementCache() async {
         let saved = AppDNA.billing.entitlementSources
+        // `AppDNA.reset()` also clears process-wide state other tests read: put it back.
+        let globals = GlobalSignOutState.save()
+        defer { globals.restore() }
         AppDNA.billing.entitlementSources.defaults = defaults
         defer { AppDNA.billing.entitlementSources = saved }
         ServerOnlyEntitlementCache.save(userId: "user-1", items: [ServerEntitlement(
             productId: "cross", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)], defaults)
         XCTAssertNotNil(ServerOnlyEntitlementCache.load(defaults))
         AppDNA.reset()
-        let deadline = Date().addingTimeInterval(10)
-        while Date() < deadline, ServerOnlyEntitlementCache.load(defaults) != nil {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
-        }
+        await Self.drainSDKQueue()
         XCTAssertNil(ServerOnlyEntitlementCache.load(defaults), "the signed-out user's server-only rows outlived reset()")
     }
 
@@ -1154,8 +1160,11 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let probe = GlobalSignOutState.save()
 
         AppDNA.reset()
-        let cleared = await waitUntil(5) { SessionDataStore.shared.getSessionData(key: key) == nil }
-        XCTAssertTrue(cleared, "precondition: reset() clears session data")
+        // `reset()` is one block on the SDK's serial queue: wait for that block, not for a clock.
+        await Self.drainSDKQueue()
+        XCTAssertNil(SessionDataStore.shared.getSessionData(key: key), "precondition: reset() clears session data")
+        XCTAssertNil(UserDefaults.standard.data(forKey: SubscriptionStatusObserver.snapshotKey),
+                     "precondition: reset() clears the subscription snapshot")
         probe.restore()
 
         XCTAssertEqual(SessionDataStore.shared.getSessionData(key: key) as? String, "kept")

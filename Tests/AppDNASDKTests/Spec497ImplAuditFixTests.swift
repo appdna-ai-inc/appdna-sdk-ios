@@ -63,19 +63,31 @@ private func poll(timeout: TimeInterval = 10, _ condition: () async -> Bool) asy
     return await condition()
 }
 
-/// A local HTTP server that accepts every connection and answers NOTHING until `release()` — then a
-/// `401` (a 4xx is not retried, so the SDK's bootstrap fails at once). Holds the bootstrap in flight.
+/// A local HTTP server that holds the SDK's BOOTSTRAP request — and only that one — unanswered until
+/// `release()`, then answers it `401` (a 4xx is not retried, so the bootstrap fails at once). Every other
+/// request (the entitlement read, the event upload, …) is answered `401` at once.
+///
+/// It used to hold EVERY request. A configure that loaded an identified user (the keychain kept the user
+/// a previous test identified — whether a simulator test host's keychain write sticks varies run to
+/// run) sent the purchase's entitlement refresh here, and `purchase()` hung on it for minutes, until
+/// the bootstrap's own 15 s timeout fired and the test failed. Then, at `release()`, the server wrote
+/// its answers to sockets URLSession had already closed on timeout: SIGPIPE killed the test process
+/// ("Test crashed with signal pipe"). Accepted sockets now set `SO_NOSIGPIPE`, so a write to a closed
+/// peer fails with EPIPE instead of killing the process.
 private final class HoldingHTTPServer {
     let port: UInt16
     private let fd: Int32
     private let condition = NSCondition()
     private var released = false
+    private var bootstrapsReceived = 0
+    private var bootstrapsAnswered = 0
 
     init?() {
         let s = socket(AF_INET, SOCK_STREAM, 0)
         guard s >= 0 else { return nil }
         var yes: Int32 = 1
         setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
+        setsockopt(s, SOL_SOCKET, SO_NOSIGPIPE, &yes, socklen_t(MemoryLayout<Int32>.size))
         var addr = sockaddr_in()
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         addr.sin_family = sa_family_t(AF_INET)
@@ -98,6 +110,8 @@ private final class HoldingHTTPServer {
             while true {
                 let client = accept(listener, nil, nil)
                 if client < 0 { return }
+                var on: Int32 = 1
+                setsockopt(client, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
                 Thread.detachNewThread { self?.serve(client) }
             }
         }
@@ -106,13 +120,25 @@ private final class HoldingHTTPServer {
     private func serve(_ client: Int32) {
         let capacity = 4096
         var buffer = [UInt8](repeating: 0, count: capacity)
-        _ = read(client, &buffer, capacity)
-        condition.lock()
-        while !released { condition.wait() }
-        condition.unlock()
+        let count = read(client, &buffer, capacity)
+        let head = count > 0 ? String(decoding: buffer[0..<count], as: UTF8.self) : ""
+        let isBootstrap = head.hasPrefix("GET /api/v1/sdk/bootstrap")
+        if isBootstrap {
+            condition.lock()
+            bootstrapsReceived += 1
+            while !released { condition.wait() }
+            bootstrapsAnswered += 1
+            condition.unlock()
+        }
         let reply = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
         _ = reply.withCString { write(client, $0, strlen($0)) }
         close(client)
+    }
+
+    /// The bootstrap reached the server and has not been answered: it is in flight.
+    var bootstrapHeld: Bool {
+        condition.lock(); defer { condition.unlock() }
+        return bootstrapsReceived > 0 && bootstrapsAnswered == 0
     }
 
     func release() {
@@ -120,6 +146,38 @@ private final class HoldingHTTPServer {
     }
 
     func stop() { release(); close(fd) }
+}
+
+/// What the real `configure` / `identify` in these tests persist outside the SDK object, saved and put
+/// back: the keychain identity (user id + traits — `IdentityManager` reads it at the next `configure`) and
+/// the first-identified anchor, which `identify` sets once per device and nothing clears. Left behind,
+/// a test's `identify` made every later `configure` in the process start as that user.
+private struct PersistedIdentity {
+    let userId: String?
+    let traits: [String: Any]?
+
+    static func save() -> PersistedIdentity {
+        let keychain = KeychainStore()
+        return PersistedIdentity(userId: keychain.getUserId(), traits: keychain.getUserTraits())
+    }
+
+    /// Start from an anonymous device: no persisted user id.
+    static func clear() {
+        let keychain = KeychainStore()
+        keychain.clearUserId()
+        keychain.clearUserTraits()
+    }
+
+    func restore() {
+        let keychain = KeychainStore()
+        if let userId { keychain.setUserId(userId) } else { keychain.clearUserId() }
+        if let traits { keychain.setUserTraits(traits) } else { keychain.clearUserTraits() }
+    }
+}
+
+/// Wait for every block already on the SDK's serial queue — off the cooperative pool, since it blocks.
+private func drainSDKQueue() async {
+    await Task.detached { AppDNA.drainSDKQueueForTesting() }.value
 }
 
 // MARK: - Billing
@@ -143,22 +201,39 @@ final class Spec497BillingFixTests: XCTestCase {
 
     private var server: HoldingHTTPServer?
     private var sdkConfigured = false
+    private var savedIdentity: PersistedIdentity?
+
+    /// Each test starts from an anonymous device and its own first-identified anchor, whatever an earlier
+    /// test in the process left in the keychain or in `UserDefaults.standard`.
+    override func setUp() async throws {
+        try await super.setUp()
+        savedIdentity = PersistedIdentity.save()
+        PersistedIdentity.clear()
+        AppAccountTokenResolver.setDefaultsForTesting(
+            UserDefaults(suiteName: "ai.appdna.sdk.fixr1.anchor.\(UUID().uuidString)")!)
+    }
 
     override func tearDown() async throws {
         if sdkConfigured {
             server?.release()
             let ready = Box(false)
             AppDNA.onReady { ready.value = true }
-            _ = await poll(timeout: 20) { ready.value }
+            let settled = await poll(timeout: 30) { ready.value }
+            XCTAssertTrue(settled, "tearDown: the SDK never became ready after the bootstrap was answered")
             AppDNA.eventTrackerForTesting?.eventSink = nil
             AppDNA.shutdown()
-            _ = await poll(timeout: 30) { AppDNA.subsystemsUp()["events"] == false }
+            let down = await poll(timeout: 30) { AppDNA.subsystemsUp()["events"] == false }
+            XCTAssertTrue(down, "tearDown: shutdown() never landed")
+            await drainSDKQueue()
         }
         server?.stop()
         server = nil
         APIBaseURL.infoPlistReaderForTesting = nil
         APIBaseURL.gateForTesting = nil
         await PurchaseDeliveryQueue.shared.setEnvironmentForTesting(.production)
+        savedIdentity?.restore()
+        savedIdentity = nil
+        AppAccountTokenResolver.resetDefaultsForTesting()
         try await super.tearDown()
     }
 
@@ -189,12 +264,17 @@ final class Spec497BillingFixTests: XCTestCase {
 
         let info = try await AppDNA.billing.purchase("lifetime_unlock")
         XCTAssertEqual(info.transactionId, "2000000000000777")
-        _ = await poll(timeout: 5) { log.names.contains("purchase_completed") }
-        try await Task.sleep(nanoseconds: 300_000_000)   // quiescence: a second emit must still be caught
+        // The tracker's sink fires synchronously inside `track`, so both events are in the log by now.
+        XCTAssertTrue(log.names.contains("purchase_completed"), "got \(log.names)")
+        // Bootstrap still unanswered — asserted on the server, not only through the SDK's ready flag.
+        XCTAssertTrue(server.bootstrapHeld, "the bootstrap must still be in flight when the purchase completes")
+        XCTAssertFalse(ready.value, "the purchase completed while the bootstrap was still in flight")
+        // A second emit could only come from an asynchronous path; watch for one (returns early if it appears).
+        let duplicated = await poll(timeout: 0.5) { log.names.filter { $0 == "purchase_completed" }.count > 1 }
+        XCTAssertFalse(duplicated, "got \(log.names)")
         XCTAssertEqual(standIn.purchases, 1)
         XCTAssertEqual(log.names.filter { $0 == "purchase_completed" }.count, 1, "got \(log.names)")
         XCTAssertEqual(log.names.filter { $0 == "purchase_started" }.count, 1, "got \(log.names)")
-        XCTAssertFalse(ready.value, "the purchase completed while the bootstrap was still in flight")
     }
 
     // Minor 16 — the REAL configure trigger (iv) and identify trigger (iii) drain the shared queue.
@@ -227,7 +307,8 @@ final class Spec497BillingFixTests: XCTestCase {
 
         let ready = Box(false)
         AppDNA.onReady { ready.value = true }
-        _ = await poll(timeout: 30) { ready.value }
+        let isReady = await poll(timeout: 30) { ready.value }
+        XCTAssertTrue(isReady, "configure never became ready")
 
         // Trigger (iii): an entry tagged for a user who is not signed in waits for that user's identify.
         let userId = "fixr1_\(UUID().uuidString.prefix(8))"

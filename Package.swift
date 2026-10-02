@@ -40,7 +40,7 @@ let package = Package(
         // `APPDNA_LINK_ADAPTY`). The bridge needs the define: a host app that adds the provider's package
         // can make the module importable inside AppDNASDK by build order alone, and that must not switch
         // the SDK into buying through the provider (`BillingOwnership.isLinked`).
-        // .package(url: "https://github.com/adaptyteam/AdaptySDK-iOS.git", from: "2.0.0"),
+        // .package(url: "https://github.com/adaptyteam/AdaptySDK-iOS.git", from: "3.17.3"),
         // .package(url: "https://github.com/RevenueCat/purchases-ios.git", from: "4.0.0"),
     ],
     targets: [
