@@ -19,6 +19,8 @@
 //   bridge_timeout_floor       REAL: `StepAdvanceResult.minimumBridgeTimeout(stepData:)`. Only
 //                              `action.cases` — `bridge_waits` (max of configured and floor) belongs to
 //                              the wrapper bridge tests; asserting it here would be a tautology.
+//   parse_window_date          REAL: `MessageManager.parseWindowDate`, the in-app message window's
+//                              date reader, with the device time zone set to `action.device_timezone`.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -37,6 +39,7 @@ extension SharedFixtureTests {
         case "location_answer_from_input": runLocationAnswerFromInput(f, h)
         case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
+        case "parse_window_date":         runParseWindowDate(f, h)
         default:
             return false
         }
@@ -49,6 +52,34 @@ extension SharedFixtureTests {
 
     private static func pairs(_ points: [MapInteractivePlan.LatLng]) -> [[Double]] {
         points.map { [$0.lat, $0.lng] }
+    }
+
+    // MARK: parse_window_date
+
+    private func runParseWindowDate(_ f: Fixture, _ h: Harness) {
+        let a = f.action.raw
+        guard let cases = a["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] parse_window_date needs action.cases")
+            return
+        }
+        let saved = NSTimeZone.default
+        if let id = a["device_timezone"]?.stringValue {
+            guard let tz = TimeZone(identifier: id) else {
+                XCTFail("[\(f.id)] unknown device_timezone \(id)")
+                return
+            }
+            NSTimeZone.default = tz
+        }
+        defer { NSTimeZone.default = saved }
+        h.state["results"] = cases.map { c -> Any in
+            guard let value = c.objectValue?["value"]?.stringValue else {
+                XCTFail("[\(f.id)] parse_window_date case without a string value")
+                return NSNull()
+            }
+            return SharedFixtureTests.orNull(
+                MessageManager.parseWindowDate(value).map { Int64(($0.timeIntervalSince1970 * 1000).rounded()) }
+            )
+        }
     }
 
     // MARK: decode_polyline

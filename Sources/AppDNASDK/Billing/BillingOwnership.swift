@@ -120,18 +120,27 @@ enum BillingOwnership {
 
     /// Is the provider's own SDK compiled into this build? Published channels link neither
     /// (`Package.swift`: both are commented out; the podspec declares neither).
+    ///
+    /// 🔴 `canImport` alone is not a link decision. Under Swift Package Manager every package module
+    /// lands in one build-products directory, so a host app that adds `purchases-ios` made
+    /// `canImport(RevenueCat)` TRUE inside AppDNASDK (proved on an Xcode 26 SPM host, twice) — the
+    /// RevenueCat bridge was compiled in and the SDK bought through RevenueCat, against the docs and
+    /// unlike CocoaPods; with Adapty the same build left `canImport(Adapty)` false. Whether a module is
+    /// visible depends on build order, so it is not a contract. A provider is linked only when the
+    /// build defines `APPDNA_LINK_REVENUECAT` / `APPDNA_LINK_ADAPTY` (a source build that also adds the
+    /// dependency — see `Package.swift`) AND the module imports.
     static func isLinked(_ provider: BillingProvider) -> Bool {
         switch provider {
         case .storeKit2: return true
         case .none: return false
         case .revenueCat:
-            #if canImport(RevenueCat)
+            #if APPDNA_LINK_REVENUECAT && canImport(RevenueCat)
             return true
             #else
             return false
             #endif
         case .adapty:
-            #if canImport(Adapty)
+            #if APPDNA_LINK_ADAPTY && canImport(Adapty)
             return true
             #else
             return false
@@ -148,14 +157,14 @@ extension BillingOwnership {
         case .storeKit2:
             return StoreKit2Bridge()
         case .revenueCat:
-            #if canImport(RevenueCat)
+            #if APPDNA_LINK_REVENUECAT && canImport(RevenueCat)
             return RevenueCatBridge(eventTracker: tracker)
             #else
             Log.warning("RevenueCat is not linked into this build — the SDK will not buy or restore; purchases are made by RevenueCat in your app (onPaywallPurchaseFailed errorType providerNotAvailable).")
             return ExternalProviderBridge(provider: .revenueCat)
             #endif
         case .adapty(let adaptyKey):
-            #if canImport(Adapty)
+            #if APPDNA_LINK_ADAPTY && canImport(Adapty)
             return AdaptyBridge(apiKey: adaptyKey, eventTracker: tracker)
             #else
             _ = adaptyKey

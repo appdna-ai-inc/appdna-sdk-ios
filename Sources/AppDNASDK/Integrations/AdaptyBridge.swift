@@ -1,5 +1,5 @@
 import Foundation
-#if canImport(Adapty)
+#if APPDNA_LINK_ADAPTY && canImport(Adapty)
 import Adapty
 #endif
 
@@ -34,7 +34,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
     }
 
     private func activate() {
-        #if canImport(Adapty)
+        #if APPDNA_LINK_ADAPTY && canImport(Adapty)
         Adapty.activate(apiKey)
         isActivated = true
         Log.info("Adapty bridge activated")
@@ -54,7 +54,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
     /// `transactionId` / `price` / `currencyCode` off the result. Neither Adapty 2.x nor 3.x has that:
     /// `makePurchase(product:)` takes an `AdaptyPaywallProduct` — which only an Adapty paywall /
     /// placement lookup hands out — and 3.x returns an `AdaptyPurchaseResult` enum. Published builds never
-    /// link Adapty (`canImport(Adapty)` is false there), so nobody saw it; a source build that linked
+    /// link Adapty (`APPDNA_LINK_ADAPTY` is not defined there), so nobody saw it; a source build that linked
     /// Adapty failed to compile here.
     ///
     /// There is no Adapty API that buys by product id, and buying through StoreKit behind Adapty's back
@@ -80,7 +80,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
 
     func restore(appAccountToken: UUID?) async throws -> [String] {
         _ = appAccountToken  // Adapty binds via its own customerUserId
-        #if canImport(Adapty)
+        #if APPDNA_LINK_ADAPTY && canImport(Adapty)
         let profile = try await Adapty.restorePurchases()
         let ids = Self.activeProductIds(profile)
         eventTracker?.track(event: "purchase_restored", properties: BillingEventProps.marked([
@@ -105,7 +105,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
         #endif
     }
 
-    #if canImport(Adapty)
+    #if APPDNA_LINK_ADAPTY && canImport(Adapty)
     /// The PRODUCT ids behind the profile's active access levels — what the bridge contract returns. The
     /// access-level KEYS (e.g. "premium") used to be returned instead, so the entitlement list and the
     /// restore callback named access levels where every other bridge names store products.
@@ -121,7 +121,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
 
     func getEntitlements(appAccountToken: UUID?) async -> [String] {
         _ = appAccountToken  // Adapty binds via its own customerUserId
-        #if canImport(Adapty)
+        #if APPDNA_LINK_ADAPTY && canImport(Adapty)
         do {
             let profile = try await Adapty.getProfile()
             return Self.activeProductIds(profile)

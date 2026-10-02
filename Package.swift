@@ -35,7 +35,11 @@ let package = Package(
         // are CocoaPods consumers, so the platform this whole spec is for would be the one running
         // the version nothing was tested against.
         .package(url: "https://github.com/googlemaps/ios-maps-sdk.git", from: "9.4.0"),
-        // Optional billing providers (conditionally imported)
+        // Optional billing providers — a SOURCE build only. Uncomment the dependency, add its product to
+        // the AppDNASDK target, AND add `swiftSettings: [.define("APPDNA_LINK_REVENUECAT")]` (Adapty:
+        // `APPDNA_LINK_ADAPTY`). The bridge needs the define: a host app that adds the provider's package
+        // can make the module importable inside AppDNASDK by build order alone, and that must not switch
+        // the SDK into buying through the provider (`BillingOwnership.isLinked`).
         // .package(url: "https://github.com/adaptyteam/AdaptySDK-iOS.git", from: "2.0.0"),
         // .package(url: "https://github.com/RevenueCat/purchases-ios.git", from: "4.0.0"),
     ],

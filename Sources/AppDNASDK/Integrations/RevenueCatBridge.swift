@@ -1,6 +1,6 @@
 import Foundation
 
-/// How a RevenueCat purchase failure is typed. Outside `#if canImport(RevenueCat)` so it is tested
+/// How a RevenueCat purchase failure is typed. Outside `#if APPDNA_LINK_REVENUECAT && canImport(RevenueCat)` so it is tested
 /// without RevenueCat linked.
 ///
 /// RevenueCat's async `purchase(package:)` (4.x and 5.x, `Purchases+async.swift`) THROWS when the user
@@ -26,7 +26,7 @@ enum RevenueCatErrors {
     }
 }
 
-#if canImport(RevenueCat)
+#if APPDNA_LINK_REVENUECAT && canImport(RevenueCat)
 import RevenueCat
 
 /// RevenueCat billing bridge. Wraps RevenueCat Purchases SDK and auto-tracks events.

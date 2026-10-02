@@ -29,9 +29,12 @@ final class MessageManager {
     /// The server serializes `start_date`/`end_date` via `Date.toISOString()` — a full ISO-8601
     /// instant with fractional seconds and `Z`. Parse that instant first (exact time-of-day, and
     /// identical to Android), and only fall back to the date-only shape for legacy/authored values.
-    /// A bare `yyyy-MM-dd` formatter used to "succeed" on the full string by leniently reading the
-    /// date prefix at device-local midnight — silently discarding the authored time and diverging
-    /// from Android's UTC midnight. Unparsable → nil (treated as no constraint).
+    /// The old bare `yyyy-MM-dd` formatter (device time zone) did NOT read the server's full string:
+    /// `DateFormatter.date(from:)` must consume the whole string, so it returned nil and the window
+    /// was ignored; a date-only value opened at device-local midnight. The fallback is non-lenient
+    /// and whole-string: a zone-less instant (`2026-05-07T10:00:00`) and an impossible date
+    /// (`2026-02-30`) are nil; `yyyy-MM-dd` is UTC midnight. Unparsable → nil (treated as no
+    /// constraint). Pinned with Android by the shared fixture `dto_parsing/message_window_date_parsing`.
     static func parseWindowDate(_ s: String) -> Date? {
         ISO8601.date(from: s) ?? dateOnlyFormatter.date(from: s)
     }
