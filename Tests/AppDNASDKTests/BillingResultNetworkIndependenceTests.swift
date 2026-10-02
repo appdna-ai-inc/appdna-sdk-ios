@@ -217,32 +217,140 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
     }
 
     /// A late answer older than one already applied is not applied: it would report an older state back.
+    ///
+    /// Round 29: two passes of one user no longer produce two requests while the first is in flight — the
+    /// second shares it (`joinOrStartServerRead`) — so the older answer is queued directly, as the timed-out
+    /// pass would queue it (`deliverLateServerAnswer`), after a newer read has been applied.
     func testALateAnswerOlderThanTheAppliedOneIsNotApplied() async {
         let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
         world.userId = "user-1"
         bridge.ids = ["p"]
         let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
-        final class Calls: @unchecked Sendable { let lock = NSLock(); var n = 0 }
-        let calls = Calls()
         let old = ServerEntitlement(productId: "old", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)
         let new = ServerEntitlement(productId: "new", store: "google_play", status: "active", expiresAt: nil, isTrial: false, offerType: nil)
-        module.entitlementSources.server = { _ in
-            calls.lock.lock(); calls.n += 1; let n = calls.n; calls.lock.unlock()
-            if n == 1 { await gate.wait(); return [old] }   // the slow, older read
-            return [new]
-        }
+        module.entitlementSources.server = { _ in [new] }
 
-        await module.refreshEntitlementCache()        // times out: reports ["p"]
-        await module.refreshEntitlementCache()        // answers at once: ["p", "new"]
-        let both = await waitUntil(1) { spy.changes.count == 2 }
-        XCTAssertTrue(both, "\(spy.changes.map { $0.map(\.productId) })")
-        gate.open()                                   // the older answer arrives last
-        await settle()
-        await module.refreshEntitlementCache()
+        await module.refreshEntitlementCache()        // request 1 answers at once: ["p", "new"]
+        await module.refreshEntitlementCache()        // request 2: the same answer, no change
+        let first = await waitUntil(1) { spy.changes.count == 1 }
+        XCTAssertTrue(first, "\(spy.changes.map { $0.map(\.productId) })")
+        // Request 1's answer, had it been slow: older than the applied request 2.
+        await module.deliverLateServerAnswer(.init(userId: "user-1", rows: [old], generation: 0, sequence: 1))?.value
         await settle()
         XCTAssertFalse(spy.changes.flatMap { $0 }.contains { $0.productId == "old" }, "an older answer was reported over a newer one")
         XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "new"])
         XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["new"])
+        // Control: the same answer as the NEXT request is applied — the drop above is the sequence, not the path.
+        await module.deliverLateServerAnswer(.init(userId: "user-1", rows: [old], generation: 0, sequence: 3))?.value
+        await settle()
+        XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "old"])
+    }
+
+    // MARK: - Round 29
+
+    /// `identify(A)` → `identify(B)` with A's read still in flight. A switch between two identified users does
+    /// NOT bump the sign-out count (`resetGeneration`), so the user check on the late answer is the only thing
+    /// that stops A's rows being saved and reported as B's. NEGATIVE CONTROL: with that check reduced to the
+    /// generation check (`late.generation != generation` alone), the late pass saves `cross` under user-2 and
+    /// reports it — both assertions fail.
+    func testALateAnswerAfterASwitchToAnotherUserIsDropped() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
+        world.userId = "user-1"
+        bridge.ids = ["p"]
+        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
+        let cross = crossRow
+        module.entitlementSources.server = { uid in
+            world.serverCalls += 1
+            if uid == "user-1" { await gate.wait(); return [cross] }   // user-1's slow read
+            return []                                                  // user-2 has no server-only rows
+        }
+
+        await module.refreshEntitlementCache()       // user-1's pass times out: ["p"]
+        let first = await waitUntil(1) { spy.changes.count == 1 }
+        XCTAssertTrue(first)
+        world.userId = "user-2"                      // `identify("user-2")`: no `clearServerOnlyEntitlementCache`
+        gate.open()                                  // user-1's answer arrives late
+        await settle()
+        let saved = ServerOnlyEntitlementCache.load(defaults)
+        XCTAssertFalse(saved?.userId == "user-2" && saved?.items.contains { $0.productId == "cross" } == true,
+                       "user-1's late answer was saved as user-2's server-only rows")
+        await module.refreshEntitlementCache()       // drains the chain: user-2's own pass
+        await settle()
+        XCTAssertFalse(spy.changes.flatMap { $0 }.contains { $0.productId == "cross" },
+                       "user-1's server row was reported for user-2: \(spy.changes.map { $0.map(\.productId) })")
+        XCTAssertNotEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
+    }
+
+    /// Minor 6: N passes of one user while its `/billing/entitlements` read is held issue ONE request — each
+    /// waits on it for at most the deadline — and its late answer is applied once: one more change, not N.
+    /// NEGATIVE CONTROL: with every pass starting its own request (no `joinOrStartServerRead` lookup), five
+    /// requests are in flight and the first assertion fails.
+    func testPassesDuringOneHeldRequestShareIt() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
+        world.userId = "user-1"
+        world.server = [crossRow]
+        bridge.ids = ["p"]
+        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
+
+        for _ in 0..<5 { await module.refreshEntitlementCache() }   // each times out on the same held read
+        XCTAssertEqual(gate.entered, 1, "\(gate.entered) /billing/entitlements requests in flight, not one")
+        XCTAssertEqual(world.serverCalls, 1)
+        XCTAssertEqual(spy.changes.count, 1, "the device's state, once")
+
+        gate.open()
+        let late = await waitUntil { spy.changes.count == 2 }
+        XCTAssertTrue(late, "the shared request's late answer was never applied")
+        await settle()
+        XCTAssertEqual(spy.changes.count, 2, "the late answer is one more change, not one per waiting pass")
+        XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "cross"])
+
+        // The request has finished: the next pass reads the server again.
+        await module.refreshEntitlementCache()
+        XCTAssertEqual(world.serverCalls, 2, "a pass after the shared request finished did not read again")
+        await settle()
+        XCTAssertEqual(spy.changes.count, 2)
+    }
+
+    /// A sign-out between two passes of the SAME user: the second pass does not share the first one's read
+    /// (it started before the sign-out) — it reads again, and the first one's late answer is dropped.
+    func testAPassAfterASignOutDoesNotShareTheEarlierRead() async {
+        let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
+        world.userId = "user-1"
+        world.server = [crossRow]
+        bridge.ids = ["p"]
+        let module = makeModule(bridge, world, spy: spy, gate: gate, deadline: 0.2)
+
+        await module.refreshEntitlementCache()            // held: request 1
+        module.clearServerOnlyEntitlementCache()          // `reset()`, then `identify("user-1")` again
+        await module.refreshEntitlementCache()            // a new request, also held
+        XCTAssertEqual(gate.entered, 2, "the pass after the sign-out shared a read started before it")
+        gate.open()
+        await settle()
+        await module.refreshEntitlementCache()
+        await settle()
+        XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "cross"])
+    }
+
+    /// Minor 1: the answer arrives while the deadline timer is asleep. The answer must win — it used to cancel
+    /// the timer BEFORE claiming, the cancelled sleep's `CancellationError` was swallowed (`try?`), and the
+    /// timer could claim in between: `.timedOut` with the answer in hand, and the same answer reported again as
+    /// a late one. Deterministic: the `afterTimerCancel` seam holds the answer's side for 300 ms right after
+    /// `timer.cancel()` — in the old order that is BEFORE its claim, and the woken timer always claims first.
+    /// NEGATIVE CONTROL: with `timer.cancel()` before `once.claim()` AND the sleep under `try?` with no
+    /// cancellation check, every attempt returns `.timedOut`. (Either fix alone passes: the claim order, or the
+    /// timer returning on cancellation.)
+    func testAnAnswerThatCancelsTheTimerIsNeverATimeout() async {
+        for attempt in 0..<5 {
+            let request = Task<[ServerEntitlement]?, Never> {
+                try? await Task.sleep(nanoseconds: 50_000_000)   // the timer is asleep by now
+                return []
+            }
+            let outcome = await AppDNA.BillingModule.firstOf(request, deadline: 60,
+                                                              afterTimerCancel: { Thread.sleep(forTimeInterval: 0.3) })
+            guard case .answered = outcome else {
+                return XCTFail("attempt \(attempt): the answer was in, and firstOf reported a timeout")
+            }
+        }
     }
 
     // MARK: - Paywall

@@ -136,6 +136,10 @@ extension AppDNA {
             _eventTracker = nil
             stateLock.unlock()
             cancelExpiryCheck()
+            // A read still running belongs to the session that ended: the next session starts its own.
+            entitlementHandlerLock.lock()
+            inFlightServerRead = nil
+            entitlementHandlerLock.unlock()
             // Entitlement handlers are dropped SYNCHRONOUSLY by `AppDNA.shutdown()`, before this async
             // teardown is even queued. Clearing them again here would remove a handler the caller
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`
@@ -170,6 +174,12 @@ extension AppDNA {
         /// answer was applied (`serverOnlyEntitlements`). Guarded by `entitlementHandlerLock`.
         private var serverRequestSequence = 0
         private var appliedServerSequence = 0
+        /// The `/billing/entitlements` request in flight, if any (`joinOrStartServerRead`). A pass that
+        /// would start a read while one for the same user and sign-out count is still running shares it
+        /// instead: each timed-out pass used to leave its own request running (up to ~2 minutes with
+        /// `APIClient`'s retries), so on a degraded network every trigger added one more parallel read.
+        /// Guarded by `entitlementHandlerLock`.
+        private var inFlightServerRead: InFlightServerRead?
         /// The observer that delivers `.entitlementsChanged` to the billing delegate.
         private var delegateObserverToken: NSObjectProtocol?
         /// The tail of the refresh chain: refreshes run one after another, so an older read can never
@@ -486,7 +496,9 @@ extension AppDNA {
         /// before it goes on with the cached server-only rows of the same user, as if the server were
         /// unreachable. The read itself keeps going; its answer, if it arrives and is still current, is
         /// applied by one more pass (`deliverLateServerAnswer`) — one more change when it adds or removes a
-        /// row, none when it matches the cache. Bounds how long a pass holds the serial chain. Tests shorten it.
+        /// row, none when it matches the cache. While it runs, the next passes of the same user wait on it
+        /// (each for at most this long) instead of starting another (`joinOrStartServerRead`). Bounds how
+        /// long a pass holds the serial chain. Tests shorten it.
         internal var serverReadDeadline: TimeInterval = 2.5
 
         /// A `/billing/entitlements` answer that arrived after its pass's `serverReadDeadline`, with what the
@@ -524,7 +536,15 @@ extension AppDNA {
 
         /// Whichever comes first: `request`'s answer, or `deadline`. The request is never cancelled — a
         /// late answer is still wanted (`readServer`).
-        static func firstOf(_ request: Task<[ServerEntitlement]?, Never>, deadline: TimeInterval) async -> ServerReadOutcome {
+        ///
+        /// Exactly one side resumes the continuation (`Once`), and the answer CLAIMS before it cancels the
+        /// timer: it used to cancel first, and the cancelled sleep's error was swallowed (`try?`), so the
+        /// timer could wake and claim in between — `.timedOut` although the answer was in, and that answer
+        /// then reported a second time as a late one. The timer also gives up when it was cancelled, whatever
+        /// its sleep returned. `afterTimerCancel` is a test seam: it runs on the answer's side right after
+        /// `timer.cancel()`, so a test can hold that side there and prove the timer cannot win.
+        static func firstOf(_ request: Task<[ServerEntitlement]?, Never>, deadline: TimeInterval,
+                            afterTimerCancel: @escaping @Sendable () -> Void = {}) async -> ServerReadOutcome {
             final class Once: @unchecked Sendable {
                 private let lock = NSLock(); private var done = false
                 func claim() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
@@ -532,52 +552,101 @@ extension AppDNA {
             let once = Once()
             return await withCheckedContinuation { (continuation: CheckedContinuation<ServerReadOutcome, Never>) in
                 let timer = Task {
-                    try? await Task.sleep(nanoseconds: UInt64(max(0, deadline) * 1_000_000_000))
+                    do { try await Task.sleep(nanoseconds: UInt64(max(0, deadline) * 1_000_000_000)) } catch { return }
+                    guard !Task.isCancelled else { return }
                     if once.claim() { continuation.resume(returning: .timedOut) }
                 }
                 Task {
                     let rows = await request.value
+                    guard once.claim() else { return }
                     timer.cancel()
-                    if once.claim() { continuation.resume(returning: .answered(rows)) }
+                    afterTimerCancel()
+                    continuation.resume(returning: .answered(rows))
                 }
             }
         }
 
-        /// The pass's server read: `sources.server(userId)` for at most `serverReadDeadline`. Returns the
-        /// rows (nil: failed or too slow — the caller falls back to the cache) and the request's sequence
-        /// number. A read that misses the deadline keeps running; when it succeeds, its answer is queued as
-        /// one more pass (`deliverLateServerAnswer`).
+        /// One `/billing/entitlements` request and what it was started for. Shared by every pass that reads
+        /// for the same user and sign-out count while it runs (`joinOrStartServerRead`).
+        final class InFlightServerRead: @unchecked Sendable {
+            let userId: String
+            let generation: Int
+            let sequence: Int
+            let task: Task<[ServerEntitlement]?, Never>
+            private let lock = NSLock()
+            private var lateDeliveryClaimed = false
+
+            init(userId: String, generation: Int, sequence: Int, task: Task<[ServerEntitlement]?, Never>) {
+                self.userId = userId; self.generation = generation; self.sequence = sequence; self.task = task
+            }
+
+            /// True for the first pass that missed the deadline on this request: only that one queues the
+            /// late answer, so a request shared by N timed-out passes is applied once, not N times.
+            func claimLateDelivery() -> Bool {
+                lock.lock(); defer { lock.unlock() }
+                if lateDeliveryClaimed { return false }
+                lateDeliveryClaimed = true
+                return true
+            }
+        }
+
+        /// The request in flight for `userId` and `generation`, or a new one. A new request gets the next
+        /// sequence number and leaves the slot when it finishes, before its answer is read, so a pass that
+        /// starts after that reads the server again.
+        private func joinOrStartServerRead(_ userId: String, sources: EntitlementSources, generation: Int) -> InFlightServerRead {
+            entitlementHandlerLock.lock()
+            defer { entitlementHandlerLock.unlock() }
+            if let flight = inFlightServerRead, flight.userId == userId, flight.generation == generation {
+                return flight
+            }
+            serverRequestSequence += 1
+            let sequence = serverRequestSequence
+            let task = Task { [weak self] () -> [ServerEntitlement]? in
+                let rows = await sources.server(userId)
+                self?.endServerRead(sequence: sequence)
+                return rows
+            }
+            let flight = InFlightServerRead(userId: userId, generation: generation, sequence: sequence, task: task)
+            inFlightServerRead = flight
+            return flight
+        }
+
+        private func endServerRead(sequence: Int) {
+            entitlementHandlerLock.lock()
+            if inFlightServerRead?.sequence == sequence { inFlightServerRead = nil }
+            entitlementHandlerLock.unlock()
+        }
+
+        /// The pass's server read: the request in flight for this user (or a new one), awaited for at most
+        /// `serverReadDeadline`. Returns the rows (nil: failed or too slow — the caller falls back to the
+        /// cache) and the request's sequence number. A read that misses the deadline keeps running; when it
+        /// succeeds, its answer is queued as one more pass (`deliverLateServerAnswer`) — once per request.
         private func readServer(_ userId: String, sources: EntitlementSources, generation: Int) async -> (rows: [ServerEntitlement]?, sequence: Int) {
-            let sequence = nextServerRequestSequence()
-            let request = Task { await sources.server(userId) }
-            switch await Self.firstOf(request, deadline: serverReadDeadline) {
+            let flight = joinOrStartServerRead(userId, sources: sources, generation: generation)
+            switch await Self.firstOf(flight.task, deadline: serverReadDeadline) {
             case .answered(let rows):
-                return (rows, sequence)
+                return (rows, flight.sequence)
             case .timedOut:
                 Log.debug("BillingModule.refreshEntitlementCache: /billing/entitlements is slow; using the cached rows until it answers")
-                Task { [weak self] in
-                    guard let rows = await request.value else { return } // failed late: the cache stands
-                    self?.deliverLateServerAnswer(LateServerAnswer(userId: userId, rows: rows,
-                                                                   generation: generation, sequence: sequence))
+                if flight.claimLateDelivery() {
+                    Task { [weak self] in
+                        guard let rows = await flight.task.value else { return } // failed late: the cache stands
+                        self?.deliverLateServerAnswer(LateServerAnswer(userId: flight.userId, rows: rows,
+                                                                       generation: flight.generation, sequence: flight.sequence))
+                    }
                 }
-                return (nil, sequence)
+                return (nil, flight.sequence)
             }
         }
 
         /// Queue a pass that applies a late server answer — unless billing has been torn down since.
         /// Whether the answer is still current (same user, no sign-out, no newer answer applied) is decided
-        /// by that pass, on the chain.
-        private func deliverLateServerAnswer(_ answer: LateServerAnswer) {
-            guard bridge != nil else { return }
-            enqueueEntitlementRefresh(late: answer)
-        }
-
-        /// The next server request's sequence number. Guarded by `entitlementHandlerLock`.
-        private func nextServerRequestSequence() -> Int {
-            entitlementHandlerLock.lock()
-            defer { entitlementHandlerLock.unlock() }
-            serverRequestSequence += 1
-            return serverRequestSequence
+        /// by that pass, on the chain. Internal: a test queues an older answer directly, which the shared
+        /// request (`joinOrStartServerRead`) no longer lets two passes of one user produce.
+        @discardableResult
+        internal func deliverLateServerAnswer(_ answer: LateServerAnswer) -> Task<Void, Never>? {
+            guard bridge != nil else { return nil }
+            return enqueueEntitlementRefresh(late: answer)
         }
 
         /// The server-only rows for this pass: a fresh answer replaces the cache; a failed call reuses the
@@ -636,7 +705,11 @@ extension AppDNA {
         ///     to the app's user) WITHOUT the signed-out user's server-only rows; nothing when that is
         ///     already the last-known state;
         ///   - sign-out then `identify` before the pass reads: the pass reads the signed-in user, or is
-        ///     stale (`commitRefresh`); either way one change in all, not two.
+        ///     stale (`commitRefresh`); either way the sign-in is one change, not two — while the server
+        ///     answers the signed-in user's read within `serverReadDeadline`. When it is slower, the pass
+        ///     reports the signed-in user's state without their server-only rows (the sign-out cleared the
+        ///     cache), and the late answer follows as one more change if it holds rows this device does not
+        ///     (`deliverLateServerAnswer`).
         ///
         /// The refresh is queued only when the SDK reads StoreKit itself — `storeKit2`, or a RevenueCat /
         /// Adapty request whose SDK is not linked into this build (`ExternalProviderBridge`) — see
