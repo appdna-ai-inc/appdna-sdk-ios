@@ -1,7 +1,9 @@
 import Foundation
 
 /// Manages experiment variant assignment via deterministic MurmurHash3 bucketing.
-/// Tracks exposure events once per session per experiment.
+/// A user is in an experiment only when it is running, targets this platform, every targeting rule passes and the
+/// user falls inside the traffic allocation (`ExperimentEligibility`); only then is a variant assigned and an exposure
+/// tracked. Exposures are tracked once per experiment until `reset()` or the next app launch (they are kept in memory).
 final class ExperimentManager {
     private let queue = DispatchQueue(label: "ai.appdna.sdk.experiments")
 
@@ -17,27 +19,30 @@ final class ExperimentManager {
     private let remoteConfigManager: RemoteConfigManager
     private let identityManager: IdentityManager
     private let eventTracker: EventTracker
+    /// The device facts targeting is evaluated against (injectable for tests).
+    private let eligibilityContext: (_ traits: [String: Any]) -> ExperimentEligibilityContext
 
-    /// Map of experiment IDs to variant IDs for which exposure has been tracked this session.
+    /// Map of experiment IDs to variant IDs for which exposure has been tracked since the last `reset()` / launch.
     private var exposedExperiments: [String: String] = [:]
 
     init(
         remoteConfigManager: RemoteConfigManager,
         identityManager: IdentityManager,
-        eventTracker: EventTracker
+        eventTracker: EventTracker,
+        eligibilityContext: @escaping (_ traits: [String: Any]) -> ExperimentEligibilityContext = ExperimentEligibilityContext.current(traits:)
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.identityManager = identityManager
         self.eventTracker = eventTracker
+        self.eligibilityContext = eligibilityContext
     }
 
-    /// Get the variant for an experiment. Returns nil if not eligible.
-    /// Auto-tracks exposure event on first call per session.
+    /// Get the variant for an experiment. Returns nil if the user is not in it (not running, platform / targeting /
+    /// traffic allocation excludes them). Auto-tracks the exposure on the first assignment.
     func getVariant(experimentId: String) -> String? {
-        guard let config = resolveConfig(experimentId: experimentId) else { return nil }
-
         let identity = identityManager.currentIdentity
         let userId = identity.userId ?? identity.anonId
+        guard let config = resolveConfig(experimentId: experimentId, userId: userId) else { return nil }
 
         // Deterministic bucketing via ExperimentBucketer
         guard let variant = ExperimentBucketer.assignVariant(
@@ -49,7 +54,7 @@ final class ExperimentManager {
             return nil
         }
 
-        // Track exposure (once per session)
+        // Track exposure (once per experiment until reset() / relaunch)
         trackExposure(experimentId: experimentId, variant: variant)
 
         return variant
@@ -62,10 +67,9 @@ final class ExperimentManager {
 
     /// Get a specific config value from the assigned variant's payload.
     func getExperimentConfig(experimentId: String, key: String) -> Any? {
-        guard let config = resolveConfig(experimentId: experimentId) else { return nil }
-
         let identity = identityManager.currentIdentity
         let userId = identity.userId ?? identity.anonId
+        guard let config = resolveConfig(experimentId: experimentId, userId: userId) else { return nil }
 
         guard let variantId = ExperimentBucketer.assignVariant(
             experimentId: experimentId,
@@ -76,7 +80,7 @@ final class ExperimentManager {
             return nil
         }
 
-        // Track exposure (once per session)
+        // Track exposure (once per experiment until reset() / relaunch)
         trackExposure(experimentId: experimentId, variant: variantId)
 
         // Find variant and return config value
@@ -131,9 +135,13 @@ final class ExperimentManager {
                 continue
             }
 
-            // Bucket the user deterministically (same path as getVariant).
+            // Targeting + traffic allocation (same gate as getVariant): a user who is not in the experiment sees the
+            // live entity and is not exposed.
             let identity = identityManager.currentIdentity
             let userId = identity.userId ?? identity.anonId
+            guard isInExperiment(experimentId: experimentId, config: config, userId: userId) else { continue }
+
+            // Bucket the user deterministically (same path as getVariant).
             guard let variantId = ExperimentBucketer.assignVariant(
                 experimentId: experimentId,
                 userId: userId,
@@ -143,8 +151,8 @@ final class ExperimentManager {
                 continue
             }
 
-            // Track exposure once per session, regardless of bucket — the user
-            // WAS exposed to the experiment by virtue of seeing this surface.
+            // Track the exposure once, regardless of bucket — the user WAS exposed to the experiment by virtue of
+            // seeing this surface.
             trackExposure(experimentId: experimentId, variant: variantId)
 
             guard let variant = variants.first(where: { $0.id == variantId }) else {
@@ -187,14 +195,16 @@ final class ExperimentManager {
         }
     }
 
-    /// Reset exposure tracking (called on identity reset or new session).
+    /// Reset exposure tracking (called by `reset()`; exposures are otherwise kept until the app is relaunched — a new
+    /// session does not reset them).
     func resetExposures() {
         queue.sync { exposedExperiments.removeAll() }
     }
 
     // MARK: - Private
 
-    private func resolveConfig(experimentId: String) -> ExperimentConfig? {
+    /// Running, on this platform, and the user is in the experiment (targeting + traffic allocation).
+    private func resolveConfig(experimentId: String, userId: String) -> ExperimentConfig? {
         guard let config = remoteConfigManager.getExperimentConfig(id: experimentId) else {
             Log.debug("Experiment '\(experimentId)' not found in config")
             return nil
@@ -210,11 +220,35 @@ final class ExperimentManager {
             return nil
         }
 
+        guard isInExperiment(experimentId: experimentId, config: config, userId: userId) else { return nil }
         return config
     }
 
+    /// Targeting rules, then the traffic allocation. Logs why a user is out.
+    private func isInExperiment(experimentId: String, config: ExperimentConfig, userId: String) -> Bool {
+        let traits = identityManager.currentIdentity.traits ?? [:]
+        if let failed = ExperimentEligibility.failedRule(
+            targeting: config.targeting,
+            startedAtMs: config.started_at_ms,
+            context: eligibilityContext(traits)
+        ) {
+            Log.debug("Experiment '\(experimentId)': user not in the audience (\(failed.rawValue))")
+            return false
+        }
+        guard ExperimentEligibility.isAllocated(
+            experimentId: experimentId,
+            salt: Self.resolvedSalt(config.salt, experimentId),
+            userId: userId,
+            trafficAllocation: config.traffic_allocation
+        ) else {
+            Log.debug("Experiment '\(experimentId)': user outside the traffic allocation")
+            return false
+        }
+        return true
+    }
+
     private func trackExposure(experimentId: String, variant: String) {
-        // Record the exposure under the lock, capturing whether it is NEW this session.
+        // Record the exposure under the lock, capturing whether it is NEW (since reset() / launch).
         let isNew: Bool = queue.sync {
             guard exposedExperiments[experimentId] == nil else { return false }
             exposedExperiments[experimentId] = variant
