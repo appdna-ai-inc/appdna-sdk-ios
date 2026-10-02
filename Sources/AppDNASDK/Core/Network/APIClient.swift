@@ -6,6 +6,9 @@ import UIKit
 enum APIError: Error, LocalizedError {
     case invalidURL
     case httpError(statusCode: Int, data: Data?)
+    /// HTTP 429 from `requestData`, with the server's `Retry-After` (parsed and capped by
+    /// `APIClient.parseRetryAfter`; nil when absent or unreadable).
+    case rateLimited(retryAfter: TimeInterval?, data: Data?)
     case networkError(Error)
     case decodingError(Error)
     case compressionError
@@ -17,6 +20,9 @@ enum APIError: Error, LocalizedError {
         case .httpError(let statusCode, let data):
             let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "no body"
             return "HTTP \(statusCode): \(body)"
+        case .rateLimited(let retryAfter, let data):
+            let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? "no body"
+            return "HTTP 429: \(body)\(retryAfter.map { " (Retry-After: \($0)s)" } ?? "")"
         case .networkError(let error):
             return "Network error: \(error.localizedDescription)"
         case .decodingError(let error):
@@ -34,6 +40,8 @@ final class APIClient {
     private let session: URLSession
     private let maxRetries = 3
     private let retryDelays: [TimeInterval] = [1, 2, 4]
+    /// Test seam: replaces `retryDelays` for `requestData` (nil in production).
+    static var requestRetryDelaysForTesting: [TimeInterval]?
 
     /// HTTP statuses that look like 4xx but must be retried, never latched as permanent.
     static let transientStatusCodes: Set<Int> = [408, 429]
@@ -119,7 +127,8 @@ final class APIClient {
 
         for attempt in 0...maxRetries {
             if attempt > 0 {
-                let delay = retryDelays[min(attempt - 1, retryDelays.count - 1)]
+                let delays = Self.requestRetryDelaysForTesting ?? retryDelays
+                let delay = delays[min(attempt - 1, delays.count - 1)]
                 Log.debug("Retrying request (attempt \(attempt + 1)) after \(delay)s")
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
@@ -137,7 +146,12 @@ final class APIClient {
                     return data
                 }
 
-                // 4xx — client error, no retry
+                // 4xx — client error, no retry. A 429 carries the server's Retry-After to the caller.
+                if statusCode == 429 {
+                    throw APIError.rateLimited(
+                        retryAfter: Self.parseRetryAfter(httpResponse.value(forHTTPHeaderField: "Retry-After")),
+                        data: data)
+                }
                 if (400..<500).contains(statusCode) {
                     throw APIError.httpError(statusCode: statusCode, data: data)
                 }

@@ -110,6 +110,8 @@ enum VerifyFailureClass: Equatable {
             if status == 401 || status == 429 { return .retryable }
             if (400..<500).contains(status) { return .terminal }
             return .retryable
+        case .rateLimited:
+            return .retryable
         case .invalidURL, .compressionError:
             return .terminal
         case .networkError, .decodingError:

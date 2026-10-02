@@ -502,6 +502,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(VerifyFailureClass.classify(APIError.httpError(statusCode: 409, data: nil)), .terminal)
         XCTAssertEqual(VerifyFailureClass.classify(APIError.httpError(statusCode: 401, data: nil)), .retryable)
         XCTAssertEqual(VerifyFailureClass.classify(APIError.httpError(statusCode: 429, data: nil)), .retryable)
+        // `requestData` throws a 429 as `.rateLimited` (with its Retry-After): still retried later.
+        XCTAssertEqual(VerifyFailureClass.classify(APIError.rateLimited(retryAfter: 30, data: nil)), .retryable)
         XCTAssertEqual(VerifyFailureClass.classify(APIError.httpError(statusCode: 503, data: nil)), .retryable)
         XCTAssertEqual(VerifyFailureClass.classify(APIError.networkError(URLError(.notConnectedToInternet))), .retryable)
     }
