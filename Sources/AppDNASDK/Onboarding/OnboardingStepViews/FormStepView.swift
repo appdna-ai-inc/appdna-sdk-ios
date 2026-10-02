@@ -334,14 +334,24 @@ struct FormStepView: View {
     /// SPEC-401-A B2 P1 — parse min/max date config (ISO `yyyy-MM-dd`)
     /// into a `ClosedRange<Date>` and apply via SwiftUI's `in:` parameter.
     /// Mirrors Android `DatePickerDialog.datePicker.minDate/maxDate`.
+    ///
+    /// Each bound is a `yyyy-MM-dd` date at midnight in the DEVICE time zone (the formatter sets no
+    /// time zone); a value that does not parse is no bound. A descending pair is no range at all.
+    /// Android's `formDateBounds` (IsoInstant.parseDateOnlyLocalMs) reproduces this; the shared fixture
+    /// `dto_parsing/form_date_bounds_parsing` pins both.
     private func dateRange(for field: FormField) -> ClosedRange<Date>? {
+        Self.dateRange(minDate: field.config?.min_date, maxDate: field.config?.max_date)
+    }
+
+    /// Internal for the shared fixture.
+    static func dateRange(minDate: String?, maxDate: String?) -> ClosedRange<Date>? {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
         fmt.locale = Locale(identifier: "en_US_POSIX")
-        guard let min = field.config?.min_date.flatMap({ fmt.date(from: $0) })
-                ?? field.config?.max_date.flatMap({ fmt.date(from: $0) }) else { return nil }
-        let lower = field.config?.min_date.flatMap { fmt.date(from: $0) } ?? Date.distantPast
-        let upper = field.config?.max_date.flatMap { fmt.date(from: $0) } ?? Date.distantFuture
+        guard let min = minDate.flatMap({ fmt.date(from: $0) })
+                ?? maxDate.flatMap({ fmt.date(from: $0) }) else { return nil }
+        let lower = minDate.flatMap { fmt.date(from: $0) } ?? Date.distantPast
+        let upper = maxDate.flatMap { fmt.date(from: $0) } ?? Date.distantFuture
         guard lower <= upper else { return nil }
         _ = min // silence unused
         return lower...upper

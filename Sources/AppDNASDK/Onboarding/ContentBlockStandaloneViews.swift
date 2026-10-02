@@ -117,21 +117,34 @@ struct CountdownTimerBlockView: View {
         }
     }
 
-    // Initial countdown value. For target_type == "fixed_datetime" (parity with Android
-    // ContentBlockRenderer.kt) parse target_datetime as an absolute ISO-8601 UTC instant
-    // and count down the remaining seconds; otherwise fall back to duration_seconds.
+    // Initial countdown value. For target_type == "fixed_datetime" parse target_datetime as a
+    // zone-less `yyyy-MM-dd'T'HH:mm:ss` read in UTC (what the console's field asks for) and count
+    // down the remaining seconds; anything that does not parse — a trailing `Z` or offset included
+    // (the formatter is non-lenient) — falls back to duration_seconds. Android's
+    // `countdownInitialSeconds` (IsoInstant.parseZonelessUtcMs) reproduces this reader; the shared
+    // fixture `dto_parsing/countdown_target_datetime` pins both.
     private var initialRemainingSeconds: Int {
-        if block.target_type == "fixed_datetime", let iso = block.target_datetime, !iso.isEmpty {
+        Self.initialRemainingSeconds(
+            targetType: block.target_type,
+            targetDatetime: block.target_datetime,
+            durationSeconds: block.duration_seconds,
+            now: Date()
+        )
+    }
+
+    /// The countdown's starting value (see `initialRemainingSeconds`). Internal for the shared fixture.
+    static func initialRemainingSeconds(targetType: String?, targetDatetime: String?, durationSeconds: Int?, now: Date) -> Int {
+        if targetType == "fixed_datetime", let iso = targetDatetime, !iso.isEmpty {
             let fmt = DateFormatter()
             fmt.locale = Locale(identifier: "en_US_POSIX")
             fmt.timeZone = TimeZone(identifier: "UTC")
             fmt.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
             if let target = fmt.date(from: iso) {
-                let remaining = Int(target.timeIntervalSinceNow)
+                let remaining = Int(target.timeIntervalSince(now))
                 return max(0, remaining)
             }
         }
-        return block.duration_seconds ?? 300
+        return durationSeconds ?? 300
     }
 
     // Accent color shared across all timer variants.

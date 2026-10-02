@@ -21,6 +21,10 @@
 //                              the wrapper bridge tests; asserting it here would be a tautology.
 //   parse_window_date          REAL: `MessageManager.parseWindowDate`, the in-app message window's
 //                              date reader, with the device time zone set to `action.device_timezone`.
+//   countdown_initial_seconds  REAL: `CountdownTimerBlockView.initialRemainingSeconds(…, now:)`, the
+//                              countdown block's `target_datetime` reader, at `action.now_ms`.
+//   form_date_bounds           REAL: `FormStepView.dateRange(minDate:maxDate:)`, a form step date
+//                              field's `min_date` / `max_date`, in `action.device_timezone`.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -40,6 +44,8 @@ extension SharedFixtureTests {
         case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
         case "parse_window_date":         runParseWindowDate(f, h)
+        case "countdown_initial_seconds": runCountdownInitialSeconds(f, h)
+        case "form_date_bounds":          runFormDateBounds(f, h)
         default:
             return false
         }
@@ -79,6 +85,57 @@ extension SharedFixtureTests {
             return SharedFixtureTests.orNull(
                 MessageManager.parseWindowDate(value).map { Int64(($0.timeIntervalSince1970 * 1000).rounded()) }
             )
+        }
+    }
+
+    // MARK: countdown_initial_seconds
+
+    private func runCountdownInitialSeconds(_ f: Fixture, _ h: Harness) {
+        let a = f.action.raw
+        guard let cases = a["cases"]?.arrayValue, let nowMs = a["now_ms"]?.doubleValue else {
+            XCTFail("[\(f.id)] countdown_initial_seconds needs action.cases and action.now_ms")
+            return
+        }
+        let now = Date(timeIntervalSince1970: nowMs / 1000)
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            return CountdownTimerBlockView.initialRemainingSeconds(
+                targetType: o["target_type"]?.stringValue,
+                targetDatetime: o["target_datetime"]?.stringValue,
+                durationSeconds: o["duration_seconds"]?.doubleValue.map { Int($0) },
+                now: now
+            )
+        }
+    }
+
+    // MARK: form_date_bounds
+
+    private func runFormDateBounds(_ f: Fixture, _ h: Harness) {
+        let a = f.action.raw
+        guard let cases = a["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] form_date_bounds needs action.cases")
+            return
+        }
+        let saved = NSTimeZone.default
+        if let id = a["device_timezone"]?.stringValue {
+            guard let tz = TimeZone(identifier: id) else {
+                XCTFail("[\(f.id)] unknown device_timezone \(id)")
+                return
+            }
+            NSTimeZone.default = tz
+        }
+        defer { NSTimeZone.default = saved }
+        func ms(_ d: Date) -> Any {
+            // distantPast / distantFuture are "no bound" (the missing side of a one-sided range).
+            if d == .distantPast || d == .distantFuture { return NSNull() }
+            return Int64((d.timeIntervalSince1970 * 1000).rounded())
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            guard let range = FormStepView.dateRange(minDate: o["min_date"]?.stringValue, maxDate: o["max_date"]?.stringValue) else {
+                return [NSNull(), NSNull()]
+            }
+            return [ms(range.lowerBound), ms(range.upperBound)]
         }
     }
 
