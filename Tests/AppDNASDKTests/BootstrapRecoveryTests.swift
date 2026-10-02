@@ -104,7 +104,10 @@ final class BootstrapRecoveryTests: XCTestCase {
         super.tearDown()
     }
 
-    private func waitUntil(_ what: String, timeout: TimeInterval = 30, _ cond: @escaping () -> Bool,
+    /// 90 s: these waits bound correctness (the SDK gets there), not speed. On a saturated runner one failed
+    /// bootstrap attempt can take its whole 15 s limit, and a test pays that before ready and again before the
+    /// retry is applied (status file round 31: CI runner, and the Mac under load).
+    private func waitUntil(_ what: String, timeout: TimeInterval = 90, _ cond: @escaping () -> Bool,
                            file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(timeout)
         while !cond() {
