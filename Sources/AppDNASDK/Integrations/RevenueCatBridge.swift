@@ -224,8 +224,8 @@ enum RevenueCatError: LocalizedError {
 
 #else
 
-/// Stub when RevenueCat is not available. Should never be instantiated at runtime
-/// (AppDNA.swift falls back to StoreKit2Bridge).
+/// Stub when RevenueCat is not available. Never instantiated at runtime: without RevenueCat linked,
+/// `BillingOwnership.makeBridge` builds an `ExternalProviderBridge(provider: .revenueCat)` for `.revenueCat`.
 final class RevenueCatBridge: BillingBridgeProtocol {
     private let eventTracker: EventTracker
 
