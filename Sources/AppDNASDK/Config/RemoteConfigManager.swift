@@ -1140,7 +1140,12 @@ extension ExperimentConfig {
     ///    (absent / null still means everyone, for docs written before the field was served);
     ///  - `started_at_ms` present but not a number → absent, so "new users only" fails closed; a fractional number is
     ///    truncated to whole milliseconds;
-    ///  - `targeting` present but not an object → malformed targeting (fails closed).
+    ///  - `targeting` present but not an object → malformed targeting (fails closed);
+    ///  - a malformed entry of `variants` — not an object, no non-empty string `id`, or a field of the wrong type
+    ///    (`weight` not a number, `payload` not an object, `config_ref` / `variant_doc` not a string, `is_control` not a
+    ///    bool) — is dropped on its own; the others are kept, in order. One bad entry used to drop every variant here,
+    ///    while Android kept them all (a bad id read as "unknown", a bad weight as 0), so the same user bucketed into
+    ///    different variants per platform.
     /// Before, any type mismatch dropped the experiment on iOS while Android kept it (and allocated everyone on a
     /// malformed `traffic_allocation`).
     init(from decoder: Decoder) throws {
@@ -1153,7 +1158,7 @@ extension ExperimentConfig {
         type = lenient(String.self, .type)
         salt = lenient(String.self, .salt)
         platforms = lenient([String].self, .platforms)
-        variants = lenient([ExperimentVariant].self, .variants)
+        variants = lenient([VariantSlot].self, .variants)?.compactMap(\.variant)
         segments = lenient([String].self, .segments)
         if present(.traffic_allocation) {
             traffic_allocation = (try? c.decode(Double.self, forKey: .traffic_allocation)) ?? .nan
@@ -1171,6 +1176,8 @@ extension ExperimentConfig {
         } else {
             targeting = nil
         }
+        // A whole number in the Int64 range, or a finite fraction inside it (truncated); anything else — out of range
+        // included — is absent. Android `RemoteConfigManager.parseExperiments`, same rule.
         if let ms = try? c.decode(Int64.self, forKey: .started_at_ms) {
             started_at_ms = ms
         } else if let d = try? c.decode(Double.self, forKey: .started_at_ms), d.isFinite, abs(d) < 9.2e18 {
@@ -1178,6 +1185,19 @@ extension ExperimentConfig {
         } else {
             started_at_ms = nil
         }
+    }
+}
+
+/// One entry of a served `variants` array: the variant, or nil when the entry is malformed (see `ExperimentConfig`).
+/// Never throws, so one bad entry does not fail the array.
+private struct VariantSlot: Decodable {
+    let variant: ExperimentVariant?
+    init(from decoder: Decoder) throws {
+        guard let v = try? ExperimentVariant(from: decoder), let id = v.id, !id.isEmpty else {
+            variant = nil
+            return
+        }
+        variant = v
     }
 }
 

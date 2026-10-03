@@ -5,7 +5,7 @@
 // file that cannot be opened for appending, a partial read, a write that never reaches the disk, and a process
 // that dies between two writes. Faults are injected per file through `EventStore.faultsForTesting`.
 //
-// NEGATIVE CONTROLS (build Mac, patched sources — status file round 34):
+// NEGATIVE CONTROLS (build Mac, patched sources):
 //   - `testAnUnreadableFileIsNeverIndexedAsEmpty`: with the failed read indexing the file as empty (the old
 //     `rebuildIndex`), the flush that empties the index truncates the backlog: 0 of the 30 events are left and
 //     the dropped-events counter is 0 (an uncounted loss).
@@ -15,6 +15,8 @@
 //     gives up on a failed read), the counter is 5 after the failed compaction and 10 after the next one.
 //   - `testAFailedOpenForAppendingNeverOverwritesTheFile`: with the old `.atomic` fallback, the file holds only
 //     the one new event; the 20 before it are gone.
+//   - `testAnAppendAfterAFailedLegacyMigrationStartsANewLine`: without the leading newline after the failed
+//     migration, the appended event joins the array's line and the next read finds none of the 4 + 1 events.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -55,7 +57,7 @@ final class EventStoreFaultTests: XCTestCase {
 
     private func backlog(_ n: Int) -> [SDKEvent] { EventStoreBacklogTests.backlog(n) }
 
-    /// M1. A process starts while the file cannot be read: the index must not say "empty" for it. The new event
+    /// A process starts while the file cannot be read: the index must not say "empty" for it. The new event
     /// is appended, the flush of that event removes nothing it cannot see, nothing truncates the file — and once
     /// the file can be read again, every event (the 30 before, the one after) is there.
     func testAnUnreadableFileIsNeverIndexedAsEmpty() {
@@ -86,7 +88,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(DroppedEventsCounter.peek(), 0)
     }
 
-    /// M1, the compaction half: while the file is unreadable, the caps cannot rewrite it from a partial index.
+    /// The compaction half: while the file is unreadable, the caps cannot rewrite it from a partial index.
     func testAnUnreadableFileIsNeverCompacted() {
         let file = newFile("unreadable-compact")
         EventStore(fileName: file).save(events: backlog(30))
@@ -99,7 +101,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(EventStore(fileName: file).loadPending().count, 36)
     }
 
-    /// Minor 1. An older SDK's JSON-array file is rewritten in ONE atomic write: a process that dies right
+    /// An older SDK's JSON-array file is rewritten in ONE atomic write: a process that dies right
     /// after its first write keeps every event.
     func testALegacyArrayMigrationIsOneAtomicWrite() throws {
         let file = newFile("legacy-crash")
@@ -116,7 +118,29 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: fileURL(file)).first, UInt8(ascii: "{"), "the file is NDJSON now")
     }
 
-    /// Minor 1, the mixed file: lines this SDK appended after an array it had not migrated yet are kept.
+    /// A legacy migration whose atomic write fails leaves the array file as it was — ending in `]`, no newline. An
+    /// event appended before the migration succeeds must start a new line: the next read then migrates the array
+    /// and keeps the appended line, and nothing is lost.
+    func testAnAppendAfterAFailedLegacyMigrationStartsANewLine() throws {
+        let file = newFile("legacy-failed")
+        let events = backlog(4)
+        try JSONEncoder().encode(events).write(to: fileURL(file))   // no trailing newline
+        let store = EventStore(fileName: file)
+        store.dropIndexForTesting()
+        EventStore.faultsForTesting.failFreshWrites = [file]        // the migration's atomic write fails
+        let next = EventStoreBacklogTests.event("after_failed_migration")
+        store.save(events: [next])
+        let raw = try Data(contentsOf: fileURL(file))
+        XCTAssertEqual(raw.first, UInt8(ascii: "["), "the failed migration changed the legacy file")
+        XCTAssertEqual(raw.last, 0x0A)
+        EventStore.faultsForTesting.failFreshWrites = []
+        store.dropIndexForTesting()                                 // the next launch: the migration succeeds
+        XCTAssertEqual(store.loadPending().map(\.event_id), (events + [next]).map(\.event_id),
+                       "the append after the failed migration lost events")
+        XCTAssertEqual(try Data(contentsOf: fileURL(file)).first, UInt8(ascii: "{"), "the file is NDJSON now")
+    }
+
+    /// The mixed file: lines this SDK appended after an array it had not migrated yet are kept.
     func testALegacyArrayFollowedByLinesIsMigratedWithThem() throws {
         let file = newFile("legacy-mixed")
         let events = backlog(3)
@@ -130,7 +154,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(store.loadPending().map(\.event_id), (events + appended).map(\.event_id))
     }
 
-    /// Minor 4. A compaction whose read fails drops nothing and counts nothing; the next one drops and counts
+    /// A compaction whose read fails drops nothing and counts nothing; the next one drops and counts
     /// the same events once.
     func testACompactionWhoseReadFailsDropsAndCountsNothing() {
         let file = newFile("compact-read")
@@ -146,7 +170,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(store.pendingCount, 10)
     }
 
-    /// Minor 4, the write half: a rewrite that never reaches the disk gives the count back.
+    /// The write half: a rewrite that never reaches the disk gives the count back.
     func testACompactionWhoseWriteFailsGivesTheCountBack() {
         let file = newFile("compact-write")
         let store = EventStore(maxEvents: 10, compactionInterval: 1, fileName: file)
@@ -160,7 +184,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(store.pendingCount, 10)
     }
 
-    /// Minor 6. Opening the file for appending fails while it exists: nothing may overwrite it (the fallback
+    /// Opening the file for appending fails while it exists: nothing may overwrite it (the fallback
     /// used to write the new lines over the whole file).
     func testAFailedOpenForAppendingNeverOverwritesTheFile() {
         let file = newFile("open-fails")
@@ -180,7 +204,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(store.loadPending().last?.event_id, next.event_id)
     }
 
-    /// Minor 6. A file that does not exist yet is still created by the first append.
+    /// A file that does not exist yet is still created by the first append.
     func testTheFirstAppendCreatesTheFile() {
         let file = newFile("create")
         let store = EventStore(fileName: file)
@@ -192,7 +216,7 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(store.loadPending().map(\.event_id), [first.event_id])
     }
 
-    /// Minor 9 (iOS half). The quota measures the live events' bytes and evicts the oldest 10 % until they fit.
+    /// The quota measures the live events' bytes and evicts the oldest 10 % until they fit.
     func testTheDiskQuotaCapsTheLiveBytes() {
         let file = newFile("quota")
         let store = EventStore(compactionInterval: 10_000, fileName: file, maxDiskBytes: 20_000)

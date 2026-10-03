@@ -59,6 +59,18 @@ final class APIClient {
     /// not drop a batch the server never judged.
     private(set) var lastEventUploadRejectedPermanently = false
 
+    /// Whether the LAST event upload's rejection also pauses uploads (`rejectionPausesUploads`) — per request.
+    private(set) var lastEventUploadRejectionPausesUploads = false
+
+    /// Whether a permanent rejection with this status pauses every upload path until the next foreground or
+    /// `AppDNA.flush()`: 401 / 403 — the API key is wrong or revoked, so every later batch would be rejected (and
+    /// dropped as a loss) the same way. Any other permanent 4xx (400, 404, 413 …) is about the batch: it is
+    /// dropped and uploads go on. The in-process queue and the background uploader both apply it; Android
+    /// `ApiClient.rejectionPausesUploads`, same table (fixture `permanent_4xx_dropped`, `rejection_pauses`).
+    static func rejectionPausesUploads(_ statusCode: Int) -> Bool {
+        statusCode == 401 || statusCode == 403
+    }
+
     /// Seconds the server asked us to wait, parsed from a `Retry-After` header on
     /// the last 429/503. Consumed (and cleared) by `EventQueue` when scheduling its
     /// next attempt. Capped so a hostile or mistaken header cannot park the queue.
@@ -216,6 +228,7 @@ final class APIClient {
     /// Fire-and-forget POST for event batches with gzip compression. Returns success status.
     func sendEvents(_ data: Data) async -> Bool {
         lastEventUploadRejectedPermanently = false
+        lastEventUploadRejectionPausesUploads = false
         do {
             var urlRequest = try buildRequest(for: .ingestEvents)
 
@@ -280,6 +293,7 @@ final class APIClient {
     @discardableResult
     func applyEventUploadStatus(_ statusCode: Int, retryAfterHeader: String?, body: String = "no body") -> Bool {
         lastEventUploadRejectedPermanently = Self.disposition(for: statusCode) == .dropPermanent
+        lastEventUploadRejectionPausesUploads = lastEventUploadRejectedPermanently && Self.rejectionPausesUploads(statusCode)
         switch Self.disposition(for: statusCode) {
         case .success:
             eventUploadPermanentlyFailed = false

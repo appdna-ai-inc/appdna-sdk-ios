@@ -285,6 +285,8 @@ final class EventStore {
         var failRangeReads: Set<String> = []
         var failWriteHandle: Set<String> = []
         var writesAllowed: [String: Int] = [:]
+        /// Replacing the whole file (the atomic write of a migration, compaction or truncation) fails.
+        var failFreshWrites: Set<String> = []
     }
     private static let faultsLock = NSLock()
     private static var _faults = Faults()
@@ -295,6 +297,7 @@ final class EventStore {
     private var readFails: Bool { Self.faultsForTesting.failReads.contains(fileName) }
     private var rangeReadFails: Bool { Self.faultsForTesting.failRangeReads.contains(fileName) }
     private var writeHandleFails: Bool { Self.faultsForTesting.failWriteHandle.contains(fileName) }
+    private var freshWriteFails: Bool { Self.faultsForTesting.failFreshWrites.contains(fileName) }
     /// Consumes one allowed write; false when the injected budget is spent.
     private func takeWrite() -> Bool {
         Self.faultsLock.lock(); defer { Self.faultsLock.unlock() }
@@ -492,10 +495,13 @@ final class EventStore {
         }
         state.rewrites += 1
         guard writeFresh(blob) else {
-            // Not migrated (the legacy file is untouched): read again by the next operation.
+            // Not migrated (the legacy file is untouched): read again by the next operation. The file still ends
+            // with the array's `]` (or an unterminated line), so an append before then must start a new line — or it
+            // joins the array's line, and the next read can parse neither (every event in the file was lost).
             state.loaded = false
             state.complete = false
             state.signature = nil
+            state.needsLeadingNewline = true
             return true
         }
         state.reset(signature: Self.signature(of: fileURL))
@@ -650,7 +656,7 @@ final class EventStore {
     /// index. False when nothing was written.
     @discardableResult
     private func writeFresh(_ data: Data) -> Bool {
-        guard takeWrite() else { return false }
+        guard !freshWriteFails, takeWrite() else { return false }
         return (try? data.write(to: fileURL, options: .atomic)) != nil
     }
 
@@ -717,7 +723,7 @@ final class EventStore {
         guard state.loaded && state.complete else { return }
         var live = state.liveIndices()
 
-        // Count cap, then the disk quota (drop the oldest 10% until the live bytes fit) —.
+        // Count cap, then the disk quota (drop the oldest 10% until the live bytes fit).
         var dropped: [Int] = []
         if live.count > self.maxEvents {
             let excess = live.count - self.maxEvents

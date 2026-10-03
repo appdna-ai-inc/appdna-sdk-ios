@@ -140,35 +140,77 @@ final class ExperimentEligibilityTests: XCTestCase {
         XCTAssertNil(DeviceRegion.resolve(["D1", "Ü1"]), "not ASCII letters")
     }
 
-    /// NEGATIVE CONTROL (base code): the install date was the earlier of the Documents date and a UserDefaults key —
-    /// which backups restore — so a restored key from the original device made this a years-old install
-    /// (`AppInstallDate.read` did not exist; the old `read()` returned the restored date).
-    func testInstallDateIgnoresARestoredDefaultsKeyAndKeepsItsOwnBackupExcludedMarker() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("install-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
-        let suite = "ai.appdna.sdk.test.install.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        // A backup from the original device carried the old key: 2020.
-        defaults.set(Date(timeIntervalSince1970: 1_577_836_800).timeIntervalSince1970, forKey: AppInstallDate.legacyStoredKey)
-        let now = Date(timeIntervalSince1970: 1_767_312_000)
+    // MARK: - Install date (`AppInstallDate`): update / reinstall / restore
 
-        let first = AppInstallDate.read(documentsDirectory: nil, sdkDirectory: dir, defaults: defaults, now: now)
-        XCTAssertEqual(first, 1_767_312_000_000, "a restored app is a new install on this device")
-
-        // The marker is kept (a later launch reads the same date) and is excluded from backup.
-        let later = AppInstallDate.read(documentsDirectory: nil, sdkDirectory: dir, defaults: defaults, now: now.addingTimeInterval(86_400))
-        XCTAssertEqual(later, first)
-        let marker = dir.appendingPathComponent(AppInstallDate.markerFileName)
-        XCTAssertEqual(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    private func tempDir(_ tag: String) -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("install-\(tag)-\(UUID().uuidString)", isDirectory: true)
     }
 
-    func testInstallDateIsTheEarlierOfTheContainerAndTheMarker() {
-        let older = Date(timeIntervalSince1970: 1_000), newer = Date(timeIntervalSince1970: 2_000)
-        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: older, marker: newer), 1_000_000, "an app that adopted the SDK in an update")
-        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: newer, marker: older), 1_000_000)
-        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: nil, marker: newer), 2_000_000)
-        XCTAssertNil(AppInstallDate.earliestEpochMs(documentsCreated: nil, marker: nil))
+    /// A Documents directory created at `date` (the app container's date — what a restore may carry over).
+    private func documents(createdAt date: Date) throws -> URL {
+        let dir = tempDir("documents")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.creationDate: date], ofItemAtPath: dir.path)
+        return dir
+    }
+
+    private let y2020 = Date(timeIntervalSince1970: 1_577_836_800)
+    private let now = Date(timeIntervalSince1970: 1_767_312_000.25)
+
+    /// Fresh install (and a reinstall: the container is new): the first launch writes the marker — excluded from
+    /// backup — and every later launch reads the same date.
+    func testInstallDateOnAFreshInstallIsTheFirstLaunchAndIsKept() throws {
+        let sdk = tempDir("sdk"); defer { try? FileManager.default.removeItem(at: sdk) }
+        let docs = try documents(createdAt: now); defer { try? FileManager.default.removeItem(at: docs) }
+        let first = AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now)
+        XCTAssertEqual(first, 1_767_312_000_250)
+        XCTAssertEqual(AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now.addingTimeInterval(86_400)), first,
+                       "an update keeps the date")
+        let marker = sdk.appendingPathComponent(AppInstallDate.markerFileName)
+        XCTAssertEqual(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+        XCTAssertEqual(try sdk.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    /// Restore from a backup / device transfer: the backup brings back the app's files (a Documents directory from 2020)
+    /// and preferences (the old 2020 install-date key), but not the backup-excluded SDK directory. The date is this
+    /// launch — nothing restorable is read.
+    /// NEGATIVE CONTROL (base code: the earlier of the Documents date and the marker): 2020.
+    func testInstallDateAfterARestoreIsTheFirstLaunchNotTheRestoredDates() throws {
+        let sdk = tempDir("sdk"); defer { try? FileManager.default.removeItem(at: sdk) }
+        let docs = try documents(createdAt: y2020); defer { try? FileManager.default.removeItem(at: docs) }
+        UserDefaults.standard.set(y2020.timeIntervalSince1970, forKey: AppInstallDate.legacyStoredKey)
+        defer { UserDefaults.standard.removeObject(forKey: AppInstallDate.legacyStoredKey) }
+        XCTAssertEqual(AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now), 1_767_312_000_250,
+                       "a restored app is a new install on this device")
+    }
+
+    /// Update from an SDK version without the marker: the older SDK's backup-excluded directory is there (it survives
+    /// an update, never a restore), so the container's date is taken once and written as the marker.
+    func testInstallDateOnTheFirstLaunchAfterUpdatingFromAnOlderSdkIsTheContainerDate() throws {
+        let sdk = tempDir("sdk"); defer { try? FileManager.default.removeItem(at: sdk) }
+        try FileManager.default.createDirectory(at: sdk, withIntermediateDirectories: true)
+        try Data("{}\n".utf8).write(to: sdk.appendingPathComponent("pending_events.json"))
+        let docs = try documents(createdAt: y2020); defer { try? FileManager.default.removeItem(at: docs) }
+        XCTAssertEqual(AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now), 1_577_836_800_000)
+        // Once: the marker holds it from now on, whatever the container says.
+        try FileManager.default.setAttributes([.creationDate: now], ofItemAtPath: docs.path)
+        XCTAssertEqual(AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now.addingTimeInterval(86_400)),
+                       1_577_836_800_000)
+    }
+
+    /// The migration never dates an install in the future (a container date after now — a wrong clock).
+    func testInstallDateMigrationNeverLiesInTheFuture() throws {
+        let sdk = tempDir("sdk"); defer { try? FileManager.default.removeItem(at: sdk) }
+        try FileManager.default.createDirectory(at: sdk, withIntermediateDirectories: true)
+        let docs = try documents(createdAt: now.addingTimeInterval(86_400 * 30)); defer { try? FileManager.default.removeItem(at: docs) }
+        XCTAssertEqual(AppInstallDate.read(documentsDirectory: docs, sdkDirectory: sdk, now: now), 1_767_312_000_250)
+    }
+
+    /// No marker can be written (the SDK directory's path is a file): unknown, so "new users only" fails closed.
+    func testInstallDateIsUnknownWhenTheMarkerCannotBeWritten() throws {
+        let blocker = tempDir("blocker"); defer { try? FileManager.default.removeItem(at: blocker) }
+        try Data("x".utf8).write(to: blocker)
+        XCTAssertNil(AppInstallDate.read(documentsDirectory: nil, sdkDirectory: blocker.appendingPathComponent("sdk"), now: now))
     }
 
     /// NEGATIVE CONTROL (base code): each of these docs threw out of the synthesized decode — the whole experiment was

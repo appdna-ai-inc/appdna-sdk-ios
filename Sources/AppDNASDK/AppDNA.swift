@@ -1566,6 +1566,10 @@ public final class AppDNA: @unchecked Sendable {
 
         // Firebase already initialized on main thread in initializeFirebase()
 
+        // The install marker first: whether the SDK's directory exists before this configure creates it is how the
+        // first launch of an install is told from an update (`AppInstallDate`).
+        AppInstallDate.recordAtLaunch()
+
         // 1. Initialize core managers
         let keychainStore = KeychainStore()
         let identityMgr = IdentityManager(keychainStore: keychainStore)

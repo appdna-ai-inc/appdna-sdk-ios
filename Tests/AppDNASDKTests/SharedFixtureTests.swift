@@ -2168,8 +2168,15 @@ final class SharedFixtureTests: XCTestCase {
         let appVersion = session["app_version"]?.stringValue
         // `region_candidates` (instead of `device_region`): the raw locale regions, resolved by the REAL
         // `DeviceRegion.resolve` — the first ISO-3166 alpha-2 code.
+        // `device_sources` (instead of either): the device's locale settings, read by the REAL
+        // `DeviceRegion.current(locale:preferredLanguages:)`. The SIM / network countries in it are Android-only
+        // inputs — iOS has none to read.
         let region: String?
-        if let candidates = session["region_candidates"]?.arrayValue {
+        if let sources = session["device_sources"]?.objectValue {
+            region = DeviceRegion.current(
+                locale: Locale(identifier: sources["locale"]?.stringValue ?? ""),
+                preferredLanguages: (sources["preferred_languages"]?.arrayValue ?? []).compactMap { $0.stringValue })
+        } else if let candidates = session["region_candidates"]?.arrayValue {
             region = DeviceRegion.resolve(candidates.map { $0.stringValue })
         } else {
             region = session["device_region"]?.stringValue

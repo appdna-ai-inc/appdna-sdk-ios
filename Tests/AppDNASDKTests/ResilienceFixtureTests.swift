@@ -148,18 +148,34 @@ final class ResilienceFixtureTests: XCTestCase {
         let max_total_backoff_ms: Int?
         // contract=permanent_failure
         let latch: [LatchStep]?
+        let rejection_runs: RejectionRuns?
         // contract=bootstrap_recovery
         let max_attempts: Int?
         let trigger_delay_max_ms: Int?
         // contract=resolved_events_not_resent
         let max_resolved: Int?
         let queue: QueueRow?
+        let reload: ReloadRow?
         // contract=flush_pause_gate
         let os_upload: OSUpload?
         // contract=runtime_settings
         let defaults: RuntimeDefaults?
         // contract=flush_cost_bounded
         let cost: Cost?
+    }
+
+    /// contract=permanent_failure: what a permanent rejection does to the background run and the in-process queue.
+    private struct RejectionRuns: Decodable {
+        let backlog: Int
+        let batch: Int
+        let rows: [Row]
+        struct Row: Decodable {
+            let status: Int
+            let pauses_uploads: Bool
+            let background_requests: Int
+            let pending_after: Int
+            let background_reschedules: Bool
+        }
     }
 
     private struct RuntimeDefaults: Decodable {
@@ -180,6 +196,13 @@ final class ResilienceFixtureTests: XCTestCase {
         let loaded: [String]
         let resolved_elsewhere: [String]
         let sent: [String]
+    }
+
+    private struct ReloadRow: Decodable {
+        let resolved_front: Int
+        let unresolved_behind: Int
+        let sent: Int
+        let stored_after: Int
     }
 
     private struct OSUpload: Decodable {
@@ -286,6 +309,10 @@ final class ResilienceFixtureTests: XCTestCase {
                         "[\(f.id)] after HTTP \(step.status), eventUploadPermanentlyFailed"
                     )
                 }
+                guard let runs = f.resilience.rejection_runs else {
+                    return XCTFail("[\(f.id)] permanent_failure must state `rejection_runs`")
+                }
+                try assertRejectionRuns(runs, id: f.id)
 
             // AC-35 — bounded AND jittered. Both halves, because each hides the other's failure: a
             // `return base` regression satisfies every bound, and an unbounded jitter is still
@@ -495,6 +522,10 @@ final class ResilienceFixtureTests: XCTestCase {
                     return XCTFail("[\(f.id)] resolved_events_not_resent needs the `queue` row")
                 }
                 try assertQueueDoesNotResend(row, id: f.id)
+                guard let reload = f.resilience.reload else {
+                    return XCTFail("[\(f.id)] resolved_events_not_resent needs the `reload` row")
+                }
+                try assertReloadRemovesResolvedEvents(reload, id: f.id)
 
             // Host option > bootstrap value (positive only) > default, and the batch size in effect. Drives the
             // real `RuntimeSettings.resolveAll` (through `AppDNAOptions`, so the explicit / unset distinction
@@ -558,6 +589,69 @@ final class ResilienceFixtureTests: XCTestCase {
              "bootstrap_recovery", "resolved_events_not_resent", "runtime_settings", "flush_cost_bounded"],
             "every resilience contract must be covered by a fixture"
         )
+    }
+
+    /// Each row: every event upload answers `status`. The real background run (`BackgroundUploader.runUpload`) on a
+    /// `backlog`, then one flush of a real in-process queue on another `backlog`.
+    private func assertRejectionRuns(_ runs: RejectionRuns, id: String) throws {
+        let savedDropped = DroppedEventsCounter.getAndReset()
+        NetworkMonitor.adaptiveBatchSizeOverrideForTesting = runs.batch
+        BatchSizeCapGate.set(nil)
+        defer {
+            _ = DroppedEventsCounter.getAndReset()
+            if savedDropped > 0 { DroppedEventsCounter.increment(savedDropped) }
+            NetworkMonitor.adaptiveBatchSizeOverrideForTesting = nil
+            UploadPauseGate.setForTesting(false)
+            APIBaseURL.infoPlistReaderForTesting = nil
+            APIBaseURL.gateForTesting = nil
+            EventUploadCoordinator.clearResolvedForTesting()
+        }
+        for row in runs.rows {
+            XCTAssertEqual(APIClient.rejectionPausesUploads(row.status), row.pauses_uploads,
+                           "[\(id)] does HTTP \(row.status) pause uploads?")
+            let status = row.status
+            let server = try XCTUnwrap(LoopbackHTTPServer { label in
+                label.contains("/ingest/events") ? .init(status: status, headers: [:], body: "{}") : .init(status: 200, headers: [:], body: "{}")
+            }, "could not open a local socket")
+            defer { server.stop() }
+            APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? server.baseURL : nil }
+            APIBaseURL.gateForTesting = { true }
+            func ingests() -> Int { server.requests.filter { $0.contains("/ingest/events") }.count }
+
+            // The background run.
+            UploadPauseGate.setForTesting(false)
+            EventUploadCoordinator.clearResolvedForTesting()
+            let store = EventStore(fileName: "reject-run-\(UUID().uuidString).json")
+            defer { store.clearAll() }
+            store.save(events: EventStoreBacklogTests.backlog(runs.backlog))
+            let client = APIClient(apiKey: "adn_test_placeholder", environment: .sandbox)
+            let uploader = BackgroundUploader(apiClient: client, eventStore: store)
+            let rescheduled = Counter()
+            let outcome = Self.runBlocking { await uploader.runUpload(paused: false, reschedule: { rescheduled.bump() }) }
+            XCTAssertEqual(outcome, .droppedRejected, "[\(id)] HTTP \(status): background outcome")
+            XCTAssertEqual(ingests(), row.background_requests, "[\(id)] HTTP \(status): event uploads in one background run")
+            XCTAssertEqual(store.pendingCount, row.pending_after, "[\(id)] HTTP \(status): events left after the run")
+            XCTAssertEqual(rescheduled.value > 0, row.background_reschedules, "[\(id)] HTTP \(status): another run scheduled?")
+            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] HTTP \(status): background run paused uploads?")
+
+            // One flush of the in-process queue (a new queue claims — clears — the gate).
+            let qStore = EventStore(fileName: "reject-queue-\(UUID().uuidString).json")
+            defer { qStore.clearAll() }
+            qStore.save(events: EventStoreBacklogTests.backlog(runs.backlog))
+            let tracker = EventTracker(identityManager: IdentityManager(
+                keychainStore: KeychainStore(service: "ai.appdna.sdk.test.reject.\(UUID().uuidString)")))
+            let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
+                               eventStore: qStore, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
+            XCTAssertFalse(UploadPauseGate.isPaused, "[\(id)] a new queue starts unpaused")
+            q.flushClearingPause()
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline && q.consecutiveFailuresForTesting == 0 { Thread.sleep(forTimeInterval: 0.02) }
+            XCTAssertEqual(qStore.pendingCount, runs.backlog - runs.batch, "[\(id)] HTTP \(status): the queue drops the rejected batch")
+            XCTAssertEqual(q.consecutiveFailuresForTesting, row.pauses_uploads ? 5 : 1,
+                           "[\(id)] HTTP \(status): failed cycles counted (5 = paused)")
+            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] HTTP \(status): queue paused uploads?")
+            withExtendedLifetime((q, client)) {}
+        }
     }
 
     /// A decoded bootstrap `settings` object carrying only the given runtime values (what the server sends).
@@ -653,6 +747,50 @@ final class ResilienceFixtureTests: XCTestCase {
         let nameOf = Dictionary(uniqueKeysWithValues: idOf.map { ($1, $0) })
         XCTAssertEqual(sent.map { nameOf[$0] ?? $0 }.sorted(), row.sent.sorted(),
                        "[\(id)] the queue sent events another owner had already resolved")
+        withExtendedLifetime(q) {}
+    }
+
+    /// A real queue over a store holding `resolved_front` resolved events, then `unresolved_behind` others, flushed
+    /// until the store is empty (the window reloads from it as it drains).
+    private func assertReloadRemovesResolvedEvents(_ row: ReloadRow, id: String) throws {
+        EventUploadCoordinator.clearResolvedForTesting()
+        NetworkMonitor.adaptiveBatchSizeOverrideForTesting = 100
+        let server = try XCTUnwrap(LoopbackHTTPServer { _ in .init(status: 200, headers: [:], body: "{}") },
+                                   "could not open a local socket")
+        APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? server.baseURL : nil }
+        APIBaseURL.gateForTesting = { true }
+        defer {
+            server.stop()
+            APIBaseURL.infoPlistReaderForTesting = nil
+            APIBaseURL.gateForTesting = nil
+            NetworkMonitor.adaptiveBatchSizeOverrideForTesting = nil
+            EventUploadCoordinator.clearResolvedForTesting()
+        }
+        let store = EventStore(fileName: "resolved-reload-\(UUID().uuidString).json")
+        defer { store.clearAll() }
+        let resolved = EventStoreBacklogTests.backlog(row.resolved_front)
+        let unresolved = EventStoreBacklogTests.backlog(row.unresolved_behind)
+        store.save(events: resolved + unresolved)
+        EventUploadCoordinator.markResolved(resolved.map(\.event_id))
+        let tracker = EventTracker(identityManager: IdentityManager(
+            keychainStore: KeychainStore(service: "ai.appdna.sdk.test.resolvedreload.\(UUID().uuidString)")))
+        let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
+                           eventStore: store, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
+        for _ in 0..<60 where store.pendingCount > row.stored_after {
+            let before = store.pendingCount
+            q.flushClearingPause()
+            let deadline = Date().addingTimeInterval(10)
+            while Date() < deadline && store.pendingCount >= before { Thread.sleep(forTimeInterval: 0.02) }
+        }
+        var sent: [String] = []
+        for (label, body) in server.bodies where label.contains("/ingest/events") {
+            let raw = (try? (body as NSData).decompressed(using: .zlib) as Data) ?? body
+            let json = try XCTUnwrap(JSONSerialization.jsonObject(with: raw) as? [String: Any])
+            for e in (json["batch"] as? [[String: Any]]) ?? [] { if let i = e["event_id"] as? String { sent.append(i) } }
+        }
+        XCTAssertEqual(store.pendingCount, row.stored_after, "[\(id)] events left in the store")
+        XCTAssertEqual(sent.count, row.sent, "[\(id)] events sent")
+        XCTAssertEqual(Set(sent), Set(unresolved.map(\.event_id)), "[\(id)] a resolved event was sent, or an unresolved one was not")
         withExtendedLifetime(q) {}
     }
 

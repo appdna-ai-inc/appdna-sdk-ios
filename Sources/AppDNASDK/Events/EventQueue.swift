@@ -93,6 +93,14 @@ enum UploadPauseGate {
         UserDefaults.standard.set(paused, forKey: key)
     }
 
+    /// The background uploader's pause after a 401 / 403 (`APIClient.rejectionPausesUploads`). It owns no token —
+    /// it runs outside the queue — so it sets the gate whoever owns it; the owning queue clears it at the next
+    /// foreground or `AppDNA.flush()`, and a new queue clears it when it claims the gate.
+    static func pauseFromBackgroundUpload() {
+        lock.lock(); defer { lock.unlock() }
+        UserDefaults.standard.set(true, forKey: key)
+    }
+
     /// Test seam: set the gate whoever owns it.
     static func setForTesting(_ paused: Bool) {
         lock.lock(); defer { lock.unlock() }
@@ -432,13 +440,37 @@ final class EventQueue {
     /// larger than the window (`init` loads only the newest `maxInMemoryEvents`), or events that left the window
     /// when it was full. Load the oldest of them, so the in-process queue keeps sending them. Before, a drained
     /// window stayed empty until the next `track()` or launch, and only the background uploader sent the rest.
+    ///
+    /// Events another owner already resolved are not loaded — and are removed from the store here: they can still
+    /// be stored when that owner's removal did not reach the disk. Left there, a front of `maxInMemoryEvents` of them
+    /// made every reload find nothing, and the events behind them were never sent by the queue. Android
+    /// `EventQueue.reloadWindowFromDisk`, same rule.
     private func reloadWindowFromDisk() {
-        guard eventStore.pendingCount > 0 else { return }
-        let more = eventStore.loadOldest(maxInMemoryEvents).filter { !EventUploadCoordinator.wasResolved($0.event_id) }
-        guard !more.isEmpty else { return }
-        pendingEvents = more
-        Log.debug("Reloaded \(more.count) persisted events into the drained in-memory window")
+        // Each pass removes what it skips, so the next one reads further; the bound only guards a store that keeps
+        // failing to remove (each pass is one window).
+        for _ in 0..<Self.maxReloadPasses {
+            guard eventStore.pendingCount > 0 else { return }
+            let oldest = eventStore.loadOldest(maxInMemoryEvents)
+            var resolved: Set<String> = []
+            var more: [SDKEvent] = []
+            for event in oldest {
+                if EventUploadCoordinator.wasResolved(event.event_id) { resolved.insert(event.event_id) } else { more.append(event) }
+            }
+            if !resolved.isEmpty {
+                eventStore.removeSent(eventIds: resolved)
+                Log.debug("Removed \(resolved.count) stored event(s) another upload already delivered")
+            }
+            if !more.isEmpty {
+                pendingEvents = more
+                Log.debug("Reloaded \(more.count) persisted events into the drained in-memory window")
+                return
+            }
+            if resolved.isEmpty { return }
+        }
     }
+
+    /// Window reloads one drain makes at most (`reloadWindowFromDisk`).
+    static let maxReloadPasses = 20
 
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
@@ -497,10 +529,12 @@ final class EventQueue {
         // Events another upload owner already resolved — the background uploader, or the last upload of a
         // queue `shutdown()` ended while this one loaded the same events from disk — are not sent again:
         // that owner removed them from disk, but this queue still holds its in-memory copies.
-        let before = pendingEvents.count
-        pendingEvents.removeAll { EventUploadCoordinator.wasResolved($0.event_id) }
-        if pendingEvents.count != before {
-            Log.debug("Skipped \(before - pendingEvents.count) event(s) another upload already delivered")
+        // Removed from the store too: the other owner's removal may not have reached it.
+        let resolvedElsewhere = Set(pendingEvents.lazy.map(\.event_id).filter(EventUploadCoordinator.wasResolved))
+        if !resolvedElsewhere.isEmpty {
+            pendingEvents.removeAll { resolvedElsewhere.contains($0.event_id) }
+            eventStore.removeSent(eventIds: resolvedElsewhere)
+            Log.debug("Skipped \(resolvedElsewhere.count) event(s) another upload already delivered")
         }
         guard !pendingEvents.isEmpty else {
             isFlushing = false
@@ -574,7 +608,14 @@ final class EventQueue {
                     // Android increments here (bumpFailureCounter → pause only at 5); iOS now
                     // matches, so it pauses only on SUSTAINED failure (e.g. a persistent 401),
                     // and a lone bad batch self-heals on the next successful flush.
-                    self.consecutiveFailures += 1
+                    // A 401 / 403 (`APIClient.rejectionPausesUploads`) is about the key, not the batch: every later
+                    // batch would be rejected and dropped the same way, so uploads pause now (the background
+                    // uploader too, through the gate) until the next foreground or `AppDNA.flush()`.
+                    if self.apiClient.lastEventUploadRejectionPausesUploads {
+                        self.consecutiveFailures = max(self.consecutiveFailures + 1, self.maxConsecutiveFailures)
+                    } else {
+                        self.consecutiveFailures += 1
+                    }
                     self.retryCount = 0
                     if self.consecutiveFailures >= self.maxConsecutiveFailures {
                         UploadPauseGate.set(true, owner: self.pauseOwner)

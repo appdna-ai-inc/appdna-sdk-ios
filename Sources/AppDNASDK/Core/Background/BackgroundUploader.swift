@@ -240,7 +240,15 @@ final class BackgroundUploader {
             EventUploadCoordinator.markResolved(eventIds)
             retryCount = 0
             Log.error("Background upload rejected permanently — dropped a batch of \(batch.count) events (loss metric +\(loss))")
-            if pendingCount > batch.count { reschedule() }
+            // The run ends here (one batch per run). A 401 / 403 rejects every batch the same way: uploads pause —
+            // the in-process queue's rule — until the next foreground or `AppDNA.flush()`, and no run is scheduled.
+            // Any other rejection was about this batch: the next run sends the events behind it.
+            if apiClient.lastEventUploadRejectionPausesUploads {
+                UploadPauseGate.pauseFromBackgroundUpload()
+                Log.error("Background upload: the API key was rejected — uploads paused until the next foreground / AppDNA.flush()")
+            } else if pendingCount > batch.count {
+                reschedule()
+            }
             return .droppedRejected
         }
         retryCount += 1

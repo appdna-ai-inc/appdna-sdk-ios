@@ -102,12 +102,21 @@ struct ExperimentEligibilityContext {
 }
 
 /// The device's country for the targeting "Countries" rule — one definition on both platforms (Android
-/// `DeviceRegion`): the first candidate that is an ISO-3166 alpha-2 code (exactly two ASCII letters, upper-cased; a
-/// UN M.49 area such as `419` is not a country), from the current locale's region, then the region of each preferred
-/// language in order. None → nil (a country rule then fails closed).
+/// `DeviceRegion`): the device's REGION SETTING, read from its locales. The first candidate that is an ISO-3166
+/// alpha-2 code (exactly two ASCII letters, upper-cased; a UN M.49 area such as `419` is not a country), from the
+/// current locale's region, then the region of each preferred language in order. None → nil (a country rule then
+/// fails closed). No carrier / SIM country on either platform: `CTCarrier.isoCountryCode` is deprecated and answers a
+/// placeholder since iOS 16, and Android no longer reads the SIM's or the network's country, so the same device
+/// settings target the same way on both.
 enum DeviceRegion {
     static func current() -> String? {
-        resolve([Locale.current.region?.identifier] + Locale.preferredLanguages.map { Locale(identifier: $0).region?.identifier })
+        current(locale: Locale.current, preferredLanguages: Locale.preferredLanguages)
+    }
+
+    /// The region from `locale`, then from each of `preferredLanguages` (BCP 47 identifiers) in order — the seam the
+    /// shared fixtures drive.
+    static func current(locale: Locale, preferredLanguages: [String]) -> String? {
+        resolve([locale.region?.identifier] + preferredLanguages.map { Locale(identifier: $0).region?.identifier })
     }
 
     /// The first ISO-3166 alpha-2 code among `candidates`, upper-cased; nil when there is none.
@@ -121,63 +130,84 @@ enum DeviceRegion {
     }
 }
 
-/// When the app was first installed ON THIS DEVICE — one definition on both platforms (Android uses
-/// `PackageInfo.firstInstallTime`, which behaves this way): an app update keeps the date; deleting and reinstalling the
-/// app, or restoring it onto a device from a backup or a device transfer, starts a new one.
-///
-/// iOS: the earlier of the Documents directory's creation date (made with the app container at install, so it
-/// predates this SDK on an app that adopted it in an update) and the SDK's own install marker — a file in the SDK's
-/// backup-excluded directory, written on first use. The marker used to be a UserDefaults key, which iCloud / device
-/// backups restore — a restored app then kept the original device's install date, where Android starts a new one.
-/// Targeting no longer reads that key (the survey trigger's own "days since install" still keeps it).
+/// When the app was first installed ON THIS DEVICE — the "new users only" date. The SDK's own install marker: a file
+/// in the SDK's backup-excluded directory (`Application Support/ai.appdna.sdk/install_marker`), written by the first
+/// `configure()` of an install. Nothing a backup restores is read, so what happens is:
+///  - **app update** — the marker is kept: same date;
+///  - **delete and reinstall** — the container (and the marker) is gone: a new date, the first launch after the install;
+///  - **restore from a backup / device transfer** — the marker is excluded from backups, so it is not restored: a new
+///    date, the first launch after the restore. (The app's restored files and preferences — the Documents directory's
+///    creation date, the old `ai.appdna.sdk.install_date` preference — are not read: a restore may carry the original
+///    device's dates.)
+///  - **first launch of this SDK version on an install an older AppDNA SDK already ran on** (its backup-excluded SDK
+///    directory exists before `configure()` touches it): a one-time migration takes the earlier of the Documents
+///    directory's creation date and now, and writes it as the marker — that directory was made with the app container
+///    at install, and the SDK directory proves the container is the one the app was installed into, not a restore.
+///  - **an app that adds the AppDNA SDK in an update** (no SDK directory yet): the first launch with the SDK. This one
+///    case differs from Android, whose `PackageInfo.firstInstallTime` predates the SDK; on iOS it cannot be told apart
+///    from a restore without reading restorable data.
+/// nil only when the marker can neither be read nor written ("new users only" then fails closed).
 enum AppInstallDate {
     /// The old UserDefaults marker (backed up with the app's preferences). Not read here.
     static let legacyStoredKey = "ai.appdna.sdk.install_date"
     static let markerFileName = "install_marker"
 
-    /// Read once per process (a file-attribute read); the install date does not change while the app runs.
-    static func epochMs() -> Int64? { cached }
-    private static let cached: Int64? = {
-        let fm = FileManager.default
-        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
-        return read(documentsDirectory: documents,
+    /// The install date (epoch ms), read once per process — `recordAtLaunch()` (called first in `configure()`) or the
+    /// first evaluation, whichever comes first.
+    static func epochMs() -> Int64? { cached.value }
+
+    /// Writes the marker on the first launch of an install, before `configure()` creates the SDK directory (which is
+    /// how the one-time migration tells an existing install from a fresh one).
+    static func recordAtLaunch() { _ = cached.value }
+
+    private final class Once: @unchecked Sendable {
+        private let lock = NSLock()
+        private var done = false
+        private var stored: Int64?
+        var value: Int64? {
+            lock.lock(); defer { lock.unlock() }
+            if !done {
+                let fm = FileManager.default
+                let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
+                stored = AppInstallDate.read(
+                    documentsDirectory: fm.urls(for: .documentDirectory, in: .userDomainMask).first,
                     sdkDirectory: base.appendingPathComponent("ai.appdna.sdk", isDirectory: true),
-                    defaults: .standard, now: Date())
-    }()
-
-    /// The install date from the device's own facts. `sdkDirectory` holds the marker (created there, excluded from
-    /// backup, on first use); a `legacyStoredKey` in `defaults` — restored from a backup or not — is not consulted.
-    static func read(documentsDirectory: URL?, sdkDirectory: URL, defaults: UserDefaults, now: Date) -> Int64? {
-        let documentsCreated = documentsDirectory.flatMap {
-            (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.creationDate] as? Date
+                    now: Date())
+                done = true
+            }
+            return stored
         }
-        return earliestEpochMs(documentsCreated: documentsCreated, marker: marker(in: sdkDirectory, now: now))
     }
+    private static let cached = Once()
 
-    /// The earlier of the two dates, in epoch ms; nil when neither is known.
-    static func earliestEpochMs(documentsCreated: Date?, marker: Date?) -> Int64? {
-        guard let earliest = [documentsCreated, marker].compactMap({ $0 }).min() else { return nil }
-        return Int64(earliest.timeIntervalSince1970 * 1000)
-    }
-
-    /// The SDK's install marker in `directory`: the date it holds, or — when there is none yet — `now`, written there
-    /// and excluded from backup. nil only when the marker can neither be read nor written.
-    static func marker(in directory: URL, now: Date) -> Date? {
-        let url = directory.appendingPathComponent(markerFileName)
+    /// The install date from the marker in `sdkDirectory`; when there is none yet, the date this launch decides (see
+    /// the type's comment), written there and excluded from backup.
+    static func read(documentsDirectory: URL?, sdkDirectory: URL, now: Date) -> Int64? {
+        let url = sdkDirectory.appendingPathComponent(markerFileName)
         if let text = try? String(contentsOf: url, encoding: .utf8),
            let seconds = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), seconds.isFinite {
-            return Date(timeIntervalSince1970: seconds)
+            return Int64((seconds * 1000).rounded())
         }
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        guard (try? String(format: "%.3f", now.timeIntervalSince1970).write(to: url, atomically: true, encoding: .utf8)) != nil else {
+        // No marker. An older SDK ran on this install when its backup-excluded directory is already there (a restore
+        // does not bring it back): take the container's date once. Otherwise this is the install's first launch.
+        var date = now
+        if FileManager.default.fileExists(atPath: sdkDirectory.path),
+           let documents = documentsDirectory,
+           let created = (try? FileManager.default.attributesOfItem(atPath: documents.path))?[.creationDate] as? Date {
+            date = min(created, now)
+        }
+        let ms = Int64((date.timeIntervalSince1970 * 1000).rounded(.down))
+        try? FileManager.default.createDirectory(at: sdkDirectory, withIntermediateDirectories: true)
+        guard (try? String(format: "%.3f", Double(ms) / 1000).write(to: url, atomically: true, encoding: .utf8)) != nil else {
             return nil
         }
-        var target = url
+        var dir = sdkDirectory
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
+        try? dir.setResourceValues(values)
+        var target = url
         try? target.setResourceValues(values)
-        return now
+        return ms
     }
 }
 
