@@ -1,6 +1,6 @@
 // SharedFixtureTests.swift
 //
-// Cross-platform behavioral fixture runner for iOS — SPEC-070-0 §3.2 + §3.3 step 4.
+// Cross-platform behavioral fixture runner for iOS.
 //
 // Loads every `*.fixture.json` under `packages/sdk-shared-fixtures/` whose `platforms` list includes
 // `ios`, drives the action THROUGH REAL SDK CODE, and asserts the observable outcome
@@ -419,9 +419,9 @@ final class SharedFixtureTests: XCTestCase {
             return []
         }
         // These families carry no `action` and are driven by their own runners:
-        //   render      → the structural/visual parity harness (SPEC-419)
-        //   events      → EventPipelineFixtureTests (SPEC-428)
-        //   resilience  → ResilienceFixtureTests (AC-35)
+        //   render      → the structural/visual parity harness
+        //   events      → EventPipelineFixtureTests
+        //   resilience  → ResilienceFixtureTests
         let otherRunnersOwn: Set<String> = ["render", "events", "resilience"]
 
         var fixtures: [Fixture] = []
@@ -489,10 +489,10 @@ final class SharedFixtureTests: XCTestCase {
         case "get_variant":                    runGetVariant(fixture, harness)
         case "receive_push":                   await runReceivePush(fixture, harness)
         case "tap_push":                       await runTapPush(fixture, harness)
-        // SPEC-496 — the raw host-data pass (HostDataResolver) and the step pipeline around it.
+        // The raw host-data pass (HostDataResolver) and the step pipeline around it.
         case "resolve_block":                  runResolveBlock(fixture, harness)
         case "host_data_scenario":             await runHostDataScenario(fixture, harness)
-        // SPEC-496 §5b C2 — the core decoder every wrapper bridge forwards `dataContext` through.
+        // The core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         default:
             // The new kinds are driven from one file per area, each returning `true` for
@@ -660,7 +660,7 @@ final class SharedFixtureTests: XCTestCase {
     // machine OnboardingFlowHost now calls. It owns the next_step_rules evaluation, the graph-node
     // routing, the skip_to jump (+ its `step_skipped` event), the response merge and the banners.
     // REAL: OnboardingCompletion.complete(…) — what the SDK DOES with a `.completeFlow`: the
-    // `onboarding_flow_completed` event, the SPEC-088 persist, and `onOnboardingCompleted`.
+    // `onboarding_flow_completed` event, the persist, and `onOnboardingCompleted`.
     //
     // PLUMBING: `trackHookEvent` is a closure inside the SwiftUI host, so the runner performs the
     // `onboarding_hook_completed` emission — but the event's `result` discriminator comes from the
@@ -1017,7 +1017,7 @@ final class SharedFixtureTests: XCTestCase {
     // REAL (placement): PaywallPlacementResolver.pick(from:placement:traits:) — the audience+priority
     // selection PaywallManager.presentByPlacement runs.
     // REAL (onboarding trigger): PaywallTriggerSkipResolver.decision(triggerData:hasActiveSubscription:)
-    // — the SPEC-401/403 skip gate + resolver chain.
+    // The skip gate + resolver chain.
     //
     // EMISSION SITE NOT EXTRACTED: the paywall_view / onboarding_paywall_skip / onboarding_completed
     // emissions live inside PaywallManager.present (needs a UIViewController + a live SwiftUI
@@ -1092,7 +1092,7 @@ final class SharedFixtureTests: XCTestCase {
             "reason": decision.reason ?? "user_already_subscribed",
         ])
 
-        // SPEC-403 routing, exactly as `routeOutcome` runs it (OnboardingRenderer:1269-1293):
+        // Routing, exactly as `routeOutcome` runs it (OnboardingRenderer:1269-1293):
         // chosen = skipTarget ?? "continue"; "complete_flow"/"" completes the flow, and so does
         // "continue" when the node has no `next_target` edge to walk.
         let edgeTarget = triggerData["next_target"]?.stringValue ?? ""
@@ -1206,7 +1206,7 @@ final class SharedFixtureTests: XCTestCase {
     // MARK: - Driver: restore_purchases
     //
     // NOT DRIVABLE END-TO-END: PaywallManager.handleRestore is private, needs a UIViewController and a
-    // BillingBridge, and is only reachable from PaywallRenderer's closure. The SPEC-401 rule it
+    // BillingBridge, and is only reachable from PaywallRenderer's closure. The rule it
     // encodes — an EMPTY restore must not auto-dismiss and must not flip didPurchase — is one line
     // inside that closure (`guard !restored.isEmpty else { return }`). The harness therefore drives
     // the REAL delegate protocol + the REAL EventTracker with the fixture's restore outcome and
@@ -1239,7 +1239,7 @@ final class SharedFixtureTests: XCTestCase {
         ])
         delegate.onPaywallRestoreCompleted(paywallId: paywallId, productIds: restored)
 
-        // SPEC-401 1B/1C — auto-dismiss ONLY when the restore actually found entitlements.
+        // 1B/1C — auto-dismiss ONLY when the restore actually found entitlements.
         let dismissed = !restored.isEmpty
         h.state["paywall_dismissed"] = dismissed
         h.state["did_purchase_flag"] = dismissed
@@ -1360,7 +1360,7 @@ final class SharedFixtureTests: XCTestCase {
 
         // The commit path: the wheel hands (blockId, action, value) + the freshly-written inputValues
         // to the step scope, which awaits the host through the REAL `fireElementInteraction`. The
-        // delegate below is invoked BY the SDK — the runner does not call it. (Until SPEC-070-B the
+        // delegate below is invoked BY the SDK — the runner does not call it. (Until an earlier fix the
         // wheel did `_ = snap.payload` and threw the commit away, so no host on any device ever
         // received a measurement interaction.)
         _ = await fireElementInteraction(
@@ -1380,7 +1380,7 @@ final class SharedFixtureTests: XCTestCase {
     // REAL: RemoteConfigManager.decodePaywallPayload — the sanitize + decode path the live config
     // parsers use — and the SDK's own Codable models for ContentBlock / SurveyTheme.
 
-    /// SPEC-448 §B — drives the REAL `StepConfigOverrideMerger` with host-supplied options.
+    /// Drives the REAL `StepConfigOverrideMerger` with host-supplied options.
     ///
     /// Its own driver rather than a branch of the config one: this is not a parse, it is a merge,
     /// and the thing under test is what the merge leaves ALONE. A merge that rebuilt the block
@@ -1495,7 +1495,7 @@ final class SharedFixtureTests: XCTestCase {
             return
         }
 
-        // SPEC-451 — through the SAME public decoder the wrapper bridges call, so a divergence
+        // Through the SAME public decoder the wrapper bridges call, so a divergence
         // between what Flutter/RN send and what the core accepts fails here rather than on a device.
         let mapRoutes = StepConfigOverride.decodeMapRoutes(hostRoutes)
 
@@ -1548,7 +1548,7 @@ final class SharedFixtureTests: XCTestCase {
         h.state["merged_heading_text"] = blocks.first(where: { $0.id == "intro_heading" })?.text
     }
 
-    // MARK: - Driver: compose_map_url (SPEC-451)
+    // MARK: - Driver: compose_map_url
     //
     // REAL: `mapStaticURL` — the same free function `ContentBlockRendererView` calls. It is at file
     // scope and `internal` for exactly this reason: the fixture's whole point is cross-LANGUAGE
@@ -1577,11 +1577,11 @@ final class SharedFixtureTests: XCTestCase {
             token: sess["map_token"]?.stringValue,
             width: CGFloat(sess["map_width"]?.doubleValue ?? 390),
             height: CGFloat(sess["map_height"]?.doubleValue ?? 240),
-            // SPEC-495 §A — the provider is read off the block, so one driver covers both.
+            // The provider is read off the block, so one driver covers both.
             googleKey: sess["map_google_key"]?.stringValue
         )
         h.state["map_url"] = SharedFixtureTests.orNull(url?.absoluteString)
-        // SPEC-495 §C — sizing and placement, from the REAL functions the renderer and the step
+        // Sizing and placement, from the REAL functions the renderer and the step
         // layout call. Both are a switch over authored strings written three times in three
         // languages, which is the exact shape that drifts silently: every version keeps returning a
         // perfectly good number, just not the same one.
@@ -1597,7 +1597,7 @@ final class SharedFixtureTests: XCTestCase {
 
         // REAL: BillingProvider.fromWire / .toWire — the wrapper-channel wire format (a tagged map for
         // the one case with an associated value, bare strings for the rest). iOS gained it in
-        // SPEC-070-B; before that an Adapty key handed to a wrapper had nowhere to go.
+        // Before that, an Adapty key handed to a wrapper had nowhere to go.
         if path.hasPrefix("options/billing_provider") {
             let provider = BillingProvider.fromWire(config["billing_provider"]?.foundation)
             h.state["parse_succeeded"] = (provider != nil)
@@ -1625,7 +1625,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_block_id"] = block.id
             h.state["parsed_stack_children_count"] = children.count
             h.state["parsed_column_ratios"] = SharedFixtureTests.orNull(block.column_ratios)
-            // SPEC-439 (#546) — the label keys the natives previously did not decode at all.
+            // The label keys the natives previously did not decode at all.
             h.state["parsed_label_position"] = SharedFixtureTests.orNull(block.field_style?.label_position)
             h.state["parsed_label_align"] = SharedFixtureTests.orNull(block.field_style?.label_align)
             h.state["parsed_label_font_family"] = SharedFixtureTests.orNull(block.field_style?.label_font_family)
@@ -1642,7 +1642,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_frame_color"] = SharedFixtureTests.orNull(block.field_config?["frame_color"]?.value as? String)
             h.state["parsed_frame_glow_color"] = SharedFixtureTests.orNull(block.field_config?["frame_glow_color"]?.value as? String)
             // #580 — the Sound Button's authored icon.
-            // SPEC-481 (#601) — the warning banner's subtitle, alignment, own chrome and per-role
+            // The warning banner's subtitle, alignment, own chrome and per-role
             // typography. All in `field_config` because Android's ContentBlock is at 245 of the
             // JVM's 255-param ceiling, so these could not become top-level fields at any price.
             h.state["parsed_banner_variant"] = SharedFixtureTests.orNull(block.field_config?["banner_variant"]?.value as? String)
@@ -1672,7 +1672,7 @@ final class SharedFixtureTests: XCTestCase {
                 (block.field_config?["frame_corner_radius"]?.value as? Int).map(Double.init)
                     ?? (block.field_config?["frame_corner_radius"]?.value as? Double)
             )
-            // SPEC-444 (#540, #542) — the option's nested sheet blocks. A renderer cannot
+            // The option's nested sheet blocks. A renderer cannot
             // present what the model dropped, so the decode is what this pins.
             let opts = block.field_options ?? []
             h.state["parsed_opt0_sheet_block_count"] = (opts.first?.sheet_blocks ?? []).count
@@ -1706,7 +1706,7 @@ final class SharedFixtureTests: XCTestCase {
                 }
             }
 
-            // SPEC-446 §3 — the gate, exercised in BOTH directions plus the deadlock case.
+            // The gate, exercised in BOTH directions plus the deadlock case.
             if block.type == .summary_screen {
                 // #595 — derived through the SDK's OWN `summaryStatFieldId`, not by reading
                 // `field_id` directly. A stat that carries an `input` but no `field_id` used to be
@@ -1746,7 +1746,7 @@ final class SharedFixtureTests: XCTestCase {
                 }
             }
 
-            // SPEC-448 (#556) — the Option Set source keys. `field_options` must STILL parse when a
+            // The Option Set source keys. `field_options` must STILL parse when a
             // set is bound: that array doubles as the embedded page, and a parser treating a bound
             // set as "ignore the inline options" would leave older builds with an empty Select.
             h.state["parsed_option_set_id"] = SharedFixtureTests.orNull(block.field_config?["option_set_id"]?.value as? String)
@@ -1754,22 +1754,22 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_options_search"] = SharedFixtureTests.orNull(block.field_config?["options_search"]?.value as? Bool)
             h.state["parsed_embedded_option_count"] = (block.field_options ?? []).count
 
-            // SPEC-447 (#555) — the image-tile layout keys.
+            // The image-tile layout keys.
             h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
             h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)
             h.state["parsed_tile_surface_color"] = SharedFixtureTests.orNull(block.field_config?["tile_surface_color"]?.value as? String)
 
-            // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
+            // Resolution, not just parsing. When the fixture supplies responses (and,
             // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
             // whitelist pass and the resolved strings are exported. Parsing a `{{token}}` proves
             // nothing about whether it ever becomes a value on screen — and calling
             // resolveTemplateString by hand (which this used to do, while claiming otherwise) proves
             // only that the resolver CAN expand a token, not that the block pass applies it to that
-            // key. Round-4 bug injection deleted the `label` line from the whitelist and this file
+            // key. Bug injection deleted the `label` line from the whitelist and this file
             // stayed green, which is why resolveBlockTemplates was lifted out of the View.
             let sess = f.setup.session_data?.objectValue ?? [:]
 
-            // SPEC-448 (#556) — the Option Set source keys. `field_options` must STILL parse when a
+            // The Option Set source keys. `field_options` must STILL parse when a
             // set is bound: that array doubles as the embedded page, and a parser treating a bound
             // set as "ignore the inline options" would leave older builds with an empty Select.
             h.state["parsed_option_set_id"] = SharedFixtureTests.orNull(block.field_config?["option_set_id"]?.value as? String)
@@ -1777,26 +1777,26 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_options_search"] = SharedFixtureTests.orNull(block.field_config?["options_search"]?.value as? Bool)
             h.state["parsed_embedded_option_count"] = (block.field_options ?? []).count
 
-            // SPEC-447 (#555) — the image-tile layout keys.
+            // The image-tile layout keys.
             h.state["parsed_tile_image_layout"] = SharedFixtureTests.orNull(block.field_config?["tile_image_layout"]?.value as? String)
             h.state["parsed_tile_strip_ratio"] = SharedFixtureTests.orNull(block.field_config?["tile_strip_ratio"]?.value as? Double)
             h.state["parsed_tile_surface_color"] = SharedFixtureTests.orNull(block.field_config?["tile_surface_color"]?.value as? String)
 
-            // SPEC-446 — resolution, not just parsing. When the fixture supplies responses (and,
+            // Resolution, not just parsing. When the fixture supplies responses (and,
             // for `{{step.x}}`, the current step's live inputs) the block is run through the REAL
             // whitelist pass and the resolved strings are exported. Parsing a `{{token}}` proves
             // nothing about whether it ever becomes a value on screen — and calling
             // resolveTemplateString by hand (which this used to do, while claiming otherwise) proves
             // only that the resolver CAN expand a token, not that the block pass applies it to that
-            // key. Round-4 bug injection deleted the `label` line from the whitelist and this file
+            // key. Bug injection deleted the `label` line from the whitelist and this file
             // stayed green, which is why resolveBlockTemplates was lifted out of the View.
 
             let fixtureResponses = (sess["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
             let fixtureStepInputs = (sess["step_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
-            // SPEC-452 — the host's `{{hook_data.…}}` payload. This runner hardcoded `hookData: nil`,
+            // The host's `{{hook_data.…}}` payload. This runner hardcoded `hookData: nil`,
             // so no fixture could exercise the `hook_data` root at all, on either platform.
             let fixtureHookData = (sess["hook_data"]?.objectValue ?? [:]).mapValues { $0.foundation }
-            // SPEC-448 — seed the selected-option store so `{{selected.…}}` has something to
+            // Seed the selected-option store so `{{selected.…}}` has something to
             // resolve. It is a process-lifetime singleton, so it is reset first: a value left over
             // from an earlier fixture would make this one pass for the wrong reason.
             SelectedOptionStore.shared.resetForTesting()
@@ -1826,7 +1826,7 @@ final class SharedFixtureTests: XCTestCase {
                     h.state["resolved_stat\(i)_value"] = (st["value"] as? String) ?? ""
                     h.state["resolved_stat\(i)_label"] = (st["label"] as? String) ?? ""
                 }
-                // SPEC-452 — the resolved CHILD of a container. Children bypassed resolution
+                // The resolved CHILD of a container. Children bypassed resolution
                 // entirely, and a fixture that only reads the container's own keys cannot see that:
                 // it is green whether or not the recursion exists.
                 let resolvedKids = (r.children ?? []) + (r.stack_children ?? [])
@@ -1850,7 +1850,7 @@ final class SharedFixtureTests: XCTestCase {
                 }
             }
 
-            // SPEC-441 (#541) — the option's `category` drives section navigation. It is an
+            // The option's `category` drives section navigation. It is an
             // OPTION-level key, which is the class Android parses by hand, so a missing parser
             // line makes the chips point at nothing while every renderer still compiles.
             h.state["parsed_opt0_category"] = SharedFixtureTests.orNull(opts.first?.category)
@@ -1886,7 +1886,7 @@ final class SharedFixtureTests: XCTestCase {
             // are read from the SDK's decoded object, neither is a top-level field.
             h.state["parsed_reviews_count"] = paywall.sections.reduce(0) { $0 + ($1.data?.reviews?.count ?? 0) }
             h.state["parsed_cta_corner_radius"] = SharedFixtureTests.orNull(paywall.cta?.resolvedCornerRadius)
-            // SPEC-438 (#544, #548) — product-level price presentation. Read off the DECODED
+            // Product-level price presentation. Read off the DECODED
             // objects, not the raw JSON, so a field the model silently drops shows up here.
             let plansSection = paywall.sections.first { $0.type == "plans" }
             h.state["parsed_price_layout"] = SharedFixtureTests.orNull(plansSection?.data?.priceLayout)
@@ -1906,7 +1906,7 @@ final class SharedFixtureTests: XCTestCase {
             // unauthored paywall rendering exactly as it did before.
             h.state["parsed_plan1_price_total_display"] = SharedFixtureTests.orNull(p1?.price_total_display)
             h.state["parsed_plan1_badge_enabled"] = SharedFixtureTests.orNull(p1?.description_badge?.enabled)
-            // SPEC-485 (#649) — the legal section. The text must arrive with its markdown INTACT
+            // The legal section. The text must arrive with its markdown INTACT
             // (parsing is the SDK's job), and the link colour must arrive as `accent_color`, the key
             // both natives read and the one the console's `link_color` is mapped onto at the wire
             // boundary — nothing used to map between them, so the authored colour never reached a

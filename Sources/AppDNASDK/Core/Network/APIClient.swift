@@ -232,7 +232,7 @@ final class APIClient {
         do {
             var urlRequest = try buildRequest(for: .ingestEvents)
 
-            // SPEC-067: Compress event batch for bandwidth reduction
+            // Compress event batch for bandwidth reduction
             if let compressed = Self.deflateCompress(data) {
                 urlRequest.httpBody = compressed
                 urlRequest.setValue("deflate", forHTTPHeaderField: "Content-Encoding")
@@ -258,7 +258,7 @@ final class APIClient {
 
     /// What an event-upload HTTP status means, independent of any network.
     ///
-    /// SPEC-070-B AC-35: a PURE seam. `permanent_4xx_dropped` and `rate_limited_429_retried` assert
+    /// A PURE seam. `permanent_4xx_dropped` and `rate_limited_429_retried` assert
     /// this table on iOS and Android against the same fixture, so the two SDKs cannot drift on the
     /// question that caused the live defect — is a 429 permanent? Android says no; iOS used to say
     /// yes, and one rate-limit halted every upload until the app restarted.
@@ -286,7 +286,7 @@ final class APIClient {
     /// inside an `async` method that performs a real `URLSession` round trip, so no test could ask
     /// the question that matters — *does a 429 leave `eventUploadPermanentlyFailed` false?* — which
     /// is precisely why the answer was "no" in production for as long as it was. This is the seam
-    /// AC-35's `permanent_4xx_dropped` fixture drives; it mutates the same flag the network path
+    /// The `permanent_4xx_dropped` fixture drives; it mutates the same flag the network path
     /// mutates, because it IS the network path's body.
     ///
     /// - Returns: true when the batch was accepted.
@@ -343,10 +343,10 @@ final class APIClient {
         request.httpMethod = endpoint.method
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        // Round-10 #15 — SDK identity headers (parity with Android's SdkIdentityInterceptor).
+        // SDK identity headers (parity with Android's SdkIdentityInterceptor).
         request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
         request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
-        // SPEC-067: Request compressed responses from server
+        // Request compressed responses from server
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
 
         if endpoint.method == "POST" {
@@ -361,7 +361,7 @@ final class APIClient {
         return request
     }
 
-    // MARK: - SPEC-067: Deflate Compression
+    // MARK: - Deflate Compression
 
     /// Compress data using raw deflate via Apple's Compression framework (no zlib dependency).
     static func deflateCompress(_ data: Data) -> Data? {

@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- SPEC-070-B AC-35 — resilience behavioral fixtures (packages/sdk-shared-fixtures/resilience/).
+ Resilience behavioral fixtures (packages/sdk-shared-fixtures/resilience/).
 
  These are the upload/queue SURVIVAL contracts, and every one of them lives below the bridge: a
  wrapper cannot observe an HTTP status, a `Retry-After` header, or a prune decision. So — exactly like
@@ -270,7 +270,7 @@ final class ResilienceFixtureTests: XCTestCase {
                     )
                 }
 
-            // AC-35 — the full three-way classification AND the real latch.
+            // The full three-way classification AND the real latch.
             //
             // 🔴 This is the fixture that would have caught the live defect. `eventUploadPermanentlyFailed`
             // is what a 429 used to set, and setting it halted EVERY event upload for the rest of the
@@ -314,7 +314,7 @@ final class ResilienceFixtureTests: XCTestCase {
                 }
                 try assertRejectionRuns(runs, id: f.id)
 
-            // AC-35 — bounded AND jittered. Both halves, because each hides the other's failure: a
+            // Bounded AND jittered. Both halves, because each hides the other's failure: a
             // `return base` regression satisfies every bound, and an unbounded jitter is still
             // "jittered". Drives the real `EventQueue.jittered`, not a copy of its arithmetic.
             case "backoff":

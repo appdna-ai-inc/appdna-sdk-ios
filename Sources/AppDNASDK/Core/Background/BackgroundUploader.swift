@@ -2,7 +2,7 @@ import Foundation
 import BackgroundTasks
 import UIKit
 
-/// SPEC-067: Background event upload using BGTaskScheduler.
+/// Background event upload using BGTaskScheduler.
 /// Ensures queued events are delivered even when the app is backgrounded.
 final class BackgroundUploader {
     /// Task identifier — must match BGTaskSchedulerPermittedIdentifiers in Info.plist.

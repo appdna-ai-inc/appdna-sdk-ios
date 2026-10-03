@@ -3,8 +3,8 @@ import Foundation
 /// File-based event persistence in Application Support directory.
 /// Ensures events survive app termination.
 ///
-/// SPEC-067: Enforces both event count cap (10K) and disk quota (5 MB).
-/// SPEC-428 CL-8/D8: storage is an APPEND-LOG (NDJSON — one event per line). `save()` appends in
+/// Enforces both event count cap (10K) and disk quota (5 MB).
+/// Storage is an APPEND-LOG (NDJSON — one event per line). `save()` appends in
 /// O(1) amortized instead of the old O(n) full-file decode+append+encode on every `track()` (a
 /// battery/CPU cliff at scale). Caps are enforced by periodic compaction, amortizing the O(n) rewrite.
 ///
@@ -79,10 +79,10 @@ final class EventStore {
     /// a small queue's file stays small.
     static let deadBytesSlack = 1024 * 1024
     static let minDeadBytesToCompact = 64 * 1024
-    /// SPEC-428 CL-8: compact (enforce caps by rewriting) at most every N appends → amortized O(1).
+    /// Compact (enforce caps by rewriting) at most every N appends → amortized O(1).
     private let compactionInterval: Int
 
-    /// SPEC-428: `maxEvents`/`compactionInterval`/`fileName` are injectable so the shared behavioral
+    /// `maxEvents`/`compactionInterval`/`fileName` are injectable so the shared behavioral
     /// fixtures (`events/` category) can drive eviction at a small cap with a clean, isolated store.
     /// Production callers use the defaults (10k cap / compact-every-500 / the canonical file).
     init(maxEvents: Int = 10_000, compactionInterval: Int = 500, fileName: String = "pending_events.json",
@@ -135,7 +135,7 @@ final class EventStore {
         }
     }
 
-    /// SPEC-428 CL-8/D8: O(1) amortized append (was O(n) full read-modify-write per event). Caps are
+    /// O(1) amortized append (was O(n) full read-modify-write per event). Caps are
     /// enforced by a compaction (every `compactionInterval` appends, or immediately once the live events
     /// pass the disk quota — an O(1) check on the index), which rewrites only when a cap is exceeded or the
     /// dead bytes call for it.
@@ -190,14 +190,14 @@ final class EventStore {
         }
     }
 
-    /// SPEC-428 CL-2/D5: the client redelivery horizon. Compiled default 7d, tracking SPEC-426's horizon.
+    /// The client redelivery horizon. Compiled default 7d, tracking the horizon.
     static let redeliveryHorizonMs: Int64 = 7 * 24 * 60 * 60 * 1000
 
-    /// SPEC-428 CL-2/D5: drop events past the redelivery horizon so NO consumer re-sends an event past the
+    /// Drop events past the redelivery horizon so NO consumer re-sends an event past the
     /// server dedup window (double-count). This lives at the STORE so EVERY load path is protected — the
     /// in-process flush AND the background BGTask/WorkManager uploaders that "fire hours/days later" (the
-    /// paths STEP-5 named). Counted (CL-1). Returns the number dropped.
-    /// SPEC-070-B PN row 19 (W14) — an age past this is not a stale event, it is a broken clock.
+    /// paths STEP-5 named). Counted. Returns the number dropped.
+    /// An age past this is not a stale event, it is a broken clock.
     /// The horizon compares wall clocks, so a forward clock jump makes every queued event look older
     /// than 7 days at once and prunes it **unsent**. Beyond this bound, and for any negative age (the
     /// clock moved backwards), we keep the event: a retained event costs a retry, a pruned one is
@@ -247,7 +247,7 @@ final class EventStore {
         }
     }
 
-    /// SPEC-424 STEP-1a (CL-7): purge ALL persisted events WITHOUT uploading them — analytics
+    /// Purge ALL persisted events WITHOUT uploading them — analytics
     /// consent was revoked, so queued-but-unsent events must never be transmitted.
     func clearAll() {
         queue.sync {
@@ -438,7 +438,7 @@ final class EventStore {
 
     private static let removalKey = "appdna_removed"
 
-    /// SPEC-428 CL-8: parse the NDJSON log (one event per line). A crash mid-append can leave a
+    /// Parse the NDJSON log (one event per line). A crash mid-append can leave a
     /// trailing partial line — unparseable lines are dead bytes, so the log is self-healing. Back-compat:
     /// an older single-JSON-array file is decoded once and rewritten as NDJSON in ONE atomic write.
     private func rebuildIndex(_ current: FileSignature?) {
@@ -573,7 +573,7 @@ final class EventStore {
 
     // MARK: - File writes
 
-    /// SPEC-428 CL-8: append events as NDJSON lines (O(1) — seek to end + write). Creates the file on
+    /// Append events as NDJSON lines (O(1) — seek to end + write). Creates the file on
     /// first write.
     private func appendEvents(_ events: [SDKEvent]) {
         guard !events.isEmpty else { return }
@@ -735,7 +735,7 @@ final class EventStore {
     /// Compaction enforces the count + disk caps and reclaims dead bytes by rewriting the
     /// log from the live lines' raw bytes (no JSON work) — the amortized O(n) work. It rewrites only when
     /// there is something to do, and only a file the index has read in full. Dropped events are counted
-    /// (CL-1) exactly once: after the live bytes were read (a failed read drops and counts nothing) and
+    /// Exactly once: after the live bytes were read (a failed read drops and counts nothing) and
     /// before the rewrite (a crash after the count over-counts, never under-counts); a rewrite that fails
     /// gives the count back, so the next compaction — which drops them again — counts them once.
     private func compact() {
@@ -771,7 +771,7 @@ final class EventStore {
         // META event, RECOVER the N drops it carried (they were already reset to 0 when it was composed,
         // so evicting it before delivery would otherwise lose them) — re-adding N re-emits them later.
         let lost = dropped.reduce(0) { $0 + (state.lines[$1].metaCount ?? 1) }
-        if lost > 0 { DroppedEventsCounter.increment(lost) } // CL-1/D2: count the loss (never silent)
+        if lost > 0 { DroppedEventsCounter.increment(lost) } // Count the loss (never silent)
         guard writeFresh(blob) else {
             if lost > 0 { DroppedEventsCounter.subtract(lost) }   // nothing was dropped after all
             state.loaded = false
@@ -814,7 +814,7 @@ final class EventStore {
     }
 }
 
-/// SPEC-428 CL-1/D2 — durable counter of events dropped by a cap/quota eviction. Persisted in
+/// Durable counter of events dropped by a cap/quota eviction. Persisted in
 /// UserDefaults so a restart never loses the count; drained by EventTracker into a
 /// `_sdk_events_dropped` meta-event so the loss is SERVER-VISIBLE, not a silent Log.warning.
 enum DroppedEventsCounter {
@@ -830,7 +830,7 @@ enum DroppedEventsCounter {
     }
 
     /// Atomically read + reset. Test helper (fixtures read the accrued count); production uses
-    /// peek()+subtract() so the count is only removed AFTER the meta is durable (STEP-4).
+    /// peek()+subtract() so the count is only removed AFTER the meta is durable.
     static func getAndReset() -> Int {
         lock.lock()
         defer { lock.unlock() }
@@ -839,9 +839,9 @@ enum DroppedEventsCounter {
         return current
     }
 
-    /// SPEC-428 STEP-4: read WITHOUT resetting. The count is only removed (subtract) AFTER the
+    /// Read WITHOUT resetting. The count is only removed (subtract) AFTER the
     /// `_sdk_events_dropped` meta carrying it is DURABLY persisted — so a hard kill before the meta lands
-    /// re-emits it (never an UNDER-count, which STEP-4 forbids). A concurrent peek may double-emit
+    /// re-emits it (never an UNDER-count, which the loss metric forbids). A concurrent peek may double-emit
     /// (over-count, direction-safe — the spec prioritizes never-under-count).
     static func peek() -> Int {
         lock.lock()
@@ -849,7 +849,7 @@ enum DroppedEventsCounter {
         return UserDefaults.standard.integer(forKey: key)
     }
 
-    /// SPEC-428 STEP-4: atomic DECREMENT-by-N (floored at 0), called once the meta carrying N is durable.
+    /// Atomic DECREMENT-by-N (floored at 0), called once the meta carrying N is durable.
     static func subtract(_ n: Int) {
         guard n > 0 else { return }
         lock.lock()

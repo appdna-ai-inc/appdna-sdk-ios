@@ -23,7 +23,7 @@ public final class AppDNA: @unchecked Sendable {
     /// (even writes), and Firestore.firestore() crashes if no default Firebase app exists.
     internal static var firestoreDB: Firestore?
 
-    /// SPEC-419 brand-threading — the app's brand accent hex (from `/settings/brand`,
+    /// Brand-threading — the app's brand accent hex (from `/settings/brand`,
     /// served via Firestore `config/brand`). When set, SDK render defaults use it
     /// instead of the hardcoded #6366F1 brand indigo for accent/link/badge/selected
     /// colors. Per-element authored colors still take precedence over this.
@@ -38,12 +38,12 @@ public final class AppDNA: @unchecked Sendable {
     /// Callbacks registered via `onWebEntitlementChanged`, keyed by their removal token.
     private static var webEntitlementChangeHandlers: [UUID: (WebEntitlement?) -> Void] = [:]
 
-    // SPEC-428 CL-10/D7: bounded pre-init buffer at the STATIC facade — captures track() calls made
+    // Bounded pre-init buffer at the STATIC facade — captures track() calls made
     // before configure() (when `shared.eventTracker` is still nil, so they'd otherwise no-op at the
     // facade and be dropped) and drains them in order once the pipeline is wired. Overflow is
-    // drop-oldest + counted (CL-1). Mirrors Android's preInitBuffer.
+    // drop-oldest + counted. Mirrors Android's preInitBuffer.
     private static let preInitLock = NSLock()
-    // SPEC-428 STEP-9/§4.E: each pre-init event STAMPS its client_seq at facade track() time (below) and
+    // Each pre-init event STAMPS its client_seq at facade track() time (below) and
     // carries it through the drain — buildEnvelope uses it verbatim, never re-minting. Preserves the true
     // tracking order across configure() (a post-configure event minting during the drain window can no
     // longer get a lower seq than an earlier pre-init event drained after it).
@@ -79,10 +79,10 @@ public final class AppDNA: @unchecked Sendable {
         set { billing.setDelegate(newValue, deliversPurchases: true) }
     }
 
-    /// Delegate for server-driven screen events (SPEC-089c).
+    /// Delegate for server-driven screen events.
     public static weak var screenDelegate: AppDNAScreenDelegate?
 
-    /// SPEC-070-C D10 — OPTIONAL async `onScreenAction` wrapper-veto. Set by a
+    /// OPTIONAL async `onScreenAction` wrapper-veto. Set by a
     /// cross-platform wrapper (Flutter plugin) that must round-trip to answer a
     /// veto. Consulted by `ScreenManager.handleAction(...)` in ADDITION to the
     /// synchronous `screenDelegate.onScreenAction`; either can veto. Nil for
@@ -90,14 +90,14 @@ public final class AppDNA: @unchecked Sendable {
     /// (Held strongly — unlike `screenDelegate`, a closure has no other owner.)
     public static var asyncOnScreenAction: ((String, SectionAction) async -> Bool)?
 
-    /// SPEC-404 — lifecycle delegate. Fires `onSdkRuntimeLocked` once when
+    /// Lifecycle delegate. Fires `onSdkRuntimeLocked` once when
     /// the bootstrap response carries a `runtime_lock`, and
     /// `onSdkRuntimeUnlocked` once when a subsequent bootstrap returns
     /// without one. Hosts use this to surface a custom "service unavailable"
     /// banner and to trigger a one-shot event-queue retry on unlock.
     public static weak var lifecycleDelegate: AppDNALifecycleDelegate?
 
-    /// SPEC-404 — current backend-driven SDK lock state. `nil` when active;
+    /// Current backend-driven SDK lock state. `nil` when active;
     /// a non-nil value means the SDK is in locked mode and UI render paths
     /// (paywall_trigger, messages, surveys) should pause. Set by the
     /// bootstrap completion handler; cleared by the next bootstrap that
@@ -107,7 +107,7 @@ public final class AppDNA: @unchecked Sendable {
     /// Internal accessor for the push token manager (legacy).
     static var push: PushTokenManager? { shared.pushTokenManager }
     static var geocodeClient: APIClient? { shared.apiClient }
-    /// SPEC-448 — the Option Set store's client. Same accessor shape as `geocodeClient`;
+    /// The Option Set store's client. Same accessor shape as `geocodeClient`;
     /// nil before `configure()`, which the store treats as "no refresh possible" rather than
     /// an error, so the fallback ladder still renders.
     static var optionSetClient: APIClient? { shared.apiClient }
@@ -139,7 +139,7 @@ public final class AppDNA: @unchecked Sendable {
     /// Experiments module.
     public static let experiments = ExperimentsModule(manager: nil)
 
-    // MARK: - Custom View Registry (SPEC-089d AC-026)
+    // MARK: - Custom View Registry
 
     /// Registry of developer-provided custom views keyed by `view_key`.
     /// Used by the `custom_view` content block to render developer escape-hatch views.
@@ -153,7 +153,7 @@ public final class AppDNA: @unchecked Sendable {
         registeredCustomViews[key] = factory
     }
 
-    // MARK: - Map View Registry (SPEC-451)
+    // MARK: - Map View Registry
 
     /// Host-provided interactive map views, keyed by the map block's `map_view_key`
     /// (or `"default"` when the block names none).
@@ -172,7 +172,7 @@ public final class AppDNA: @unchecked Sendable {
     /// - Parameters:
     ///   - key: matches the block's `map_view_key`; use `"default"` for every map block.
     ///   - factory: builds the view from the block's resolved config. Keys are documented in
-    ///     SPEC-451 §4 and mirror what the console writes.
+    ///     And mirror what the console writes.
     public static func registerMapView(_ key: String = "default", factory: @escaping ([String: Any]) -> AnyView) {
         registeredMapViews[key] = factory
     }
@@ -185,7 +185,7 @@ public final class AppDNA: @unchecked Sendable {
     ///
     /// 🔴 It is always the CUSTOMER's token, never ours. Mapbox's terms forbid us proxying or
     /// caching the imagery, so the device fetches it directly and the request bills to whoever
-    /// owns the token (SPEC-451 §5). A host token set here wins over the bootstrap value forever —
+    /// owns the token. A host token set here wins over the bootstrap value forever
     /// an explicit choice beats a remote default.
     public static var mapboxToken: String? {
         get { hostMapboxToken ?? remoteMapboxToken ?? UserDefaults.standard.string(forKey: mapboxTokenDefaultsKey) }
@@ -194,7 +194,7 @@ public final class AppDNA: @unchecked Sendable {
 
     private static var hostMapboxToken: String?
     private static var remoteMapboxToken: String?
-    /// SPEC-495 §B — the customer's Google Maps key, delivered exactly like the Mapbox token.
+    /// The customer's Google Maps key, delivered exactly like the Mapbox token.
     ///
     /// 🔴 Always the CUSTOMER's key, never ours: Google bills per static request and per interactive
     /// session, so the device fetches directly and the request bills to whoever owns the key. A host
@@ -218,7 +218,7 @@ public final class AppDNA: @unchecked Sendable {
     }
 
     /**
-     SPEC-495 — the app's map engine (`mapbox` | `google`), delivered with the keys it selects
+     The app's map engine (`mapbox` | `google`), delivered with the keys it selects
      between.
 
      🔴 App-level, and that is a correction. The provider began as a per-block field, which let an
@@ -263,11 +263,11 @@ public final class AppDNA: @unchecked Sendable {
     /// Current config bundle version reported by events.
     internal static var currentBundleVersion: Int = 0
 
-    /// SPEC-070-C D4 — the configured SDK-wrapper framework tag (native|flutter|
+    /// The configured SDK-wrapper framework tag (native|flutter|
     /// react_native); tagged on every event's device context. Defaults to "native".
     internal static var framework: String { shared.options.framework }
 
-    /// SPEC-070-B §7 rule 4 — the WRAPPER's own version (e.g. the npm package's `1.0.7`), injected by
+    /// The WRAPPER's own version (e.g. the npm package's `1.0.7`), injected by
     /// the bridge, tagged on every event's device context as `framework_version`.
     ///
     /// `device.sdk_version` is always this NATIVE core's version, so before this field existed a
@@ -283,10 +283,10 @@ public final class AppDNA: @unchecked Sendable {
         shared.options.framework == "native" ? nil : shared.options.frameworkVersion
     }
 
-    // MARK: - Screen attribution (SPEC-070-B PN row 1 / D-h)
+    // MARK: - Screen attribution
 
     /// The most recent screen name announced by `notifyScreenAppeared`, surfaced into every event
-    /// envelope as `context.screen`. Android has carried this since SPEC-070-A G.17; iOS never did,
+    /// envelope as `context.screen`. Android has carried this since an earlier fix; iOS never did,
     /// so `context.screen` was hardcoded nil on every iOS event.
     /// Written from any thread (a host may announce from a background task), read on the event queue.
     private static let screenNameLock = NSLock()
@@ -304,11 +304,11 @@ public final class AppDNA: @unchecked Sendable {
         ScreenManager.shared.evaluateInterceptions(screenName: screenName, timing: "after")
     }
 
-    // MARK: - Degraded init (SPEC-070-B PN row 2 / D-k)
+    // MARK: - Degraded init
 
     /// The most recent non-fatal error raised during `configure()` or bootstrap. Non-nil means the
-    /// SDK started, but some subsystem did not. Analytics are the floor guarantee and keep working
-    /// (AC-31(b)); a host reads this to decide whether, say, remote config is trustworthy.
+    /// SDK started, but some subsystem did not. Analytics are the floor guarantee and keep working.
+    /// A host reads this to decide whether, say, remote config is trustworthy.
     /// Mirrors Android's `AppDNA.lastInitError` (`AppDNA.kt:78`).
     private static let initErrorLock = NSLock()
     private static var _lastInitError: Error?
@@ -353,7 +353,7 @@ public final class AppDNA: @unchecked Sendable {
         DispatchQueue.main.async { delegate.onInitDegraded(reason: error) }
     }
 
-    // MARK: - Veto-timeout accounting (SPEC-070-B PN row 16 / W12)
+    // MARK: - Veto-timeout accounting
 
     /// Record that a host veto timed out and fell back to its default.
     ///
@@ -365,7 +365,7 @@ public final class AppDNA: @unchecked Sendable {
         VetoTimeoutCounter.increment()
     }
 
-    // MARK: - Subsystem init isolation (SPEC-070-B PN row 17 / W13 / AC-31(b))
+    // MARK: - Subsystem init isolation
 
     /// Names of subsystems to fail on purpose. Test-only: AC-31(b) has to inject a failure to prove
     /// the isolation holds, and a reporting seam that is never exercised is not isolation.
@@ -658,7 +658,7 @@ public final class AppDNA: @unchecked Sendable {
             if let traits = traits {
                 identifyProps["traits"] = traits
             }
-            // SPEC-428 CL-10/D7: route identify through the facade so a pre-configure() identify() is
+            // Route identify through the facade so a pre-configure() identify() is
             // captured by the pre-init buffer too (was a direct eventTracker?.track → silently dropped).
             AppDNA.track(event: "identify", properties: identifyProps)
 
@@ -682,7 +682,7 @@ public final class AppDNA: @unchecked Sendable {
                     appId: bootstrapData.appId,
                     userId: userId
                 )
-                // SPEC-203: start journey-triggered pending-messages listener.
+                // Start journey-triggered pending-messages listener.
                 shared.pendingMessageListener?.startObserving(
                     orgId: bootstrapData.orgId,
                     appId: bootstrapData.appId,
@@ -690,8 +690,8 @@ public final class AppDNA: @unchecked Sendable {
                 )
             }
 
-            // SPEC-401 Fix 1D — silently refresh the entitlement cache so
-            // the next paywall_trigger entitlement gate (Fix 1A) reflects
+            // Silently refresh the entitlement cache so
+            // the next paywall_trigger entitlement gate reflects
             // the identified user's current StoreKit subscriptions, not
             // the prior anonymous user's empty entitlements. Fire-and-
             // forget; identify is not blocked on completion. Errors are
@@ -765,7 +765,7 @@ public final class AppDNA: @unchecked Sendable {
             // here. The anchor is a security boundary: clearing it on
             // sign-out would let the next `identify(B)` become the new
             // first-identifier and inherit any untagged purchase on
-            // the device (the exact reproducer R2 surfaced). The
+            // the device (the exact reproducer a device test surfaced). The
             // anchor's natural lifecycle is the app installation;
             // factory-reset / uninstall wipe UserDefaults, which is
             // the correct invalidation event.
@@ -782,7 +782,7 @@ public final class AppDNA: @unchecked Sendable {
         // decision, so a buffered event is stripped too. (The SDK's billing emitters never come through
         // here — they track on the `EventTracker` directly, with `BillingEventProps.marked`.)
         let properties = BillingEventProps.strippingReservedKeys(properties)
-        // SPEC-428 CL-10/D7 + F2: before configure() the pipeline isn't wired — buffer instead of dropping.
+        // Before configure() the pipeline isn't wired — buffer instead of dropping.
         // Double-checked locking (mirrors Android): fast path reads eventTracker with no lock; if nil, take
         // preInitLock (which configure() holds while it publishes eventTracker) and RE-CHECK — still nil →
         // buffer (pre-configure); set → fall through to mint. This makes the buffer-vs-mint decision
@@ -794,7 +794,7 @@ public final class AppDNA: @unchecked Sendable {
                 let seq = ClientSeqCounter.next() // stamp NOW under the lock, in tracking order
                 if preInitBuffer.count >= preInitBufferCap {
                     preInitBuffer.removeFirst() // drop-oldest
-                    DroppedEventsCounter.increment(1) // SPEC-428 CL-1: count the pre-init overflow drop
+                    DroppedEventsCounter.increment(1) // Count the pre-init overflow drop
                 }
                 preInitBuffer.append((event, properties, seq))
                 preInitLock.unlock()
@@ -826,7 +826,7 @@ public final class AppDNA: @unchecked Sendable {
         shared.remoteConfigManager?.getConfig(key: key)
     }
 
-    /// SPEC-067: Force an immediate config refresh, bypassing the cache TTL.
+    /// Force an immediate config refresh, bypassing the cache TTL.
     public static func forceRefreshConfig() {
         shared.remoteConfigManager?.forceRefresh()
     }
@@ -836,7 +836,7 @@ public final class AppDNA: @unchecked Sendable {
         shared.featureFlagManager?.isEnabled(flag: flag) ?? false
     }
 
-    // MARK: - Internal accessors for SDK modules (SPEC-083, SPEC-088)
+    // MARK: - Internal accessors for SDK modules
 
     /// Current user ID (or anonymous ID).
     static var currentUserId: String? {
@@ -853,7 +853,7 @@ public final class AppDNA: @unchecked Sendable {
         shared.remoteConfigManager?.getConfig(key: key) as? String
     }
 
-    /// Internal reference to identity manager for TemplateEngine (SPEC-088).
+    /// Internal reference to identity manager for TemplateEngine.
     static var identityManagerRef: IdentityManager? {
         shared.identityManager
     }
@@ -896,7 +896,7 @@ public final class AppDNA: @unchecked Sendable {
         context: PaywallContext? = nil,
         delegate: AppDNAPaywallDelegate? = nil
     ) -> Bool {
-        // SPEC-404 — refuse to present any paywall while the SDK is in
+        // Refuse to present any paywall while the SDK is in
         // backend-locked mode. The lock fires only when the tenant is
         // per-key-suspended (day 20+) or org cancelled, so a paywall
         // purchase would be wasted UX (the receipt-validate route would 401
@@ -950,7 +950,7 @@ public final class AppDNA: @unchecked Sendable {
         context: PaywallContext? = nil,
         delegate: AppDNAPaywallDelegate? = nil
     ) -> Bool {
-        // SPEC-404 — same lock check as the id-based variant above.
+        // Same lock check as the id-based variant above.
         if runtimeLock != nil {
             Log.warning("AppDNA.presentPaywall(placement:\(placement)) skipped — SDK in runtime-locked mode")
             return false
@@ -1014,7 +1014,7 @@ public final class AppDNA: @unchecked Sendable {
         return result
     }
 
-    // MARK: - Public API: Server-Driven Screens (SPEC-089c)
+    // MARK: - Public API: Server-Driven Screens
 
     /// Show a server-driven screen by ID. The screen config is fetched from cache or Firestore.
     public static func showScreen(_ screenId: String, completion: ((ScreenResult) -> Void)? = nil) {
@@ -1061,7 +1061,7 @@ public final class AppDNA: @unchecked Sendable {
         ScreenManager.shared.previewScreen(json: json, completion: completion)
     }
 
-    /// SPEC-419 D6 — the applied (fetched + parsed) onboarding config version, for the
+    /// The applied (fetched + parsed) onboarding config version, for the
     /// structural parity harness's readiness poll. The host app surfaces this into a hidden
     /// `accessibilityIdentifier("adn.appliedConfigVersion")` label that the harness polls
     /// until it equals the just-published version.
@@ -1097,7 +1097,7 @@ public final class AppDNA: @unchecked Sendable {
         shared.surveyManager?.present(surveyId: id)
     }
 
-    // MARK: - Public API: Push Token (v0.2) + Push Tracking (v0.4 / SPEC-030)
+    // MARK: - Public API: Push Token (v0.2) + Push Tracking (v0.4)
 
     /// Set the APNS push token. Call from `didRegisterForRemoteNotificationsWithDeviceToken`.
     /// This registers the token with the backend for direct push delivery.
@@ -1128,7 +1128,7 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
-    // MARK: - Public API: Push Registration (v0.4 / SPEC-030)
+    // MARK: - Public API: Push Registration (v0.4)
 
     /// Request push notification permission and register for remote notifications.
     /// Returns `true` if the user granted permission, `false` otherwise.
@@ -1214,7 +1214,7 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
-    // MARK: - Public API: Log Level (v1.0 / SPEC-041)
+    // MARK: - Public API: Log Level (v1.0)
 
     /// Dynamically change the SDK log level at runtime.
     /// Matches unified API: `AppDNA.setLogLevel(.debug)`
@@ -1352,7 +1352,7 @@ public final class AppDNA: @unchecked Sendable {
                 lines.append("║ ℹ️ \(line)")
             }
 
-            // SPEC-070-B PN row 14 + 16: the two settings whose effect is invisible until something
+            // The two settings whose effect is invisible until something
             // goes wrong — a silently opted-out user, and a veto that timed out into its default.
             let consent = ConsentStore.decision
             let consentLabel = consent.map { $0 ? "granted" : "DENIED" } ?? "no decision yet"
@@ -1385,7 +1385,7 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
-    // MARK: - Public API: Session Data (SPEC-088)
+    // MARK: - Public API: Session Data
 
     /// Store a key-value pair in the cross-module session data store.
     /// Available to all modules via `{{session.key}}` template variables.
@@ -1403,7 +1403,7 @@ public final class AppDNA: @unchecked Sendable {
         SessionDataStore.shared.clearSessionData()
     }
 
-    /// Get structured location data from an onboarding location field (SPEC-089).
+    /// Get structured location data from an onboarding location field.
     ///
     /// A selected suggestion returns the full object; text the user typed without selecting returns
     /// `{formatted_address, raw_query}` = that text with null coordinates. Returns nil if the field was
@@ -1422,7 +1422,7 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Set analytics consent. When false, events are silently dropped.
     public static func setConsent(analytics: Bool) {
-        // SPEC-070-B PN row 14 (AC-36): persist FIRST and synchronously. A crash between the async
+        // Persist FIRST and synchronously. A crash between the async
         // hop and the write would otherwise lose a revocation, and the next launch would re-enable
         // analytics for a user who opted out.
         ConsentStore.decision = analytics
@@ -1587,7 +1587,7 @@ public final class AppDNA: @unchecked Sendable {
 
         // 2. Initialize event system
         let tracker = EventTracker(identityManager: identityMgr)
-        // NB: eventTracker is published LATER (under preInitLock, after setEventQueue) — SPEC-428 F2.
+        // NB: eventTracker is published LATER (under preInitLock, after setEventQueue).
 
         let eq = EventQueue(
             apiClient: client,
@@ -1598,19 +1598,19 @@ public final class AppDNA: @unchecked Sendable {
         )
         self.eventQueue = eq
         tracker.setEventQueue(eq)
-        // SPEC-070-B PN row 1: every envelope carries the last-announced screen. Reads the static
+        // Every envelope carries the last-announced screen. Reads the static
         // through the lock, so a host announcing from a background thread is safe.
         tracker.setScreenProvider { AppDNA.lastScreenName }
         // Attach the current push_id (30-min window) to every event envelope — mirrors Android's
         // setPushIdProvider, so push→conversion attribution works on iOS too.
         tracker.setPushIdProvider { PushSessionContext.currentPushId() }
 
-        // SPEC-070-B PN row 14 (AC-36): resolve consent from the PERSISTED decision before anything
+        // Resolve consent from the PERSISTED decision before anything
         // can be tracked — including the pre-init buffer drain and `sdk_initialized`. A denied user
         // used to be silently re-opted-in on every cold start.
         tracker.setInitialConsent(analytics: ConsentStore.effectiveConsent(requireConsent: options.requireConsent))
 
-        // SPEC-428 CL-10/D7 + F2: publish eventTracker UNDER preInitLock (mutually exclusive with the
+        // Publish eventTracker UNDER preInitLock (mutually exclusive with the
         // facade track()'s buffer-vs-mint decision, so no event can be buffered after the drain and
         // stranded) AND after setEventQueue (so a post-publish mint never hits a nil queue). Then drain the
         // events buffered pre-publish — in order; their client_seq was stamped at track() time, sitting
@@ -1620,7 +1620,7 @@ public final class AppDNA: @unchecked Sendable {
         Self.preInitLock.unlock()
         AppDNA.drainPreInitBuffer()
 
-        // SPEC-067: Initialize background uploader.
+        // Initialize background uploader.
         // BGTaskScheduler.register must happen during app launch (before
         // application(_:didFinishLaunchingWithOptions:) returns) — we
         // previously called it here in configure(), which crashed on devices
@@ -1707,7 +1707,7 @@ public final class AppDNA: @unchecked Sendable {
             await PurchaseDeliveryQueue.shared.drain()
         }
 
-        // 5. Initialize push token manager (v0.2 + v0.4 SPEC-030: backend registration)
+        // 5. Initialize push token manager (v0.2 + v0.4: backend registration)
         self.pushTokenManager = PushTokenManager(keychainStore: keychainStore, eventTracker: tracker, apiClient: client)
         AppDNA.pushModule.manager = self.pushTokenManager
         // The push CONFIGURED POINT: from here the SDK can track, so buffered
@@ -1823,7 +1823,7 @@ public final class AppDNA: @unchecked Sendable {
             } else {
                 Log.error("❌ Bootstrap failed: \(desc) — SDK will operate in degraded mode with cached/bundled config until it is retried")
             }
-            // SPEC-070-B PN row 2 (D-k): a failed bootstrap IS the degraded state. Surface it instead of
+            // A failed bootstrap IS the degraded state. Surface it instead of
             // leaving the host to infer it from a log line. Managers still initialize below (row 17).
             AppDNA.reportInitDegraded(AppDNAInitError.bootstrapFailed(desc))
             queue.async { [weak self] in
@@ -2005,7 +2005,7 @@ public final class AppDNA: @unchecked Sendable {
             experimentMgr.getExposures().map { ExperimentExposure(exp: $0.experimentId, variant: $0.variant) }
         }
 
-        // SPEC-036-F §1.2 — surface managers receive the ExperimentManager so
+        // Surface managers receive the ExperimentManager so
         // they can consult it for a running experiment targeting the surface+
         // entity being presented (treatment → render variant payload; control/
         // none → render the active entity through the normal path).
@@ -2057,7 +2057,7 @@ public final class AppDNA: @unchecked Sendable {
             WebEntitlementManager(eventTracker: tracker)
         }
 
-        // SPEC-203: per-user journey-triggered message listener. Renders
+        // Per-user journey-triggered message listener. Renders
         // delivered messages via the same MessageRenderer used for
         // remote-config-driven messages (modal/fullscreen/banner/tooltip
         // with full styling + rich media).
@@ -2084,7 +2084,7 @@ public final class AppDNA: @unchecked Sendable {
                 appId: bootstrapData.appId,
                 userId: userId
             )
-            // SPEC-203: also start pending-messages listener if already identified.
+            // Also start pending-messages listener if already identified.
             self.pendingMessageListener?.startObserving(
                 orgId: bootstrapData.orgId,
                 appId: bootstrapData.appId,
@@ -2258,7 +2258,7 @@ public final class AppDNA: @unchecked Sendable {
             // `isConfigured` was already cleared synchronously at the top (under initLock) so a
             // concurrent `configure()` is not lost. Only `isReady` is cleared here.
             shared.isReady = false
-            // SPEC-070-B PN row 10 (iOS half): a static that outlives the instance must be reset, or a
+            // (iOS half): a static that outlives the instance must be reset, or a
             // re-configure()d SDK attributes its first events to the previous run's last screen.
             lastScreenName = nil
             initErrorLock.lock()
@@ -2311,7 +2311,7 @@ public final class AppDNA: @unchecked Sendable {
 
     /// The top-most presented view controller, resolved from the key window.
     ///
-    /// `public` for cross-platform wrappers (SPEC-070-B): a React Native / Flutter host has no
+    /// `public` for cross-platform wrappers: a React Native / Flutter host has no
     /// `UIViewController` of its own to hand `presentPaywall(placement:from:)`, and the SDK already
     /// uses this exact resolver internally (`PaywallModule.present` at `AppDNA+Modules.swift`). A
     /// wrapper needs the same entry point rather than reimplementing key-window traversal.
@@ -2351,7 +2351,7 @@ struct BootstrapData: Codable {
     let firestorePath: String
     let settings: BootstrapSettings
     let geo: BootstrapGeo?
-    // SPEC-404 — optional runtime_lock. Backend sends this only when the
+    // Optional runtime_lock. Backend sends this only when the
     // tenant is per-key-suspended (day 20+) or cancelled. Older SDKs that
     // pre-date this field still deserialise the response — Swift's Decodable
     // ignores unknown keys by default, and the Optional means missing key
@@ -2365,13 +2365,13 @@ struct BootstrapSettings: Codable {
     let flushInterval: Int?
     let batchSize: Int?
     let configTTL: Int?
-    /// SPEC-451 — the customer's own Mapbox token, set once in the console. Optional so every
+    /// The customer's own Mapbox token, set once in the console. Optional so every
     /// pre-451 backend response still decodes.
     let mapboxToken: String?
-    /// SPEC-495 §B — the customer's Google Maps key, same delivery path and same optionality so a
+    /// The customer's Google Maps key, same delivery path and same optionality so a
     /// backend that has not shipped the field yet still decodes.
     let googleMapsApiKey: String?
-    /// SPEC-495 §B — `mapbox` | `google`, chosen once per app. Optional so a backend that has not
+    /// `mapbox` | `google`, chosen once per app. Optional so a backend that has not
     /// shipped the field yet still decodes.
     let mapProvider: String?
 }
@@ -2385,7 +2385,7 @@ struct BootstrapGeo: Codable {
     let longitude: Double?
 }
 
-/// SPEC-404 — runtime lock payload from the bootstrap response. When present,
+/// Runtime lock payload from the bootstrap response. When present,
 /// the SDK enters locked mode: paywall_trigger nodes auto-skip, messages and
 /// surveys pause, identify continues to work locally (anchor + UserDefaults),
 /// event uploads cleanly disable via the existing eventUploadPermanentlyFailed

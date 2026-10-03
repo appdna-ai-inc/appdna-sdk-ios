@@ -22,7 +22,7 @@ final class RemoteConfigManager {
     /// Shared JSON decoder for all config parsing.
     private static let snakeCaseDecoder = JSONDecoder()
 
-    /// SPEC-496 §A1 — a DEDICATED decoder for the SDK's own onboarding cache. Its `userInfo` flag
+    /// A DEDICATED decoder for the SDK's own onboarding cache. Its `userInfo` flag
     /// tells `OnboardingStep` to prefer the cached `raw_content_blocks` over the typed ladder. Never
     /// the shared decoder above: live parses must not honour a key only our cache writes.
     private static let onboardingCacheDecoder: JSONDecoder = {
@@ -67,7 +67,7 @@ final class RemoteConfigManager {
     // In-memory caches
     private var paywalls: [String: PaywallConfig] = [:]
     private var experiments: [String: ExperimentConfig] = [:]
-    // SPEC-036-H — prefetched per-item experiment variant configs, keyed by the variant's `variant_doc`
+    // Prefetched per-item experiment variant configs, keyed by the variant's `variant_doc`
     // path. Populated after the experiments doc parses so `resolveSurfacePresentation` (synchronous)
     // can read the treatment config without an async fetch at present-time.
     private var variantDocs: [String: [String: Any]] = [:]
@@ -78,11 +78,11 @@ final class RemoteConfigManager {
     private var messages: [String: MessageConfig] = [:]
     private var surveys: [String: SurveyConfig] = [:]
 
-    /// Round-10 #13 — consecutive fully-failed (e.g. offline) config fetches, so the retry backs off and
+    /// Consecutive fully-failed (e.g. offline) config fetches, so the retry backs off and
     /// caps instead of recording a false success. Accessed on `queue`.
     private var configFetchFailures = 0
     private static let maxConfigFetchRetries = 5
-    /// Round-11 regression fix — whether the current fetch REACHED the server (any config document
+    /// Regression fix — whether the current fetch REACHED the server (any config document
     /// returned with no error). A missing doc is a successful round-trip (error==nil), so this is true
     /// online regardless of WHAT is published — including screens-only / brand-only / empty projects
     /// (which the earlier content-based `gotAnything` heuristic wrongly treated as failures, since
@@ -121,7 +121,7 @@ final class RemoteConfigManager {
         queue.sync { experiments[id] }
     }
 
-    /// SPEC-419 D6 — the applied (fetched + parsed) onboarding flow version, for the
+    /// The applied (fetched + parsed) onboarding flow version, for the
     /// structural parity harness's readiness poll ("poll until the device reports the
     /// just-published version, then screenshot").
     ///
@@ -138,7 +138,7 @@ final class RemoteConfigManager {
         }
     }
 
-    // MARK: - SPEC-036-F §1.2 — typed-config decode for experiment treatment payloads
+    // MARK: - typed-config decode for experiment treatment payloads
 
     /// Decode an experiment treatment `payload` dict into a typed `PaywallConfig`
     /// using the SAME `sanitizedJSONData` + decoder pipeline `parsePaywalls`
@@ -176,7 +176,7 @@ final class RemoteConfigManager {
         queue.sync { experiments }
     }
 
-    /// SPEC-036-H — the prefetched `config` of a per-item experiment variant doc, by its `variant_doc`
+    /// The prefetched `config` of a per-item experiment variant doc, by its `variant_doc`
     /// pointer path. `nil` if not yet fetched / fetch failed → caller renders the active item (never
     /// cross-cohort, never broken).
     func getVariantDoc(path: String) -> [String: Any]? {
@@ -195,7 +195,7 @@ final class RemoteConfigManager {
         queue.sync { self.variantDocs[path] = config }
     }
 
-    /// Test-only — run the real per-item flag parser then block until applied (SPEC-036-H).
+    /// Test-only — run the real per-item flag parser then block until applied.
     func _parseFlagDocForTesting(key: String, data: [String: Any]) {
         parseSingleFlag(key: key, data: data); queue.sync {}
     }
@@ -277,14 +277,14 @@ final class RemoteConfigManager {
                 self.parseScreenIndex(data)
                 Log.debug("Loaded screen_index from bundled config")
             }
-            // SPEC-419 brand-threading
+            // Brand-threading
             if let data = json["brand"] as? [String: Any], !data.isEmpty {
                 self.parseBrand(data)
             }
         }
     }
 
-    /// SPEC-419 brand-threading — capture the app's brand accent so SDK render
+    /// Brand-threading — capture the app's brand accent so SDK render
     /// defaults can use it instead of the hardcoded #6366F1. Doc/bundle shape:
     /// `{ palette: { accent, primary, ... } }`.
     private func parseBrand(_ data: [String: Any]) {
@@ -361,7 +361,7 @@ final class RemoteConfigManager {
     /// Test reader.
     var firestorePathForTesting: String? { firestorePath }
 
-    // MARK: - SPEC-067: Force Refresh
+    // MARK: - Force Refresh
 
     /// Force an immediate config refresh, bypassing the cache TTL.
     /// Use this when you need configs to update immediately (e.g., after a user action).
@@ -388,7 +388,7 @@ final class RemoteConfigManager {
         // For paywalls, onboarding, and surveys: prefer per-item docs (via index)
         // to avoid the 1MB mega-doc limit. Fall back to legacy mega-doc if no index.
         let group = DispatchGroup()
-        // Round-11 regression fix — reset the per-fetch server-reachability flag; the always-present
+        // Regression fix — reset the per-fetch server-reachability flag; the always-present
         // getDocument closures below set it true the moment any of them returns without a network error.
         self.queue.sync { self.configFetchReachedServer = false }
 
@@ -434,7 +434,7 @@ final class RemoteConfigManager {
             onComplete: { group.leave() }
         )
 
-        // Experiments — lightweight, keep mega-doc pattern. SPEC-036-H: after parsing, prefetch any
+        // Experiments — lightweight, keep mega-doc pattern. After parsing, prefetch any
         // per-item variant docs the experiments reference via `variant_doc` so synchronous
         // presentation resolution can read the treatment config without an async fetch at present-time.
         group.enter()
@@ -450,7 +450,7 @@ final class RemoteConfigManager {
             }
         }
 
-        // Flags — SPEC-036-H: index → per-item docs (config/flag_index/flags/{key}), fallback → mega-doc.
+        // Flags: index → per-item docs (config/flag_index/flags/{key}), fallback → mega-doc.
         group.enter()
         self.fetchViaIndex(
             db: db, basePath: basePath,
@@ -478,7 +478,7 @@ final class RemoteConfigManager {
             }
         }
 
-        // In-app messages — SPEC-036-H: index → per-item docs (config/message_index/messages/{id}),
+        // In-app messages: index → per-item docs (config/message_index/messages/{id}),
         // fallback → mega-doc.
         group.enter()
         self.fetchViaIndex(
@@ -492,7 +492,7 @@ final class RemoteConfigManager {
             onComplete: { group.leave() }
         )
 
-        // SPEC-089c: Screen index for server-driven UI
+        // Screen index for server-driven UI
         group.enter()
         db.document("\(basePath)/screen_index").getDocument { [weak self] snapshot, error in
             defer { group.leave() }
@@ -504,7 +504,7 @@ final class RemoteConfigManager {
             }
         }
 
-        // SPEC-419 brand-threading: the app's brand palette. brand.palette.accent
+        // Brand-threading: the app's brand palette. brand.palette.accent
         // becomes the SDK-wide default for accent/link/badge/selected-border colors
         // (replacing the hardcoded #6366F1) — per-element overrides still win.
         group.enter()
@@ -519,13 +519,13 @@ final class RemoteConfigManager {
         }
 
         group.notify(queue: .global()) {
-            // Round-10 #13 — a fully-failed fetch (offline at launch: every getDocument errors, but each
+            // A fully-failed fetch (offline at launch: every getDocument errors, but each
             // `defer { group.leave() }` still fires) used to unconditionally markFetched + emit
             // config_fetched. That set `fetchedAt=now` so `isStale` was false, and the ONLY reschedule
             // below is gated on `isStale` — so the SDK was stranded on cache with no periodic refresh and
             // no connectivity hook (Android recovers via ConfigRefreshWorker). Detect a fetch that never
             // REACHED the server and retry with bounded backoff instead of recording a false success.
-            // Round-11 regression fix — this uses server-reachability (any getDocument returned without a
+            // Regression fix — this uses server-reachability (any getDocument returned without a
             // network error), NOT "did we parse any config": a missing doc is a successful round-trip, so
             // screens-only / brand-only / empty projects (which parse into ScreenManager / async
             // brandAccentHex / nothing, none visible to a content check) are correctly treated as success.
@@ -667,7 +667,7 @@ final class RemoteConfigManager {
         }
     }
 
-    /// SPEC-036-H — fetch each `variant_doc`-referenced per-item variant doc by its EXACT path (never
+    /// Fetch each `variant_doc`-referenced per-item variant doc by its EXACT path (never
     /// via an index — that is the cohort-isolation guarantee) and cache its `config`. Enters `group`
     /// once per doc so `fetchConfigs` waits for them before notifying. Runs only for `per_item` mode
     /// docs; `inline`-mode experiments carry no `variant_doc` and skip this entirely.
@@ -784,7 +784,7 @@ final class RemoteConfigManager {
         }
     }
 
-    // MARK: - SPEC-089c: Screen Index
+    // MARK: - Screen Index
 
     private func parseScreenIndex(_ data: [String: Any]) {
         do {
@@ -850,7 +850,7 @@ final class RemoteConfigManager {
                 }
             }
 
-            // SPEC-036-H — flags + messages now arrive via per-item index, so re-cache them here too
+            // Flags + messages now arrive via per-item index, so re-cache them here too
             // (the old mega-doc handlers cached inline; the per-item parsers don't). Flags stored as the
             // bare map (loadCachedConfigs does `self.flags = dict`); messages wrapped under "messages"
             // (loadCachedConfigs → parseMessages, which unwraps it). Written UNCONDITIONALLY (no !isEmpty
@@ -897,7 +897,7 @@ final class RemoteConfigManager {
         parseItem: @escaping (String, [String: Any]) -> Void,
         parseMegaDoc: @escaping ([String: Any]) -> Void,
         extraIndexParse: (([String: Any]) -> Void)? = nil,
-        // SPEC-036-H — when provided, the index is AUTHORITATIVE: in-memory entries whose key is not in
+        // When provided, the index is AUTHORITATIVE: in-memory entries whose key is not in
         // the current index are pruned (so a removed item stops serving), and an EMPTY index takes the
         // index branch (prune-to-empty) instead of falling back to the mega-doc. Surfaces that previously
         // full-replaced via the mega-doc (flags, messages) pass this so per-item serving keeps the same
@@ -979,7 +979,7 @@ final class RemoteConfigManager {
         return (v is NSNull) ? nil : v
     }
 
-    /// SPEC-036-H — mega-doc flags fallback (`{flags:{key:{value,...}}}`), normalized to raw values
+    /// Mega-doc flags fallback (`{flags:{key:{value,...}}}`), normalized to raw values
     /// (null-valued flags omitted).
     private func parseFlags(_ data: [String: Any]) {
         let unwrapped = (data["flags"] as? [String: Any]) ?? data
@@ -988,7 +988,7 @@ final class RemoteConfigManager {
         queue.async { self.flags = normalized }
     }
 
-    /// SPEC-036-H — per-item flag doc `config/flag_index/flags/{key}` = `{key,value,type,description,updated_at}`.
+    /// Per-item flag doc `config/flag_index/flags/{key}` = `{key,value,type,description,updated_at}`.
     /// Stored as the RAW value under `flags[key]` (what FeatureFlagManager.isEnabled/getValue consume);
     /// a null value unsets the key.
     private func parseSingleFlag(key: String, data: [String: Any]) {
@@ -996,7 +996,7 @@ final class RemoteConfigManager {
         queue.async { self.flags[key] = value }  // nil ⇒ removes the key (Swift dict semantics)
     }
 
-    /// SPEC-036-H — per-item message doc `config/message_index/messages/{id}` (same shape the mega-doc
+    /// Per-item message doc `config/message_index/messages/{id}` (same shape the mega-doc
     /// packed per id). Incremental (matches paywall/onboarding/survey per-item parsers).
     private func parseSingleMessage(id: String, data: [String: Any]) {
         do {
@@ -1112,7 +1112,7 @@ struct ExperimentConfig: Codable {
     let id: String?
     let name: String?
     let status: String? // "running", "paused", "completed"
-    // SPEC-036-F §1.2 — the served `type` (surface kind the experiment targets,
+    // The served `type` (surface kind the experiment targets,
     // e.g. "paywall", "onboarding_flow", "in_app_message", "survey"). Used by the
     // experiment-aware presentation hook to match a running experiment against
     // the surface+entity being presented. Defaulted so the memberwise init
@@ -1205,7 +1205,7 @@ public struct ExperimentVariant: Codable {
     let id: String?
     let weight: Double?
     let payload: [String: AnyCodable]?
-    // SPEC-036-F §1.2 — `config_ref` is the entity id this variant maps to:
+    // `config_ref` is the entity id this variant maps to:
     // for the control it's the live active entity id (rendered via the surface
     // index, no payload); for the treatment it's the materialized draft entity
     // whose renderable config the server inlined into `payload`. `is_control`
@@ -1213,7 +1213,7 @@ public struct ExperimentVariant: Codable {
     // docs that predate the field-map fix and existing memberwise call sites.
     var config_ref: String? = nil
     var is_control: Bool? = nil
-    // SPEC-036-H — `per_item` serving: a POINTER (Firestore doc path) to this treatment's isolated,
+    // `per_item` serving: a POINTER (Firestore doc path) to this treatment's isolated,
     // index-less variant doc (`config/experiment_variants/{expId}/{variantId}`) instead of an
     // inline `payload`. The SDK prefetches the doc by this exact path (never via an index) and renders
     // its `config`. Absent in `inline` mode (036-F) where `payload` carries the config. Defaulted for

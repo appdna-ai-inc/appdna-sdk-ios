@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// SPEC-428 CL-9/D4 — process-wide single upload owner. The in-process flush (EventQueue) and the
+/// Process-wide single upload owner. The in-process flush (EventQueue) and the
 /// background uploader (BackgroundUploader) must be mutually exclusive, else both POST the same rows
 /// concurrently (DUP). A non-blocking claim: whoever holds it uploads; the other skips this cycle.
 enum EventUploadCoordinator {
@@ -111,7 +111,7 @@ enum UploadPauseGate {
 }
 
 /// Manages in-memory + disk event queue with automatic flushing.
-/// SPEC-067: Adaptive batch sizing based on network conditions.
+/// Adaptive batch sizing based on network conditions.
 final class EventQueue {
     private let queue = DispatchQueue(label: "ai.appdna.sdk.eventqueue")
     private let apiClient: APIClient
@@ -120,7 +120,7 @@ final class EventQueue {
     private var batchSizeCap: Int?
     /// Seconds between scheduled flushes. On the main thread (the timer's run loop).
     private var flushInterval: TimeInterval
-    /// SPEC-070-B AC-35 (`backoff_bounded_and_jittered`) — the retry schedule is a STATIC seam, so the
+    /// (`backoff_bounded_and_jittered`) — the retry schedule is a STATIC seam, so the
     /// shared resilience fixture can assert the same three numbers against iOS and Android. As
     /// instance-private `let`s they were unreachable from a test, and the two platforms' schedules
     /// could drift with nothing to notice: bounded backoff is only bounded if somebody checks the
@@ -143,15 +143,15 @@ final class EventQueue {
         let spread = base * jitterFraction
         return max(0, base + TimeInterval.random(in: -spread...spread))
     }
-    // SPEC-428 CL-2/D5: client redelivery horizon — never re-send an event older than this (past the
-    // server dedup window it would double-count). Compiled default 7d, tracking SPEC-426's horizon.
+    // Client redelivery horizon — never re-send an event older than this (past the
+    // server dedup window it would double-count). Compiled default 7d, tracking the horizon.
     private let redeliveryHorizonMs: Int64 = 7 * 24 * 60 * 60 * 1000
 
     private var pendingEvents: [SDKEvent] = []
     private var flushTimer: Timer?
     private var retryCount = 0
     private var consecutiveFailures = 0
-    // SPEC-428 CL-5/D4: single-flush-authority guard (mirrors Android's flushMutex). Set on the serial
+    // Single-flush-authority guard (mirrors Android's flushMutex). Set on the serial
     // `queue`; a second performFlush while a batch is in-flight would grab the same prefix + POST it
     // twice (removal happens only AFTER the async upload awaits).
     private var isFlushing = false
@@ -213,7 +213,7 @@ final class EventQueue {
             name: UIApplication.didEnterBackgroundNotification,
             object: nil
         )
-        // Round-14 F1 — observe foregrounding to CLEAR the consecutive-failure pause latch and retry.
+        // Observe foregrounding to CLEAR the consecutive-failure pause latch and retry.
         // Without this, 5 transient upload failures paused the in-process queue for the REMAINDER of the
         // process's life (consecutiveFailures only reset on a successful upload or a fresh EventQueue), so
         // after a transient ingest outage iOS event delivery stalled until force-quit — while Android
@@ -236,7 +236,7 @@ final class EventQueue {
     static let maxInMemoryEvents = 1000
 
     /// Add an event to the queue. Triggers threshold flush if adaptive batch size reached.
-    /// `onPersisted` (SPEC-428 STEP-4) fires on the serial queue AFTER the event is durably on disk —
+    /// `onPersisted` fires on the serial queue AFTER the event is durably on disk
     /// used by the dropped-meta path to decrement the loss counter only once its meta is safe.
     func enqueue(_ event: SDKEvent, onPersisted: (() -> Void)? = nil) {
         queue.async { [weak self] in
@@ -250,7 +250,7 @@ final class EventQueue {
 
             // Persist to disk immediately
             self.eventStore.save(events: [event])
-            onPersisted?() // SPEC-428 STEP-4: meta now durable → safe to decrement the drop counter
+            onPersisted?() // Meta now durable → safe to decrement the drop counter
 
             // Check adaptive threshold. A threshold flush keeps the failure pause: during an
             // outage every `track()` reaching the batch size would otherwise run a full upload cycle.
@@ -329,7 +329,7 @@ final class EventQueue {
         performFlush()
     }
 
-    /// SPEC-424 STEP-1a (CL-7): purge ALL pending events (in-memory + on-disk) WITHOUT uploading —
+    /// Purge ALL pending events (in-memory + on-disk) WITHOUT uploading
     /// called when analytics consent is revoked so queued-but-unsent events are never transmitted.
     /// A server-side consent gate is defeated if the SDK later flushes events captured while consent
     /// was true, so revoke must drop them at the source.
@@ -376,7 +376,7 @@ final class EventQueue {
     }
 
     @objc private func appWillEnterForeground() {
-        // Round-14 F1 — clear the failure-pause latch on foreground so a queue paused by a transient
+        // Clear the failure-pause latch on foreground so a queue paused by a transient
         // outage resumes (mirrors Android onAppForeground: paused=false; consecutiveFailures=0), then
         // attempt a drain. Reset on the serial queue to stay consistent with all other failure-count writes.
         queue.async { [weak self] in
@@ -478,14 +478,14 @@ final class EventQueue {
         backgroundTask = .invalid
     }
 
-    /// SPEC-428 CL-2/D5: drop events past the redelivery horizon before any flush — re-sending them
-    /// past the server dedup window would double-count. The drop is counted (CL-1).
+    /// Drop events past the redelivery horizon before any flush — re-sending them
+    /// past the server dedup window would double-count. The drop is counted.
     private func pruneStaleEvents() {
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         // Remove stale from the in-memory working set only (NO count here); eventStore.pruneStale is the
         // SINGLE, meta-aware count source (the persisted copies of these events live on disk), so the loss
         // metric can't be double-incremented by the in-process flush AND the background upload both pruning.
-        // SPEC-070-B PN row 19 (W14): the same clock-jump clamp the store uses — otherwise the
+        // The same clock-jump clamp the store uses — otherwise the
         // in-memory set and the disk set disagree about what is stale.
         pendingEvents.removeAll { EventStore.isStale(tsMs: $0.ts_ms, nowMs: nowMs, horizonMs: redeliveryHorizonMs) }
         eventStore.pruneStale(horizonMs: redeliveryHorizonMs)
@@ -503,14 +503,14 @@ final class EventQueue {
             return
         }
 
-        // SPEC-067: Skip flush if no network
+        // Skip flush if no network
         let currentBatchSize = effectiveBatchSize
         guard currentBatchSize > 0 else {
             Log.debug("No network — skipping flush, \(pendingEvents.count) events queued")
             return
         }
 
-        // SPEC-428 CL-5: only one flush may be in-flight — otherwise a timer/threshold/retry/background
+        // Only one flush may be in-flight — otherwise a timer/threshold/retry/background
         // flush grabs the same prefix before the async removal and POSTs it twice.
         guard !isFlushing else {
             Log.debug("Flush already in progress — skipping overlapping flush")
@@ -518,7 +518,7 @@ final class EventQueue {
         }
         isFlushing = true
 
-        // SPEC-428 CL-9/D4: also claim the cross-path upload owner so the background uploader cannot
+        // Also claim the cross-path upload owner so the background uploader cannot
         // POST the same batch concurrently. If the background path holds it, back off this cycle.
         guard EventUploadCoordinator.tryAcquire() else {
             isFlushing = false
@@ -557,8 +557,8 @@ final class EventQueue {
 
         guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else {
             Log.error("Failed to serialize event batch")
-            isFlushing = false // CL-5: release the guard on this early-return path
-            EventUploadCoordinator.release() // CL-9: release the cross-path claim
+            isFlushing = false // Release the guard on this early-return path
+            EventUploadCoordinator.release() // Release the cross-path claim
             return
         }
 
@@ -601,7 +601,7 @@ final class EventQueue {
                     self.pendingEvents.removeAll { eventIds.contains($0.event_id) }
                     self.eventStore.removeSent(eventIds: eventIds)
                     EventUploadCoordinator.markResolved(eventIds)
-                    // Round-31 — INCREMENT the failure latch (was: jump straight to
+                    // INCREMENT the failure latch (was: jump straight to
                     // maxConsecutiveFailures). The poison batch is already dropped above, so a
                     // single 400 (one malformed event) must NOT pause the whole queue for the
                     // session — that stalled every subsequent HEALTHY event until foreground.
@@ -646,10 +646,10 @@ final class EventQueue {
                         }
                     }
                 }
-                // SPEC-428 CL-5: release the single-flush guard once this batch's upload is resolved
+                // Release the single-flush guard once this batch's upload is resolved
                 // (success removal, permanent-fail pause, or retry scheduled).
                 self.isFlushing = false
-                EventUploadCoordinator.release() // SPEC-428 CL-9: release the cross-path upload claim
+                EventUploadCoordinator.release() // Release the cross-path upload claim
                 Self.uploadActivity.end()
             }
         }
