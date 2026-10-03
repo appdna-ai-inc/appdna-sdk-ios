@@ -140,7 +140,7 @@ enum OnboardingStepPipeline {
                 let outcome = decodeWithRevert(r, seam: input.decodeSeam)
                 reverted.append(contentsOf: outcome.reverted)
                 if !outcome.reverted.isEmpty {
-                    log.append("SPEC-496 decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
+                    log.append("Host data decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
                 }
                 if let block = outcome.block {
                     typed.append(block)
@@ -367,7 +367,7 @@ enum OnboardingStepPipeline {
                     codingPath: su.map { p -> CodingKey in
                         switch p { case .key(let k): return HostCodingKey(stringValue: k); case .index(let i): return HostCodingKey(intValue: i) }
                     },
-                    debugDescription: "SPEC-496 fixture decode seam"
+                    debugDescription: "Host data fixture decode seam"
                 ))
             }
             return try decodeBlock(.object(current))
