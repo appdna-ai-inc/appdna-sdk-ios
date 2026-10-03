@@ -181,31 +181,39 @@ final class EventStoreFaultTests: XCTestCase {
     /// A compaction whose read fails drops nothing and counts nothing; the next one drops and counts
     /// the same events once.
     func testACompactionWhoseReadFailsDropsAndCountsNothing() {
+        // The disk quota drives the compaction here: the count cap is enforced on append (a removal record, no read).
+        let probe = EventStore(fileName: newFile("compact-read-probe"))
+        probe.save(events: backlog(10))
+        let perEvent = probe.liveBytesForTesting / 10
         let file = newFile("compact-read")
-        let store = EventStore(maxEvents: 10, compactionInterval: 1, fileName: file)
-        let events = backlog(10)
-        store.save(events: events)
+        let store = EventStore(maxEvents: 10_000, compactionInterval: 1, fileName: file, maxDiskBytes: perEvent * 12)
+        store.save(events: backlog(10))
         EventStore.faultsForTesting.failRangeReads = [file]
-        store.save(events: backlog(5))                         // 15 > 10: a compaction that cannot read
+        store.save(events: backlog(5))                         // over the quota: a compaction that cannot read
         XCTAssertEqual(DroppedEventsCounter.peek(), 0, "a compaction that dropped nothing counted a loss")
+        XCTAssertEqual(store.pendingCount, 15)
         EventStore.faultsForTesting.failRangeReads = []
-        store.save(events: [EventStoreBacklogTests.event("next")]) // 16 > 10: the compaction that can
-        XCTAssertEqual(DroppedEventsCounter.peek(), 6, "the 6 dropped events must be counted exactly once")
-        XCTAssertEqual(store.pendingCount, 10)
+        store.save(events: [EventStoreBacklogTests.event("next")]) // the compaction that can
+        XCTAssertLessThanOrEqual(store.pendingCount, 12)
+        XCTAssertGreaterThan(DroppedEventsCounter.peek(), 0)
+        XCTAssertEqual(DroppedEventsCounter.peek(), 16 - store.pendingCount, "the dropped events must be counted exactly once")
     }
 
     /// The write half: a rewrite that never reaches the disk gives the count back.
     func testACompactionWhoseWriteFailsGivesTheCountBack() {
+        let probe = EventStore(fileName: newFile("compact-write-probe"))
+        probe.save(events: backlog(10))
+        let perEvent = probe.liveBytesForTesting / 10
         let file = newFile("compact-write")
-        let store = EventStore(maxEvents: 10, compactionInterval: 1, fileName: file)
+        let store = EventStore(maxEvents: 10_000, compactionInterval: 1, fileName: file, maxDiskBytes: perEvent * 12)
         store.save(events: backlog(10))
         EventStore.faultsForTesting.writesAllowed = [file: 1]  // the append lands, the rewrite does not
         store.save(events: backlog(3))
         XCTAssertEqual(DroppedEventsCounter.peek(), 0, "a rewrite that failed left its loss counted")
         EventStore.faultsForTesting.writesAllowed = [:]
         store.save(events: [EventStoreBacklogTests.event("next")])
-        XCTAssertEqual(DroppedEventsCounter.peek(), 4)
-        XCTAssertEqual(store.pendingCount, 10)
+        XCTAssertLessThanOrEqual(store.pendingCount, 12)
+        XCTAssertEqual(DroppedEventsCounter.peek(), 14 - store.pendingCount)
     }
 
     /// Opening the file for appending fails while it exists: nothing may overwrite it (the fallback

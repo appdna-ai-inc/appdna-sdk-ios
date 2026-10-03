@@ -10,7 +10,6 @@ enum Endpoint {
     case restorePurchases(body: [String: Any])
     /// `GET /billing/entitlements?app_user_id=` — the server's entitlements for one identified user.
     case getEntitlements(appUserId: String)
-    case signOffer(body: [String: Any])
     // Push endpoints
     case registerPushToken(body: [String: Any])
     case deactivatePushToken(body: [String: Any])
@@ -34,7 +33,6 @@ enum Endpoint {
             allowed.remove(charactersIn: "&+=?#")
             let encoded = appUserId.addingPercentEncoding(withAllowedCharacters: allowed) ?? appUserId
             return "/api/v1/billing/entitlements?app_user_id=\(encoded)"
-        case .signOffer:            return "/api/v1/billing/offers/sign"
         case .registerPushToken:    return "/api/v1/push/token"
         case .deactivatePushToken:  return "/api/v1/push/token"
         case .pushDelivered:        return "/api/v1/push/delivered"
@@ -64,7 +62,6 @@ enum Endpoint {
         case .verifyReceipt:        return "POST"
         case .restorePurchases:     return "POST"
         case .getEntitlements:      return "GET"
-        case .signOffer:            return "POST"
         case .registerPushToken:    return "POST"
         case .deactivatePushToken:  return "DELETE"
         case .pushDelivered:        return "POST"
@@ -79,7 +76,6 @@ enum Endpoint {
         switch self {
         case .verifyReceipt(let body):       return body
         case .restorePurchases(let body):     return body
-        case .signOffer(let body):            return body
         case .registerPushToken(let body):    return body
         case .deactivatePushToken(let body):  return body
         case .pushDelivered(let body):        return body

@@ -1449,7 +1449,8 @@ public struct OnboardingContext {
 
 /// Options for a billing purchase operation.
 public struct PurchaseOptions {
-    /// Promotional offer payload, if applicable.
+    /// Not applied: the SDK does not pass a promotional offer to StoreKit (a purchase with one is made at the
+    /// regular price). Kept for source compatibility.
     public let promotionalOffer: PromotionalOfferPayload?
     /// Application-specific account token for fraud detection.
     public let appAccountToken: UUID?
