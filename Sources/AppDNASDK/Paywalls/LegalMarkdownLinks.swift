@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-485 (#649) — inline `[label](url)` links in paywall **legal** text.
+/// Inline `[label](url)` links in paywall **legal** text.
 ///
 /// This lived as a `private func` on `PaywallRenderer`, so the OTHER legal renderer —
 /// `LegalSectionView` in `Screens/Sections/PaywallSectionWrapperImpl.swift`, used when a paywall

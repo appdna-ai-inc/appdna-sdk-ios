@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-// MARK: - Global modal mutex + queue for SPEC-089c (SDUI engine prerequisite)
+// MARK: - Global modal mutex + queue (SDUI engine prerequisite)
 // Ensures only one modal (paywall, onboarding, SDUI screen, message, survey)
 // is presented at a time, with priority-based queuing.
 

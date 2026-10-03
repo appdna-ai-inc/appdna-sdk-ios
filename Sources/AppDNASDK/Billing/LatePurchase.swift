@@ -284,7 +284,7 @@ enum LatePurchaseProcessor {
                 isSubscription: env.result.isSubscription,
                 environment: facts.environment
             )
-            // Q1 — the reported set and the queue entry in ONE write, before the emit.
+            // The reported set and the queue entry in ONE write, before the emit.
             await queue.recordReport(entry)
             if let tracker {
                 PurchaseSuccessEvents.emit(tracker: tracker, properties: props, isSubscription: env.result.isSubscription)

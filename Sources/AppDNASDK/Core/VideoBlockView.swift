@@ -26,7 +26,7 @@ public struct VideoBlockView: View {
     public var body: some View {
         ZStack {
             if let player = player, !showThumbnail {
-                // Round-16 — honor `controls` and `loop` (both were decoded but ignored: SwiftUI's
+                // Honor `controls` and `loop` (both were decoded but ignored: SwiftUI's
                 // VideoPlayer always shows transport controls and has no loop hook, so iOS played once
                 // and always showed controls while Android honored both). AVPlayerViewController lets us
                 // suppress controls; a didPlayToEndTime observer restarts the video when loop is set.
@@ -77,7 +77,7 @@ public struct VideoBlockView: View {
             }
         }
         .onAppear {
-            // Round-17/18 — actually AUTOPLAY: `player` used to stay nil until a tap, so autoplay:true
+            // Actually AUTOPLAY: `player` used to stay nil until a tap, so autoplay:true
             // fell to the thumbnail and never played (Android honors playWhenReady=autoplay). Create it
             // HERE (once, on appear) rather than in init — `State(initialValue: AVPlayer(url:))` isn't an
             // autoclosure, so a SwiftUI View re-init would eagerly construct + discard an AVPlayer every

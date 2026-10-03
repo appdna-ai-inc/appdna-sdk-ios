@@ -2,7 +2,7 @@ import SwiftUI
 import PhotosUI
 import UIKit
 
-/// SPEC-401-A — SwiftUI renderers for the form-field types that previously
+/// SwiftUI renderers for the form-field types that previously
 /// existed in the schema (`flow.schema.ts FORM_FIELD_TYPES`) but had no iOS
 /// implementation. Each view is a thin wrapper that reads/writes the bound
 /// `Any?` value used by `FormStepView`.
@@ -132,7 +132,7 @@ struct RangeSliderFieldView: View {
         let maxV = cfg?.max_value ?? 100
         let unit = cfg?.unit ?? ""
         let decimalPlaces = cfg?.decimal_places ?? 0
-        // Round-25 — honor the authored step (like the single field slider FormStepView:415 + Android
+        // Honor the authored step (like the single field slider FormStepView:415 + Android
         // FormFieldRendererExtras.kt:302). This range slider snapped continuously while Android snapped
         // to the step grid — the same drag produced different captured values.
         let stepV: Double = { let s = cfg?.step ?? 1; return s > 0 ? s : 1 }()
@@ -165,7 +165,7 @@ struct RangeSliderFieldView: View {
             // Stacked sliders — SwiftUI lacks a native range slider, so we
             // use two coupled sliders that clamp each other.
             VStack(spacing: 4) {
-                // SPEC-419 pass-28 — guard the ClosedRange against an inverted/degenerate config
+                // Guard the ClosedRange against an inverted/degenerate config
                 // (min_value > max_value) or a coupled value out of order, mirroring FormInputRangeSliderBlock.
                 Slider(value: low, in: minV...max(minV, high.wrappedValue), step: stepV)
                 Slider(value: high, in: min(maxV, low.wrappedValue)...maxV, step: stepV)

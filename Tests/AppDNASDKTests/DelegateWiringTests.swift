@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-400 Phase 2 — verify each newly-wired delegate fires from the
+/// Verify each newly-wired delegate fires from the
 /// public `AppDNA.<module>.delegate` slot. Like the paywall bridge
 /// tests, we exercise the contract through the public setDelegate APIs
 /// rather than constructing internal managers; the end-to-end wiring
@@ -192,7 +192,7 @@ private final class PushRecorder: AppDNAPushDelegate {
     var tokens: [String] = []
     func onPushTokenRegistered(token: String) { tokens.append(token) }
     // onPushReceived / onPushTapped left to default extension (no-op);
-    // those callbacks are wired pre-SPEC-400 and tested elsewhere.
+    // those callbacks are wired earlier and tested elsewhere.
 }
 
 private final class ScreenRecorder: AppDNAScreenDelegate {

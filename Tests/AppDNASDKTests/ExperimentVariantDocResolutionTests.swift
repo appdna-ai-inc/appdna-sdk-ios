@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-036-H — `resolveSurfacePresentation` per-item variant-doc serving.
+/// `resolveSurfacePresentation` per-item variant-doc serving.
 ///
 /// In `per_item` mode the experiments doc carries a `variant_doc` POINTER (a Firestore path) instead of
 /// an inline `payload`; the SDK prefetches that doc's `config` into `RemoteConfigManager` and resolves

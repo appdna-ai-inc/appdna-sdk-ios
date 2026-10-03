@@ -1,7 +1,7 @@
 import Foundation
 import Network
 
-/// SPEC-067: Network condition monitoring for adaptive batch sizing.
+/// Network condition monitoring for adaptive batch sizing.
 /// Wraps NWPathMonitor to expose current connection type.
 final class NetworkMonitor {
     /// Shared singleton instance.

@@ -54,7 +54,7 @@ private struct ContentBlocksSectionView: View {
         )
     }
 
-    /// Validate required form fields before allowing next/submit (AC-130, AC-131, AC-132)
+    /// Validate required form fields before allowing next/submit
     private func validateFormFields() -> Bool {
         for block in blocks {
             let blockType = block.type.rawValue
@@ -71,7 +71,7 @@ private struct ContentBlocksSectionView: View {
                 }
             }
 
-            // Pattern validation (AC-131)
+            // Pattern validation
             if let config = block.field_config as? [String: Any],
                let pattern = config["pattern"] as? String,
                let value = inputValues[fieldId] as? String,

@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-496 §A1 — the RAW step JSON, kept beside the typed model.
+/// The RAW step JSON, kept beside the typed model.
 ///
 /// 🔴 NOT `AnyCodable`. `AnyCodable.encode` checks `as Bool` FIRST, and an `NSNumber` 0 or 1 passes
 /// that cast — so a raw block round-tripped through it comes back with `"max": true` where the
@@ -44,7 +44,7 @@ indirect enum HostJSON: Codable, Equatable {
     }
 
     /// Foundation graph → HostJSON. Booleans are told apart from numbers by `CFBoolean` TYPE
-    /// IDENTITY (§A1 "Stringification": an `NSNumber` 1 is the integer 1, never `true`).
+    /// IDENTITY ("Stringification": an `NSNumber` 1 is the integer 1, never `true`).
     init(any: Any?) {
         guard let v = any else { self = .null; return }
         switch v {

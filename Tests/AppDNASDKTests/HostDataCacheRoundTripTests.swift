@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-496 §A1 "iOS cache round trip" (`ios_cache_round_trip_keeps_raw`).
+/// "iOS cache round trip" (`ios_cache_round_trip_keeps_raw`).
 ///
 /// iOS rewrites its onboarding cache by encoding the TYPED `OnboardingFlowConfig`, and the typed model
 /// drops `data_templates`. `OnboardingStep.encode` therefore writes `raw_content_blocks` verbatim, and

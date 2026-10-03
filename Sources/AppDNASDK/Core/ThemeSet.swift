@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// SPEC-205: Theme variants for light / dark mode.
+/// Theme variants for light / dark mode.
 ///
 /// Generic wrapper that allows ANY theme-shaped Codable to be specified
 /// either as a flat object (legacy — treated as light) or as a

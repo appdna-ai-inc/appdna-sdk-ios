@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- SPEC-485 (#649) — the paywall legal `[label](url)` parser.
+ The paywall legal `[label](url)` parser.
 
  This is the function both iOS legal renderers now call. It used to be a `private func` on
  `PaywallRenderer`, unreachable from `LegalSectionView` in the Screens/Sections wrapper, which

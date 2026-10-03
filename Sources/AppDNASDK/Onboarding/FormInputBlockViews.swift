@@ -1,14 +1,14 @@
 import SwiftUI
 import MapKit
 import PhotosUI
-// MARK: - Form Input Block Views (SPEC-089d Phase 3: AC-040 through AC-053)
+// MARK: - Form Input Block Views
 
 /// Helper view to render a form field label above the input control.
 struct FormFieldLabelView: View {
     let block: ContentBlock
 
     var body: some View {
-        // SPEC-439 (#546) — `label_position: "hidden"` was IGNORED here, so a label the
+        // `label_position: "hidden"` was IGNORED here, so a label the
         // author hid in the console still rendered on device. The console has offered this
         // control for months and it did nothing on either native; the web preview honoured
         // it, so the editor showed one thing and the device another.
@@ -23,7 +23,7 @@ struct FormFieldLabelView: View {
             // top-level), default .subheadline (~15pt). Parity with Android
             // FormFieldLabel (field_style?.label_font_size ?: 15sp). Was hardcoded.
             let labelSize = block.field_style?.label_font_size ?? block.label_font_size
-            // SPEC-439 (#546) — label_font_family + label_align were missing entirely.
+            // label_font_family + label_align were missing entirely.
             let family = block.field_style?.label_font_family
             let baseFont: Font = {
                 if let f = family, !f.isEmpty {
@@ -104,7 +104,7 @@ func fieldHeight(_ block: ContentBlock) -> CGFloat? {
     return cfgDouble(block.field_config?["field_height"]).map { CGFloat($0) }
 }
 
-/// SPEC-419 — effective field border width. When the block ALREADY draws a container
+/// Effective field border width. When the block ALREADY draws a container
 /// border (block_style.border_width > 0 — e.g. the login input blocks author a capsule
 /// outline via applyBlockStyle), the field must NOT add its own or the two outlines stack
 /// into a double border. Parity with Android FormInput*Block.
@@ -132,7 +132,7 @@ struct FormInputTextBlock: View {
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         // Always use UIKitTextField — SwiftUI TextField has focus/dark mode issues.
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String
-        // SPEC-419 pass-16 #4 — honor field_config.input_text_size (preferred) /
+        // Honor field_config.input_text_size (preferred) /
         // font_size (default 14), mirroring preview precedence. Was no font set +
         // a fixed inner height of 24 that clipped larger fonts.
         let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
@@ -186,11 +186,11 @@ struct FormInputTextAreaBlock: View {
         let borderColor = Color(hex: block.field_style?.border_color ?? "#D1D5DB")
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         let minLines = (block.field_config?["min_lines"]?.value as? Int) ?? 3
-        // SPEC-419 pass-19 #2 — honor field_config.field_height as an additional minimum
+        // Honor field_config.field_height as an additional minimum
         // (the editor shows "Field Height" for textarea too). min_lines stays the floor.
         let minLinesHeight = CGFloat(minLines * 22)
         let textAreaMinHeight = max(minLinesHeight, fieldHeight(block) ?? 0)
-        // SPEC-419 pass-15 #14 — honor field_style.text_color + placeholder_color (Android + preview already do).
+        // Honor field_style.text_color + placeholder_color (Android + preview already do).
         let textColor = block.field_style?.text_color.map { Color(hex: $0) }
         let placeholderColor = Color(hex: block.field_style?.placeholder_color ?? "#9CA3AF")
 
@@ -239,7 +239,7 @@ struct FormInputPasswordBlock: View {
         let borderColor = Color(hex: block.field_style?.border_color ?? "#D1D5DB")
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String
-        // SPEC-419 pass-17 — mirror FormInputTextBlock font sizing onto the password sibling.
+        // Mirror FormInputTextBlock font sizing onto the password sibling.
         let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
 
         VStack(alignment: .leading, spacing: 6) {
@@ -296,12 +296,12 @@ struct FormInputDateBlock: View {
     // Pre-warm state: an offscreen hidden wheel forces UIKit's UIPickerView
     // subsystem to init eagerly so the first tap → sheet open isn't laggy.
     @State private var prewarmDate = Date()
-    // Round-10 #6 — allow_future/allow_past validation message for the form-input date variant.
+    // allow_future/allow_past validation message for the form-input date variant.
     @State private var dateError: String?
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-419 pass-15 #34 — honor highlight_color first (editor + preview key); fall back to fill_color/active_color.
+        // Honor highlight_color first (editor + preview key); fall back to fill_color/active_color.
         let accentColor = Color(hex: block.highlight_color ?? block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Dark theme detection: explicit color_scheme override, else auto-detect
         // from text_color being a light color (onboarding flows with dark
@@ -375,7 +375,7 @@ struct FormInputDateBlock: View {
         }()
         let compactHeight: CGFloat? = (numericHeight ?? semanticHeight).map { CGFloat($0) }
 
-        // SPEC-419 pass-16 #11/#12 — honor picker_border_color/_width/_corner_radius/_padding
+        // Honor picker_border_color/_width/_corner_radius/_padding
         // + wheel_text_color on ALL date variants (was standalone date_wheel_picker only).
         // Mirrors editor field_config keys + preview OnboardingStepPreview.tsx:2576-2580.
         let pickerCornerRadius = CGFloat((cfgDouble(block.field_config?["picker_corner_radius"])) ?? 12)
@@ -516,7 +516,7 @@ struct FormInputDateBlock: View {
             )
             .environment(\.colorScheme, resolvedScheme ?? .light)
             .onChange(of: selectedDate) { newValue in
-                // Round-10 #6 — enforce allow_future / allow_past on the form-input date variant,
+                // Enforce allow_future / allow_past on the form-input date variant,
                 // matching Android's FormInputDateBlock and iOS's own DateWheelPickerBlockView. Before
                 // this, input_date silently accepted any date. An out-of-range pick is NOT committed
                 // (so the required gate still blocks the step) and surfaces the inline message.
@@ -567,35 +567,35 @@ struct FormInputSelectBlock: View {
     @Binding var inputValues: [String: Any]
 
     @State private var selectedValue: String = ""
-    // Round-11 Finding 3 — an ordered [String] (append-on-select, acting as an ordered set) so the
+    // An ordered [String] (append-on-select, acting as an ordered set) so the
     // written array preserves SELECTION order, matching Android's LinkedHashSet. A Swift Set is
     // hash-ordered and non-deterministic across runs, so `Array(Set)` produced arbitrary ordering.
     @State private var selectedValues: [String] = []
-    /// SPEC-441 (#541) — the active category chip. Empty means "first chip".
+    /// The active category chip. Empty means "first chip".
     @State private var activeCategory: String = ""
-    /// SPEC-444 (#540, #542) — the option whose bottom sheet is presented, if any.
+    /// The option whose bottom sheet is presented, if any.
     @State private var sheetOption: InputOption? = nil
-    // SPEC-448 (#556) — options fetched for this block's Option Set. Empty until a refresh lands,
+    // Options fetched for this block's Option Set. Empty until a refresh lands,
     // which is why the ladder falls back to `field_options` rather than waiting on it.
     @State private var dynamicOptions: [InputOption] = []
-    // SPEC-448 — the search box. `searchResults` is nil when no search is active, which is a
+    // The search box. `searchResults` is nil when no search is active, which is a
     // different state from "searched and found nothing" and must render differently.
     @State private var searchText: String = ""
     @State private var searchResults: [InputOption]? = nil
     @State private var isSearching: Bool = false
     @State private var searchTask: Task<Void, Never>? = nil
-    // SPEC-448 — paging. `nextCursor` nil means "no more, or not started"; `isPaging` stops a
+    // paging. `nextCursor` nil means "no more, or not started"; `isPaging` stops a
     // burst of onAppear callbacks from firing several identical requests for the same page.
     @State private var nextCursor: String? = nil
     @State private var isPaging: Bool = false
-    /// SPEC-496 §B0 — the in-memory query for an AUTHORED / repeat list. Stored as the query, not
+    /// The in-memory query for an AUTHORED / repeat list. Stored as the query, not
     /// as results, so the filter re-runs whenever the resolved `field_options` change (host data
     /// landing mid-search), not only on a keystroke.
     @State private var localQuery: String = ""
-    /// SPEC-496 — this block came out of the raw host-data pass (markers honoured, sheets not re-scanned).
+    /// This block came out of the raw host-data pass (markers honoured, sheets not re-scanned).
     @SwiftUI.Environment(\.appdnaRawResolved) private var rawResolved: Bool
 
-    /// SPEC-496 §A3 — `empty_state` (text in place of the options) on a raw-pass block.
+    /// `empty_state` (text in place of the options) on a raw-pass block.
     private var emptyStateText: String? {
         guard let es = OnboardingStepPipeline.emptyState(block, rawResolved: rawResolved), es.mode == "text" else { return nil }
         return es.text
@@ -610,7 +610,7 @@ struct FormInputSelectBlock: View {
     private var optionSetId: String? { Self.optionSetId(of: block) }
 
     /// The Option Set a Select would load (and query) — nil/empty when host `fieldOptions` stripped
-    /// it (§A4). Static so the fixture runner reads the same field the view's `.task` keys on.
+    /// it. Static so the fixture runner reads the same field the view's `.task` keys on.
     static func optionSetId(of block: ContentBlock) -> String? {
         block.field_config?["option_set_id"]?.value as? String
     }
@@ -634,14 +634,14 @@ struct FormInputSelectBlock: View {
         (block.field_config?["display_style"]?.value as? String) ?? "dropdown"
     }
 
-    /// SPEC-442 (#552) — the GLOBAL selected-border colour. It existed per-option only, so
+    /// The GLOBAL selected-border colour. It existed per-option only, so
     /// matching the selected border across N options meant editing N options by hand. A
     /// per-option `selected_border_color` still wins; this is the shared fallback.
     private var globalSelectedBorderHex: String? {
         block.field_config?["selected_border_color"]?.value as? String
     }
 
-    // SPEC-442 sweep — the remaining per-option styling fields that had no global. Same defect
+    // Sweep — the remaining per-option styling fields that had no global. Same defect
     // shape as Selected Border: consistency meant editing every option by hand. Per-option wins.
     private var globalTextAlignment: String? { block.field_config?["text_alignment"]?.value as? String }
     private var globalTitleWeight: String? { block.field_config?["title_font_weight"]?.value as? String }
@@ -653,7 +653,7 @@ struct FormInputSelectBlock: View {
             ?? (block.field_config?["image_overlay_opacity"]?.value as? Int).map(Double.init)
     }
 
-    // MARK: - SPEC-441 (#541) — category chips
+    // MARK: - category chips
 
     /// A scrollable row of chips above the options; the active chip filters what shows.
     /// Authored as `field_config.categories` = [{ id, label, icon? }].
@@ -723,7 +723,7 @@ struct FormInputSelectBlock: View {
         }
     }
 
-    /// SPEC-448 §C — progress is shown INSIDE the search field and nowhere else.
+    /// Progress is shown INSIDE the search field and nowhere else.
     ///
     /// A spinner over the list would say "this screen is loading", which is false: the list is
     /// right there and still usable while a search is in flight. The rule the whole feature is
@@ -760,7 +760,7 @@ struct FormInputSelectBlock: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    /// SPEC-448 — fetch the next page when the user reaches the end of the list.
+    /// Fetch the next page when the user reaches the end of the list.
     ///
     /// Triggered by the LAST rendered option appearing rather than by a scroll offset: offsets
     /// differ per display style (a grid, a stacked list and a dropdown all scroll differently) and
@@ -823,7 +823,7 @@ struct FormInputSelectBlock: View {
 
         guard let setId = optionSetId, !setId.isEmpty else {
             // A locally-authored list is searched in memory. No network, no spinner, and it works
-            // with no Option Set at all. SPEC-496 — the QUERY is kept, and the filter runs at read
+            // with no Option Set at all. The QUERY is kept, and the filter runs at read
             // time over the current resolved options (see `localQuery`).
             searchResults = nil
             localQuery = trimmed
@@ -849,7 +849,7 @@ struct FormInputSelectBlock: View {
     }
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-448 (#556) — a Select can source its options from an Option Set instead of the
+        // A Select can source its options from an Option Set instead of the
         // authored list. The ladder is cache → embedded page → authored, resolved synchronously
         // so the FIRST frame has something real: making this await would put the network on the
         // render path, which is exactly the "looks like it is fetching" the spec forbids.
@@ -865,7 +865,7 @@ struct FormInputSelectBlock: View {
             }
             return dynamicOptions.isEmpty ? (block.field_options ?? []) : dynamicOptions
         }()
-        // SPEC-441 (#541) — the active chip filters what the Select shows.
+        // The active chip filters what the Select shows.
         let options = optionsForActiveCategory(sourced)
 
         VStack(alignment: .leading, spacing: 6) {
@@ -873,7 +873,7 @@ struct FormInputSelectBlock: View {
             categoryChipRow
 
             if let emptyText = emptyStateText {
-                // SPEC-496 §A3 — a §B0-scoped Select with nothing to pick shows its empty text.
+                // A host-data-scoped Select with nothing to pick shows its empty text.
                 Text(emptyText)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -897,7 +897,7 @@ struct FormInputSelectBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        // SPEC-444 (#540, #542) — an option that owns sheet_blocks opens them in a bottom
+        // An option that owns sheet_blocks opens them in a bottom
         // sheet when picked. The blocks render through the ordinary renderer, which is what
         // lets one engine serve both the chooser and the detail screens.
         .sheet(item: $sheetOption) { opt in
@@ -912,7 +912,7 @@ struct FormInputSelectBlock: View {
                 selectedValues = saved
             }
         }
-        // SPEC-496 §B0 — the step cleared a selection its rendered options no longer contain:
+        // The step cleared a selection its rendered options no longer contain:
         // follow it, so the view's selected state and `inputValues` never disagree.
         // A value of a type this view cannot show (a host-patched `2`) leaves the view state alone —
         // mapping it to "" would fire the dropdown's write-back and clobber the host's answer.
@@ -924,7 +924,7 @@ struct FormInputSelectBlock: View {
                 selectedValue = single; selectedValues = []
             }
         }
-        // SPEC-448 (#556) — refresh the set AFTER the first frame has drawn. `.task` runs once the
+        // Refresh the set AFTER the first frame has drawn. `.task` runs once the
         // view is on screen, so the list the user sees is whatever the ladder already had; when a
         // fresher one arrives it swaps in. Nothing here blocks a render, which is the difference
         // between a list that is occasionally a moment stale and one that visibly loads.
@@ -948,7 +948,7 @@ struct FormInputSelectBlock: View {
         }
     }
 
-    // MARK: - List / separators (EPIC-1)
+    // MARK: - List / separators
 
     @ViewBuilder
     private func listSelectView(options: [InputOption], fieldId: String) -> some View {
@@ -956,7 +956,7 @@ struct FormInputSelectBlock: View {
         let accentHex = block.field_style?.fill_color ?? block.field_style?.focused_border_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
         let fillCol = Color(hex: accentHex)
         let separatorCol = (cfg?["separator_color"]?.value as? String).map { Color(hex: $0) } ?? Color(hex: "#D1D5DB")
-        // SPEC-419 pass-24 — separator_thickness (console Slider 0–4, default 1) drives the
+        // separator_thickness (console Slider 0–4, default 1) drives the
         // divider height; thickness was previously hardcoded to 1pt.
         let separatorThickness = CGFloat((cfgDouble(cfg?["separator_thickness"])) ?? 1)
         let textCol: Color = (cfg?["text_color"]?.value as? String).map { Color(hex: $0) } ?? block.field_style?.text_color.map { Color(hex: $0) } ?? .primary
@@ -1005,7 +1005,7 @@ struct FormInputSelectBlock: View {
         }
     }
 
-    // MARK: - Bubble / chip (EPIC-1)
+    // MARK: - Bubble / chip
 
     @ViewBuilder
     private func bubbleSelectView(options: [InputOption], fieldId: String) -> some View {
@@ -1045,7 +1045,7 @@ struct FormInputSelectBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Image-fill tiles (EPIC-1)
+    // MARK: - Image-fill tiles
 
     @ViewBuilder
     private func imageTilesSelectView(options: [InputOption], fieldId: String) -> some View {
@@ -1057,14 +1057,14 @@ struct FormInputSelectBlock: View {
         let unselectedBorderCol: Color = cfgOptBorder ?? block.field_style?.border_color.map { Color(hex: $0) } ?? Color(hex: "#D1D5DB")
         let cols = max(Int((cfgDouble(cfg?["grid_columns"])) ?? 2), 1)
         let tileHeight = CGFloat((cfgDouble(cfg?["tile_height"])) ?? 140)
-        // SPEC-419 pass-24 — tile_aspect_ratio ("W:H", console Select 1:1/4:3/16:9/3:4) sizes the
+        // tile_aspect_ratio ("W:H", console Select 1:1/4:3/16:9/3:4) sizes the
         // tile by its (flexible) width × the ratio. When set it overrides the fixed tile_height;
         // falls back to tile_height when unset.
         let tileAspect = parseAspectRatio(cfg?["tile_aspect_ratio"]?.value as? String)
         let selectedBorderW = CGFloat((cfgDouble(cfg?["selected_border_width"])) ?? 2)
         let unselectedBorderW = CGFloat((cfgDouble(cfg?["unselected_border_width"])) ?? 1)
         let spacing = CGFloat((cfgDouble(cfg?["option_spacing"])) ?? 8)
-        // SPEC-447 (#555) — where the TEXT sits relative to the image. `full_bleed` is the default
+        // Where the TEXT sits relative to the image. `full_bleed` is the default
         // and renders exactly as before; the other two give the label a surface of its own instead
         // of relying on a scrim to dim the photograph.
         let tileLayout = (cfg?["tile_image_layout"]?.value as? String) ?? "full_bleed"
@@ -1112,7 +1112,7 @@ struct FormInputSelectBlock: View {
                     // Selected uses selected_image_overlay_* (falls back to base). Parity with Android.
                     if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? globalSelectedOverlayHex ?? option.image_overlay_color ?? globalOverlayHex) : (option.image_overlay_color ?? globalOverlayHex)) {
                         let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
-                        // SPEC-447 AC — the overlay covers the IMAGE REGION ONLY in the two surfaced
+                        // AC — the overlay covers the IMAGE REGION ONLY in the two surfaced
                         // layouts. Unconstrained it fills the ZStack, so authoring a dark scrim and then
                         // switching layout dimmed the text band too: the very surface these layouts exist
                         // to provide, tinted by a setting meant for the photograph. The bottom scrim below
@@ -1149,7 +1149,7 @@ struct FormInputSelectBlock: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(10)
-                    // SPEC-447 — the band is painted UNDER THE TEXT, so it is exactly as tall as the
+                    // The band is painted UNDER THE TEXT, so it is exactly as tall as the
                     // text needs. A band sized as a fixed share of the tile puts the title back on
                     // the photograph the moment two lines do not fit that share. Parity with Android.
                     .background(tileLayout == "full_bleed" ? Color.clear : Color(hex: surfaceHex))
@@ -1188,7 +1188,7 @@ struct FormInputSelectBlock: View {
                 .stroke(Color(hex: block.field_style?.border_color ?? "#D1D5DB"), lineWidth: fieldBorderWidth(block))
         )
         .onChange(of: selectedValue) { newValue in
-            // A §B0 resync to "nothing selected" must not write an empty answer back.
+            // A resync to "nothing selected" must not write an empty answer back.
             if newValue.isEmpty && inputValues[fieldId] == nil { return }
             inputValues[fieldId] = newValue
         }
@@ -1235,7 +1235,7 @@ struct FormInputSelectBlock: View {
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
-            // EPIC-1 — neutral gray default (was accent fillCol@0.3 = the "purple-border bug").
+            // Neutral gray default (was accent fillCol@0.3 = the "purple-border bug").
             // Matches the other iOS field borders (#D1D5DB). Selected stays accent.
             ?? Color(hex: "#D1D5DB")
 
@@ -1272,7 +1272,7 @@ struct FormInputSelectBlock: View {
         // Stacked-list image size default (32). Shares the `option_image_size`
         // config with the grid path so one console slider governs both.
         let stackedImageSize = CGFloat((cfgDouble(cfg?["option_image_size"])) ?? 32)
-        // SPEC-419 pass-24 — show_item_separators (console Switch, stacked only) draws a divider
+        // show_item_separators (console Switch, stacked only) draws a divider
         // between stacked options, honoring separator_color + separator_thickness like the list
         // variant. Off by default (cards already have borders).
         let showItemSeparators = (cfg?["show_item_separators"]?.value as? Bool) == true
@@ -1293,9 +1293,9 @@ struct FormInputSelectBlock: View {
 
         VStack(spacing: optionSpacing) {
             ForEach(Array(options.enumerated()), id: \.offset) { pair in
-                let oi = pair.offset                 // SPEC-419 — per-index parity node key
+                let oi = pair.offset                 // Per-index parity node key
                 let option = pair.element
-                // SPEC-441 (#541) — section header before the first option of each category.
+                // Section header before the first option of each category.
                 if showCategoryHeader, let sec = sectionStart(options, oi) {
                     Text(sec.icon.map { "\($0) " + sec.label } ?? sec.label)
                         .font(.system(size: 13, weight: .medium))
@@ -1318,7 +1318,7 @@ struct FormInputSelectBlock: View {
                 let optTitleColor: Color = isSelected
                     ? optSelectedText
                     : (option.title_color.map { Color(hex: $0) } ?? textCol)
-                // SPEC-419 D1 legibility rule — when selected, the subtitle adopts the option's
+                // Legibility rule — when selected, the subtitle adopts the option's
                 // selected text color so it stays readable on the selected background (fixes the
                 // "subtitle invisible on the green selected row" bug). Matches the console preview.
                 let optSubtitleColor: Color = isSelected
@@ -1351,7 +1351,7 @@ struct FormInputSelectBlock: View {
                         if let icon = option.icon, !icon.isEmpty {
                             Text(icon)
                         }
-                        // SPEC-070 EPIC-1 — leading label at the START of the row
+                        // Leading label at the START of the row
                         if let lt = option.leading_text, !lt.isEmpty {
                             Text(lt)
                                 // Parity with Android + console preview which render the leading label at 14pt.
@@ -1379,7 +1379,7 @@ struct FormInputSelectBlock: View {
                                     .accessibilityIdentifier("option.\(oi).subtitle")
                             }
                         }
-                        // EPIC-1 — when centered, expand to fill the row so .center actually
+                        // When centered, expand to fill the row so .center actually
                         // centers the text (a content-sized VStack stays pinned left). Mirrors
                         // Android's Column(weight 1f) + CenterHorizontally.
                         .frame(maxWidth: (option.text_alignment ?? globalTextAlignment) == "center" ? .infinity : nil)
@@ -1389,7 +1389,7 @@ struct FormInputSelectBlock: View {
                         if (option.text_alignment ?? globalTextAlignment) != "center" {
                             Spacer(minLength: 0)
                         }
-                        // SPEC-070 EPIC-1 — trailing label at the END of the row (e.g. "Casual")
+                        // Trailing label at the END of the row (e.g. "Casual")
                         if let tt = option.trailing_text, !tt.isEmpty {
                             Text(tt)
                                 // Parity with Android + console preview which render the trailing label at a fixed 12pt.
@@ -1421,11 +1421,11 @@ struct FormInputSelectBlock: View {
                             }
                         }
                     }
-                    // EPIC-1 — selection_animation glow: accent halo on the selected option (static
+                    // selection_animation glow: accent halo on the selected option (static
                     // glow now; pulse/sparkle motion is a future dynamic layer). Parity with Android.
                     .shadow(color: isSelected && selectionAnimation != "none" ? fillCol.opacity(0.4) : .clear,
                             radius: isSelected && selectionAnimation != "none" ? 6 : 0)
-                    // SPEC-419 — row.bg parity node: a dedicated, non-propagating accessibility
+                    // row.bg parity node: a dedicated, non-propagating accessibility
                     // element behind the row content (a bare identifier on the content propagates
                     // to every child and overrides their ids). This clear overlay carries ONLY the
                     // row.bg id + the full row frame, so the harness reads the row box + samples the
@@ -1437,7 +1437,7 @@ struct FormInputSelectBlock: View {
                             .accessibilityElement()
                             .accessibilityIdentifier("option.\(oi).row.bg")
                     }
-                    // SPEC-419 D5 — per-option badge (e.g. RECOMMENDED) STRADDLING the option's
+                    // Per-option badge (e.g. RECOMMENDED) STRADDLING the option's
                     // top border: vertical center on the border line (half above / half below),
                     // inset 12pt from the trailing edge — the premium "notch on the card edge" look.
                     .overlay(alignment: badgeAlignment(option.badge?.position)) {
@@ -1458,11 +1458,11 @@ struct FormInputSelectBlock: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                // SPEC-419 Principle 3 — expose each per-index parity node (row.bg/title/subtitle/
+                // Principle 3 — expose each per-index parity node (row.bg/title/subtitle/
                 // leading_text/trailing_text/badge) as a discrete accessibility element so the
                 // structural parity harness can read each box, instead of the Button merging them.
                 .accessibilityElement(children: .contain)
-                // SPEC-419 pass-24 — optional divider between stacked options (parity with list).
+                // Optional divider between stacked options (parity with list).
                 if showItemSeparators && oi < options.count - 1 {
                     Rectangle().fill(separatorCol).frame(height: separatorThickness)
                 }
@@ -1470,7 +1470,7 @@ struct FormInputSelectBlock: View {
         }
     }
 
-    // SPEC-419 pass-24 — parse a "W:H" aspect-ratio string into a width/height ratio
+    // Parse a "W:H" aspect-ratio string into a width/height ratio
     // for `.aspectRatio(_:contentMode:)`. Returns nil for unset/malformed values so the
     // caller can fall back to a fixed height.
     private func parseAspectRatio(_ s: String?) -> CGFloat? {
@@ -1480,7 +1480,7 @@ struct FormInputSelectBlock: View {
         return CGFloat(w / h)
     }
 
-    // MARK: - Badge alignment helper (SPEC-070 EPIC-1)
+    // MARK: - Badge alignment helper
 
     private func badgeAlignment(_ pos: String?) -> Alignment {
         switch pos {
@@ -1493,7 +1493,7 @@ struct FormInputSelectBlock: View {
         }
     }
 
-    // SPEC-419 D5 — horizontal inset for the straddling badge: 12pt in from the trailing
+    // Horizontal inset for the straddling badge: 12pt in from the trailing
     // edge (trailing/default), or 12pt in from the leading edge for leading positions.
     private func badgeOffsetX(_ pos: String?) -> CGFloat {
         switch pos {
@@ -1539,7 +1539,7 @@ struct FormInputSelectBlock: View {
 
     // MARK: - Image with overlay helper
 
-    /// EPIC-1 — corner radius for the option image clip + overlay, by image_shape.
+    /// Corner radius for the option image clip + overlay, by image_shape.
     /// circle (default) = size/2 → a true circle; rounded = 12; square = 0. Parity with Android.
     private func optionImageCornerRadius(_ shape: String?, size: CGFloat) -> CGFloat {
         switch shape {
@@ -1564,7 +1564,7 @@ struct FormInputSelectBlock: View {
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: radius))
 
-            // EPIC-1 — overlay tint follows image_shape; selected uses selected_image_overlay_* (falls back to base).
+            // Overlay tint follows image_shape; selected uses selected_image_overlay_* (falls back to base).
             if let ovHex = (isSelected ? (option.selected_image_overlay_color ?? globalSelectedOverlayHex ?? option.image_overlay_color ?? globalOverlayHex) : (option.image_overlay_color ?? globalOverlayHex)) {
                 let ovOpacity = (isSelected ? (option.selected_image_overlay_opacity ?? option.image_overlay_opacity ?? globalOverlayOpacity) : (option.image_overlay_opacity ?? globalOverlayOpacity)) ?? 0.3
                 RoundedRectangle(cornerRadius: radius)
@@ -1583,7 +1583,7 @@ struct FormInputSelectBlock: View {
         ) else { return }
         selectedValues = next.selectedValues
         selectedValue = next.selectedValue
-        // SPEC-444 (#540, #542) — picking an option that owns a sheet opens it. The choice is
+        // Picking an option that owns a sheet opens it. The choice is
         // already recorded above; the sheet only presents, so nothing else is reported.
         if let blocks = option.sheet_blocks, !blocks.isEmpty {
             sheetOption = option
@@ -1630,7 +1630,7 @@ struct FormInputSelectBlock: View {
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
-            // EPIC-1 — neutral gray default (was accent fillCol@0.3 = the "purple-border bug").
+            // Neutral gray default (was accent fillCol@0.3 = the "purple-border bug").
             // Matches the other iOS field borders (#D1D5DB). Selected stays accent.
             ?? Color(hex: "#D1D5DB")
 
@@ -1770,7 +1770,7 @@ struct FormInputSelectBlock: View {
                                         if let sub = option.subtitle, !sub.isEmpty {
                                             Text(sub)
                                                 .font(.system(size: CGFloat(option.subtitle_font_size ?? defaultSubtitleSize)))
-                                                // EPIC-1 — honor per-option subtitle_color when set (was hardcoded 0.65 alpha),
+                                                // Honor per-option subtitle_color when set (was hardcoded 0.65 alpha),
                                                 // then block-level field_config.subtitle_color (parity with the stacked branch's
                                                 // defaultSubtitleColor + the console preview), else the faded step text color.
                                                 .foregroundColor(option.subtitle_color.map { Color(hex: $0) } ?? (cfg?["subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textCol.opacity(0.65))
@@ -1864,13 +1864,13 @@ struct FormInputSliderBlock: View {
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-419 pass-21 — editor authors min/max/step/default into field_config
+        // Editor authors min/max/step/default into field_config
         // (StepContentEditor :5411/:5415/:5419/:5427); top-level keys are never populated
         // for these blocks. Top-level first (back-compat), then field_config, then literal.
         let rawMin = block.min_value ?? cfgDouble(block.field_config?["min_value"]) ?? 0
         let rawMax = block.max_value_picker ?? cfgDouble(block.field_config?["max_value"]) ?? 100
         let rawStep = block.step_value ?? cfgDouble(block.field_config?["step"]) ?? 1
-        // SPEC-419 pass-22 — field_config min/max/step are now authorable (were always 0...100);
+        // field_config min/max/step are now authorable (were always 0...100);
         // clamp so the range can't violate ClosedRange (lower<=upper) or stall (step>0).
         let stepVal = rawStep > 0 ? rawStep : 1
         let minVal = min(rawMin, rawMax)
@@ -1890,11 +1890,11 @@ struct FormInputSliderBlock: View {
                 formFieldLabel(block)
                 Spacer()
                 if showValue {
-                    // Round-24/30/31 — decide the label format by the STEP, not the value. One decimal
-                    // for ANY fractional step (Round-30: was step<1, so a step of 2.5 truncated to "2";
+                    // Decide the label format by the STEP, not the value. One decimal
+                    // for ANY fractional step (was step<1, so a step of 2.5 truncated to "2";
                     // now "2.5" matching Android). Integer branch uses floor(x+0.5) — EXACTLY Kotlin
                     // roundToInt (Math.round, half toward +inf) — so it matches Android for every value
-                    // incl. NEGATIVE ties (Round-31: Int(v.rounded()) is half-AWAY-from-zero, which split
+                    // incl. NEGATIVE ties (Int(v.rounded()) is half-AWAY-from-zero, which split
                     // -2.5 into iOS "-3" vs Android "-2" for a whole step with a fractional min).
                     let formatted = (stepVal > 0 && stepVal.truncatingRemainder(dividingBy: 1) != 0)
                         ? String(format: "%.1f", value) : "\(Int((value + 0.5).rounded(.down)))"
@@ -2107,12 +2107,12 @@ struct FormInputStepperBlock: View {
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-419 pass-21 — editor authors min/max/step into field_config for the stepper
+        // Editor authors min/max/step into field_config for the stepper
         // (StepContentEditor :5388/:5392/:5396); top-level keys are never populated.
         let rawMin = Int(block.min_value ?? cfgDouble(block.field_config?["min_value"]) ?? 0)
         let rawMax = Int(block.max_value_picker ?? cfgDouble(block.field_config?["max_value"]) ?? 100)
         let rawStep = Int(block.step_value ?? cfgDouble(block.field_config?["step"]) ?? 1)
-        // SPEC-419 pass-22 — clamp the now-authorable range (min<max, step>0) to guard the ClosedRange.
+        // Clamp the now-authorable range (min<max, step>0) to guard the ClosedRange.
         let stepVal = rawStep > 0 ? rawStep : 1
         let minVal = min(rawMin, rawMax)
         let maxVal = max(rawMax, minVal + stepVal)
@@ -2174,7 +2174,7 @@ struct FormInputSegmentedBlock: View {
                 inputValues[fieldId] = first
             }
         }
-        // SPEC-496 — options that arrive only after pending ends (empty → non-empty) get the same
+        // Options that arrive only after pending ends (empty → non-empty) get the same
         // default-first rule `.onAppear` applied, when nothing is selected yet.
         .onChange(of: options.isEmpty) { isEmpty in
             guard !isEmpty, selectedValue.isEmpty,
@@ -2182,7 +2182,7 @@ struct FormInputSegmentedBlock: View {
             selectedValue = first
             inputValues[fieldId] = first
         }
-        // SPEC-496 §B0 — the step cleared a selection its rendered options no longer contain: the
+        // The step cleared a selection its rendered options no longer contain: the
         // view's selected state follows it (same resync as the Select). An unrecognised value type
         // leaves the view alone (no "" write-back over a host-patched answer).
         .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
@@ -2201,7 +2201,7 @@ struct FormInputRatingBlock: View {
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-419 pass-15 #3 — editor writes these into field_config (StepContentEditor:6312)
+        // Editor writes these into field_config (StepContentEditor:6312)
         // and Android promotes field_config→top-level; iOS read top-level only → all 4 dead.
         // Read field_config first, fall back to the top-level fields for back-compat.
         let cfg = block.field_config
@@ -2214,7 +2214,7 @@ struct FormInputRatingBlock: View {
         let starSz = CGFloat(fcInt("star_size").map { Double($0) } ?? block.star_size ?? 32)
         let filledCol = Color(hex: fcStr("filled_color") ?? block.filled_color ?? block.field_style?.fill_color ?? "#FBBF24")
         let emptyCol = Color(hex: fcStr("empty_color") ?? block.empty_color ?? "#D1D5DB")
-        // SPEC-419 pass-19 #1 — honor allow_half (Android already renders halves via
+        // Honor allow_half (Android already renders halves via
         // block.allow_half). Read field_config first like the other rating keys, fall
         // back to top-level. Half-star render mirrors the standalone RatingFieldView.
         let allowHalf = fcBool("allow_half") ?? block.allow_half ?? false
@@ -2254,10 +2254,10 @@ struct FormInputRatingBlock: View {
     }
 }
 
-/// Round-29/30/31 — range-slider value-label formatter: one decimal for ANY fractional step (Round-30:
+/// Range-slider value-label formatter: one decimal for ANY fractional step (
 /// was step<1, so a step of 2.5 truncated to "2"; now "2.5", matching Android + the single slider).
 /// Integer branch uses floor(v+0.5) — EXACTLY Kotlin roundToInt (half toward +inf) — so it matches
-/// Android for every value incl. negative ties (Round-31: v.rounded() is half-away-from-zero, splitting
+/// Android for every value incl. negative ties (v.rounded() is half-away-from-zero, splitting
 /// -2.5 into iOS "-3" vs Android "-2").
 private func rangeSliderValueText(_ v: Double, _ step: Double) -> String {
     (step > 0 && step.truncatingRemainder(dividingBy: 1) != 0)
@@ -2274,14 +2274,14 @@ struct FormInputRangeSliderBlock: View {
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
-        // SPEC-419 pass-21 — editor authors min/max into field_config for the range slider
+        // Editor authors min/max into field_config for the range slider
         // (StepContentEditor :5411/:5415); top-level keys are never populated.
         let rawMin = block.min_value ?? cfgDouble(block.field_config?["min_value"]) ?? 0
         let rawMax = block.max_value_picker ?? cfgDouble(block.field_config?["max_value"]) ?? 100
-        // SPEC-419 pass-22 — clamp the now-authorable range so minVal...maxVal can't trap (min<max).
+        // Clamp the now-authorable range so minVal...maxVal can't trap (min<max).
         let minVal = min(rawMin, rawMax)
         let maxVal = max(rawMax, minVal + 1)
-        // Round-24/25/26 — honor the authored step (default 1.0) like the single slider + Android, which
+        // Honor the authored step (default 1.0) like the single slider + Android, which
         // snap both thumbs to the step grid. iOS ignored step here entirely → captured continuous values
         // (33.7) while Android snapped (34.0). The console writes the step under field_config["step"]
         // (NOT "step_value"). CLAMP > 0 like every sibling slider: the console number input has no min,
@@ -2301,7 +2301,7 @@ struct FormInputRangeSliderBlock: View {
             HStack {
                 formFieldLabel(block)
                 Spacer()
-                // Round-29 — show one decimal for a fractional step (matches Android + the single slider);
+                // Show one decimal for a fractional step (matches Android + the single slider);
                 // `Int()` silently dropped the half-step the user selected (2.5 rendered "2").
                 Text("\(rangeSliderValueText(lowValue, stepVal))\(unitStr) - \(rangeSliderValueText(highValue, stepVal))\(unitStr)")
                     .font(.caption.weight(.semibold))
@@ -2407,7 +2407,7 @@ struct FormInputChipsBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
 
-    // Round-11 Finding 3 — an ordered [String] (append-on-select, acting as an ordered set) so the
+    // An ordered [String] (append-on-select, acting as an ordered set) so the
     // written array preserves SELECTION order, matching Android's LinkedHashSet. A Swift Set is
     // hash-ordered and non-deterministic across runs, so `Array(Set)` produced arbitrary ordering.
     @State private var selectedValues: [String] = []
@@ -2457,7 +2457,7 @@ struct FormInputChipsBlock: View {
             let fieldId = block.field_id ?? block.id
             if let saved = inputValues[fieldId] as? [String] { selectedValues = saved }
         }
-        // SPEC-496 §B0 — the step cleared (part of) a selection its rendered options no longer
+        // The step cleared (part of) a selection its rendered options no longer
         // contain: the chips' selected state follows it, so a pruned chip is not still drawn
         // selected — and not re-written on the next tap (`inputValues[fieldId] = selectedValues`).
         .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
@@ -3022,9 +3022,9 @@ struct FormInputSignatureBlock: View {
         let fieldId = block.field_id ?? block.id
         let borderColor = Color(hex: block.field_style?.border_color ?? "#D1D5DB")
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
-        // SPEC-419 pass-15 #15 — honor field_config.stroke_color (editor + preview); was hardcoded .primary.
+        // Honor field_config.stroke_color (editor + preview); was hardcoded .primary.
         let strokeCol: Color = (block.field_config?["stroke_color"]?.value as? String).map { Color(hex: $0) } ?? .primary
-        // SPEC-419 pass-16 #2 — honor field_config.stroke_width (editor default 2); was hardcoded 2.
+        // Honor field_config.stroke_width (editor default 2); was hardcoded 2.
         let strokeW: CGFloat = CGFloat(cfgDouble(block.field_config?["stroke_width"]) ?? 2)
 
         VStack(alignment: .leading, spacing: 6) {
@@ -3085,9 +3085,9 @@ struct FormInputSignatureBlock: View {
     }
 }
 
-// MARK: - Flow Layout (SPEC-089d Phase 3 -- for chips block)
+// MARK: - Flow Layout (for chips block)
 
-/// EPIC-1 — true content-hugging flow layout (chips wrap by their own width, left→right).
+/// True content-hugging flow layout (chips wrap by their own width, left→right).
 /// iOS 16 Layout protocol; mirrors Android FlowRow so the bubble/chip select matches.
 struct ChipFlowLayout: Layout {
     var spacing: CGFloat = 8
@@ -3132,7 +3132,7 @@ struct FlowLayoutView<Content: View>: View {
     }
 }
 
-// SPEC-419 pass-24 — size an image-tile by an explicit aspect ratio (width × ratio) when
+// Size an image-tile by an explicit aspect ratio (width × ratio) when
 // `tile_aspect_ratio` is set, else fall back to a fixed `tile_height`.
 private extension View {
     @ViewBuilder
@@ -3145,7 +3145,7 @@ private extension View {
     }
 }
 
-// MARK: - SPEC-444 (#540, #542) — the option bottom sheet
+// MARK: - the option bottom sheet
 
 /// Presents an option's `sheet_blocks` through the ordinary content-block renderer.
 ///
@@ -3160,7 +3160,7 @@ private extension View {
 struct OptionBottomSheetView: View {
     let option: InputOption
     let onDismiss: () -> Void
-    /// SPEC-496 — the option came out of the raw host-data pass: its sheet blocks are ALREADY
+    /// The option came out of the raw host-data pass: its sheet blocks are ALREADY
     /// resolved, so the sheet renderer must not re-scan them (only `sheet_step_paths` resolve here,
     /// against the sheet's own inputs).
     var rawResolved: Bool = false
@@ -3189,7 +3189,7 @@ struct OptionBottomSheetView: View {
                     inputValues: $sheetInputs
                 )
                 .environment(\.appdnaRawResolved, rawResolved)
-                // SPEC-496 §5b C5.1 — a sheet has its own inputs and no interaction channel. SwiftUI
+                // A sheet has its own inputs and no interaction channel. SwiftUI
                 // environment reaches `.sheet` content, so the step's channel is cut off explicitly:
                 // a `refresh_step` button in `sheet_blocks` fires nothing (REFRESH_STEP_CANNOT_FIRE).
                 .environment(\.appdnaStepInteraction, nil)
@@ -3202,9 +3202,9 @@ struct OptionBottomSheetView: View {
     }
 }
 
-// MARK: - SPEC-496 helpers shared with the fixture runner
+// MARK: - helpers shared with the fixture runner
 
-/// SPEC-448 / SPEC-496 §B0 — the in-memory search of an authored (or repeat-generated) option list.
+/// The in-memory search of an authored (or repeat-generated) option list.
 /// Case-insensitive substring over label and subtitle; an empty query is not a filter.
 func filterOptionsLocally(_ options: [InputOption], query: String) -> [InputOption] {
     let trimmed = query.trimmingCharacters(in: .whitespaces)
@@ -3216,7 +3216,7 @@ func filterOptionsLocally(_ options: [InputOption], query: String) -> [InputOpti
     }
 }
 
-/// SPEC-496 §B0 — a view's selected state, re-derived from `inputValues` after the step pruned it.
+/// A view's selected state, re-derived from `inputValues` after the step pruned it.
 /// `nil` = the `inputValues` entry is a type the view cannot show (e.g. an interaction patch
 /// `["plan": 2]`): the caller leaves its view state alone, so no "" is written back over it. Only a
 /// cleared (absent) entry resyncs the view to "nothing selected".
@@ -3254,7 +3254,7 @@ func selectionSignature(_ value: Any?) -> String {
     }
 }
 
-/// One tap on a Select option — the write the view performs, extracted so the SPEC-496 fixture runner
+/// One tap on a Select option — the write the view performs, extracted so the fixture runner
 /// drives the SAME code (`host_data_scenario` `select_option`).
 enum SelectOptionTap {
     static func isMultiSelect(_ block: ContentBlock) -> Bool {
@@ -3280,7 +3280,7 @@ enum SelectOptionTap {
                 values.append(option.resolvedValue)
             }
             inputValues[fieldId] = values
-            // SPEC-448 — record the full OPTIONS alongside the values, in selection order, so a
+            // Record the full OPTIONS alongside the values, in selection order, so a
             // later screen can say `{{selected.<field_id>.0.label}}`. inputValues keeps carrying
             // the values alone, which is what reaches responses and therefore customer webhooks.
             let chosen = sourcedOptions.filter { values.contains($0.resolvedValue) }

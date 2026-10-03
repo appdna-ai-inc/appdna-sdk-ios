@@ -489,7 +489,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertNil(question.emoji_config?.emojis)
     }
 
-    // MARK: - Question with image_url (SPEC-085)
+    // MARK: - Question with image_url
 
     func testDecodeQuestionWithImageUrl() throws {
         let json = """
@@ -749,7 +749,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(appearance.theme?.button_color, "#FF6600")
         XCTAssertEqual(appearance.theme?.font_family, "Helvetica Neue")
 
-        // SPEC-084: Style engine
+        // Style engine
         XCTAssertNotNil(appearance.question_text_style)
         XCTAssertEqual(appearance.question_text_style?.font_family, "Georgia")
         XCTAssertEqual(appearance.question_text_style?.font_size, 18.0)
@@ -798,7 +798,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         }
     }
 
-    // MARK: - Appearance: Rich media (SPEC-085)
+    // MARK: - Appearance: Rich media
 
     func testDecodeThemeWithRichMedia() throws {
         let json = """
@@ -869,7 +869,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertNil(theme.haptic?.triggers?.on_plan_select)
         XCTAssertNil(theme.haptic?.triggers?.on_toggle)
 
-        // SPEC-088: Thank-you text
+        // Thank-you text
         XCTAssertEqual(theme.thank_you_text, "Thanks, {{user_name}}! Your feedback means a lot.")
     }
 

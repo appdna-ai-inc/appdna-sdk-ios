@@ -1,6 +1,6 @@
 // HostDataFixtureDrivers.swift
 //
-// SPEC-496 — the iOS drivers for the two host-data fixture kinds, dispatched from
+// The iOS drivers for the two host-data fixture kinds, dispatched from
 // `SharedFixtureTests.drive`:
 //
 //   resolve_block       REAL: `HostDataResolver.resolveRawBlock` — the same raw pass
@@ -148,7 +148,7 @@ extension SharedFixtureTests {
         }
     }
 
-    // MARK: - decode_interaction_result (SPEC-496 §5b C2)
+    // MARK: - decode_interaction_result
 
     /// The core `ElementInteractionResult.decodeDataContext`, fed the reply map two ways: as a BRIDGE
     /// delivers it (the JSON text parsed by `JSONSerialization` — NSNumber / CFBoolean / NSNull, as the
@@ -228,7 +228,7 @@ extension SharedFixtureTests {
                 run.view?.sheetInputs = (op["sheet_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
             case "element_interaction": await run.elementInteraction(op)
             case "complete_step": run.completeStep()
-            // SPEC-496 §5b C10 — P1b ops.
+            // P1b ops.
             case "tap": await run.tap(op)
             case "fire_interaction": await run.fireInteraction(op)
             case "interaction_reply": await run.interactionReply(op)
@@ -268,7 +268,7 @@ extension SharedFixtureTests {
 
 // MARK: - The presented step, as OnboardingFlowHost + OnboardingStepRouter hold it
 
-/// A manual clock for the coordinators' deadlines (the §B0 3 s one and the §5b 8 s refresh one).
+/// A manual clock for the coordinators' deadlines (the 3 s one and the 8 s refresh one).
 final class HostDataManualClock {
     private(set) var nowMs = 0
     private var timers: [(id: Int, due: Int, fire: () -> Void)] = []
@@ -320,7 +320,7 @@ final class ScriptedStepRenderDelegate: @unchecked Sendable {
     }
 }
 
-/// SPEC-496 §5b C10 — the scripted host's `onElementInteraction`. It ALWAYS implements the method.
+/// The scripted host's `onElementInteraction`. It ALWAYS implements the method.
 /// Every call it receives is recorded (`interaction_calls`); an addressable call (from `tap` /
 /// `fire_interaction`) suspends until the script answers it — at most once — with
 /// `interaction_reply` / `interaction_throw`. The answer is delivered even after the SDK ended the call
@@ -554,7 +554,7 @@ final class HostDataScenarioRun {
         delegateMode = op["delegate"]?.stringValue ?? "none"
         v.applies = delegateMode != "none" && OnboardingStepPipeline.referencesHookData(step)
         current = v
-        // §B0 "Starts synchronously" — the FIRST resolve happens before the call starts (onAppear);
+        // "Starts synchronously" — the FIRST resolve happens before the call starts (onAppear);
         // this first `isPending` is also where "cached" is sampled and latched for the serial.
         v.firstResolvePending = pending(v)
         refresh()
@@ -763,7 +763,7 @@ final class HostDataScenarioRun {
     }
 
     /// `OnboardingStepRouter.applyInteractionReply` — the SAME `InteractionReplyFold`: the four writes,
-    /// then one resolve + §B0 prune, then the gated advance.
+    /// then one resolve + prune, then the gated advance.
     func applyInteractionReply(_ v: HostDataStepView, _ result: ElementInteractionResult, seq: Int, snapshot: [String: Any]) {
         InteractionReplyFold.apply(
             result, seq: seq, snapshot: snapshot, stepId: v.step.id, presentation: v.presentation,
@@ -900,7 +900,7 @@ final class HostDataScenarioRun {
         for id in redactedFieldIds where safe[id] != nil {
             failures.append("complete_step: secret field \(id) reached the persisted step responses")
         }
-        // C10 — a completion (and an allowed advance) ENDS the presentation: the flow host navigates
+        // A completion (and an allowed advance) ENDS the presentation: the flow host navigates
         // on, exactly as `leave_step` does, but with `responses_step` written.
         if current === v {
             lastLeft = v
@@ -1055,7 +1055,7 @@ final class HostDataScenarioRun {
                     m[id] = blockObservation(id, spec: spec.objectValue ?? [:])
                 }
                 out[key] = m
-            // SPEC-496 §5b C10.
+            //
             case "hook_data":
                 let eff = hookData(v) ?? [:]
                 var m: [String: Any] = [:]
@@ -1072,14 +1072,14 @@ final class HostDataScenarioRun {
 }
 
 extension SharedFixtureTests {
-    /// SPEC-496 — the umbrella test must not pass vacuously: the host-data corpus is loaded for iOS.
+    /// The umbrella test must not pass vacuously: the host-data corpus is loaded for iOS.
     func testHostDataFixtureCorpusIsLoaded() throws {
         let fixtures = try loadFixtures()
         let resolve = fixtures.filter { $0.action.kind == "resolve_block" }.count
         let scenario = fixtures.filter { $0.action.kind == "host_data_scenario" }.count
         let decode = fixtures.filter { $0.action.kind == "decode_interaction_result" }.count
         XCTAssertGreaterThanOrEqual(resolve, 23, "resolve_block fixtures loaded for iOS")
-        // P1 corpus + the §5b C10 fixtures that list ios (the Android-only throw fixture excluded).
+        // P1 corpus + the fixtures that list ios (the Android-only throw fixture excluded).
         XCTAssertGreaterThanOrEqual(scenario, 23 + 26, "host_data_scenario fixtures loaded for iOS")
         XCTAssertGreaterThanOrEqual(decode, 1, "decode_interaction_result fixture loaded for iOS")
     }

@@ -6,25 +6,25 @@ import PhotosUI
 
 public enum ContentBlockType: String, Codable {
     case heading, text, image, button, spacer, list, divider, badge, icon, toggle, video
-    // SPEC-085: Rich media block types
+    // Rich media block types
     case lottie, rive
-    // SPEC-089d Phase A: New onboarding block types
+    // Phase A: New onboarding block types
     case page_indicator, wheel_picker, pulsing_avatar, social_login
     case timeline, animated_loading, star_background, countdown_timer
     case rating, rich_text, progress_bar
-    // SPEC-089d Phase F: Container & advanced block types
+    // Phase F: Container & advanced block types
     case stack, custom_view, date_wheel_picker, circular_gauge, row
     /// #609 — several CTAs laid out N per row on one shared background.
     case multi_buttons
-    // SPEC-451 — map with an optional route. Every setting rides in `field_config`.
+    // Map with an optional route. Every setting rides in `field_config`.
     case map
-    // SPEC-089d
+    //
     case pricing_card
-    // EPIC-3 — media gallery (horizontal row of image tiles)
+    // Media gallery (horizontal row of image tiles)
     case media_gallery
     // EPIC-4b — section background (vertical color zones behind overlaid content)
     case section_background
-    // EPIC-8 — swipeable carousel (paged content + dot indicator)
+    // Swipeable carousel (paged content + dot indicator)
     case carousel
     case otp_input
     case warning_banner
@@ -44,7 +44,7 @@ public enum ContentBlockType: String, Codable {
     // rich label with [terms](url)/[privacy](url) links, persisting a Bool to inputValues; its
     // `field_required` gates the CTA via RequiredFieldGate.
     case agreement
-    // SPEC-089d Phase 3: Form input block types (22 types)
+    // Form input block types (22 types)
     case input_text, input_textarea, input_number, input_email, input_phone
     case input_password, input_date, input_time, input_datetime
     case input_select, input_slider, input_toggle, input_stepper, input_segmented
@@ -91,7 +91,7 @@ enum UnsupportedBlockTypes {
     }
 }
 
-// MARK: - Block Style Design Tokens (SPEC-089d §6.1)
+// MARK: - Block Style Design Tokens
 
 /// Per-block styling: background, border, shadow, padding, margin, opacity.
 public struct BlockStyle: Codable {
@@ -129,7 +129,7 @@ public struct BlockGradientStyle: Codable {
     public var end: String?
 }
 
-// MARK: - Block Style ViewModifier (SPEC-089d §6.1)
+// MARK: - Block Style ViewModifier
 
 /// Applies `block_style` design tokens to any content block view.
 struct BlockStyleModifier: ViewModifier {
@@ -212,13 +212,13 @@ struct BlockStyleModifier: ViewModifier {
 }
 
 extension View {
-    /// Apply block_style design tokens (SPEC-089d §6.1).
+    /// Apply block_style design tokens.
     func applyBlockStyle(_ style: BlockStyle?) -> some View {
         modifier(BlockStyleModifier(style: style))
     }
 }
 
-// MARK: - Visibility Condition (SPEC-089d §6.3)
+// MARK: - Visibility Condition
 
 /// Condition that determines whether a block should be rendered.
 public struct VisibilityCondition: Codable {
@@ -289,7 +289,7 @@ func resolveDotPath(
     hookData: [String: Any]?,
     userTraits: [String: Any]?,
     sessionData: [String: Any]?,
-    /// SPEC-446 — the current step's live `inputValues`, addressable as `{{step.field_id}}`.
+    /// The current step's live `inputValues`, addressable as `{{step.field_id}}`.
     /// Defaulted so every existing call site keeps compiling and behaves exactly as before.
     stepInputs: [String: Any]? = nil
 ) -> Any? {
@@ -303,7 +303,7 @@ func resolveDotPath(
     case "hook_data": root = hookData
     case "user": root = userTraits
     case "session": root = sessionData
-    // SPEC-446 — the CURRENT step's in-progress inputs. `responses` holds completed steps only,
+    // The CURRENT step's in-progress inputs. `responses` holds completed steps only,
     // so a stat showing the value of a slider on the same card resolved to nothing until the step
     // ended, at which point the card is gone. Registered here, in the preview, and in the
     // picker's namespace list; an unregistered root resolves to nil and renders raw.
@@ -355,7 +355,7 @@ func toDouble(_ value: Any?) -> Double? {
     return nil
 }
 
-// MARK: - Entrance Animation (SPEC-089d §6.4)
+// MARK: - Entrance Animation
 
 /// Configuration for entrance animation on a content block.
 public struct EntranceAnimation: Codable {
@@ -371,7 +371,7 @@ public struct EntranceAnimation: Codable {
     public let animation_order: Int?    // 0-999
 }
 
-// MARK: - Pressed Style (SPEC-089d §6.5)
+// MARK: - Pressed Style
 
 /// Style to apply when an interactive element is pressed.
 public struct PressedStyle: Codable {
@@ -381,7 +381,7 @@ public struct PressedStyle: Codable {
     public let opacity: Double?  // 0.5-1.0
 }
 
-// MARK: - Form Field Style (SPEC-089d §5.2)
+// MARK: - Form Field Style
 
 /// Custom visual styling for form input blocks.
 public struct FormFieldBlockStyle: Codable {
@@ -398,12 +398,12 @@ public struct FormFieldBlockStyle: Codable {
     public let focused_background_color: String?
     public let label_color: String?
     public let label_font_size: Double?
-    // SPEC-439 (#546) — `label_position` has been settable in the console (and honoured by
+    // `label_position` has been settable in the console (and honoured by
     // the web preview) since it shipped, but NEITHER native decoded it, so authors were
     // setting a control that did nothing on device. "hidden" is the value with a defined
     // meaning; "inline"/"floating" are not distinct behaviours on any surface yet.
     public let label_position: String?
-    // SPEC-439 (#546) — the two controls the reporter found genuinely missing.
+    // The two controls the reporter found genuinely missing.
     public let label_align: String?          // "left" (default) | "center" | "right"
     public let label_font_family: String?
     public let error_border_color: String?
@@ -434,11 +434,11 @@ public struct InputOption: Codable, Identifiable {
     // Falls back to `image_url` when either side is nil.
     public let selected_image_url: String?
     public let unselected_image_url: String?
-    /// SPEC-441 (#541) — which category chip this option belongs to. An option with NO
+    /// Which category chip this option belongs to. An option with NO
     /// category shows under EVERY chip, so adding chips to an existing Select never hides
     /// options the author already had.
     public let category: String?
-    /// SPEC-444 (#540, #542) — the bottom sheet this option opens when picked. Contents are
+    /// The bottom sheet this option opens when picked. Contents are
     /// ordinary content blocks, so one engine serves both the chooser sheet and the detail
     /// sheet. Presentation-only: nothing set inside is reported back, so there is no new
     /// response plumbing here.
@@ -457,10 +457,10 @@ public struct InputOption: Codable, Identifiable {
     // Image overlay: colored circle with opacity rendered over the option image
     public let image_overlay_color: String?
     public let image_overlay_opacity: Double?
-    // EPIC-1 — selected-state image tint (falls back to image_overlay_* when unset)
+    // Selected-state image tint (falls back to image_overlay_* when unset)
     public let selected_image_overlay_color: String?
     public let selected_image_overlay_opacity: Double?
-    // EPIC-1 — per-option image clip shape: "circle" (default) | "rounded" | "square"
+    // Per-option image clip shape: "circle" (default) | "rounded" | "square"
     public let image_shape: String?
     // Per-option border overrides
     public let border_color: String?
@@ -475,7 +475,7 @@ public struct InputOption: Codable, Identifiable {
     // the block-level `grid_cell_alignment` when nil so existing flows
     // inherit the overall layout.
     public let cell_alignment: String?  // "leading" | "center" | "trailing"
-    // SPEC-070 EPIC-1 — per-option additions
+    // Per-option additions
     public let text_alignment: String?  // "leading" | "center" | "trailing" (stacked rows)
     public let leading_text: String?    // small label at the START of the row
     public let trailing_text: String?   // small label at the END of the row (e.g. "Casual")
@@ -555,7 +555,7 @@ public struct InputOption: Codable, Identifiable {
     }
 }
 
-// MARK: - Relative Sizing Helper (SPEC-089d §6.7)
+// MARK: - Relative Sizing Helper
 
 /// Parses a size string and returns a frame modifier.
 enum SizeValue {
@@ -575,7 +575,7 @@ enum SizeValue {
     }
 }
 
-// MARK: - Template String Resolution (SPEC-089d §6.6)
+// MARK: - Template String Resolution
 
 /// Resolves `{{variable}}` template strings in text.
 func resolveTemplateString(
@@ -587,7 +587,7 @@ func resolveTemplateString(
     stepInputs: [String: Any]? = nil
 ) -> String {
     var result = text
-    // SPEC-446 §3b — the console's variable picker tells authors to write `{{var | fallback}}`
+    // The console's variable picker tells authors to write `{{var | fallback}}`
     // and the web preview implements it. Neither native did: this character class contained
     // neither `|` nor a space, so `{{responses.name | Guest}}` did not match AT ALL and the whole
     // literal — pipe included — rendered on the user's screen. An author following our own
@@ -622,7 +622,7 @@ func resolveTemplateString(
     return result
 }
 
-// MARK: - 2D Positioning Modifier (SPEC-089d §6.2)
+// MARK: - 2D Positioning Modifier
 
 /// Applies vertical/horizontal alignment + offset positioning to a content block.
 struct BlockPositionModifier: ViewModifier {
@@ -685,7 +685,7 @@ struct BlockPositionModifier: ViewModifier {
 }
 
 extension View {
-    /// Apply 2D positioning (SPEC-089d §6.2).
+    /// Apply 2D positioning.
     func applyBlockPosition(
         verticalAlign: String?,
         horizontalAlign: String?,
@@ -703,7 +703,7 @@ extension View {
     }
 }
 
-// MARK: - Entrance Animation Wrapper (SPEC-089d §6.4)
+// MARK: - Entrance Animation Wrapper
 
 /// Wraps a content block with entrance animation.
 struct EntranceAnimationWrapper<Content: View>: View {
@@ -802,7 +802,7 @@ struct EntranceAnimationWrapper<Content: View>: View {
     }
 }
 
-// MARK: - Pressed Style ViewModifier (SPEC-089d §6.5)
+// MARK: - Pressed Style ViewModifier
 
 /// Applies press/tap state visual feedback to interactive elements.
 struct PressedStyleModifier: ViewModifier {
@@ -829,13 +829,13 @@ struct PressedStyleModifier: ViewModifier {
 }
 
 extension View {
-    /// Apply press/tap state styling (SPEC-089d §6.5).
+    /// Apply press/tap state styling.
     func applyPressedStyle(_ style: PressedStyle?) -> some View {
         modifier(PressedStyleModifier(pressedStyle: style))
     }
 }
 
-// MARK: - Relative Sizing ViewModifier (SPEC-089d §6.7)
+// MARK: - Relative Sizing ViewModifier
 
 /// The width of the container a block is being laid out in, published by whoever lays it out.
 ///
@@ -858,7 +858,7 @@ extension EnvironmentValues {
     }
 }
 
-/// SPEC-496 §A1 — "this block was produced by the raw host-data pass". Propagates to every NESTED
+/// "this block was produced by the raw host-data pass". Propagates to every NESTED
 /// renderer a raw-resolved block creates (carousel pages, option sheets), so none of them runs the
 /// view-level template pass over strings that were already resolved (no re-scan of host data).
 private struct RawResolvedKey: EnvironmentKey {
@@ -872,7 +872,7 @@ extension EnvironmentValues {
     }
 }
 
-/// SPEC-496 §5b C5.1 — the onboarding step's interaction channel, for `refresh_step` buttons at ANY
+/// The onboarding step's interaction channel, for `refresh_step` buttons at ANY
 /// depth: top level, the three zones, `multi_buttons` children, `row` / `stack` /
 /// `section_background` children and carousel pages (whose nested renderer is built without
 /// `onInteract`). Provided by `OnboardingStepRouter` on its block-step content.
@@ -887,8 +887,8 @@ struct StepInteraction: Equatable {
     var presentation: Int
     /// The refresh button whose call is in flight (spinner), if any.
     var loadingBlockId: String?
-    /// C5.3 / C5.4 — false while ANY interaction of the presentation is in flight, or while the
-    /// presentation is §B0-pending. Such a button draws normally; a tap is not a call.
+    /// False while ANY interaction of the presentation is in flight, or while the
+    /// presentation is pending. Such a button draws normally; a tap is not a call.
     var refreshTappable: Bool
     /// The step scope's `handleInteract(blockId, action, value)`.
     var fire: (String, String, String?) -> Void
@@ -915,7 +915,7 @@ struct StepInteraction: Equatable {
 
     /// The closure is deliberately not compared (closures cannot be); the state is what re-renders.
     /// A stale `fire` (bound to an older router copy) is safe: every input the reply fold reads —
-    /// the base override, the layer — is read LIVE from the store (SPEC-496 §5b C3).
+    /// the base override, the layer — is read LIVE from the store.
     static func == (a: StepInteraction, b: StepInteraction) -> Bool {
         a.presentation == b.presentation && a.loadingBlockId == b.loadingBlockId && a.refreshTappable == b.refreshTappable
     }
@@ -1030,7 +1030,7 @@ struct RelativeSizingModifier: ViewModifier {
 }
 
 extension View {
-    /// Apply relative sizing (SPEC-089d §6.7).
+    /// Apply relative sizing.
     func applyRelativeSizing(width: String?, height: String?, useMinHeight: Bool = false) -> some View {
         modifier(RelativeSizingModifier(width: width, height: height, useMinHeight: useMinHeight))
     }
@@ -1079,7 +1079,7 @@ extension View {
     }
 }
 
-// MARK: - Nested Codable types for SPEC-089d block fields
+// MARK: - Nested Codable types for block fields
 
 /// A single timeline item for the `timeline` block.
 public struct TimelineItemConfig: Codable, Identifiable {
@@ -1097,7 +1097,7 @@ public struct SocialProviderConfig: Codable {
     public let enabled: Bool?
     public let icon_style: String?  // "default", "monochrome_light", "monochrome_dark", "filled", "outline"
     // Per-button style overrides — nil → fall back to provider-type defaults
-    // (Apple=black, Google=#4285F4, email=#6366F1, etc.). SPEC-089e amendment.
+    // (Apple=black, Google=#4285F4, email=#6366F1, etc.).
     public let bg_color: String?
     public let text_color: String?
     public let border_color: String?
@@ -1176,7 +1176,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let corner_radius: Double?
     public let height: Double?
     public let image_fit: String?  // "contain" | "fill" | "cover" — default fill
-    // EPIC-3 — wrap the image in a device frame: "phone" = bezel + dynamic-island notch.
+    // Wrap the image in a device frame: "phone" = bezel + dynamic-island notch.
     public let image_frame: String?
     // Button
     public let variant: String?
@@ -1220,12 +1220,12 @@ public struct ContentBlock: Codable, Identifiable {
     public let video_thumbnail_url: String?
     public let video_height: Double?
     public let video_corner_radius: Double?
-    // SPEC-085: Video playback options
+    // Video playback options
     public let autoplay: Bool?
     public let loop: Bool?
     public let muted: Bool?
     public let controls: Bool?
-    // SPEC-419 pass-14 — `video_*`-prefixed fallbacks. The console editor +
+    // `video_*`-prefixed fallbacks. The console editor +
     // preview + Android all write the prefixed keys (video_autoplay/_loop/
     // _muted/_controls); iOS previously only decoded the unprefixed
     // autoplay/loop/muted/controls, so authored prefixed payloads were
@@ -1234,22 +1234,22 @@ public struct ContentBlock: Codable, Identifiable {
     public let video_loop: Bool?
     public let video_muted: Bool?
     public let video_controls: Bool?
-    // SPEC-085: Lottie
+    // Lottie
     public let lottie_url: String?
     public let lottie_speed: Double?
     public let lottie_width: Double?
     public let lottie_height: Double?
     public let play_on_scroll: Bool?
     public let play_on_tap: Bool?
-    // SPEC-085: Rive
+    // Rive
     public let rive_url: String?
     public let artboard: String?
     public let state_machine: String?
     public let trigger_on_step_complete: String?
-    // SPEC-085: Icon reference (structured icon)
+    // Icon reference (structured icon)
     public let icon_ref: IconReference?
 
-    // SPEC-089d §6.1: Per-block style design tokens
+    // Per-block style design tokens
     public let block_style: BlockStyle?
 
     // Zone-based positioning
@@ -1259,7 +1259,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let vertical_offset: Double?
     public let horizontal_offset: Double?
 
-    // SPEC-089d Phase A: page_indicator fields
+    // Phase A: page_indicator fields
     public let dot_count: Int?
     public let active_index: Int?
     public let active_color: String?
@@ -1270,7 +1270,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let dot_shape: String?   // "circle" (default) | "triangle" | "rectangle" | "star"
     public let alignment: String?
 
-    // SPEC-089d Phase A: social_login fields
+    // Phase A: social_login fields
     public let providers: [SocialProviderConfig]?
     public let button_style: String?       // filled, outlined, minimal
     public let button_height: Double?
@@ -1283,11 +1283,11 @@ public struct ContentBlock: Codable, Identifiable {
     // "or" separator rules.
     public let divider_position: String?
     public let button_text_align: String?
-    // SPEC-089e amendment — email CTA placement + spacer
+    // Email CTA placement + spacer
     public let email_login_placement: String?   // "with_providers" | "below_inputs"
     public let email_cta_spacing_below: Double? // px spacer after email button
 
-    // SPEC-089d Phase A: countdown_timer fields
+    // Phase A: countdown_timer fields
     public let timer_variant: String?      // digital, circular, flip, bar
     public let duration_seconds: Int?
     // Countdown target mode (parity with Android ContentBlockRenderer.kt): "duration"
@@ -1305,7 +1305,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let accent_color: String?
     public let font_size: Double?
 
-    // SPEC-089d Phase A: rating fields
+    // Phase A: rating fields
     public let max_stars: Int?
     public let default_rating: Double?
     public let star_size: Double?
@@ -1315,25 +1315,25 @@ public struct ContentBlock: Codable, Identifiable {
     public let field_id: String?
     public let rating_label: String?
 
-    // SPEC-089d Phase A: rich_text fields
+    // Phase A: rich_text fields
     public let markdown_content: String?
     public let rich_text_variant: String?  // default, legal
     public let base_style: TextStyleConfig?
     public let link_color: String?
 
-    // SPEC-089d Phase A: progress_bar fields
+    // Phase A: progress_bar fields
     public let progress_variant: String?   // continuous, segmented
     public let progress_value: Double?
     public let total_segments: Int?
     public let filled_segments: Int?
     public let bar_height: Double?
     public let bar_color: String?
-    // EPIC-2 — multiple progress colors at once (horizontal gradient across the fill).
+    // Multiple progress colors at once (horizontal gradient across the fill).
     public let bar_gradient_colors: [String]?
     public let track_color: String?
     public let show_label: Bool?
     public let segment_gap: Double?
-    // SPEC-419 gap#6 — progress_bar label formatting. `label_format`:
+    // progress_bar label formatting. `label_format`:
     // "percentage" | "fraction" | "custom"; `custom_label` supplies the text
     // when format == "custom". Authored top-level by the console editor.
     public let label_format: String?
@@ -1342,7 +1342,7 @@ public struct ContentBlock: Codable, Identifiable {
     // "above" (default) | "below" | "left" | "right".
     public let label_placement: String?
 
-    // SPEC-089d Phase A: timeline fields
+    // Phase A: timeline fields
     public let timeline_items: [TimelineItemConfig]?
     public let line_color: String?
     public let completed_color: String?
@@ -1353,9 +1353,9 @@ public struct ContentBlock: Codable, Identifiable {
     public let title_style: TextStyleConfig?
     public let subtitle_style: TextStyleConfig?
 
-    // SPEC-089d Phase A: animated_loading fields
+    // Phase A: animated_loading fields
     public let loading_variant: String?    // circular, linear, checklist
-    // EPIC-3 — configurable loading message + independent position (above/below), size, color.
+    // Configurable loading message + independent position (above/below), size, color.
     public let loading_text: String?
     public let loading_text_position: String?  // "above" | "below" (default "below")
     public let loading_text_size: Double?
@@ -1363,7 +1363,7 @@ public struct ContentBlock: Codable, Identifiable {
     // Progress/Loading v2 — horizontal alignment of the loading message:
     // "left" | "center" (default) | "right".
     public let loading_text_align: String?
-    // EPIC-3 — media_gallery: horizontal row of image tiles.
+    // media_gallery: horizontal row of image tiles.
     public let gallery_images: [String]?
     public let gallery_item_width: Double?
     public let gallery_item_height: Double?
@@ -1383,7 +1383,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let auto_advance: Bool?
     public let show_percentage: Bool?
 
-    // SPEC-089d Phase F: circular_gauge fields
+    // Phase F: circular_gauge fields
     public let gauge_variant: String?    // "arc" (default), "speedometer", "radial", "linear"
     public let gauge_value: Double?
     public let max_value: Double?
@@ -1403,7 +1403,7 @@ public struct ContentBlock: Codable, Identifiable {
     // Percentage location: "center" (default), "below", "above", "none"
     public let percentage_location: String?
 
-    // SPEC-089d Phase F: date_wheel_picker fields
+    // Phase F: date_wheel_picker fields
     public let columns: [DateWheelColumnConfig]?
     public let default_date_value: String?
     public let min_date: String?
@@ -1423,13 +1423,13 @@ public struct ContentBlock: Codable, Identifiable {
     public let calendar_bg_color: String?        // explicit background color for graphical date picker
     public let wheel_bg_color: String?           // explicit background color for wheel date picker (top-level, not field_config)
     public let wheel_height: Double?             // wheel picker height in pt (top-level)
-    // SPEC-419 — console writes the picker divider/border line color + stroke at top level
+    // Console writes the picker divider/border line color + stroke at top level
     // (wheel_line_color / wheel_line_stroke_width). iOS previously read only field_config
     // picker_border_color/width, so authored line styling never appeared.
     public let wheel_line_color: String?
     public let wheel_line_stroke_width: Double?
 
-    // SPEC-089d Phase F: stack / row fields (container blocks)
+    // Phase F: stack / row fields (container blocks)
     public let children: [ContentBlock]?
     public let stack_children: [ContentBlock]?  // Console uses this key; SDK prefers children
     public let z_index: Double?
@@ -1443,20 +1443,20 @@ public struct ContentBlock: Codable, Identifiable {
     public let row_child_fill: Bool?        // true (default) — each child gets maxWidth: .infinity
     public let column_ratios: String?       // "1:2", "1:1:2" — proportional widths for horizontal layout
 
-    // SPEC-089d Phase F: custom_view fields
+    // Phase F: custom_view fields
     public let view_key: String?
     public let custom_config: [String: AnyCodable]?
     public let placeholder_image_url: String?
     public let placeholder_text: String?
 
-    // SPEC-089d Phase F: star_background fields
+    // Phase F: star_background fields
     public let particle_type: String?      // stars, sparkles, dots, snow, bokeh
     public let density: String?            // sparse, medium, dense
     public let speed: String?              // slow, medium, fast
     public let secondary_color: String?
     public let size_range: [Double]?
     public let fullscreen: Bool?
-    // SPEC-419 pass-15 #8/#9/#25 — editor authors these top-level for star_background.
+    // Editor authors these top-level for star_background.
     public let particle_color: String?
     public let particle_opacity: Double?
     public let particle_speed: String?     // slow, medium, fast (editor key; falls back to `speed`)
@@ -1464,35 +1464,35 @@ public struct ContentBlock: Codable, Identifiable {
     // Defaults on when particle_type == "confetti".
     public let particle_multicolor: Bool?
 
-    // SPEC-089d Phase F: wheel_picker fields
+    // Phase F: wheel_picker fields
     public let min_value: Double?
     public let max_value_picker: Double?
     public let step_value: Double?
     public let default_picker_value: Double?
-    // SPEC-419 — the console editor writes top-level `default_value` (number) for wheel_picker;
+    // The console editor writes top-level `default_value` (number) for wheel_picker;
     // read it as a fallback for default_picker_value so authored defaults aren't lost on-device.
     public let default_value: Double?
     public let unit: String?
     public let unit_position: String?
     public let visible_items: Int?
 
-    // SPEC-089d Phase F: pulsing_avatar fields
+    // Phase F: pulsing_avatar fields
     public let pulse_color: String?
     public let pulse_ring_count: Int?
     public let pulse_speed: Double?
     public let border_width: Double?
     public let border_color: String?
 
-    // SPEC-089d: pricing_card fields
+    // pricing_card fields
     public let pricing_plans: [PricingPlanConfig]?
     public let pricing_layout: String?     // stack, side_by_side
 
-    // SPEC-089d Phase 3: Form input common fields
+    // Form input common fields
     public let field_label: String?
     public let field_placeholder: String?
     public let field_required: Bool?
     public let field_style: FormFieldBlockStyle?
-    /// `var`, not `let`, for the same reason `StepConfig`'s fields are: SPEC-448 §B lets a host
+    /// `var`, not `let`, for the same reason `StepConfig`'s fields are: the host-data hook lets a host
     /// replace a single block's options, and a merge that had to rebuild the whole ContentBlock
     /// through its memberwise init would silently drop any field the author of that call forgot —
     /// the exact bug `StepConfigOverrideMerger` documents having shipped once already.
@@ -1500,24 +1500,24 @@ public struct ContentBlock: Codable, Identifiable {
     public let multi_select: Bool?
     // Form input specific config.
     //
-    // `var` for the same reason `field_options` above is: SPEC-451 lets a host supply a map block's
+    // `var` for the same reason `field_options` above is: the host-data hook lets a host supply a map block's
     // route at runtime, and the merge writes it into this dictionary under the keys the console
     // authors, so the renderer keeps a single code path for authored and delegate-supplied routes.
     public var field_config: [String: AnyCodable]?
 
-    // SPEC-089d §6.3: Visibility condition
+    // Visibility condition
     public let visibility_condition: VisibilityCondition?
 
-    // SPEC-089d §6.4: Entrance animation
+    // Entrance animation
     public let entrance_animation: EntranceAnimation?
 
-    // SPEC-089d §6.5: Press/tap state
+    // Press/tap state
     public let pressed_style: PressedStyle?
 
-    // SPEC-089d §6.6: Dynamic bindings
+    // Dynamic bindings
     public let bindings: [String: String]?
 
-    // SPEC-089d §6.7: Relative sizing
+    // Relative sizing
     public let element_width: String?
     public let element_height: String?
 
@@ -1525,7 +1525,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let overflow: String?
     // Sprint 7: Scroll-collapse — block fades out and shrinks to 0 height when scrolled
     public let collapse_on_scroll: Bool?
-    // SPEC-419 pass-15 #23 — max line count for text/rich_text truncation (parity with Android `max_lines`)
+    // Max line count for text/rich_text truncation (parity with Android `max_lines`)
     public let max_lines: Int?
 
     enum CodingKeys: String, CodingKey {
@@ -1549,14 +1549,14 @@ public struct ContentBlock: Codable, Identifiable {
         case icon_ref
         case block_style
         case zone, vertical_align, horizontal_align, vertical_offset, horizontal_offset
-        // SPEC-089d Phase A: new block fields
+        // Phase A: new block fields
         case dot_count, active_index, active_color, inactive_color
         case dot_size, dot_spacing, active_dot_width, dot_shape, alignment
         case providers, button_style, button_height, spacing
         case show_divider, divider_text
         // Social-Login styling v2
         case divider_position, button_text_align
-        // SPEC-089e amendment — email button placement + spacer
+        // Email button placement + spacer
         case email_login_placement, email_cta_spacing_below
         case timer_variant, duration_seconds
         case target_type, target_datetime
@@ -1574,7 +1574,7 @@ public struct ContentBlock: Codable, Identifiable {
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
         case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
-        // SPEC-089d Phase F: new block fields
+        // Phase F: new block fields
         case gauge_variant, gauge_value, max_value, sublabel, stroke_width, min_label, max_label, min_max_font_size
         case min_max_color, arrow_color, arrow_stroke_width, percentage_location
         case label_color, label_font_size, animate, animation_duration_ms
@@ -1592,7 +1592,7 @@ public struct ContentBlock: Codable, Identifiable {
         case unit, unit_position, visible_items
         case pulse_color, pulse_ring_count, pulse_speed, border_width, border_color
         case pricing_plans, pricing_layout
-        // SPEC-089d Phase 3: form input + advanced styling fields
+        // Form input + advanced styling fields
         case field_label, field_placeholder, field_required, field_style, field_options, multi_select, field_config
         case visibility_condition, entrance_animation, pressed_style, bindings
         case element_width, element_height
@@ -1811,7 +1811,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.placeholder_text = try c.decodeIfPresent(String.self, forKey: .placeholder_text)
         self.particle_type = try c.decodeIfPresent(String.self, forKey: .particle_type)
         self.density = try c.decodeIfPresent(String.self, forKey: .density)
-        self.speed = (try? c.decodeIfPresent(String.self, forKey: .speed)) ?? nil  // SPEC-419 pass-23 — tolerate a legacy numeric `speed` (old lottie blocks wrote a number here) rather than throwing on the whole block
+        self.speed = (try? c.decodeIfPresent(String.self, forKey: .speed)) ?? nil  // Tolerate a legacy numeric `speed` (old lottie blocks wrote a number here) rather than throwing on the whole block
         self.secondary_color = try c.decodeIfPresent(String.self, forKey: .secondary_color)
         self.size_range = try c.decodeIfPresent([Double].self, forKey: .size_range)
         self.fullscreen = try c.decodeIfPresent(Bool.self, forKey: .fullscreen)
@@ -1823,7 +1823,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.max_value_picker = try c.decodeIfPresent(Double.self, forKey: .max_value_picker)
         self.step_value = try c.decodeIfPresent(Double.self, forKey: .step_value)
         self.default_picker_value = try c.decodeIfPresent(Double.self, forKey: .default_picker_value)
-        // SPEC-419 — `try?`: top-level default_value is a number for wheel_picker, but tolerate a
+        // `try?`: top-level default_value is a number for wheel_picker, but tolerate a
         // stray non-number (e.g. an imported bool) without failing the whole block decode.
         self.default_value = (try? c.decodeIfPresent(Double.self, forKey: .default_value)) ?? nil
         self.unit = try c.decodeIfPresent(String.self, forKey: .unit)

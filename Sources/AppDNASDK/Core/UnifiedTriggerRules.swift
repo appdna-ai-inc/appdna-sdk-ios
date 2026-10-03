@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Multi-type trigger model for SPEC-089c (SDUI engine prerequisite)
+// MARK: - Multi-type trigger model (SDUI engine prerequisite)
 // Extends the existing TriggerRules (MessageConfig) with session, time, screen,
 // and trait-based triggers for server-driven UI screens.
 

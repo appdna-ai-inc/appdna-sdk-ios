@@ -4,7 +4,7 @@ import SwiftUI
 struct RatingQuestionView: View {
     let question: SurveyQuestion
     @Binding var answer: SurveyAnswer?
-    // R89 — filled rating icons honor the survey theme's resolved accent_color, matching
+    // Filled rating icons honor the survey theme's resolved accent_color, matching
     // the console SurveyPreview (which fills rating icons with accentColor for every style).
     // Was hardcoded per-style (heart .red / thumb #6366F1 / star #FBBF24), which ignored
     // SurveyTheme.accent_color. Defaults to the brand indigo for callers that don't pass it.

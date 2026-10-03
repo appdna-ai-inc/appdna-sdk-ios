@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - SPEC-420 — Wheel-picker measurement mode
+// MARK: - Wheel-picker measurement mode
 //
 // Opt-in measurement branch for the `wheel_picker` content block. Enabled only
 // when `block.field_config["measurement_type"]` is present AND the `units[]`
@@ -230,7 +230,7 @@ struct MeasurementWheelBlockView: View {
     let block: ContentBlock
     let config: MeasurementConfig
     @Binding var inputValues: [String: Any]
-    /// SPEC-419 STEP-2 — fired `("value_changed", <base value>)` on a real user commit (a pick from any
+    /// Fired `("value_changed", <base value>)` on a real user commit (a pick from any
     /// style, or a unit switch), NEVER on the pristine onAppear seed and never per drag tick.
     ///
     /// This used to be dead: `writeSnapshot()` computed `snap.payload` and threw it away

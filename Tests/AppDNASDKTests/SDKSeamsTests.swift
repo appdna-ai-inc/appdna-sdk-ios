@@ -168,7 +168,7 @@ final class SDKSeamsTests: XCTestCase {
         XCTAssertEqual(merged.field_defaults?["email"]?.value as? String, "a@b.c")
     }
 
-    // MARK: - Placement paywall context (SPEC-070-B F3)
+    // MARK: - Placement paywall context
 
     /// 🔴 `presentPaywall(placement:)` DROPPED `customData` — it rebuilt the context from three of its
     /// four fields, and the fourth is the only one `PaywallManager` merges into `paywall_view`. Android

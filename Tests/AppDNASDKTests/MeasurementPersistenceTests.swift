@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-420 — pure persistence + delegate-payload contract for wheel-picker
+/// Pure persistence + delegate-payload contract for wheel-picker
 /// measurement mode. Mirrors `InteractionResultTests` (asserts the executed
 /// guarantee, not the render). The base scalar MUST be unit-stable across a
 /// unit toggle; the sibling keys are self-consistent (`_unit` annotates the BASE).

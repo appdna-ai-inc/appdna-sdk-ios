@@ -1,11 +1,11 @@
 import Foundation
 
-/// SPEC-070-B — the onboarding flow-completion seam.
+/// The onboarding flow-completion seam.
 ///
 /// WHY THIS FILE EXISTS: "the flow finished" is the single most important thing onboarding emits — it
 /// is the denominator of the whole funnel and the only moment the host is handed the user's answers.
 /// On iOS it was reachable ONLY through `OnboardingFlowManager.present(from:flow:delegate:)`: the
-/// event track, the SPEC-088 response persistence and `onOnboardingCompleted` all lived inside the
+/// event track, the response persistence and `onOnboardingCompleted` all lived inside the
 /// `onFlowCompleted` closure that `present()` closes over, so nothing without a `UIViewController` —
 /// no unit test, no cross-platform fixture, no future host-driven presentation path — could reach the
 /// completion decision or prove it fired. ``OnboardingAdvance`` had already been extracted for exactly
@@ -66,7 +66,7 @@ enum OnboardingCompletion {
             responses: responses
         )
         track(event.name, event.props)
-        // SPEC-088: persist onboarding responses for cross-module access.
+        // Persist onboarding responses for cross-module access.
         SessionDataStore.shared.setOnboardingResponses(responses)
         delegate?.onOnboardingCompleted(flowId: flowId, responses: responses)
         // A `link_on_complete` CTA asked to go somewhere once the flow finished. Opened AFTER the

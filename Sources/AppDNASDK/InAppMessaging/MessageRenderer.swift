@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Routes to the appropriate message view based on message_type.
-/// SPEC-088: Interpolates all text fields via TemplateEngine before rendering.
-/// SPEC-205: Resolves dark-mode overrides based on system color scheme
+/// Interpolates all text fields via TemplateEngine before rendering.
+/// Resolves dark-mode overrides based on system color scheme
 /// before handing content to sub-views.
 struct MessageRenderer: View {
     let messageId: String
@@ -12,7 +12,7 @@ struct MessageRenderer: View {
 
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
 
-    /// Interpolated content with template variables resolved (SPEC-088).
+    /// Interpolated content with template variables resolved.
     /// Preserves the `dark` override object so `resolved(for:)` can use
     /// it downstream.
     private var interpolatedContent: MessageContent {
@@ -49,7 +49,7 @@ struct MessageRenderer: View {
     }
 
     var body: some View {
-        // SPEC-205: apply dark overrides before rendering so sub-views
+        // Apply dark overrides before rendering so sub-views
         // see the final resolved colors/images for the current scheme.
         let content = interpolatedContent.resolved(for: colorScheme)
         switch config.message_type {

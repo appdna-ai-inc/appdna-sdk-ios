@@ -15,13 +15,13 @@ struct ThreeZoneStepLayout: View {
     @Binding var inputValues: [String: Any]
     var currentStepIndex: Int = 0
     var totalSteps: Int = 1
-    /// SPEC-419 STEP-2 — fired by an interactive block; carries (blockId, action, value) to the step scope.
+    /// Fired by an interactive block; carries (blockId, action, value) to the step scope.
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
-    /// SPEC-419 STEP-2 — per-block field_config overrides pushed by the host delegate, layered at render time.
+    /// Per-block field_config overrides pushed by the host delegate, layered at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
     /// #657 — per-block replacement options from a refresh interaction, threaded to the renderer.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
-    /// SPEC-496 — raw-resolved block ids and the step's ONE layered list (consent-CTA gate).
+    /// Raw-resolved block ids and the step's ONE layered list (consent-CTA gate).
     var rawResolvedIds: Set<String> = []
     var gateBlocks: [ContentBlock]? = nil
 
@@ -31,7 +31,7 @@ struct ThreeZoneStepLayout: View {
     var body: some View {
         let visible = blocks.filter {
             evaluateVisibilityCondition($0.visibility_condition, responses: responses, hookData: hookData)
-                // SPEC-496 §A3 — `empty_state.mode == hidden` hides the block (raw-pass blocks only).
+                // `empty_state.mode == hidden` hides the block (raw-pass blocks only).
                 && !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolvedIds.contains($0.id))
         }
         let (topBlocks, centerBlocks, bottomBlocks) = Self.partitionBlocks(visible)

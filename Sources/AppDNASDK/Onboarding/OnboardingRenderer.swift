@@ -24,7 +24,7 @@ struct OnboardingFlowHost: View {
     @State private var navigationHistory: [Int] = [] // Stack of visited step indices for back navigation
     @State private var responses: [String: Any] = [:]
 
-    // SPEC-083: Hook state
+    // Hook state
     @State private var isProcessing = false
     /// A step submission whose completion event is waiting on the hook's verdict. See
     /// `PendingStepCompletion` and `applyOutcome`.
@@ -37,12 +37,12 @@ struct OnboardingFlowHost: View {
     @State private var successMessage: String?
     @State private var showSuccess = false
     @State private var configOverrides: [String: StepConfigOverride] = [:]
-    /// SPEC-496 §B0 — the host-data pending state machine, and the current step PRESENTATION (one
+    /// The host-data pending state machine, and the current step PRESENTATION (one
     /// arrival on a step; back-then-forward is a new one). Bumped wherever `currentIndex` changes, in
     /// the same transaction, so the new step's first frame is already pending.
     @StateObject private var hostDataCoordinator = HostDataPendingCoordinator()
     @State private var presentationSerial = 0
-    /// SPEC-496 §5b C3 / C5.5 — the per-step interaction data layer, its stamps, the flow-level
+    /// The per-step interaction data layer, its stamps, the flow-level
     /// `callSeq`, the current presentation and one `InteractionCoordinator` per presentation. The SAME
     /// instance is handed to the step router (`@ObservedObject`), so a `dataContext`-only reply
     /// re-renders the step and is visible in the reply's own turn.
@@ -57,10 +57,10 @@ struct OnboardingFlowHost: View {
     /// in the URL cache. Prevents the "one-frame flash with no background"
     /// effect when the onboarding is first presented.
     @State private var isInitialLoading = true
-    // EPIC-2 — dynamic color flash on step-advance (the progress fill briefly animates to flash_color).
+    // Dynamic color flash on step-advance (the progress fill briefly animates to flash_color).
     @State private var progressFlashing = false
-    // SPEC-419 STEP-2 — the in-flight guard for element interactions now lives in the PER-PRESENTATION
-    // `InteractionCoordinator` (SPEC-496 §5b C5.3). The flow-level flag it replaced was held across
+    // The in-flight guard for element interactions now lives in the PER-PRESENTATION
+    // `InteractionCoordinator`. The flow-level flag it replaced was held across
     // navigation, so a slow reply from a step the user had left blocked every interaction on the next.
 
     var body: some View {
@@ -103,17 +103,17 @@ struct OnboardingFlowHost: View {
             // Step content — fills remaining space
             if currentIndex < flow.steps.count {
                 let step = flow.steps[currentIndex]
-                // §B0 "Applies" — the raw-JSON walk runs ONCE per host body, never per router read.
+                // "Applies" — the raw-JSON walk runs ONCE per host body, never per router read.
                 let applies = hostDataApplies(step)
 
                 ZStack {
                     OnboardingStepRouter(
                         step: step,
-                        // SPEC-496 §A4 — the UN-merged step plus its override: the router applies
+                        // The UN-merged step plus its override: the router applies
                         // `StepConfigOverrideMerger` itself, AFTER the raw host-data pass.
                         configOverride: configOverrides[step.id],
                         hostDataPending: hostDataPending(for: step, applies: applies),
-                        // §5b C4 — the SAME answer, read live for THIS router's serial (bound now, not
+                        // The SAME answer, read live for THIS router's serial (bound now, not
                         // the live one): a reply folded through an older router copy must prune and
                         // gate with the current pending. `applies` is captured, so a read is a
                         // dictionary lookup — no raw-JSON walk per `resolvedStep`.
@@ -131,13 +131,13 @@ struct OnboardingFlowHost: View {
                         currentStepIndex: currentIndex,
                         totalSteps: flow.steps.count,
                         savedResponses: responses[step.id] as? [String: Any],
-                        // SPEC-401-A parity — the WHOLE response map, so block-level templates,
+                        // Parity — the WHOLE response map, so block-level templates,
                         // bindings and visibility conditions can see prior steps' answers. Android
-                        // has passed this since R11; iOS passed only `savedResponses` above.
+                        // has passed this for a long time; iOS passed only `savedResponses` above.
                         accumulatedResponses: responses,
                         delegate: delegate,
                         eventTracker: eventTracker,
-                        // SPEC-496 §5b — the router's presentation (its coordinator is looked up by
+                        // The router's presentation (its coordinator is looked up by
                         // this serial) and the flow-level interaction store.
                         presentation: presentationSerial,
                         interactionStore: interactionStore
@@ -150,7 +150,7 @@ struct OnboardingFlowHost: View {
                         removal: .move(edge: .leading)
                     ))
 
-                    // SPEC-083: Error banner
+                    // Error banner
                     if showError, let msg = errorMessage {
                         VStack {
                             errorBanner(message: msg)
@@ -167,7 +167,7 @@ struct OnboardingFlowHost: View {
                         }
                     }
 
-                    // SPEC-083: Loading overlay
+                    // Loading overlay
                     if isProcessing {
                         loadingOverlay
                     }
@@ -270,18 +270,18 @@ struct OnboardingFlowHost: View {
             if let hex = flow.settings.progress_color { return Color(hex: hex) }
             return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
         }()
-        // EPIC-2 — flash overrides the fill while progressFlashing (animated via .animation below).
+        // Flash overrides the fill while progressFlashing (animated via .animation below).
         let flashCol = flow.settings.progress_flash_color.map { Color(hex: $0) }
         let fillColor: Color = (progressFlashing && flashCol != nil) ? flashCol! : normalFill
         let style = flow.settings.progress_style ?? "continuous_bar"
         let total = flow.steps.count
         let current = currentIndex
-        // EPIC-2 — thin sizing (custom height) + multiple colors at once (gradient), flow-level progress.
+        // Thin sizing (custom height) + multiple colors at once (gradient), flow-level progress.
         let barHeight = CGFloat(flow.settings.progress_height ?? 4)
         let gradCols = (flow.settings.progress_gradient_colors ?? []).map { Color(hex: $0) }
         let progressSkipLabel = flow.settings.progress_skip_label
 
-        // EPIC-2 — optional "Skip" link beside the progress: Group(progress).frame(maxWidth:.infinity) | Skip.
+        // Optional "Skip" link beside the progress: Group(progress).frame(maxWidth:.infinity) | Skip.
         HStack(spacing: 0) {
             Group {
             switch style {
@@ -319,7 +319,7 @@ struct OnboardingFlowHost: View {
             EmptyView()
 
         default: // continuous_bar
-            // EPIC-2 — height-honoring custom bar (progress_height) + optional multi-color gradient
+            // Height-honoring custom bar (progress_height) + optional multi-color gradient
             // (progress_gradient_colors). Mirrors Android ContinuousProgressBar; snapshot-tested.
             ContinuousProgressBar(
                 progress: progress,
@@ -364,7 +364,7 @@ struct OnboardingFlowHost: View {
         let backColor: Color = backStyle?.icon_color.flatMap { Color(hex: $0) } ?? Color(hex: "#6B7280")
         let hasBack = flow.settings.allow_back && !navigationHistory.isEmpty && !currentStepHidesBack
         let dismissAllowed = flow.settings.dismiss_allowed ?? true
-        // EPIC-2 — back⇄X switch: show the dismiss in the leading slot on the first/no-history step.
+        // back⇄X switch: show the dismiss in the leading slot on the first/no-history step.
         let leadingIsClose = !hasBack && dismissAllowed && (backStyle?.close_on_first == true)
 
         return HStack {
@@ -384,13 +384,13 @@ struct OnboardingFlowHost: View {
                     withAnimation(.easeInOut(duration: 0.25)) {
                         let nextSerial = OnboardingPresentation.serial(presentationSerial, from: currentIndex, to: previousIndex)
                         presentationSerial = nextSerial
-                        // §5b C5.5 — the store's current presentation moves in the SAME transaction.
+                        // The store's current presentation moves in the SAME transaction.
                         interactionStore.setCurrentPresentation(nextSerial)
                         currentIndex = previousIndex
                     }
                 } label: {
                     Group {
-                        // EPIC-2 — custom back glyph (any char) when set, else the SF chevron.
+                        // Custom back glyph (any char) when set, else the SF chevron.
                         if let glyph = backStyle?.icon, !glyph.isEmpty {
                             NavGlyph(glyph: glyph, color: backColor, size: backSize)
                         } else {
@@ -404,7 +404,7 @@ struct OnboardingFlowHost: View {
                 }
                 .disabled(isProcessing)
             } else if leadingIsClose {
-                // EPIC-2 — back⇄X switch: dismiss in the leading slot on the first step.
+                // back⇄X switch: dismiss in the leading slot on the first step.
                 Button {
                     let step = flow.steps[currentIndex]
                     // Same race as Back/Skip: dismissing during the 300 ms hook grace-window must
@@ -412,7 +412,7 @@ struct OnboardingFlowHost: View {
                     // a phantom completion for the step the user dismissed away from.
                     pendingStepCompletion = nil
                     HapticEngine.triggerIfEnabled(flow.settings.haptic?.triggers?.on_button_tap, config: flow.settings.haptic)
-                    // §5b C5.5 — no late interaction reply may act on a dismissed flow.
+                    // No late interaction reply may act on a dismissed flow.
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
@@ -436,7 +436,7 @@ struct OnboardingFlowHost: View {
                     // See leading-close above: clear a hook-pending completion before dismissing.
                     pendingStepCompletion = nil
                     HapticEngine.triggerIfEnabled(flow.settings.haptic?.triggers?.on_button_tap, config: flow.settings.haptic)
-                    // §5b C5.5 — no late interaction reply may act on a dismissed flow.
+                    // No late interaction reply may act on a dismissed flow.
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
@@ -451,7 +451,7 @@ struct OnboardingFlowHost: View {
         .padding(.horizontal, 8)
     }
 
-    // MARK: - SPEC-083: Loading overlay
+    // MARK: - Loading overlay
 
     private var loadingOverlay: some View {
         ZStack {
@@ -473,7 +473,7 @@ struct OnboardingFlowHost: View {
         }
     }
 
-    // MARK: - SPEC-083: Error banner
+    // MARK: - Error banner
 
     private func errorBanner(message: String) -> some View {
         HStack {
@@ -547,13 +547,13 @@ struct OnboardingFlowHost: View {
         }
     }
 
-    // MARK: - Config overrides (SPEC-083)
+    // MARK: - Config overrides
 
     private func applyOverrides(to config: StepConfig, stepId: String) -> StepConfig {
         StepConfigOverrideMerger.apply(configOverrides[stepId], to: config)
     }
 
-    // MARK: - Element interaction (SPEC-419 STEP-2 / SPEC-496 §5b)
+    // MARK: - Element interaction
 
     // The round trip used to live here, as `performInteraction`, guarded by a FLOW-level
     // `interactionInFlight` with no timeout, and it told the host `flow.steps[currentIndex].id` — which
@@ -569,13 +569,13 @@ struct OnboardingFlowHost: View {
         currentIndex < flow.steps.count && flow.steps[currentIndex].hide_back == true
     }
 
-    /// SPEC-448 §B — how long the host gets before the step renders without its override.
+    /// How long the host gets before the step renders without its override.
     ///
     /// Deliberately shorter than the server-hook default of 10s: a hook is a background call, this
     /// one is between the user and a visible screen.
     private static let overrideTimeout: TimeInterval = 3.0
 
-    /// SPEC-496 §B0 — is the CURRENT presentation of `step` waiting on host data? True from the first
+    /// Is the CURRENT presentation of `step` waiting on host data? True from the first
     /// frame (before the call starts in `onAppear`) when a delegate is set, the step's raw blocks
     /// reference `hook_data`, and no override for it is cached yet.
     private func hostDataPending(for step: OnboardingStep, applies: Bool) -> Bool {
@@ -586,23 +586,23 @@ struct OnboardingFlowHost: View {
         )
     }
 
-    /// §B0 "Applies" — a delegate is set and the step's raw blocks reference `hook_data`.
+    /// "Applies" — a delegate is set and the step's raw blocks reference `hook_data`.
     private func hostDataApplies(_ step: OnboardingStep) -> Bool {
         delegate != nil && OnboardingStepPipeline.referencesHookData(step)
     }
 
-    /// SPEC-496 §5b C3 — cached = a base, OR a layer VALUE under a key the step references (a page
+    /// Cached = a base, OR a layer VALUE under a key the step references (a page
     /// loaded with "Show more" is there on a revisit's first frame). The coordinator samples this ONCE
     /// per presentation and latches it.
     private func hostDataCached(_ step: OnboardingStep) -> Bool {
         interactionStore.isCached(step, hasBase: configOverrides[step.id] != nil)
     }
 
-    /// SPEC-496 §5b C4 — the router's live pending read. `serial` and `applies` are bound at
+    /// The router's live pending read. `serial` and `applies` are bound at
     /// construction: the router's OWN presentation, never the flow host's live one. `cached` is only
     /// evaluated for a serial with no latch yet.
     /// Capturing `applies` is intentional: if the weak delegate deallocates mid-presentation, an older
-    /// router copy stays pending until the reply or the deadline ends it, exactly as §B0 defines.
+    /// router copy stays pending until the reply or the deadline ends it, exactly as the pending rule defines.
     static func pendingProvider(coordinator: HostDataPendingCoordinator, serial: Int, applies: Bool,
                                 cached: @escaping () -> Bool = { false }) -> () -> Bool {
         { coordinator.isPending(presentation: serial, applies: applies, cached: cached()) }
@@ -610,12 +610,12 @@ struct OnboardingFlowHost: View {
 
     private func handleStepAppear(step: OnboardingStep) {
         // 🔴 BOUNDED. This `await` used to have no timeout at all, which was mostly harmless
-        // while few hosts did real work in this hook — SPEC-448 §B asks every host to FETCH
+        // while few hosts did real work in this hook — every host is now asked to FETCH
         // DATA here, so a customer awaiting their own backend on a bad connection, with no
         // timeout of their own, would hang the step indefinitely and it would look like our bug.
         // The SDK's own server hooks have always bounded themselves; this one now matches.
         //
-        // SPEC-496 §B0 — the deadline is a timer INDEPENDENT of the host call (a host that never
+        // The deadline is a timer INDEPENDENT of the host call (a host that never
         // resumes and ignores cancellation still ends pending at 3 s), only the latest call of this
         // presentation may end pending, and the end of pending is a re-resolve even when the host
         // returned nil (the coordinator publishes the change).
@@ -628,7 +628,7 @@ struct OnboardingFlowHost: View {
         hostDataCoordinator.start(
             presentation: presentationSerial,
             timeout: Self.overrideTimeout,
-            // SPEC-496 §5b C3 — every call (and every re-fire) draws the flow-level `callSeq` at START.
+            // Every call (and every re-fire) draws the flow-level `callSeq` at START.
             seq: { store.nextCallSeq() },
             call: {
                 await host?.onBeforeStepRender(
@@ -639,7 +639,7 @@ struct OnboardingFlowHost: View {
                     responses: responsesSnapshot
                 )
             },
-            // §B0 — fires once for every call that finished, EVEN IF the user already left the step
+            // Fires once for every call that finished, EVEN IF the user already left the step
             // (a superseded generation). Riding on `onFinish` (latest generation only) dropped
             // `onboarding_step_viewed` / `onOnboardingStepChanged` for every step left before the
             // delegate replied, host data or not. The index is the one the step was viewed at.
@@ -652,7 +652,7 @@ struct OnboardingFlowHost: View {
                 // looking at.
                 if let override, currentIndex < flow.steps.count, flow.steps[currentIndex].id == step.id {
                     configOverrides[step.id] = override
-                    // §5b C3 — the base's stamp is its call's `callSeq`; interaction entries for the
+                    // The base's stamp is its call's `callSeq`; interaction entries for the
                     // keys it sets that started earlier are deleted. Same turn as the write above.
                     store.recordBase(stepId: step.id, override: override, stamp: seq)
                 }
@@ -717,12 +717,12 @@ struct OnboardingFlowHost: View {
             // structural discipline as `AuthSecretRedactor` one block up, and for the same reason.
             responses = OnboardingCTAFlag.applyTo(responses: responses, step: step, stepData: safeData)
         }
-        // SPEC-087: Persist responses incrementally so TemplateEngine has fresh data for next step.
+        // Persist responses incrementally so TemplateEngine has fresh data for next step.
         // The persist stays here even for a hook step: the hook is HANDED `responses`, and if it blocks
         // we stay on the step and the user's typed values must survive the re-render.
         SessionDataStore.shared.setOnboardingResponses(responses)
 
-        // SPEC-083: Determine hook type — client delegate takes priority over server hook
+        // Determine hook type — client delegate takes priority over server hook
         if delegate != nil {
             // 🔴 `onboarding_step_completed` USED TO FIRE HERE — BEFORE THE HOOK HAD DECIDED ANYTHING.
             //
@@ -936,7 +936,7 @@ struct OnboardingFlowHost: View {
         WebhookResponseParser.parse(data, errorText: hookConfig.error_text)
     }
 
-    // MARK: - Variable interpolation (SPEC-083 §6.5, SPEC-088: delegates to shared TemplateEngine)
+    // MARK: - Variable interpolation (delegates to shared TemplateEngine)
 
     private func interpolateVariables(_ value: String) -> String {
         let ctx = TemplateEngine.shared.buildContext()
@@ -981,7 +981,7 @@ struct OnboardingFlowHost: View {
         if outcome.responsesChanged {
             responses = outcome.responses
         }
-        // SPEC-088: Persist computed data for cross-module access.
+        // Persist computed data for cross-module access.
         if let computed = outcome.computedData {
             SessionDataStore.shared.mergeComputedData(computed)
         }
@@ -1070,7 +1070,7 @@ struct OnboardingFlowHost: View {
                 // presentation's call, and the step would sit on "Loading…" forever.
                 let nextSerial = OnboardingPresentation.serial(presentationSerial, from: currentIndex, to: targetIndex)
                 presentationSerial = nextSerial
-                // §5b C5.5 — the store's current presentation moves in the SAME transaction.
+                // The store's current presentation moves in the SAME transaction.
                 interactionStore.setCurrentPresentation(nextSerial)
                 currentIndex = targetIndex
             }
@@ -1236,7 +1236,7 @@ struct OnboardingFlowHost: View {
         let onSuccessTarget = PaywallTriggerSkipResolver.nonEmpty(triggerData?["on_success_target"])
         let onFailTarget = PaywallTriggerSkipResolver.nonEmpty(triggerData?["on_fail_target"])
         let onDismissTarget = PaywallTriggerSkipResolver.nonEmpty(triggerData?["on_dismiss_target"])
-        // SPEC-403 — the skip-when-subscribed decision (gate + target chain). Resolved OUTSIDE the
+        // The skip-when-subscribed decision (gate + target chain). Resolved OUTSIDE the
         // Task below so the raw `triggerData` dictionary is never captured by the concurrent closure.
         let skipIfSubscribed = PaywallTriggerSkipResolver.skipIfSubscribed(triggerData: triggerData)
         let subscribedSkip = PaywallTriggerSkipResolver.decision(
@@ -1246,7 +1246,7 @@ struct OnboardingFlowHost: View {
         // Legacy fallback: on_dismiss enum + next_target edge.
         let legacyDismiss = triggerData?["on_dismiss"] as? String ?? "continue"
         let edgeTarget = triggerData?["next_target"] as? String
-        // §5b C5.5 — the paywall-then-complete path: the presentation ends exactly when completion fires.
+        // The paywall-then-complete path: the presentation ends exactly when completion fires.
         let completeFlow = onFlowCompleted
         let storeForCompletion = interactionStore
         let flowCompleted: ([String: Any]) -> Void = { r in
@@ -1286,9 +1286,9 @@ struct OnboardingFlowHost: View {
 
         let legacyDismissDefault = PaywallTriggerSkipResolver.legacyDismissDefault(legacyDismiss)
 
-        // SPEC-404 — runtime lock skip. When the backend has signalled the
+        // Runtime lock skip. When the backend has signalled the
         // SDK is in locked mode (per-key suspended at day 20+ or org
-        // cancelled), every paywall_trigger auto-skips via the SPEC-403
+        // cancelled), every paywall_trigger auto-skips
         // resolver chain. Reuses the same routing so existing flow targets
         // (`on_subscribed_skip_target` → `on_success_target` → "continue")
         // keep working. Tracker fires with reason='sdk_runtime_locked' so
@@ -1303,7 +1303,7 @@ struct OnboardingFlowHost: View {
             return
         }
 
-        // SPEC-401 Fix 1A — entitlement-aware skip gate.
+        // Entitlement-aware skip gate.
         // Default `true` matches the new SDK contract: paywalls auto-skip
         // for already-subscribed users unless the author explicitly opts
         // out (upsell paywalls). Older flows that never authored the field
@@ -1327,13 +1327,13 @@ struct OnboardingFlowHost: View {
                     "paywall_id": paywallId,
                     "reason": reason,
                 ])
-                // SPEC-403 resolver chain: on_subscribed_skip_target wins,
-                // falls back to on_success_target (back-compat with SPEC-401
-                // 1.0.61 workaround flows), then to "continue" (legacy edge).
+                // Resolver chain: on_subscribed_skip_target wins,
+                // falls back to on_success_target (back-compat with
+                // the 1.0.61 workaround flows), then to "continue" (legacy edge).
                 routeOutcome(subscribedSkip.skipTarget, "continue", reason)
                 return
             }
-            // 0.1s present delay preserved — matches pre-SPEC-401 timing
+            // 0.1s present delay preserved — matches the earlier timing
             // so existing visual cadence (host fade-out + paywall appear)
             // is unchanged for non-subscribed users.
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -1361,7 +1361,7 @@ struct OnboardingFlowHost: View {
     }
 }
 
-// MARK: - SPEC-087: Template interpolation helper
+// MARK: - Template interpolation helper
 
 /// Interpolates `{{variable}}` patterns in onboarding text fields via shared TemplateEngine.
 extension String {
@@ -1374,7 +1374,7 @@ extension String {
 
 // MARK: - Step router
 
-/// SPEC-496 §B0 — step presentations. A presentation is one ARRIVAL on a step, and the only thing that
+/// Step presentations. A presentation is one ARRIVAL on a step, and the only thing that
 /// starts one is `currentIndex` changing (the `.onChange(of: currentIndex)` that runs
 /// `handleStepAppear`). So the serial moves only when the index does.
 enum OnboardingPresentation {
@@ -1386,10 +1386,10 @@ enum OnboardingPresentation {
 /// Routes to the appropriate step view based on step type.
 struct OnboardingStepRouter: View {
     let step: OnboardingStep
-    /// SPEC-496 §A4 — `configOverrides[step.id]`, UN-merged. The router applies
+    /// `configOverrides[step.id]`, UN-merged. The router applies
     /// `StepConfigOverrideMerger` itself, after the raw pass (never twice, never before resolve).
     var configOverride: StepConfigOverride? = nil
-    /// SPEC-496 §B0 — this presentation is still waiting on `onBeforeStepRender`.
+    /// This presentation is still waiting on `onBeforeStepRender`.
     var hostDataPending: Bool = false
     let onNext: ([String: Any]?) -> Void
     let onSkip: () -> Void
@@ -1407,23 +1407,23 @@ struct OnboardingStepRouter: View {
     /// Without this, every block-level `{{responses.x}}`, every `bindings` entry pointing at
     /// `responses.…`, and every block `visibility_condition` testing a PRIOR step's answer resolved
     /// against an empty map, because `ThreeZoneStepLayout.responses` took its `[:]` default. Android
-    /// has passed the real map since SPEC-401-A R11 (`accumulatedResponses = responses.toMap()`); iOS
+    /// has passed the real map since an earlier fix (`accumulatedResponses = responses.toMap()`); iOS
     /// never got the same wiring, so this was a silent one-platform divergence.
     ///
     /// Step TITLES were unaffected and still interpolated, which is why it went unnoticed: they go
     /// through `loc()` → `TemplateEngine` → `SessionDataStore`, a different resolver with different
     /// roots than the block-level one.
     var accumulatedResponses: [String: Any] = [:]
-    /// SPEC-452 — host data for this step, addressable as `{{hook_data.…}}` and as a `bindings`
+    /// Host data for this step, addressable as `{{hook_data.…}}` and as a `bindings`
     /// target. Nil until a host returns one.
     ///
-    /// SPEC-496 §5b C3 — the EFFECTIVE map: the `onBeforeStepRender` base with the interaction data
+    /// The EFFECTIVE map: the `onBeforeStepRender` base with the interaction data
     /// layer applied, read from the store's LIVE values (never this router's copied `configOverride`,
     /// which only refreshes on the flow host's next body pass). Every reader uses this one map.
     var hostDataContext: [String: Any]? {
         interactionStore.effectiveHookData(stepId: step.id, fallbackBase: configOverride?.dataContext)
     }
-    /// SPEC-496 §5b C3 — `configOverrides[step.id]` read LIVE from the store (the flow host records it
+    /// `configOverrides[step.id]` read LIVE from the store (the flow host records it
     /// there in the same turn it writes it), so a reply folded through an older router copy — a `fire`
     /// closure the environment kept — still resolves, prunes and gates against the current base.
     private var liveConfigOverride: StepConfigOverride? {
@@ -1433,38 +1433,38 @@ struct OnboardingStepRouter: View {
     static func liveOverride(store: HostDataInteractionStore, stepId: String, copied: StepConfigOverride?) -> StepConfigOverride? {
         store.baseOverride(stepId: stepId) ?? copied
     }
-    /// SPEC-496 §5b C4 — the flow host's pending answer for THIS router's serial, read live. Nil for a
+    /// The flow host's pending answer for THIS router's serial, read live. Nil for a
     /// router built without the flow host, which then uses its copied `hostDataPending`.
     var pendingProvider: (() -> Bool)? = nil
     private var livePending: Bool { Self.livePending(provider: pendingProvider, copied: hostDataPending) }
     static func livePending(provider: (() -> Bool)?, copied: Bool) -> Bool { provider?() ?? copied }
-    /// SPEC-421 — flow host delegate + analytics tracker, needed for the permission pipeline
+    /// Flow host delegate + analytics tracker, needed for the permission pipeline
     /// (pre-hook, `onPermissionResult`, and the five `permission_*` analytics literals).
     weak var delegate: AppDNAOnboardingDelegate?
     var eventTracker: EventTracker?
-    /// SPEC-496 §5b — this router's presentation serial (the flow host's `presentationSerial`).
+    /// This router's presentation serial (the flow host's `presentationSerial`).
     let presentation: Int
-    /// SPEC-496 §5b C3 — the flow-level owner of the interaction layer, stamps and `callSeq`.
+    /// The flow-level owner of the interaction layer, stamps and `callSeq`.
     @ObservedObject private var interactionStore: HostDataInteractionStore
-    /// SPEC-496 §5b C5.5 — THIS presentation's coordinator, looked up once in `init` (a reused router
+    /// THIS presentation's coordinator, looked up once in `init` (a reused router
     /// whose presentation changed is re-initialised by its parent's body and picks up the new one).
     /// `body` and every method use only this property, never `coordinator(for:)`.
     @ObservedObject private var coordinator: InteractionCoordinator
 
     @State private var toggleValues: [String: Bool] = [:]
-    /// SPEC-421 — async per-type OS permission requester (retained across re-renders so a
+    /// Async per-type OS permission requester (retained across re-renders so a
     /// pending location/notification prompt's continuation isn't dropped).
     @State private var permissionManager = PermissionManager()
-    /// SPEC-421 — drives the optional "Open Settings" affordance when a permission is denied and
+    /// Drives the optional "Open Settings" affordance when a permission is denied and
     /// the step authored `show_settings_fallback_on_denied`.
     @State private var permissionSettingsAlert: PermissionSettingsAlert?
     @State private var inputValues: [String: Any]
     @State private var showValidationToast = false
-    /// SPEC-419 STEP-2 — per-block `field_config` overrides pushed back by the host delegate
+    /// Per-block `field_config` overrides pushed back by the host delegate
     /// (`ElementInteractionResult.fieldConfigPatches`). Keyed by blockId → (key → value). Layered at
     /// render time on top of the resolved block; empty = zero change.
     ///
-    /// SPEC-496 §5b C4 — keyed by PRESENTATION first, and read / written only under this router's
+    /// Keyed by PRESENTATION first, and read / written only under this router's
     /// `presentation`: a router reused for a new presentation (a 0→1→0 inside the exit animation
     /// keeps `.id(currentIndex)`) reads an empty entry on its very first frame.
     @State private var fieldConfigOverridesByPresentation: [Int: [String: [String: Any]]] = [:]
@@ -1474,7 +1474,7 @@ struct OnboardingStepRouter: View {
 
     private var fieldConfigOverrides: [String: [String: Any]] { fieldConfigOverridesByPresentation[presentation] ?? [:] }
     private var fieldOptionsOverrides: [String: [InputOption]] { fieldOptionsOverridesByPresentation[presentation] ?? [:] }
-    /// SPEC-496 — memo of the step pipeline (raw pass → decode → override merge → layering).
+    /// Memo of the step pipeline (raw pass → decode → override merge → layering).
     @State private var pipelineMemo = OnboardingStepPipelineMemo()
 
     init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
@@ -1494,14 +1494,14 @@ struct OnboardingStepRouter: View {
         self.presentation = presentation
         let store = interactionStore ?? HostDataInteractionStore()
         self._interactionStore = ObservedObject(wrappedValue: store)
-        // §5b C5.5 — the get-or-create runs HERE, during the flow host's body; its dictionary write
+        // The get-or-create runs HERE, during the flow host's body; its dictionary write
         // is plain, so nothing is published during a view update.
         self._coordinator = ObservedObject(wrappedValue: store.coordinator(for: presentation, stepId: step.id))
         // Pre-populate inputValues from saved responses so child views see data immediately
         _inputValues = State(initialValue: savedResponses ?? [:])
     }
 
-    // MARK: - SPEC-496 step pipeline
+    // MARK: - step pipeline
 
     /// The presented step after the ONE pipeline: raw host-data pass → typed decode (per-key revert)
     /// → `StepConfigOverrideMerger` → interaction layering. Every reader below — rendering, the
@@ -1517,7 +1517,7 @@ struct OnboardingStepRouter: View {
             selected: SelectedOptionStore.shared.snapshot,
             fieldConfigOverrides: fieldConfigOverrides,
             fieldOptionsOverrides: fieldOptionsOverrides,
-            // §5b C3 — the effective map (base + interaction layer), from the store's live values.
+            // The effective map (base + interaction layer), from the store's live values.
             hookDataSource: .effective(hostDataContext)
         ))
     }
@@ -1525,14 +1525,14 @@ struct OnboardingStepRouter: View {
     /// The effective config every reader uses (was handed in pre-merged by the flow host).
     private var effectiveConfig: StepConfig { resolvedStep.config }
 
-    // SPEC-084: Localization helper for step text
-    // SPEC-087: Also interpolates {{variables}} after localization
-    // SPEC-496: …except for a raw-resolved block, where it is LOOKUP-ONLY (no re-scan).
+    // Localization helper for step text
+    // Also interpolates {{variables}} after localization
+    // …except for a raw-resolved block, where it is LOOKUP-ONLY (no re-scan).
     private func loc(_ key: String, _ fallback: String) -> String {
         OnboardingStepPipeline.loc(key, fallback, resolved: resolvedStep, context: { TemplateEngine.shared.buildContext() })
     }
 
-    /// SPEC-496 §B0 — drop selections a §B0-scoped Select no longer renders.
+    /// Drop selections a host-data-scoped Select no longer renders.
     private func clearVanishedSelections() {
         let r = resolvedStep
         let out = OnboardingStepPipeline.clearVanishedSelections(blocks: r.blocks, rawResolvedIds: r.rawResolvedIds, inputValues: inputValues)
@@ -1554,7 +1554,7 @@ struct OnboardingStepRouter: View {
         Group {
             if let blocks = effectiveConfig.content_blocks, !blocks.isEmpty {
                 blockBasedStepView(blocks: blocks)
-                    // SPEC-496 §5b C5.1 — the step's interaction channel for `refresh_step` buttons at
+                    // The step's interaction channel for `refresh_step` buttons at
                     // any depth (three zones, lifted maps, containers, carousel pages). Rebuilt on
                     // every change of the coordinator's published state.
                     .environment(\.appdnaStepInteraction, StepInteraction.make(
@@ -1586,7 +1586,7 @@ struct OnboardingStepRouter: View {
                     let v = inputValues[fieldId]
                     return v == nil || (v as? String)?.isEmpty == true
                 })
-                // SPEC-496 — while host data is pending the answer is "Loading…", not "fill this in".
+                // While host data is pending the answer is "Loading…", not "fill this in".
                 Text(verdict.blockedByPending ? "Loading…" : "Please fill in \(missingBlock?.field_label ?? "required fields")")
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.white)
@@ -1599,11 +1599,11 @@ struct OnboardingStepRouter: View {
             }
         }
         .entryAnimation(effectiveConfig.animation?.entry_animation, durationMs: effectiveConfig.animation?.entry_duration_ms)
-        // SPEC-496 §B0 — a scoped Select whose rendered options no longer contain the selection
+        // A scoped Select whose rendered options no longer contain the selection
         // drops it (inputValues, the view's state, SelectedOptionStore).
         .onAppear { clearVanishedSelections() }
         .onChange(of: scopedSelectionSignature) { _ in clearVanishedSelections() }
-        // SPEC-421 — settings fallback for a denied permission (opt-in via `show_settings_fallback_on_denied`).
+        // Settings fallback for a denied permission (opt-in via `show_settings_fallback_on_denied`).
         .alert(
             "Permission needed",
             isPresented: Binding(
@@ -1626,14 +1626,14 @@ struct OnboardingStepRouter: View {
         }
     }
 
-    // MARK: - Block-based step view (SPEC-084)
+    // MARK: - Block-based step view
 
     @ViewBuilder
     private func blockBasedStepView(blocks: [ContentBlock]) -> some View {
         let variant = effectiveConfig.layout_variant ?? "no_image"
 
         /*
-         SPEC-495 §C — the two map placements that are NOT blocks in the column.
+         The two map placements that are NOT blocks in the column.
 
          A `fullscreen` map is the step's BACKGROUND, and a `top`/`bottom` anchored map is pinned to
          a step edge with the content flowing past it. Neither can be rendered from inside the
@@ -1662,7 +1662,7 @@ struct OnboardingStepRouter: View {
                 threeZoneLayout(blocks: blocks)
 
             case "image_split":
-                // 40/60 image-to-content split (SPEC-084 Gap #15)
+                // 40/60 image-to-content split
                 GeometryReader { geometry in
                     HStack(spacing: 0) {
                         if let url = effectiveConfig.image_url {
@@ -1693,11 +1693,11 @@ struct OnboardingStepRouter: View {
     // MARK: - Three-zone layout helper
 
     /**
-     SPEC-495 §C — the step, with its map placements around it.
+     The step, with its map placements around it.
 
      🔴 THE CONTENT SLOT IS `maxHeight: .infinity`, AND THAT IS THE WHOLE POINT.
 
-     SPEC-495 §C says a fullscreen or anchored map must not break scrolling. A map that ate the
+     Says a fullscreen or anchored map must not break scrolling. A map that ate the
      available height and left the content unbounded would do exactly that — and #671 was a map that
      only LOOKED like it had broken scrolling, so the real version is not a subtle bug to ship on top
      of it. The content keeps the whole remaining height; the anchored strips take their own.
@@ -1749,7 +1749,7 @@ struct OnboardingStepRouter: View {
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
-            // SPEC-496 §A4 — interaction options / patches are already layered into the ONE list.
+            // Interaction options / patches are already layered into the ONE list.
             mapPlacement: placement,
             rawResolvedIds: r.rawResolvedIds,
             gateBlocks: r.blocks
@@ -1772,7 +1772,7 @@ struct OnboardingStepRouter: View {
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
-            // SPEC-496 §A4 — interaction options / patches are already layered into the ONE list
+            // Interaction options / patches are already layered into the ONE list
             // (`resolvedStep`), so nothing is layered again at draw time.
             rawResolvedIds: r.rawResolvedIds,
             gateBlocks: r.blocks
@@ -1811,17 +1811,17 @@ struct OnboardingStepRouter: View {
     // MARK: - Block action handler
 
     /// Check if all required input blocks have values.
-    /// SPEC-419 STEP-2 — delegates to the pure `RequiredFieldGate` so the walk is unit-testable and the
+    /// Delegates to the pure `RequiredFieldGate` so the walk is unit-testable and the
     /// interaction-driven advance path can't bypass required-field validation.
     private var canAdvance: Bool {
         let r = resolvedStep
         return RequiredFieldGate.evaluate(blocks: r.blocks, inputValues: inputValues, rawResolvedIds: r.rawResolvedIds).canAdvance
     }
 
-    // MARK: - Element interaction (SPEC-419 STEP-2)
+    // MARK: - Element interaction
 
     /// Closure threaded down the block tree; an interactive element calls this with its
-    /// `(blockId, action, value)`. SPEC-496 §5b — the call goes through THIS presentation's
+    /// `(blockId, action, value)`. The call goes through THIS presentation's
     /// `InteractionCoordinator` (presentation check at start and at arrival, a presentation-scoped
     /// in-flight lock, generation tokens, the 8 s refresh deadline), and the host is told the
     /// coordinator's OWN step id. Any `advance` funnels through `handleBlockAction("next")` (the ONLY
@@ -1850,9 +1850,9 @@ struct OnboardingStepRouter: View {
         )
     }
 
-    /// SPEC-496 §5b C4 — the four outputs of one reply touch disjoint state and are written TOGETHER,
+    /// The four outputs of one reply touch disjoint state and are written TOGETHER,
     /// in this one main-thread turn; then exactly one re-resolve (`resolvedStep` reads the state just
-    /// written, the layer included), the §B0 prune, and — if asked — the gated advance.
+    /// written, the layer included), the prune, and — if asked — the gated advance.
     private func applyInteractionReply(_ result: ElementInteractionResult, seq: Int, snapshot: [String: Any]) {
         InteractionReplyFold.apply(
             result, seq: seq, snapshot: snapshot, stepId: step.id, presentation: presentation,
@@ -1880,7 +1880,7 @@ struct OnboardingStepRouter: View {
     /// flag path skipped `canAdvance`, which let a CTA advance past an unanswered required field
     /// purely because it also set a flag.
     private func advanceCollectingStepData(extra: [String: Any] = [:]) {
-        // SPEC-496 §B0 — every CTA gates on the pruned selection, not one the step no longer renders.
+        // Every CTA gates on the pruned selection, not one the step no longer renders.
         // Idempotent, and never touches a pending / Option-Set / out-of-scope block.
         clearVanishedSelections()
         guard canAdvance else {
@@ -1895,7 +1895,7 @@ struct OnboardingStepRouter: View {
         for (key, value) in toggleValues {
             data["toggle_\(key)"] = value
         }
-        // SPEC-089d Phase 3: Include form input values in step response
+        // Include form input values in step response
         for (key, value) in inputValues {
             data[key] = value
         }
@@ -1908,7 +1908,7 @@ struct OnboardingStepRouter: View {
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
         switch action {
         case "next":
-            // SPEC-421 — a permission step whose CTA is authored as plain `action:"next"`
+            // A permission step whose CTA is authored as plain `action:"next"`
             // (instead of `action:"permission"`) must STILL honor the step's `permission_type`
             // and run the permission pipeline rather than silently advancing. Reuse
             // PermissionManager's own support check — do not invent a new list. Non-permission
@@ -1989,7 +1989,7 @@ struct OnboardingStepRouter: View {
             // auto-advance if no delegate is set.
             onNext(SocialLoginStepData.build(provider: actionValue, inputValues: inputValues))
         case permissionActionName:
-            // SPEC-421 + SPEC-070-B: resolve the type (config → layout → the BUTTON'S OWN value, which
+            // Resolve the type (config → layout → the BUTTON'S OWN value, which
             // this used to ignore), tell the host the permission CTA was acted on (every other CTA
             // does; this one never did), and only then decide.
             //   • supported type  → the real OS pipeline owns the advance (it must wait for the OS).
@@ -2072,7 +2072,7 @@ struct OnboardingStepRouter: View {
         )
     }
 
-    // MARK: - Permission pipeline (SPEC-421)
+    // MARK: - Permission pipeline
 
     /// Analytics props attached to every `permission_*` literal.
     private func permissionProps(_ type: String) -> [String: Any] {
@@ -2089,7 +2089,7 @@ struct OnboardingStepRouter: View {
     /// Advance via the same collect-and-`onNext` path the step's primary CTA uses, so the freshly
     /// stored `permission_{type}` value rides along in the step response.
     ///
-    /// Round-12 Finding 2 — build the payload via `permissionActionPayload` so it carries `action` +
+    /// Build the payload via `permissionActionPayload` so it carries `action` +
     /// `action_value` (the button identity), matching Android's runPipeline path AND iOS's own
     /// safeFallbackAdvance path (and the contract in PermissionAction.swift). Previously this path
     /// omitted those keys, so a permission step that actually prompted advanced with a different
@@ -2179,19 +2179,19 @@ struct OnboardingStepRouter: View {
     }
 }
 
-/// SPEC-421 — identifies a pending "Open Settings" affordance for a denied permission.
+/// Identifies a pending "Open Settings" affordance for a denied permission.
 struct PermissionSettingsAlert: Identifiable {
     let id = UUID()
     let type: String
     let label: String
 }
 
-// MARK: - Required-field gate (SPEC-419 STEP-2)
+// MARK: - Required-field gate
 
 /// Pure required-field validation used by `handleBlockAction("next")`. Extracted so the advance gate is
 /// unit-testable without a live host, proving an interaction-driven advance can't bypass validation.
 enum RequiredFieldGate {
-    /// SPEC-496 — the gate's verdict, plus WHY it is blocked: `blockedByPending` means a required /
+    /// The gate's verdict, plus WHY it is blocked: `blockedByPending` means a required /
     /// minimum-selection field is still waiting on host data (the toast says "Loading…").
     struct Verdict {
         let canAdvance: Bool
@@ -2204,7 +2204,7 @@ enum RequiredFieldGate {
         return (v.canAdvance, v.firstMissing)
     }
 
-    /// SPEC-496 §A1 "Required gate input" — the raw pass's `field_config.resolve_state` markers,
+    /// "Required gate input" — the raw pass's `field_config.resolve_state` markers,
     /// honoured ONLY on blocks the raw pass produced (`rawResolvedIds`):
     ///   - `pending`        → unanswered for BOTH loops (required and `min_selections`), even with a
     ///                        saved value; the toast is the loading one.
@@ -2226,7 +2226,7 @@ enum RequiredFieldGate {
     private static func evaluateAuthored(
         blocks: [ContentBlock], inputValues: [String: Any], marker: (ContentBlock) -> String?
     ) -> (canAdvance: Bool, firstMissing: String?) {
-        // SPEC-446 §3 — a Summary Screen can host inputs INSIDE its stats, so one block may carry
+        // A Summary Screen can host inputs INSIDE its stats, so one block may carry
         // several field ids. This loop reads exactly one key per block (`field_id ?? id`), so
         // without this pass it sees none of them — and if an author set block-level
         // `field_required` on such a block it would read a key nothing ever writes and the CTA
@@ -2260,7 +2260,7 @@ enum RequiredFieldGate {
 
         // #585 — a MINIMUM selection count gates the CTA.
         //
-        // 🔴 `min_selections` has been in the Zod schema since EPIC-5, with a console control on
+        // 🔴 `min_selections` has been in the Zod schema since an earlier fix, with a console control on
         // form fields, and NOTHING on any platform ever read it. An author could set "Min
         // selections: 3", publish, and the CTA advanced on zero — a control that lied. This branch
         // is what makes it true.
@@ -2275,7 +2275,7 @@ enum RequiredFieldGate {
         for block in blocks {
             guard let raw = block.field_config?["min_selections"]?.value else { continue }
             var minimum = (raw as? Int) ?? (raw as? Double).map { Int($0) } ?? 0
-            // SPEC-496 — a §B0-scoped Select: nothing to pick is satisfied; fewer rendered options
+            // A host-data-scoped Select: nothing to pick is satisfied; fewer rendered options
             // than the minimum lowers the minimum to what can actually be picked.
             switch marker(block) {
             case "empty_in_scope": continue
@@ -2290,7 +2290,7 @@ enum RequiredFieldGate {
 
         for block in blocks where block.field_required == true {
             if block.type == .summary_screen { continue } // see above — per-stat, never block-level
-            // SPEC-496 — a required §B0-scoped Select that renders 0 options is satisfied.
+            // A required host-data-scoped Select that renders 0 options is satisfied.
             if marker(block) == "empty_in_scope" { continue }
             let fieldId = block.field_id ?? block.id
             let value = inputValues[fieldId]
@@ -2311,7 +2311,7 @@ enum RequiredFieldGate {
     }
 }
 
-// MARK: - Element-interaction fold (SPEC-419 STEP-2)
+// MARK: - Element-interaction fold
 
 /// Key-level merge of new per-block `field_config` patches over existing overrides (override wins).
 /// Never blind-replaces a block's override bag — merges key by key.
@@ -2326,7 +2326,7 @@ func mergeFieldConfigOverrides(_ current: [String: [String: Any]], with patches:
 /// Pure composition of the flow-host + step-scope interaction fold: awaits the delegate, applies the
 /// `ElementInteractionResult` to `inputValues`, key-level-merges field_config overrides, and reports whether
 /// an advance was requested. The production path is `OnboardingStepRouter.handleInteract` →
-/// `InteractionCoordinator` → `applyInteractionReply` (SPEC-496 §5b); this mirror exists so the composed
+/// `InteractionCoordinator` → `applyInteractionReply`; this mirror exists so the composed
 /// fold is unit-testable without a live SwiftUI host.
 func fireElementInteraction(
     delegate: AppDNAOnboardingDelegate?,
@@ -2349,7 +2349,7 @@ func fireElementInteraction(
         return (inputValues, overrides, false)
     }
     let applied = applyInteractionResult(result, inputValues: inputValues)
-    // SPEC-496 §5b C4.1 — the raw patches onto the values handed in, exactly as the step scope applies
+    // The raw patches onto the values handed in, exactly as the step scope applies
     // them to its CURRENT values; never `applied.inputValues` (the tap-time snapshot merge).
     var current = inputValues
     for (k, v) in applied.inputValuePatches ?? [:] { current[k] = v }
@@ -2529,7 +2529,7 @@ enum OtpChannelResolver {
 
 // MARK: - Paywall Bridge for Onboarding Flow Continuation
 
-/// SPEC-203 follow-up — bridges three distinct paywall outcomes back
+/// Bridges three distinct paywall outcomes back
 /// into the onboarding flow:
 ///   - purchase completed (→ `onPurchased`, routed via on_success_target)
 ///   - purchase attempted but failed / declined (→ `onFailed`, routed
@@ -2540,7 +2540,7 @@ enum OtpChannelResolver {
 /// Paywall SDK already emits `onPaywallPurchaseFailed` — previous
 /// onboarding bridge simply didn't wire it. Onboarding used to collapse
 /// all three into "complete flow" which swallowed real user intent.
-/// SPEC-400 Phase 1 — 12-method forwarding bridge.
+/// 12-method forwarding bridge.
 ///
 /// Forwards every `AppDNAPaywallDelegate` callback to the host's
 /// registered global delegate at `AppDNA.paywall.delegate` BEFORE
@@ -2668,13 +2668,13 @@ private class OnboardingPaywallBridge: AppDNAPaywallDelegate {
 
     func onPaywallRestoreCompleted(paywallId: String, productIds: [String]) {
         forwardOnMain { $0.onPaywallRestoreCompleted(paywallId: paywallId, productIds: productIds) }
-        // SPEC-401 Fix 1B — treat a non-empty restore as equivalent to a
+        // Treat a non-empty restore as equivalent to a
         // successful purchase so the subsequent dismiss routes via
         // on_success instead of on_dismiss. Mirrors the existing
         // onPaywallPurchaseCompleted pattern at line 1741: just flip the
         // flag here, let the dismiss path call onPurchased() once.
-        // SPEC-401 R1 audit: do NOT call onPurchased() directly here —
-        // PaywallManager auto-dismiss (Fix 1C) will fire
+        // Do NOT call onPurchased() directly here
+        // PaywallManager auto-dismiss will fire
         // onPaywallDismissed which reads didPurchase and routes once.
         // Calling onPurchased() here too would route twice. Empty
         // productIds means "restore call succeeded but found no
@@ -2703,10 +2703,10 @@ private class OnboardingPaywallBridge: AppDNAPaywallDelegate {
     }
 }
 
-// EPIC-2 — flow-level continuous progress bar. A custom bar (replaces the fixed 4pt rectangle) so
+// Flow-level continuous progress bar. A custom bar (replaces the fixed 4pt rectangle) so
 // progress_height honours any thickness, plus an optional multi-color gradient fill
 // (progress_gradient_colors). Mirrors Android ContinuousProgressBar; rendered standalone so the
-// SPEC-419 visual-snapshot harness can capture it.
+// Visual-snapshot harness can capture it.
 struct ContinuousProgressBar: View {
     let progress: CGFloat
     let color: Color
@@ -2736,7 +2736,7 @@ struct ContinuousProgressBar: View {
     }
 }
 
-// EPIC-2 — nav-bar glyph (custom back arrow / close ✕) as a single Text. Mirrors Android NavGlyph;
+// Nav-bar glyph (custom back arrow / close ✕) as a single Text. Mirrors Android NavGlyph;
 // rendered standalone so the custom-glyph + back⇄X switch render is snapshot-testable.
 struct NavGlyph: View {
     let glyph: String
@@ -2817,12 +2817,12 @@ enum StepAdvanceResultNaming {
     }
 }
 
-// MARK: - Step config override merge (SPEC-083)
+// MARK: - Step config override merge
 
 /// Field-by-field merge of a host-supplied `StepConfigOverride` onto a step's authored `StepConfig`.
 /// Extracted from the view so the "which fields an override may replace" contract is testable — an
 /// override that silently stops applying is otherwise only visible on a device.
-// `withOverrideTimeout` moved to HostData/HostDataPendingCoordinator.swift (SPEC-496 §B0 rewrite).
+// `withOverrideTimeout` moved to HostData/HostDataPendingCoordinator.swift (rewrite).
 
 enum StepConfigOverrideMerger {
     /// 🔴 NON-DESTRUCTIVE: copy the authored config, then assign only the fields the override NAMES.
@@ -2854,7 +2854,7 @@ enum StepConfigOverrideMerger {
         if let fieldDefaults = override.fieldDefaults {
             merged.field_defaults = fieldDefaults.mapValues { AnyCodable($0) }
         }
-        // SPEC-448 §B — host-supplied options.
+        // Host-supplied options.
         //
         // ⚠️ This is NOT another assignment like the four above. Those replace flat scalars on the
         // step; options live at `content_blocks[i].field_options`, one level down inside an array.
@@ -2863,7 +2863,7 @@ enum StepConfigOverrideMerger {
         // silently delete the rest of the step — invisible until an author noticed a missing block,
         // which is exactly why the fixture asserts the untouched siblings survive.
         //
-        // SPEC-451 adds a second block-level override in the same pass. They compose: a step may
+        // Adds a second block-level override in the same pass. They compose: a step may
         // legitimately have host-supplied options on one block and a host-supplied route on
         // another, so this applies both rather than choosing between them.
         let hasBlockOverrides = !(override.fieldOptions?.isEmpty ?? true) || !(override.mapRoutes?.isEmpty ?? true)
@@ -2873,7 +2873,7 @@ enum StepConfigOverrideMerger {
                 if let replacement = override.fieldOptions?[block.id] {
                     copy.field_options = replacement
                 }
-                // SPEC-451 — the host's route is written into `field_config` under the SAME keys
+                // The host's route is written into `field_config` under the SAME keys
                 // the console authors, so the renderer has exactly one code path and a delegate
                 // route cannot render differently from an authored one.
                 if let route = override.mapRoutes?[block.id] {
@@ -2901,11 +2901,11 @@ enum StepConfigOverrideMerger {
     }
 }
 
-// MARK: - Paywall trigger skip resolver (SPEC-401 / SPEC-403)
+// MARK: - Paywall trigger skip resolver
 
 /// Decides whether a `paywall_trigger` node presents its paywall or auto-skips, and where an
 /// auto-skip routes. Extracted from `presentPaywallTrigger`'s Task closure — the closure is
-/// unreachable from a test, which is why the SPEC-403 chain was previously covered by a test that
+/// unreachable from a test, which is why the chain was previously covered by a test that
 /// re-implemented the ternaries instead of calling them.
 enum PaywallTriggerSkipResolver {
     /// A trigger field is "set" only when it is a non-empty string; the console writes "" for cleared
@@ -2922,9 +2922,9 @@ enum PaywallTriggerSkipResolver {
         triggerData?["skip_if_subscribed"] as? Bool ?? true
     }
 
-    /// `skipTarget` is the SPEC-403 resolver chain (on_subscribed_skip_target → on_success_target →
+    /// `skipTarget` is the resolver chain (on_subscribed_skip_target → on_success_target →
     /// nil, i.e. follow the legacy "continue" edge). It is resolved regardless of `present` because
-    /// the SPEC-404 runtime-lock skip routes through the same chain without consulting the
+    /// the runtime-lock skip routes through the same chain without consulting the
     /// subscription state.
     static func decision(
         triggerData: [String: Any]?,

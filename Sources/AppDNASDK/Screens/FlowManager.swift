@@ -151,7 +151,7 @@ internal class FlowManager: ObservableObject {
 
         let currentRef = flowScreens[currentScreenIndex]
 
-        // Evaluate navigation rules in array order, first match wins (§16.15)
+        // Evaluate navigation rules in array order, first match wins
         for rule in currentRef.navigation_rules ?? [] {
             if evaluateCondition(rule) {
                 switch rule.target ?? "next" {

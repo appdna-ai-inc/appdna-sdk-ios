@@ -1,12 +1,12 @@
 import Foundation
 
-/// SPEC-070-B PN row 14 (AC-36 / W8) — the persisted analytics-consent decision.
+/// The persisted analytics-consent decision.
 ///
 /// Consent used to live only in `EventTracker.analyticsConsent`, an in-memory `Bool` initialised to
 /// `true`. So `setConsent(false)` held for the life of the process and was silently undone by the
 /// next cold start: an opted-out user was opted back in on every launch. That is a bug, not a
 /// missing feature, which is why the fix lands here rather than waiting for the full multi-purpose
-/// consent store (SPEC-424).
+/// consent store.
 ///
 /// `UserDefaults` — not the EventStore — because the decision must be readable *before*
 /// `configure()` wires the pipeline, exactly like `ClientSeqCounter`.
@@ -53,7 +53,7 @@ internal enum ConsentStore {
     ///     exists or `requireConsent` is set. The pre-decision exposure at the default is the
     ///     documented behavior of the default, not a hole in the gate.
     ///   - The per-purpose consent store (marketing / personalisation / analytics as separate
-    ///     grants) is SPEC-424, and it is where a compliant DEFAULT belongs — it needs a consent UI
+    ///     grants) is separate work, and it is where a compliant DEFAULT belongs — it needs a consent UI
     ///     and a host migration, neither of which is a wrapper's to invent.
     ///
     /// - Parameter requireConsent: when true, the absence of a decision means **denied** (opt-in),

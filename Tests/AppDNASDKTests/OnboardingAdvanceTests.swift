@@ -1,11 +1,11 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B S1 — the onboarding step-advance state machine, extracted out of the SwiftUI host
+/// The onboarding step-advance state machine, extracted out of the SwiftUI host
 /// (`OnboardingFlowHost`) into the pure `OnboardingAdvance` so it can be asserted at all. Mirrors
 /// Android `OnboardingAdvanceTest` / `OnboardingAdvance.kt`.
 ///
-/// Also pins SPEC-070-B B4: a `skip_to` step advance now emits `step_skipped` — it used to be
+/// Also pins: a `skip_to` step advance now emits `step_skipped` — it used to be
 /// analytically invisible, so a jumped-over step and a never-reached step looked identical in the
 /// funnel on every platform.
 final class OnboardingAdvanceTests: XCTestCase {

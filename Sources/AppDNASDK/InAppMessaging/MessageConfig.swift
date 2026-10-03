@@ -45,20 +45,20 @@ public struct MessageContent: Codable {
     public let background_color: String?
     public let banner_position: BannerPosition?
     public let auto_dismiss_seconds: Int?
-    // SPEC-084: Styling fields
+    // Styling fields
     public let text_color: String?
     public let button_color: String?
     public let button_text_color: String?
     public let button_corner_radius: Int?
     public let corner_radius: Int?
     public let secondary_cta_text: String?
-    // SPEC-084: Typography — previously accepted by the console + Zod but
+    // Typography — previously accepted by the console + Zod but
     // silently dropped by iOS. Now decoded so font choices authored in the
     // editor actually render on device.
     public let font_family: String?
     public let title_font_size: Double?
     public let body_font_size: Double?
-    // SPEC-085: Rich media fields
+    // Rich media fields
     public let lottie_url: String?
     public let rive_url: String?
     public let rive_state_machine: String?
@@ -69,7 +69,7 @@ public struct MessageContent: Codable {
     public let haptic: HapticConfig?
     public let particle_effect: ParticleEffect?
     public let blur_backdrop: BlurConfig?
-    // SPEC-205: Dark-mode overrides (sparse). When rendering in dark
+    // Dark-mode overrides (sparse). When rendering in dark
     // appearance any field set here wins over the matching light field
     // above; unset fields fall back to the light value. Callers should
     // invoke `content.resolved(for: colorScheme)` at render time.
@@ -105,7 +105,7 @@ public struct MessageContent: Codable {
     }
 }
 
-/// SPEC-205: Dark-mode overrides for MessageContent. Every field is
+/// Dark-mode overrides for MessageContent. Every field is
 /// optional and sparse — only specify the fields that differ from the
 /// light (default) values on the parent MessageContent.
 public struct MessageContentDark: Codable {
@@ -131,7 +131,7 @@ public struct MessageContentDark: Codable {
 }
 
 extension MessageContent {
-    /// SPEC-084: Resolve a SwiftUI Font for the message title. Prefers the
+    /// Resolve a SwiftUI Font for the message title. Prefers the
     /// authored font_family + title_font_size; falls back to the supplied
     /// default when the content leaves typography unset. The `defaultWeight`
     /// lets each renderer keep its visual hierarchy (title bolder than body).
@@ -140,14 +140,14 @@ extension MessageContent {
         return FontResolver.font(family: font_family, size: title_font_size ?? Double(defaultSize), weight: 700)
     }
 
-    /// SPEC-084: Resolve a SwiftUI Font for the message body. Same fallback
+    /// Resolve a SwiftUI Font for the message body. Same fallback
     /// semantics as `titleFont`.
     public func bodyFont(default defaultFont: Font, defaultSize: CGFloat) -> Font {
         if font_family == nil && body_font_size == nil { return defaultFont }
         return FontResolver.font(family: font_family, size: body_font_size ?? Double(defaultSize), weight: 400)
     }
 
-    /// SPEC-205: Render-time resolver. In dark mode, any field set on
+    /// Render-time resolver. In dark mode, any field set on
     /// `dark` overrides the matching field above; everything else falls
     /// back to the light (default) value. In light mode or when no
     /// `dark` overrides exist, returns `self` unchanged.

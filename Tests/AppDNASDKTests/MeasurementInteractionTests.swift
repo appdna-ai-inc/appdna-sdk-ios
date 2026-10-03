@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B B1 — the measurement wheel's `onElementInteraction` fire.
+/// The measurement wheel's `onElementInteraction` fire.
 ///
 /// THE BUG: `MeasurementWheelBlockView.writeSnapshot()` computed the delegate payload and then threw
 /// it away (`_ = snap.payload`, "deferred"). No host on any device has EVER received a measurement

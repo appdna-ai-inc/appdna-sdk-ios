@@ -17,10 +17,10 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/kishikawakatsumi/KeychainAccess.git", from: "4.2.2"),
         .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.0.0"),
-        // SPEC-070-0 §3.4 — visual snapshot harness (iOS leg).
+        // Visual snapshot harness (iOS leg).
         // PNG goldens live in Tests/__Snapshots__/ and are committed; reviewed during PR.
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
-        // SPEC-495 — the bundled interactive map tier (Google).
+        // The bundled interactive map tier (Google).
         //
         // 🔴 9.4.0, AND THE VERSION IS THE WHOLE FIX. 8.4.0 publishes FOUR products
         // (GoogleMaps / Base / Core / M4B), each a `GMSEmpty.m` shim that says `@import GoogleMaps;`
@@ -88,7 +88,7 @@ let package = Package(
                 // Linked so the tests can prove the real loader class is present.
                 "AppDNASDKLoader",
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing"),
-                // SPEC-495 — the test target links GoogleMaps directly so the interactive-tier proof
+                // The test target links GoogleMaps directly so the interactive-tier proof
                 // can hold a real `GMSMapView` and assert on it. `AppDNASDK` linking it is not
                 // enough: a Swift module does not re-export its dependencies, so without this the
                 // test cannot `import GoogleMaps` and the only thing left to check would be that

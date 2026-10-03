@@ -4,9 +4,9 @@ import SwiftUI
 struct SingleChoiceView: View {
     let question: SurveyQuestion
     @Binding var answer: SurveyAnswer?
-    // SPEC-084: Gap #19 — option_style from SurveyAppearance applied to each option card
+    // Gap #19 — option_style from SurveyAppearance applied to each option card
     var optionStyle: ElementStyleConfig? = nil
-    // R89 — honor the survey theme's resolved accent + text colors. Previously the
+    // Honor the survey theme's resolved accent + text colors. Previously the
     // selected radio was hardcoded `Color(hex: "#6366F1")` and the option label was
     // `.primary`, ignoring SurveyTheme.accent_color / text_color and diverging from
     // the console SurveyPreview (which paints both with the theme colors). Defaults
@@ -44,8 +44,8 @@ struct SingleChoiceView: View {
                     }
                     .padding(.vertical, optionStyle == nil ? 8 : 0)
                     .padding(.horizontal, optionStyle == nil ? 12 : 0)
-                    // SPEC-084: Apply option_style if provided, otherwise fall back to default card border
-                    // R89 — thread the survey accent so the selected card border honors accent_color.
+                    // Apply option_style if provided, otherwise fall back to default card border
+                    // Thread the survey accent so the selected card border honors accent_color.
                     .applyContainerStyleOrDefault(optionStyle, isSelected: selectedId == option.id, accentColor: accentColor)
                 }
             }

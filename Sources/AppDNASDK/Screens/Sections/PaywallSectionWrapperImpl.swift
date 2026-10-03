@@ -324,9 +324,9 @@ private struct CountdownSectionView: View {
         let duration = data?.durationSeconds ?? data?.countdownSeconds ?? 3600
         let layout = data?.layout ?? "inline"
         VStack(spacing: 8) {
-            // Round-24 — the SDUI/Screens countdown renderer had the SAME hardcoded grey `.caption`
+            // The SDUI/Screens countdown renderer had the SAME hardcoded grey `.caption`
             // label bug the main PaywallRenderer just fixed (ignoring label_font_size + label_color), plus
-            // the label-vs-labelText precedence inversion (Round-11 F4). Honor both + prefer label_text,
+            // the label-vs-labelText precedence inversion. Honor both + prefer label_text,
             // matching PaywallRenderer.swift + Android (14pt/semibold/#7F1D1D).
             if let label = data?.labelText ?? data?.label {
                 Text(label)
@@ -369,7 +369,7 @@ private struct LegalSectionView: View {
         }()
         VStack(spacing: 8) {
             if let text = data?.text {
-                // SPEC-485 (#649) — inline `[label](url)` links, via the SAME parser
+                // Inline `[label](url)` links, via the SAME parser
                 // PaywallRenderer uses. This was a plain `Text(text)`, so a legal line reading
                 // "see our [Terms](https://…)" showed the literal brackets on this path while
                 // rendering correctly on the other one.

@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-496 P1 implementation-audit regressions (iOS): M1 step view on a superseded call, m1
+/// Implementation-audit regressions (iOS): M1 step view on a superseded call, m1
 /// self-route presentation, m2 chips/segmented resync, m3 repeat.max clamp, m4 single resolution of
 /// host / interaction options, m5 memo key, and `fieldConfigPatches` through the structural walker.
 @MainActor
@@ -223,7 +223,7 @@ final class HostDataAuditFixTests: XCTestCase {
         XCTAssertEqual(memo.resolve(input(s, tctx: context(remote: "silver"))).blocks.first?.text, "Plan silver")
     }
 
-    // MARK: - §A4 — fieldConfigPatches go through the structural walker
+    // MARK: - fieldConfigPatches go through the structural walker
 
     func testFieldConfigPatchAppliesTheUrlRuleAndDropsMarkers() throws {
         let s = try step(skippedSelectStep.replacingOccurrences(of: "\"Static\"", with: "\"{{hook_data.l | L}}\""))

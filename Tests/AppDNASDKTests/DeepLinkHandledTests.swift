@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B B2 — `deep_link_handled` on iOS, and the push-tap → deep-link route that never existed.
+/// `deep_link_handled` on iOS, and the push-tap → deep-link route that never existed.
 ///
 /// THE BUG (two halves):
 ///   1. iOS never emitted `deep_link_handled`. Android has always emitted it

@@ -145,7 +145,7 @@ extension AppDNA {
             // legitimately registered after `shutdown()` returned — the `shutdown(); configure()`
             // one-tick sequence every wrapper uses. See the note at the top of `AppDNA.shutdown()`.
         }
-        /// SPEC-070-B PN row 3 (E3): keyed by token so a handler can be removed. An append-only array
+        /// Keyed by token so a handler can be removed. An append-only array
         /// had no removal method anywhere in the SDK, so a wrapper that re-`configure()`s (a React
         /// Native reload does exactly that) accumulated handlers and delivered every change N-fold.
         private var entitlementChangeHandlers: [UUID: ([Entitlement]) -> Void] = [:]
@@ -453,14 +453,14 @@ extension AppDNA {
             return !entitlements.isEmpty
         }
 
-        /// SPEC-401 Fix 1D — silently refresh cached entitlement state.
+        /// Silently refresh cached entitlement state.
         ///
         /// Calls into the configured billing bridge to re-read the user's
         /// current entitlements (StoreKit `Transaction.currentEntitlements`,
         /// RevenueCat / Adapty `customerInfo`, etc.) and primes any
         /// internal cache the bridge maintains. Designed for two callers:
         ///   1. `AppDNA.identify` — auto-refresh after host signs in a user
-        ///      so the next paywall_trigger entitlement gate (Fix 1A)
+        ///      so the next paywall_trigger entitlement gate
         ///      reflects that user's subscriptions, not the previous
         ///      anonymous user's empty entitlements.
         ///   2. Hosts that complete auth out-of-band (SSO callbacks, deep
@@ -1141,7 +1141,7 @@ extension AppDNA {
         internal weak var paywallManager: PaywallManager?
         internal var delegate: AppDNAPaywallDelegate?
 
-        /// SPEC-401 Fix 1C — host opt-out for SDK auto-dismiss-on-restore-success.
+        /// Host opt-out for SDK auto-dismiss-on-restore-success.
         ///
         /// When set to `true`, the next successful Restore tap on a presented
         /// paywall will fire `onPaywallRestoreCompleted` to the delegate as
@@ -1304,7 +1304,7 @@ extension AppDNA {
         internal weak var manager: MessageManager?
         internal var delegate: AppDNAInAppMessageDelegate?
 
-        /// SPEC-070-C D10 — OPTIONAL async wrapper-veto. Set by a cross-platform
+        /// OPTIONAL async wrapper-veto. Set by a cross-platform
         /// wrapper (e.g. the Flutter plugin) that must round-trip to answer a
         /// veto. Consulted by `MessageManager.present(...)` in ADDITION to the
         /// synchronous `delegate.shouldShowMessage`; both can suppress. Nil for
@@ -1355,7 +1355,7 @@ extension AppDNA {
     public final class DeepLinksModule: @unchecked Sendable {
         internal var delegate: AppDNADeepLinkDelegate?
 
-        /// SPEC-070-C D10 — OPTIONAL async `shouldOpen` wrapper-veto. This is a
+        /// OPTIONAL async `shouldOpen` wrapper-veto. This is a
         /// NET-NEW decision point (no native veto existed for deep links). When
         /// set (Flutter plugin), `handleURL(_:)` awaits it before dispatching
         /// `onDeepLinkReceived`; a `false` reply skips processing. Nil for

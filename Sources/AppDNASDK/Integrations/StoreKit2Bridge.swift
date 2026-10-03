@@ -244,7 +244,7 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             Self.submitForVerification(transaction, signedTransaction: jws, queue: verificationQueue)
         }
 
-        // SPEC-400 — fire onRestoreCompleted alongside the return.
+        // Fire onRestoreCompleted alongside the return.
         let ids = restoredIds
         await MainActor.run {
             AppDNA.billingDelegate?.onRestoreCompleted(restoredProducts: ids)
@@ -253,7 +253,7 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         return restoredIds
     }
 
-    /// SPEC-400 — single helper for the purchase-failure delegate fan-out.
+    /// Single helper for the purchase-failure delegate fan-out.
     private func fireBillingPurchaseFailed(productId: String, error: Error) async {
         await MainActor.run {
             AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)

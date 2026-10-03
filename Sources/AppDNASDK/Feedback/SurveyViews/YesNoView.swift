@@ -4,7 +4,7 @@ import SwiftUI
 struct YesNoView: View {
     let question: SurveyQuestion
     @Binding var answer: SurveyAnswer?
-    // R89 — honor the survey theme's resolved colors. Selected button fill was hardcoded
+    // Honor the survey theme's resolved colors. Selected button fill was hardcoded
     // Color(hex:"#6366F1") and the selected label was `.white` (white-on-white when the
     // theme accent is white); the unselected label was `.primary`. Defaults preserve prior
     // behavior for any caller that does not pass them.

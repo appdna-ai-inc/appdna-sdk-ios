@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - v1.0 Delegate Protocols
 //
-// NOTE (SPEC-041): The following delegate protocols are defined in their respective module files
+// NOTE: The following delegate protocols are defined in their respective module files
 // and are NOT duplicated here to avoid compilation conflicts:
 //
 //   - AppDNAOnboardingDelegate → Sources/AppDNASDK/Onboarding/OnboardingConfig.swift
@@ -74,7 +74,7 @@ public extension AppDNADeepLinkDelegate {
     func onDeepLinkReceived(url: URL, params: [String: String]) {}
 }
 
-/// SPEC-404 — lifecycle delegate for backend-driven SDK lock state.
+/// Lifecycle delegate for backend-driven SDK lock state.
 ///
 /// The SDK enters "locked mode" when the `/sdk/bootstrap` response carries a
 /// `runtime_lock` object (per-key suspended at day 20+, OR org cancelled).
@@ -111,7 +111,7 @@ public extension AppDNALifecycleDelegate {
     func onSdkRuntimeUnlocked() {}
 }
 
-/// Delegate for server-driven screen events (SPEC-089c).
+/// Delegate for server-driven screen events.
 public protocol AppDNAScreenDelegate: AnyObject {
     func onScreenPresented(screenId: String)
     func onScreenDismissed(screenId: String, result: ScreenResult)
@@ -170,11 +170,11 @@ public struct SurveyResponse {
     }
 }
 
-// MARK: - Init-degraded delegate (SPEC-070-B PN row 2 / D-k)
+// MARK: - Init-degraded delegate
 
 /// Surfaces a recoverable init failure — a missing `GoogleService-Info-AppDNA.plist`, a malformed
-/// bundle config, a subsystem that failed to start. The SDK stays usable; analytics keep flowing
-/// (SPEC-070-B AC-31(b)). Android has carried this since SPEC-070-A H.20 (`AppDNAInitDelegate`);
+/// bundle config, a subsystem that failed to start. The SDK stays usable; analytics keep flowing.
+/// Android has long carried this (`AppDNAInitDelegate`);
 /// iOS had no equivalent, so an iOS host could not tell a degraded SDK from a healthy one.
 ///
 /// Implement on a host class and set `AppDNA.initDelegate = self`. Registering after a degraded

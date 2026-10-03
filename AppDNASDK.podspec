@@ -25,14 +25,14 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   s.dependency 'KeychainAccess', '~> 4.2'
   s.dependency 'FirebaseFirestore', '>= 11.0', '< 13.0'
 
-  # SPEC-495 — the bundled interactive map tier. 🔴 THE PODSPEC NEEDS THIS TOO, AND FORGETTING IT IS
+  # The bundled interactive map tier. 🔴 THE PODSPEC NEEDS THIS TOO, AND FORGETTING IT IS
   # NOT A SUBTLE FAILURE: the React Native example host consumes AppDNASDK through CocoaPods, so
   # `import GoogleMaps` in MapInteractive.swift failed there with "no such module" while the SwiftPM
   # build was perfectly green. Same version line as Package.swift on purpose — CocoaPods publishes
   # GoogleMaps only up to 9.4.0, so 9.4 is the highest both channels can share.
   s.dependency 'GoogleMaps', '~> 9.4'
 
-  # SPEC-495 — 🔴 STATIC, and this is the line that actually fixes the link.
+  # 🔴 STATIC, and this is the line that actually fixes the link.
   #
   # GoogleMaps ships as a STATIC xcframework. Under `use_frameworks!` (dynamic) — which every RN and
   # Flutter host ends up on, because Firebase is not optional here — CocoaPods builds this pod as a

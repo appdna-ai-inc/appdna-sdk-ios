@@ -64,7 +64,7 @@ public struct BackButtonStyle: Codable {
     public let icon_size: CGFloat?
     public let icon_color: String?
     public let position: String?  // "left" | "right"
-    // EPIC-2 — custom back glyph (any char, default SF chevron) + back-arrow⇄X switch
+    // Custom back glyph (any char, default SF chevron) + back-arrow⇄X switch
     // (close_on_first: show the dismiss "✕" in the leading slot on the first/no-history step).
     public let icon: String?
     public let close_on_first: Bool?
@@ -77,12 +77,12 @@ public struct OnboardingSettings: Codable {
     public let progress_style: String?  // "dots" | "segmented_bar" | "continuous_bar" | "fraction" | "none"
     public let progress_color: String?
     public let progress_track_color: String?
-    // EPIC-2 — thin sizing (custom height) + multiple colors at once (gradient).
+    // Thin sizing (custom height) + multiple colors at once (gradient).
     public let progress_height: CGFloat?
     public let progress_gradient_colors: [String]?
-    // EPIC-2 — optional "Skip" link beside the progress bar.
+    // Optional "Skip" link beside the progress bar.
     public let progress_skip_label: String?
-    // EPIC-2 — dynamic color flash on step-advance (the progress fill briefly animates to this color).
+    // Dynamic color flash on step-advance (the progress fill briefly animates to this color).
     public let progress_flash_color: String?
     public let back_button_style: BackButtonStyle?
     public let dismiss_allowed: Bool?
@@ -171,7 +171,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// When true, the back button is hidden on this step (the step still counts toward total progress).
     public let hide_back: Bool?
 
-    /// SPEC-496 §A1 — the step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
+    /// The step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
     ///
     /// The typed model drops what the raw host-data pass needs (`data_templates`, a token in a typed
     /// slot, a `repeat` template), so the raw blocks travel on the step: every parse site gets them
@@ -230,7 +230,7 @@ public struct OnboardingStep: Codable, Identifiable {
         // rebuild forgot `chat_config` and silently deleted it. Adding a field to `StepConfig` must not
         // require remembering two unrelated places to copy it.
         //
-        // SPEC-496 §A1 — the RAW blocks follow the SAME ladder: `(config ?? layout).content_blocks`,
+        // The RAW blocks follow the SAME ladder: `(config ?? layout).content_blocks`,
         // then step-root `content_blocks` when that is empty.
         // Same object the typed ladder read: `config` when present and non-null, else `layout`.
         let rawSourceKey: CodingKeys = ((try? c.decodeNil(forKey: .config)) == false) ? .config : .layout
@@ -275,7 +275,7 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(hide_progress, forKey: .hide_progress)
         try c.encodeIfPresent(hide_back, forKey: .hide_back)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
-        // SPEC-496 — verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
+        // Verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
@@ -308,11 +308,11 @@ public struct OnboardingStep: Codable, Identifiable {
 }
 
 extension CodingUserInfoKey {
-    /// SPEC-496 — set ONLY on the dedicated decoder that reads the SDK's own onboarding cache.
+    /// Set ONLY on the dedicated decoder that reads the SDK's own onboarding cache.
     static let appdnaOnboardingFromCache = CodingUserInfoKey(rawValue: "ai.appdna.onboarding.fromCache")!
 }
 
-// MARK: - Step Hook Config (SPEC-083 P1)
+// MARK: - Step Hook Config
 
 /// Server-side webhook configuration for a step.
 public struct StepHookConfig: Codable {
@@ -351,17 +351,17 @@ public struct StepConfig: Codable {
     // custom
     public var layout: [String: AnyCodable]?
 
-    // form (SPEC-082)
+    // form
     public var fields: [FormField]?
     public var validation_mode: String?  // "on_submit" or "realtime"
 
-    // SPEC-083: Populated by applyOverrides from StepConfigOverride.fieldDefaults
+    // Populated by applyOverrides from StepConfigOverride.fieldDefaults
     public var field_defaults: [String: AnyCodable]?
 
-    // SPEC-090: Interactive chat
+    // Interactive chat
     public var chat_config: ChatConfig?
 
-    // SPEC-084: Content blocks (block-based step rendering)
+    // Content blocks (block-based step rendering)
     public var content_blocks: [ContentBlock]?
     public var layout_variant: String?   // image_top, image_bottom, image_fullscreen, image_split, no_image
     public var background: BackgroundStyleConfig?
@@ -375,7 +375,7 @@ public struct StepConfig: Codable {
     // Per-step progress bar color override (overrides flow.settings.progress_color)
     public var progress_color: String?
 
-    // SPEC-421 — permission-step contract. The console serializer writes these at the
+    // Permission-step contract. The console serializer writes these at the
     // step-content TOP LEVEL (siblings of `content_blocks`), NOT under the inner `layout`
     // sub-map. They were previously only read from `layout[...]` → resolved to nil → every
     // authored permission step emitted `permission_unavailable` and advanced without prompting.
@@ -422,7 +422,7 @@ public struct StepConfig: Codable {
         default_locale = try c.decodeIfPresent(String.self, forKey: .default_locale)
         next_step_rules = try c.decodeIfPresent([NextStepRule].self, forKey: .next_step_rules)
         progress_color = try c.decodeIfPresent(String.self, forKey: .progress_color)
-        // SPEC-421 — decoded from the SAME top-level container as content_blocks (console siblings).
+        // Decoded from the SAME top-level container as content_blocks (console siblings).
         permission_type = try c.decodeIfPresent(String.self, forKey: .permission_type)
         show_settings_fallback_on_denied = try c.decodeIfPresent(Bool.self, forKey: .show_settings_fallback_on_denied)
         settings_fallback_label = try c.decodeIfPresent(String.self, forKey: .settings_fallback_label)
@@ -491,11 +491,11 @@ public struct ValuePropItem: Codable, Identifiable {
     public var id: String { title ?? UUID().uuidString }
 }
 
-// MARK: - Form Field Types (SPEC-082)
+// MARK: - Form Field Types
 
 public enum FormFieldType: String, Codable {
     case text, textarea, number, email, phone
-    // SPEC-401-A: previously-missing types now first-class on iOS so the
+    // Previously-missing types now first-class on iOS so the
     // dispatch in `FormStepView.fieldControl(_:)` matches Android (which
     // already renders all 22 of these). The schema source-of-truth is
     // `flow.schema.ts FORM_FIELD_TYPES`.
@@ -562,43 +562,43 @@ public struct FormFieldConfig: Codable {
     public let multi_select: Bool?
     public let max_selections: Int?
     public let default_value: AnyCodable?
-    // Location (SPEC-089)
+    // Location
     public let location_type: String?
     public let location_bias_country: String?
     public let location_language: String?
     public let location_placeholder: String?
     public let location_min_chars: Int?
-    // SPEC-401-A: rating
+    // Rating
     public let max_stars: Int?
     public let allow_half: Bool?
     public let star_size: Int?
     public let filled_color: String?
     public let empty_color: String?
-    // SPEC-401-A: range_slider
+    // range_slider
     public let min_label: String?
     public let max_label: String?
-    // SPEC-401-A: image_picker
+    // image_picker
     public let max_size_mb: Double?
     public let allowed_types: String?
     public let aspect_ratio: String?
     public let placeholder_text: String?
-    // SPEC-401-A: color picker
+    // Color picker
     public let default_color: String?
     public let show_opacity: Bool?
     public let preset_colors: [String]?
-    // SPEC-401-A: url
+    // url
     public let validate_format: Bool?
-    // SPEC-401-A: multiline_chips
+    // multiline_chips
     public let max_chips: Int?
     public let suggestions: [String]?
     public let allow_custom: Bool?
-    // SPEC-401-A: signature
+    // Signature
     public let stroke_color: String?
     public let stroke_width: Double?
     public let clear_button_text: String?
 }
 
-/// SPEC-401-A — per-field style envelope mirroring `FormFieldStyleSchema`
+/// Per-field style envelope mirroring `FormFieldStyleSchema`
 /// in `flow.schema.ts:101-109` and the Android `FormFieldStyle` data
 /// class. Authors set these in the console; the renderer applies them
 /// to the equivalent SwiftUI controls (Toggle.tint, TextField overlay
@@ -661,7 +661,7 @@ public struct FormField: Codable, Identifiable {
     }
 }
 
-// MARK: - Async Step Hook Types (SPEC-083)
+// MARK: - Async Step Hook Types
 
 /// Result of the async step hook called before advancing.
 public enum StepAdvanceResult {
@@ -774,7 +774,7 @@ public struct StepConfigOverride {
     /// Override CTA text.
     public var ctaText: String?
 
-    /// SPEC-448 §B — options supplied by the HOST APP, keyed by block id.
+    /// Options supplied by the HOST APP, keyed by block id.
     ///
     /// The app reads its own backend with its own client, auth and cache, and hands the list over.
     /// No network, no credentials and no retry semantics inside this SDK — which is the point:
@@ -783,7 +783,7 @@ public struct StepConfigOverride {
     /// `[blockId: [InputOption]]`. A block not named here keeps its authored options.
     public var fieldOptions: [String: [InputOption]]?
 
-    /// SPEC-452 — the host's data for THIS step, addressable from the console as `{{hook_data.…}}`.
+    /// The host's data for THIS step, addressable from the console as `{{hook_data.…}}`.
     ///
     /// This is not another override: nothing here replaces a field. It is a read-only namespace the
     /// renderer's existing resolver reads, so the AUTHOR decides what is dynamic (by typing
@@ -802,7 +802,7 @@ public struct StepConfigOverride {
     /// dictionaries and index arrays, so `hook_data.recommendations.0.imageUrl` works.
     public var dataContext: [String: Any]?
 
-    /// SPEC-448 §B — `layoutOverrides` was REMOVED here.
+    /// `layoutOverrides` was REMOVED here.
     ///
     /// It was declared on all four SDKs and bridged by the wrappers, and no renderer ever read it:
     /// a host could set it and nothing happened. Making it work was the wrong fix — a bag that can
@@ -811,7 +811,7 @@ public struct StepConfigOverride {
     ///
     /// Removing a public field is normally breaking; here nothing ever read it, so no host can
     /// depend on its behaviour.
-    /// SPEC-451 — the route a `map` block draws, supplied by the HOST APP, keyed by block id.
+    /// The route a `map` block draws, supplied by the HOST APP, keyed by block id.
     ///
     /// The third and last route source, and the only one that can answer "where is this delivery
     /// right now": authored stops are fixed at publish time, and a template variable can only carry
@@ -842,7 +842,7 @@ public struct StepConfigOverride {
         self.mapRoutes = mapRoutes
     }
 
-    /// SPEC-451 — the one public way to turn a wrapper bridge's raw `[blockId: [polyline, stops]]`
+    /// The one public way to turn a wrapper bridge's raw `[blockId: [polyline, stops]]`
     /// into typed route overrides.
     ///
     /// Public and in the core for the same reason `decodeFieldOptions` is: a second decoder written
@@ -871,7 +871,7 @@ public struct StepConfigOverride {
     }
 }
 
-/// SPEC-451 — a route handed to a `map` block at runtime.
+/// A route handed to a `map` block at runtime.
 ///
 /// `polyline` is Google's encoded-polyline format, which is what every routing service returns and
 /// what Mapbox's `path` overlay takes. Supplying it draws the real road geometry; supplying only
@@ -900,7 +900,7 @@ public struct MapRouteStop {
     }
 }
 
-// MARK: - Element interaction (SPEC-419 EPIC-11 — backend-interactive elements)
+// MARK: - Element interaction (backend-interactive elements)
 
 /// Result of `onElementInteraction` — lets the host push state back into the live step from its backend
 /// (e.g. user taps a calendar day → backend confirms → update the rendered element without leaving the step).
@@ -919,7 +919,7 @@ public struct ElementInteractionResult {
     public var fieldOptions: [String: [InputOption]]?
     /// When true, advance to the next step after handling this interaction.
     public var advance: Bool
-    /// SPEC-496 §5b C2 — new host data for THIS step, merged into its `{{hook_data.…}}` namespace
+    /// New host data for THIS step, merged into its `{{hook_data.…}}` namespace
     /// **shallowly, per top-level key**: a key named here replaces that key's value whole, a key not
     /// named keeps its value, and an `NSNull()` value REMOVES the key. Everything that reads
     /// `hook_data` — tokens, `data_templates`, bindings and a Select's `repeat.source` — re-resolves,
@@ -947,7 +947,7 @@ public struct ElementInteractionResult {
         self.dataContext = dataContext
     }
 
-    /// SPEC-496 §5b C2 — the ONE decoder for a `dataContext` that crossed a bridge (or was built by a
+    /// The ONE decoder for a `dataContext` that crossed a bridge (or was built by a
     /// native host). Every wrapper bridge forwards `map["dataContext"]` here in one line, and the core
     /// `apply` runs every `dataContext` through it before writing the layer.
     ///
@@ -978,7 +978,7 @@ public struct ElementInteractionResult {
         return out
     }
 
-    /// SPEC-496 §5b C5.5 — the minimum time a wrapper bridge must wait for the host's
+    /// The minimum time a wrapper bridge must wait for the host's
     /// `onElementInteraction` answer. `refresh` has an 8 s SDK deadline, so a bridge that gave up at its
     /// default 5 s would cut every slow "Show more" short. Each bridge applies
     /// `max(configured, minimumBridgeTimeout(action:) ?? 0)` — one line, no per-bridge rule.
@@ -1023,7 +1023,7 @@ extension Optional: AnyOptionalBox {
 
 /// The merged result of applying an `ElementInteractionResult` to a step's live state.
 public struct AppliedInteraction {
-    /// The TAP-TIME snapshot with the patches merged in. Kept for compatibility; SPEC-496 §5b C4.1:
+    /// The TAP-TIME snapshot with the patches merged in. Kept for compatibility;
     /// the renderers no longer write it back (that reverted every pick made during the call) — they
     /// apply `inputValuePatches` key by key onto the CURRENT values instead.
     public let inputValues: [String: Any]
@@ -1032,9 +1032,9 @@ public struct AppliedInteraction {
     /// overrides beside it.
     public let fieldOptionsOverrides: [String: [InputOption]]
     public let advance: Bool
-    /// SPEC-496 §5b C2 — `result.dataContext`, passed through unchanged.
+    /// `result.dataContext`, passed through unchanged.
     public let dataContext: [String: Any]?
-    /// SPEC-496 §5b C4.1 — the raw `result.inputValuePatches`, passed through. The step scope applies
+    /// The raw `result.inputValuePatches`, passed through. The step scope applies
     /// exactly these, one `inputValues[k] = v` per key, onto its LIVE state.
     public let inputValuePatches: [String: Any]?
 
@@ -1055,7 +1055,7 @@ public struct AppliedInteraction {
     }
 }
 
-/// SPEC-419 EPIC-11 — pure application of an `ElementInteractionResult` to a step's live state. Merges
+/// Pure application of an `ElementInteractionResult` to a step's live state. Merges
 /// `inputValuePatches` over `inputValues` and exposes per-block `fieldConfigPatches` as overrides the renderer
 /// layers at READ TIME (ContentBlock is immutable — the override layer keeps Android/iOS at parity). The caller
 /// acts on `AppliedInteraction.advance`. Pure + unit-tested.
@@ -1074,9 +1074,9 @@ public func applyInteractionResult(_ result: ElementInteractionResult, inputValu
     )
 }
 
-// MARK: - Permission handling (SPEC-421)
+// MARK: - Permission handling
 
-/// SPEC-421 — optional host override for an onboarding permission step. Returned from
+/// Optional host override for an onboarding permission step. Returned from
 /// `onPermissionRequest`. `.handledByHost` means the host already resolved the permission
 /// (or wants to inject a result) — the SDK writes the result + emits analytics uniformly and
 /// does NOT show the OS prompt. `.proceed` (or `nil`) lets the SDK run the native OS flow.
@@ -1095,7 +1095,7 @@ public protocol AppDNAOnboardingDelegate: AnyObject {
     func onOnboardingCompleted(flowId: String, responses: [String: Any])
     func onOnboardingDismissed(flowId: String, atStep: Int)
 
-    // SPEC-083: Async hook called BEFORE advancing from a step.
+    // Async hook called BEFORE advancing from a step.
     func onBeforeStepAdvance(
         flowId: String,
         fromStepId: String,
@@ -1105,7 +1105,7 @@ public protocol AppDNAOnboardingDelegate: AnyObject {
         stepData: [String: Any]?
     ) async -> StepAdvanceResult
 
-    // SPEC-083: Optional hook to modify step config before rendering.
+    // Optional hook to modify step config before rendering.
     func onBeforeStepRender(
         flowId: String,
         stepId: String,
@@ -1114,7 +1114,7 @@ public protocol AppDNAOnboardingDelegate: AnyObject {
         responses: [String: Any]
     ) async -> StepConfigOverride?
 
-    // SPEC-419 EPIC-11: Async hook fired DURING render when an interactive element acts (calendar day tap,
+    // Async hook fired DURING render when an interactive element acts (calendar day tap,
     // otp digit, memory flip, dark-mode toggle, health connect…). Return a result to push backend state into
     // the live step. `blockId`/`action`/`value` identify the interaction; `inputValues` is the live snapshot.
     func onElementInteraction(
@@ -1126,7 +1126,7 @@ public protocol AppDNAOnboardingDelegate: AnyObject {
         inputValues: [String: Any]
     ) async -> ElementInteractionResult?
 
-    // SPEC-421: Runtime permission hooks for onboarding permission steps.
+    // Runtime permission hooks for onboarding permission steps.
     // Optional pre-hook — return `.handledByHost(granted:)` to short-circuit the OS prompt,
     // or `.proceed`/`nil` to let the SDK run the native flow.
     func onPermissionRequest(_ permissionType: String) async -> PermissionHandling?
@@ -1173,7 +1173,7 @@ public extension AppDNAOnboardingDelegate {
         return nil
     }
 
-    // SPEC-421 defaults: no host handling, observe-only result is a no-op.
+    // Defaults: no host handling, observe-only result is a no-op.
     func onPermissionRequest(_ permissionType: String) async -> PermissionHandling? { nil }
     func onPermissionResult(flowId: String, stepId: String, permissionType: String, granted: Bool) {}
 }

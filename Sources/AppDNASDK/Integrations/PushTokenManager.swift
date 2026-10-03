@@ -44,7 +44,7 @@ final class PushTokenManager {
                 "platform": "ios",
             ])
             Log.info("Push token registered (hash: \(hashedToken.prefix(12))...)")
-            // SPEC-400 — fire onPushTokenRegistered to the host's
+            // Fire onPushTokenRegistered to the host's
             // AppDNAPushDelegate. Token registration with the backend
             // continues regardless of whether the host has a delegate.
             DispatchQueue.main.async {

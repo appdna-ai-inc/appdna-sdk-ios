@@ -1,6 +1,6 @@
 import Foundation
 
-// SPEC-496 §A1 / §A4 — the ONE step pipeline.
+// The ONE step pipeline.
 //
 //   raw pass (HostDataResolver) → typed decode with per-key revert → StepConfigOverrideMerger →
 //   interaction layering (ElementInteractionResult options + field_config patches)
@@ -16,7 +16,7 @@ import Foundation
 // (`AuthSecretRedactor`), `optionAliases` for branching (`OnboardingAdvance`) and
 // `OnboardingCTAFlag.applyTo` (reads only excluded keys).
 
-/// Test seam for §A1 "No whole-block failure": makes the typed decode of one block reject while the
+/// Test seam for "No whole-block failure": makes the typed decode of one block reject while the
 /// value at `keyPath` differs from its post-expansion value. Never set in production.
 struct HostDataDecodeSeam {
     let blockId: String
@@ -32,7 +32,7 @@ struct ResolvedOnboardingStep {
     /// Ids of every block (any depth, not sheet content) the raw pass PRODUCED. Only these honour the
     /// SDK-internal markers, bypass the view-level template pass, and get a lookup-only `loc()`.
     var rawResolvedIds: Set<String>
-    /// §A1 — keys the per-key decode revert put back (debug log in P1).
+    /// Keys the per-key decode revert put back (debug log in P1).
     var revertedKeys: [(blockId: String, keyPath: String)]
     var log: [String]
 
@@ -51,9 +51,9 @@ enum OnboardingStepPipeline {
 
     struct Input {
         var step: OnboardingStep
-        /// `configOverrides[step.id]` — applied AFTER resolve, never before (§A4).
+        /// `configOverrides[step.id]` — applied AFTER resolve, never before.
         var override: StepConfigOverride?
-        /// §B0 — the presentation's pending flag.
+        /// The presentation's pending flag.
         var pending: Bool
         var inputValues: [String: Any]
         /// Accumulated responses of prior steps (`responses` root).
@@ -65,7 +65,7 @@ enum OnboardingStepPipeline {
         var fieldConfigOverrides: [String: [String: Any]] = [:]
         var fieldOptionsOverrides: [String: [InputOption]] = [:]
         var decodeSeam: HostDataDecodeSeam? = nil
-        /// SPEC-496 §5b C3 — the EFFECTIVE `hook_data` (the `onBeforeStepRender` base with the
+        /// The EFFECTIVE `hook_data` (the `onBeforeStepRender` base with the
         /// interaction layer applied), computed from the owners' live values. `.base` keeps the P1
         /// behaviour (`override?.dataContext`) for a caller without an interaction layer.
         var hookDataSource: HookDataSource = .base
@@ -85,11 +85,11 @@ enum OnboardingStepPipeline {
         case effective([String: Any]?)
     }
 
-    /// Keys host data may never set on a block's `field_config` (§A4): markers and option sources.
+    /// Keys host data may never set on a block's `field_config`: markers and option sources.
     static let hostStrippedFieldConfigKeys: [String] = ["option_set_id", "repeat", "empty_state", "resolve_state"]
     static let droppedPatchKeys: Set<String> = ["resolve_state", "empty_state", "sheet_step_paths", "repeat", "option_set_id"]
 
-    // MARK: - Pending applicability (§B0 "Applies")
+    // MARK: - Pending applicability ("Applies")
 
     /// Whether the step can ever be pending: its raw blocks (or `block.<id>.*` localizations)
     /// reference `hook_data`. A step without raw blocks is never pending.
@@ -140,7 +140,7 @@ enum OnboardingStepPipeline {
                 let outcome = decodeWithRevert(r, seam: input.decodeSeam)
                 reverted.append(contentsOf: outcome.reverted)
                 if !outcome.reverted.isEmpty {
-                    log.append("SPEC-496 decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
+                    log.append("Host data decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
                 }
                 if let block = outcome.block {
                     typed.append(block)
@@ -156,13 +156,13 @@ enum OnboardingStepPipeline {
             config.localizations = localizations
         }
 
-        // StepConfigOverride typed merges — after resolve, never before (§A4).
+        // StepConfigOverride typed merges — after resolve, never before.
         config = StepConfigOverrideMerger.apply(input.override, to: config)
         if var blocks = config.content_blocks {
             var patchCtx: HostDataContext? = nil
             for i in blocks.indices {
                 let id = blocks[i].id
-                // §A1 "single pass" — WHO resolves host-supplied text depends on who draws the block.
+                // "single pass" — WHO resolves host-supplied text depends on who draws the block.
                 // A raw-resolved block skips the view-level pass, so its host / interaction option
                 // text is resolved HERE. Any other block (skip rule, or a step without raw capture)
                 // still goes through the view-level pass, which resolves option `label` / `subtitle` /
@@ -175,7 +175,7 @@ enum OnboardingStepPipeline {
                     blocks[i].field_config = stripHostKeys(blocks[i].field_config)
                 }
                 // ElementInteractionResult `field_config` patches — resolved by the STRUCTURAL walker
-                // (§A4: URL rule §A6, excluded keys, key classes), marker / source keys dropped first.
+                // (URL rule, excluded keys, key classes), marker / source keys dropped first.
                 if let patch = input.fieldConfigOverrides[id], !patch.isEmpty {
                     var kept = patch.filter { !droppedPatchKeys.contains($0.key) }
                     // The view-level pass owns `summary_stats` on a block it draws.
@@ -245,7 +245,7 @@ enum OnboardingStepPipeline {
         for c in (block.children ?? []) + (block.stack_children ?? []) { collectIds(c, into: &ids) }
     }
 
-    // MARK: - §A1 "No whole-block failure" — per-key revert
+    // MARK: - "No whole-block failure" — per-key revert
 
     /// A revert unit: a top-level key, or one key of one option (`field_options.<i>.<key>`).
     private enum PathPart: Equatable {
@@ -367,7 +367,7 @@ enum OnboardingStepPipeline {
                     codingPath: su.map { p -> CodingKey in
                         switch p { case .key(let k): return HostCodingKey(stringValue: k); case .index(let i): return HostCodingKey(intValue: i) }
                     },
-                    debugDescription: "SPEC-496 fixture decode seam"
+                    debugDescription: "Host data fixture decode seam"
                 ))
             }
             return try decodeBlock(.object(current))
@@ -424,9 +424,9 @@ enum OnboardingStepPipeline {
         emptyState(block, rawResolved: rawResolved)?.mode == "hidden"
     }
 
-    // MARK: - §B0 selection clearing
+    // MARK: - selection clearing
 
-    /// When a §B0-scoped Select's rendered options no longer contain a selected value, that value is
+    /// When a host-data-scoped Select's rendered options no longer contain a selected value, that value is
     /// removed from `inputValues[field_id]` (and, by the caller, the view's selected state and
     /// `SelectedOptionStore`). Never on a pending, Option-Set or out-of-scope block.
     /// Every block of the step at any container depth (`children` / `stack_children`), parents
@@ -449,7 +449,7 @@ enum OnboardingStepPipeline {
     ) -> (inputValues: [String: Any], changes: [(fieldId: String, remaining: [InputOption])]) {
         var iv = inputValues
         var changes: [(fieldId: String, remaining: [InputOption])] = []
-        // A §B0-scoped Select nested in a container is scoped exactly like a top-level one.
+        // A host-data-scoped Select nested in a container is scoped exactly like a top-level one.
         for block in allStepBlocks(blocks) {
             guard HostDataResolver.optionBearingTypes.contains(block.type.rawValue),
                   let state = resolveState(block, rawResolvedIds: rawResolvedIds),
@@ -508,9 +508,9 @@ enum OnboardingStepPipeline {
         return resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: stepInputs)
     }
 
-    /// §B0 "Sheet ids" — the sheet renderer resolves ONLY the paths the raw pass recorded, against
+    /// "Sheet ids" — the sheet renderer resolves ONLY the paths the raw pass recorded, against
     /// the sheet's own inputs: `token` entries as `{{step.x}}` strings, `binding` entries with the
-    /// §A4 class conversion. Nothing else in the block is re-scanned.
+    /// Class conversion. Nothing else in the block is re-scanned.
     ///
     /// Every block at ANY depth inside `sheet_blocks` carries its own `sheet_step_paths` (relative
     /// to itself), so this recurses into `children` / `stack_children` — a container's nested
@@ -567,7 +567,7 @@ enum OnboardingStepPipeline {
             // Applied — strip the entries so a SECOND call on this output is a no-op. A carousel's
             // pages are applied here via `children`, then drawn by a nested renderer that calls
             // `applySheetStepPaths` again; without this the already-substituted strings (which may
-            // hold a user-typed `{{…}}`) would be re-scanned (§A1 no re-scan). The caller's source
+            // hold a user-typed `{{…}}`) would be re-scanned (no re-scan). The caller's source
             // block keeps its paths, so the next render re-applies against the live inputs.
             if case .object(var fcNow)? = json["field_config"] {
                 fcNow.removeValue(forKey: "sheet_step_paths")
@@ -615,7 +615,7 @@ enum OnboardingStepPipeline {
 
 // MARK: - Memo
 
-/// §A1 "Cost" — the pipeline is re-run only when something it reads changed: the step's raw content
+/// "Cost" — the pipeline is re-run only when something it reads changed: the step's raw content
 /// and localizations, host data, responses, step inputs, the selected-option snapshot, user traits /
 /// session data, the value of every legacy-root token the step references (`computed`,
 /// `remote_config`, `device`, `onboarding`, … — resolved per token through TemplateEngine), the
@@ -647,7 +647,7 @@ final class OnboardingStepPipelineMemo {
     }
 
     /// Every token in the raw blocks / `block.*` localizations whose root is NOT a block root: those
-    /// resolve through TemplateEngine (§A5), from state the other key parts do not cover.
+    /// resolve through TemplateEngine, from state the other key parts do not cover.
     static func legacyTokens(raw: [HostJSON]?, localizations: [String: [String: String]]?) -> [(path: String, fallback: String?)] {
         var seen = Set<String>()
         var out: [(path: String, fallback: String?)] = []
@@ -704,7 +704,7 @@ final class OnboardingStepPipelineMemo {
             "fco": HostJSON(any: input.fieldConfigOverrides),
             "fo": options(input.fieldOptionsOverrides),
             "override": input.override == nil ? .null : .object(ov),
-            // §5b C3 — the EFFECTIVE hook_data (base + interaction layer), not `override.dataContext`:
+            // The EFFECTIVE hook_data (base + interaction layer), not `override.dataContext`:
             // a `dataContext`-only interaction reply must bust the memo.
             "hook_data": HostJSON(any: input.hookData),
             "locale": .string(Locale.current.identifier),

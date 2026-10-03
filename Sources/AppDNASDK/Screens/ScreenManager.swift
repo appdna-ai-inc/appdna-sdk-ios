@@ -52,7 +52,7 @@ internal class ScreenManager {
     // MARK: - Show Screen (Manual API)
 
     func showScreen(_ screenId: String, completion: ((ScreenResult) -> Void)? = nil) {
-        // Thread-safe nesting depth check (AC-090)
+        // Thread-safe nesting depth check
         lock.lock()
         guard nestingDepth < maxNestingDepth else {
             lock.unlock()
@@ -125,7 +125,7 @@ internal class ScreenManager {
     // MARK: - Presentation
 
     private func presentScreen(_ config: ScreenConfig, screenId: String, startTime: Date, completion: ((ScreenResult) -> Void)?) {
-        // Validate config (AC-088, AC-089)
+        // Validate config
         let sections = config.sections ?? []
         guard !sections.isEmpty else {
             completion?(ScreenResult(screenId: screenId, dismissed: true, error: .configInvalid))
@@ -133,7 +133,7 @@ internal class ScreenManager {
             return
         }
 
-        // Check scheduling (AC-098, AC-099)
+        // Check scheduling
         if let startDate = config.start_date, let date = ISO8601.date(from: startDate), date > Date() {
             completion?(ScreenResult(screenId: screenId, dismissed: true))
             nestingDepth -= 1
@@ -145,7 +145,7 @@ internal class ScreenManager {
             return
         }
 
-        // Resolve experiment variants (AC-093, AC-094)
+        // Resolve experiment variants
         var resolvedConfig = config
         var variantKey: String?
         if let experimentId = config.experiment_id, let variants = config.variants {
@@ -181,7 +181,7 @@ internal class ScreenManager {
             }
         )
 
-        // Track event (AC-095: include experiment_id and variant_key)
+        // Track event (include experiment_id and variant_key)
         var trackProps: [String: Any] = [
             "screen_id": screenId,
             "screen_name": resolvedConfig.name,
@@ -190,7 +190,7 @@ internal class ScreenManager {
         if let expId = config.experiment_id { trackProps["experiment_id"] = expId }
         if let vk = variantKey { trackProps["variant_key"] = vk }
         AppDNA.track(event:"screen_presented", properties: trackProps)
-        // SPEC-400 — fire onScreenPresented to the host's
+        // Fire onScreenPresented to the host's
         // AppDNAScreenDelegate. Read fresh on every callback.
         DispatchQueue.main.async {
             AppDNA.screenDelegate?.onScreenPresented(screenId: screenId)
@@ -207,7 +207,7 @@ internal class ScreenManager {
                 ])
                 self?.nestingDepth -= 1
                 let screenResult = ScreenResult(screenId: screenId, dismissed: true, duration_ms: duration)
-                // SPEC-400 — fire onScreenDismissed alongside the
+                // Fire onScreenDismissed alongside the
                 // existing analytics track + completion handler.
                 DispatchQueue.main.async {
                     AppDNA.screenDelegate?.onScreenDismissed(screenId: screenId, result: screenResult)
@@ -244,7 +244,7 @@ internal class ScreenManager {
             } else {
                 AppDNA.track(event: "flow_abandoned", properties: props)
             }
-            // SPEC-400 — fire onFlowCompleted to the host's
+            // Fire onFlowCompleted to the host's
             // AppDNAScreenDelegate. Fires for both completed and
             // abandoned flows; the FlowResult.completed flag tells
             // the host which path was taken.
@@ -269,7 +269,7 @@ internal class ScreenManager {
     /// exercised without UIKit — a vetoed action that still opened its URL would otherwise only be
     /// detectable on a device.
     internal func handleAction(_ action: SectionAction, screenId: String, startTime: Date, completion: ((ScreenResult) -> Void)?) {
-        // SPEC-070-C D10 — veto gate, consulted before performing ANY action.
+        // Veto gate, consulted before performing ANY action.
         //
         // (1) SYNC delegate veto: `onScreenAction` returns `Bool`. This was
         //     previously called only for `.custom` and its return value was
@@ -300,7 +300,7 @@ internal class ScreenManager {
     }
 
     /// Run `perform` only if the host's `onScreenAction` veto (sync + async wrapper) allows it.
-    /// Round-33 — inline-slot actions must honor the SAME veto as full-screen actions. The iOS slot
+    /// Inline-slot actions must honor the SAME veto as full-screen actions. The iOS slot
     /// previously called `handleSlotAction` directly, bypassing the veto that Android's slot
     /// (`dispatchScreenAction`) and the full-screen `handleAction` both consult — so a host that
     /// returned `false` from `onScreenAction` had its slot buttons fire anyway.
@@ -343,7 +343,7 @@ internal class ScreenManager {
             showScreen(targetScreenId)
 
         case .openURL(let url):
-            // SPEC-070-B PN row 18 (W11): config-driven URL — scheme-checked before it reaches the OS.
+            // Config-driven URL — scheme-checked before it reaches the OS.
             if let url = URLSafety.sanitized(url) {
                 DispatchQueue.main.async { [urlOpener = self.urlOpener] in urlOpener(url) }
             }

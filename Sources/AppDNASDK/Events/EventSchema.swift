@@ -1,7 +1,7 @@
 import Foundation
 import UIKit
 
-/// Event envelope matching SPEC-003 schema.
+/// Event envelope matching the server event schema.
 struct SDKEvent: Codable {
     let schema_version: Int
     let event_id: String
@@ -27,9 +27,9 @@ struct EventDevice: Codable {
     let bundle_version: Int?
     let locale: String
     let country: String
-    /// SPEC-070-C D4 — SDK-wrapper attribution (native|flutter|react_native).
+    /// SDK-wrapper attribution (native|flutter|react_native).
     let framework: String
-    /// SPEC-070-B §7 rule 4 — the WRAPPER's own version (the RN npm package / the Flutter pub
+    /// The WRAPPER's own version (the RN npm package / the Flutter pub
     /// package), which `sdk_version` cannot express because that one is always the native core.
     /// Optional, and Codable omits it when nil — so a native host's envelope is byte-identical to
     /// what it was, and no existing consumer sees a new key.
@@ -49,19 +49,19 @@ struct EventContext: Codable {
     // field, so push→conversion attribution was Android-only.
     let push_id: String?
     let experiment_exposures: [ExperimentExposure]?
-    // SPEC-428 CL-3/D6: per-device monotonic sequence, assigned at buildEnvelope.
+    // Per-device monotonic sequence, assigned at buildEnvelope.
     let client_seq: Int64?
 }
 
-/// SPEC-428 CL-3/D6 — device-wide MONOTONIC sequence counter. Persisted in UserDefaults (a
+/// Device-wide MONOTONIC sequence counter. Persisted in UserDefaults (a
 /// FACADE-available store, not the EventStore/EventQueue which are built inside configure()), so it
 /// survives restart and is readable before configure(). The single increment site is buildEnvelope.
 enum ClientSeqCounter {
-    // SPEC-428 CL-3/STEP-6: `key` persists the RESERVED CEILING (>= every seq handed out). We hand out from
+    // `key` persists the RESERVED CEILING (>= every seq handed out). We hand out from
     // an in-memory block and WRITE only when the block is exhausted — persisting the ceiling ABOVE the
     // values we hand out — so a hard kill between the async UserDefaults write and its disk flush yields a
     // GAP (the unused reserved tail), NEVER a REUSE of an already-emitted seq (fixture #3 forbids reuse).
-    // Also O(1) amortized: one store write every `blockSize`, not per event (CL-8 hot-path budget).
+    // Also O(1) amortized: one store write every `blockSize`, not per event (hot-path budget).
     private static let key = "ai.appdna.sdk.client_seq"
     private static let lock = NSLock()
     private static let blockSize: Int64 = 100
@@ -205,13 +205,13 @@ enum EventEnvelopeBuilder {
         sessionId: String,
         analyticsConsent: Bool,
         experimentExposures: [ExperimentExposure]? = nil,
-        // SPEC-070-B PN row 1: the currently-visible screen, supplied by EventTracker's screenProvider.
+        // The currently-visible screen, supplied by EventTracker's screenProvider.
         // Mirrors Android's `screen = screenProvider?.invoke()` (EventTracker.kt:116).
         screen: String? = nil,
         // The current push_id (within the 30-min window), supplied by EventTracker's pushIdProvider.
         // Mirrors Android's `pushId = pushIdProvider?.invoke()`.
         pushId: String? = nil,
-        // SPEC-428 STEP-9/§4.E: a PRE-STAMPED client_seq (a pre-init event stamped its seq at facade
+        // A PRE-STAMPED client_seq (a pre-init event stamped its seq at facade
         // track() time). When present, buildEnvelope MUST use it verbatim and NOT re-mint at drain — else
         // a post-configure event minting during the drain window gets a LOWER seq than an earlier pre-init
         // event drained afterward = ordering inversion.
@@ -224,7 +224,7 @@ enum EventEnvelopeBuilder {
             app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
             sdk_version: AppDNA.sdkVersion,
             bundle_version: bundleVer,
-            // Round-15 F1 — emit a BCP-47 hyphenated tag (e.g. "en-US"), matching Android's
+            // Emit a BCP-47 hyphenated tag (e.g. "en-US"), matching Android's
             // `Locale.getDefault().toLanguageTag()`. `Locale.current.identifier` returns the ICU form with
             // an UNDERSCORE region separator ("en_US"), so the same device split into two `device.locale`
             // rows by platform in BigQuery. `.bcp47` canonicalizes to hyphens (iOS 16+, our min target).
@@ -249,7 +249,7 @@ enum EventEnvelopeBuilder {
                 screen: screen,
                 push_id: pushId,
                 experiment_exposures: experimentExposures,
-                // SPEC-428 CL-3/D6/STEP-9: stamp the monotonic sequence at the single choke point every
+                // Stamp the monotonic sequence at the single choke point every
                 // event's envelope is built. ts_ms stays but is no longer the ordering key. A pre-init
                 // event carries the seq it stamped at facade track() time (used verbatim, never re-minted).
                 client_seq: clientSeq ?? ClientSeqCounter.next()

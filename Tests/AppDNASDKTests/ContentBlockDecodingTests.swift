@@ -6,7 +6,7 @@ import XCTest
 /// what the editor writes and what the SDK reads.
 final class ContentBlockDecodingTests: XCTestCase {
 
-    // MARK: - Unknown block type doesn't crash (AC-001)
+    // MARK: - Unknown block type doesn't crash
 
     func testUnknownBlockTypeDecodesToUnknown() throws {
         let json = """
@@ -81,7 +81,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.corner_radius, 16)
     }
 
-    // MARK: - SPEC-089d new block types
+    // MARK: - new block types
 
     func testDecodePageIndicator() throws {
         let json = """
@@ -250,7 +250,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.pricing_layout, "stack")
     }
 
-    // MARK: - Block Style Design Tokens (AC-005 through AC-009)
+    // MARK: - Block Style Design Tokens
 
     func testDecodeBlockStyle() throws {
         let json = """
@@ -292,7 +292,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(bs?.opacity, 0.95)
     }
 
-    // MARK: - Visibility Conditions (AC-054 through AC-056)
+    // MARK: - Visibility Conditions
 
     func testDecodeVisibilityCondition() throws {
         let json = """
@@ -314,7 +314,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.visibility_condition?.variable, "responses.step1.goal")
     }
 
-    // MARK: - Entrance Animations (AC-057 through AC-061)
+    // MARK: - Entrance Animations
 
     func testDecodeEntranceAnimation() throws {
         let json = """
@@ -338,7 +338,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.entrance_animation?.delay_ms, 200)
     }
 
-    // MARK: - Dynamic Bindings (AC-064 through AC-066)
+    // MARK: - Dynamic Bindings
 
     func testDecodeBindings() throws {
         let json = """
@@ -358,7 +358,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.bindings?["bar_color"], "hook_data.status_color")
     }
 
-    // MARK: - Form Input Blocks (AC-040 through AC-053)
+    // MARK: - Form Input Blocks
 
     func testDecodeFormInputText() throws {
         let json = """

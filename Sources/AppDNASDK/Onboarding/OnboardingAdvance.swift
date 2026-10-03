@@ -201,7 +201,7 @@ enum OnboardingAdvance {
                 configOverrides: configOverrides, previousStepId: previousStepId
             )
         }
-        // SPEC-070-B — a skip_to jump used to be analytically INVISIBLE: the flow silently teleported
+        // A skip_to jump used to be analytically INVISIBLE: the flow silently teleported
         // over N steps, so the funnel could not tell a step that was jumped over from one the user
         // never reached. Emit the jump.
         var props: [String: Any] = ["flow_id": flow.id, "to_step_id": targetStepId]

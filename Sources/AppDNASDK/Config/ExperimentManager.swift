@@ -92,7 +92,7 @@ final class ExperimentManager {
         return payload[key]?.value
     }
 
-    // MARK: - SPEC-036-F §1.2 — experiment-aware surface presentation
+    // MARK: - experiment-aware surface presentation
 
     /// The outcome of resolving whether a running experiment governs how a
     /// given surface entity should be presented.
@@ -108,7 +108,7 @@ final class ExperimentManager {
         case renderTreatment(experimentId: String, variantId: String, payload: [String: Any])
     }
 
-    /// SPEC-036-F §1.2 — decide whether a `running` experiment governs the
+    /// Decide whether a `running` experiment governs the
     /// presentation of `entityId` for the given surface `type`. Matches an
     /// experiment whose served `type` == `surfaceType` AND whose control
     /// variant's `config_ref` == `entityId` (the entity the host is about to
@@ -116,7 +116,7 @@ final class ExperimentManager {
     /// `ExperimentBucketer.assignVariant` path (+ exposure tracked):
     ///   - control bucket / no payload → `.renderActive`
     ///   - treatment bucket with payload → `.renderTreatment(...)`
-    /// Cohort isolation (§1.3): the treatment config lives ONLY in the
+    /// Cohort isolation: the treatment config lives ONLY in the
     /// experiment doc payload, so a non-bucketed / control / old-SDK user can
     /// never resolve to it — they always fall to `.renderActive`.
     func resolveSurfacePresentation(surfaceType: String, entityId: String) -> SurfaceResolution {
@@ -166,7 +166,7 @@ final class ExperimentManager {
             if (variant.is_control ?? false) {
                 return .renderActive
             }
-            // SPEC-036-H — `per_item` serving: the treatment config lives in an isolated variant doc
+            // `per_item` serving: the treatment config lives in an isolated variant doc
             // pointed to by `variant_doc` (prefetched into the RemoteConfigManager cache). Prefer it;
             // fall back to the `inline` 036-F `payload`. A not-yet-fetched / failed variant doc → render
             // the active item (never broken, never cross-cohort).

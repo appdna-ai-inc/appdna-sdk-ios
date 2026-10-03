@@ -3,7 +3,7 @@ import Foundation
 import UIKit
 #endif
 
-/// SPEC-070-B PN row 18 (W11) — a scheme allowlist for URLs that arrive from remote config.
+/// A scheme allowlist for URLs that arrive from remote config.
 ///
 /// Onboarding blocks, in-app messages, and server-driven screens all hand config strings straight to
 /// the system opener. A compromised or misconfigured config could therefore drive `javascript:`,

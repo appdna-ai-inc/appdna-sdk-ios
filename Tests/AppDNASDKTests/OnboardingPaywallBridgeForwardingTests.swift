@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-400 Phase 1 — verify `OnboardingPaywallBridge` forwards every
+/// Verify `OnboardingPaywallBridge` forwards every
 /// `AppDNAPaywallDelegate` callback to the host's registered global
 /// delegate at `AppDNA.paywall.delegate` AND preserves the existing
 /// onboarding routing side-effects.
@@ -19,7 +19,7 @@ import XCTest
 ///
 /// The end-to-end forwarding (bridge → host delegate during a real
 /// paywall launched from onboarding) is exercised on the Mac build
-/// bridge with a sample iOS app — see SPEC-400 §Acceptance.
+/// bridge with a sample iOS app.
 final class OnboardingPaywallBridgeForwardingTests: XCTestCase {
 
     override func tearDown() {

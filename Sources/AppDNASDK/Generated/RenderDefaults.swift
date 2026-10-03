@@ -5,7 +5,7 @@
 
 import CoreGraphics
 
-/// SPEC-419 render-contract default constants (shared with Android + console preview).
+/// Render-contract default constants (shared with Android + console preview).
 public enum RenderDefaults {
     /// Horizontal spacing between row elements (HStack spacing).
     static let selectRowSpacing: CGFloat = 12

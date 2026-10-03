@@ -87,7 +87,7 @@ final class AdaptyBridge: BillingBridgeProtocol {
             "restored_count": ids.count,
             "provider": "adapty",
         ]))
-        // SPEC-400 — fire onRestoreCompleted.
+        // Fire onRestoreCompleted.
         await MainActor.run {
             AppDNA.billingDelegate?.onRestoreCompleted(restoredProducts: ids)
         }

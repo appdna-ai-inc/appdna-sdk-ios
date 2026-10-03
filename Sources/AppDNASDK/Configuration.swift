@@ -21,7 +21,7 @@ public enum LogLevel: Int, Comparable, Sendable {
 
 /// Billing provider for paywall purchase flows.
 ///
-/// Wire format (SPEC-070-B / fixture `dto_parsing/billing_provider_adapty_tagged_map`): the value-less
+/// Wire format (fixture `dto_parsing/billing_provider_adapty_tagged_map`): the value-less
 /// cases cross a wrapper channel as BARE STRINGS (`"storeKit2"`, `"revenueCat"`, `"none"`), while
 /// `adapty` — the only case with an associated value — crosses as the TAGGED MAP
 /// `{"type": "adapty", "apiKey": "..."}`. Read from Android `Configuration.kt:71/:95`
@@ -179,17 +179,17 @@ public struct AppDNAOptions: Sendable {
     public let logLevel: LogLevel
     /// Billing provider for paywall purchases. Default: .storeKit2.
     public let billingProvider: BillingProvider
-    /// SPEC-070-C D4 — SDK-wrapper attribution (`native` | `flutter` | `react_native`),
+    /// SDK-wrapper attribution (`native` | `flutter` | `react_native`),
     /// tagged on every event's device context (→ BigQuery `framework` column). Defaults
     /// to `native`; the Flutter/RN wrappers pass their identity via configure().
     public let framework: String
 
-    /// SPEC-070-C — the wrapper SDK's OWN published version (e.g. Flutter "1.0.5"),
+    /// The wrapper SDK's OWN published version (e.g. Flutter "1.0.5"),
     /// passed by the wrapper so diagnose() reports the wrapper version per platform
     /// instead of the native core version. nil for native hosts.
     public let frameworkVersion: String?
 
-    /// SPEC-070-B PN row 14 (AC-36) — when true, analytics stay OFF until the host calls
+    /// When true, analytics stay OFF until the host calls
     /// `setConsent(analytics:)`, and no event (including `sdk_initialized`) is emitted before that
     /// decision. When false — the default, preserving today's behavior — analytics are opt-out.
     ///
@@ -197,7 +197,7 @@ public struct AppDNAOptions: Sendable {
     /// by the next cold start.
     public let requireConsent: Bool
 
-    /// SPEC-070-B PN row 16 (W12) — how long a wrapper waits for a host veto before applying the
+    /// How long a wrapper waits for a host veto before applying the
     /// hook's default. A legitimate veto (a server-side entitlement, fraud, or promo check) can
     /// exceed 5 s on a bad network; past this timeout `onPromoCodeSubmit` silently rejects and the
     /// seven default-allow hooks are silently bypassed. Surfaced through `diagnose()`.

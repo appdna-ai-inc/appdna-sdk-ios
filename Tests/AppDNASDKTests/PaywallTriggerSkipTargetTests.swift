@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-401 / SPEC-403 — paywall_trigger skip gate + skip-target resolver chain.
+/// paywall_trigger skip gate + skip-target resolver chain.
 ///
 /// This file used to MIRROR the resolver as a private helper, because the real one lived inside a
 /// Task closure in `presentPaywallTrigger` with no seam to call. It now drives the production
@@ -32,7 +32,7 @@ final class PaywallTriggerSkipTargetTests: XCTestCase {
     }
 
     /// Case 2 — back-compat: empty on_subscribed_skip_target falls back to on_success_target
-    /// (SPEC-401 1.0.61 workaround behavior preserved).
+    /// (1.0.61 workaround behavior preserved).
     func testResolverFallsBackToOnSuccessTargetWhenSkipTargetEmpty() {
         XCTAssertEqual(
             skipTarget(onSubscribedSkipTarget: "", onSuccessTarget: "complete_flow"),
@@ -48,7 +48,7 @@ final class PaywallTriggerSkipTargetTests: XCTestCase {
     }
 
     /// Case 3 — legacy: both empty → nil → routeOutcome falls through to its `defaultBehavior`
-    /// argument ("continue") and follows the edge. Pre-SPEC-403 behavior, preserved.
+    /// argument ("continue") and follows the edge. The earlier behavior, preserved.
     func testResolverReturnsNilWhenBothEmptyOrNil() {
         XCTAssertNil(skipTarget(onSubscribedSkipTarget: nil, onSuccessTarget: nil))
         XCTAssertNil(skipTarget(onSubscribedSkipTarget: "", onSuccessTarget: ""))
@@ -69,7 +69,7 @@ final class PaywallTriggerSkipTargetTests: XCTestCase {
         )
     }
 
-    // MARK: - Skip gate (SPEC-401 Fix 1A)
+    // MARK: - Skip gate
 
     /// Default `true`: a flow authored before the field existed still auto-skips for subscribers.
     func testSubscribedUserSkipsByDefault() {
@@ -90,7 +90,7 @@ final class PaywallTriggerSkipTargetTests: XCTestCase {
         )
         XCTAssertTrue(decision.present)
         XCTAssertNil(decision.reason)
-        // The chain is still resolved: the SPEC-404 runtime-lock skip routes through it without
+        // The chain is still resolved: the runtime-lock skip routes through it without
         // consulting the subscription state.
         XCTAssertEqual(decision.skipTarget, "step_welcome_back")
     }

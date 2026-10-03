@@ -195,7 +195,7 @@ actor PurchaseDeliveryQueue {
         save(store)
     }
 
-    /// Q5 — a revoked transaction leaves the queue (tagged, untagged or deferred) and emits nothing.
+    /// A revoked transaction leaves the queue (tagged, untagged or deferred) and emits nothing.
     func removeEntry(transactionId: String) {
         var store = load()
         let before = store.entries.count

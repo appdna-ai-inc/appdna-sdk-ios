@@ -3,7 +3,7 @@ import SwiftUI
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-419 EPIC-1 (Select overhaul) — iOS visual snapshots (surface #4: onboarding select).
+/// (Select overhaul) — iOS visual snapshots (surface #4: onboarding select).
 ///
 /// Mirrors the Android Roborazzi `SelectEpic1SnapshotTest` with the SAME select configs so the
 /// iOS + Android goldens are directly comparable (cross-platform parity, both systems 100%).
@@ -19,7 +19,7 @@ final class VisualSnapshotTests: XCTestCase {
     /// The bridge passes TEST_RUNNER_RECORD_SNAPSHOTS, which xcodebuild forwards to the sim
     /// test process as RECORD_SNAPSHOTS (plain env vars don't reach the test runner).
     ///
-    /// Seven tests from the SPEC-438/439/441 batch asserted OUTSIDE this, so they could not be
+    /// Seven tests from the batch asserted OUTSIDE this, so they could not be
     /// re-recorded through the bridge at all — which is how the #541 golden stayed pinned to the
     /// filter build after the render was corrected to section navigation, and the iOS suite sat
     /// red on a golden nobody could refresh.
@@ -41,7 +41,7 @@ final class VisualSnapshotTests: XCTestCase {
     }
 
     /**
-     SPEC-495 — one map, rendered through the PLACEMENT the step layout would give it.
+     One map, rendered through the PLACEMENT the step layout would give it.
 
      🔴 The Android version of this golden was first recorded through the ordinary block path, which
      renders inside a padded column — so it drew the map INLINE, with rounded corners and a gutter,
@@ -64,7 +64,7 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
-    // MARK: - SPEC-495 — map sizing and placement
+    // MARK: - map sizing and placement
     //
     // No token and no key on purpose: the runner has neither, so these capture the FALLBACK state —
     // surface colour, corner radius, labelled text, and above all the GEOMETRY. Geometry is the part
@@ -98,7 +98,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - SPEC-441 (#541) — category chips on a Select
+    // MARK: - category chips on a Select
 
     /// The screen the reporter sent: a scrollable chip row above the options, the active chip
     /// filtering the list, and a header echoing it. Only pixels can show the row scrolls and
@@ -169,7 +169,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - SPEC-439 (#546) — input label position / align / font
+    // MARK: - input label position / align / font
 
     /// A Select whose LABEL is the thing under test. `label_position: hidden` was decoded by
     /// neither native before this change, so a label the author hid still rendered on device —
@@ -226,7 +226,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - SPEC-438 (#544, #548) — product-level price presentation
+    // MARK: - product-level price presentation
 
     /// Renders the REAL PlanCard from a console-shaped plan JSON, so the pill and the
     /// headline price layout are checked as pixels rather than as decoded fields. The
@@ -271,7 +271,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// The default. Must look exactly like it did before SPEC-438 — no charged total,
+    /// The default. Must look exactly like it did before an earlier fix — no charged total,
     /// struck price inline — because every existing paywall renders through this path.
     func testPlanCard_inlineDefault_unchanged() throws {
         var style = PlanCardStyle()
@@ -294,7 +294,7 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#0F1117"))
     }
 
-    /// Like renderMany but feeds a `responses` context (for EPIC-5 variable bindings + visibility conditions).
+    /// Like renderMany but feeds a `responses` context (for variable bindings + visibility conditions).
     private func renderConditional(_ jsons: [String], responses: [String: Any]) throws -> some View {
         let blocks = try jsons.map { try JSONDecoder().decode(ContentBlock.self, from: Data($0.utf8)) }
         return ContentBlockRendererView(
@@ -418,7 +418,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-447 (#555) — the two layouts that move the text OFF the image.
+    /// The two layouts that move the text OFF the image.
     ///
     /// A dto_parsing fixture proves the keys reach the model; it cannot prove a renderer honours
     /// them — I verified that by deleting Android's `tile_image_layout` read and watching the
@@ -447,7 +447,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-447 AC — "in image_strip and contained the overlay covers the IMAGE REGION ONLY;
+    /// AC — "in image_strip and contained the overlay covers the IMAGE REGION ONLY;
     /// switching layout with a dark scrim set must not dim the text surface."
     ///
     /// The overlay was an unconstrained `Color` in the ZStack, so it tinted the band too and the
@@ -464,7 +464,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-446 §3 — a Summary Screen stat that HOSTS a control.
+    /// A Summary Screen stat that HOSTS a control.
     ///
     /// The required-gate for these shipped without the rendering half on both platforms:
     /// `RequiredFieldGate` blocked on an unanswered stat input while nothing ever drew one, so a
@@ -599,7 +599,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - Map (SPEC-451)
+    // MARK: - Map
 
     /// The fallback state, at an aspect-ratio height.
     ///
@@ -892,7 +892,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-2 — progress bar multi-color gradient fill (~80% filled, green→yellow→red). Parity with Android.
+    /// Progress bar multi-color gradient fill (~80% filled, green→yellow→red). Parity with Android.
     func testProgress_gradient() throws {
         let view = try render("""
         {
@@ -909,7 +909,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-420 — measurement wheel, ruler style (weight, kg base, 70). Parity with Android.
+    /// Measurement wheel, ruler style (weight, kg base, 70). Parity with Android.
     func testMeasurement_ruler() throws {
         let view = try render("""
         {
@@ -931,7 +931,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-420 — measurement wheel, gauge style (temperature, °C base, 37). Parity with Android.
+    /// Measurement wheel, gauge style (temperature, °C base, 37). Parity with Android.
     func testMeasurement_gauge() throws {
         let view = try render("""
         {
@@ -953,7 +953,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-420 — measurement wheel, dial style (height, cm base, 170). Parity with Android.
+    /// Measurement wheel, dial style (height, cm base, 170). Parity with Android.
     func testMeasurement_dial() throws {
         let view = try render("""
         {
@@ -975,7 +975,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-420 — measurement wheel, classic flat drum style (weight, kg base, 70). Parity with Android.
+    /// Measurement wheel, classic flat drum style (weight, kg base, 70). Parity with Android.
     func testMeasurement_wheel() throws {
         let view = try render("""
         {
@@ -997,7 +997,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-2 — flow-level progress: thin (2pt) solid + thick (12pt) multi-color gradient. Parity with Android.
+    /// Flow-level progress: thin (2pt) solid + thick (12pt) multi-color gradient. Parity with Android.
     func testProgress_flowThinGradient() throws {
         let view = VStack(spacing: 22) {
             ContinuousProgressBar(progress: 0.6, color: Color(hex: "#6366F1"), trackColor: Color(hex: "#374151"), height: 2)
@@ -1017,7 +1017,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-2 — nav glyphs: custom chevron + default arrow + back⇄X close. Parity with Android.
+    /// Nav glyphs: custom chevron + default arrow + back⇄X close. Parity with Android.
     func testNav_glyphs() throws {
         let view = VStack(alignment: .leading, spacing: 20) {
             NavGlyph(glyph: "‹", color: Color(hex: "#6366F1"), size: 28)
@@ -1035,7 +1035,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-2 — skip-beside-bar: progress fills the row, "Skip" beside it. Parity with Android.
+    /// Skip-beside-bar: progress fills the row, "Skip" beside it. Parity with Android.
     func testProgress_skipBeside() throws {
         let view = HStack(spacing: 0) {
             ContinuousProgressBar(progress: 0.5, color: Color(hex: "#6366F1"), trackColor: Color(hex: "#374151"), height: 6)
@@ -1058,7 +1058,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — phone-mockup frame (image_frame:"phone"): bezel + dynamic-island notch. Parity with Android.
+    /// Phone-mockup frame (image_frame:"phone"): bezel + dynamic-island notch. Parity with Android.
     func testImage_phoneMockup() throws {
         let json = """
         {
@@ -1085,7 +1085,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — large radial % ring loading variant (progress_value static). Parity with Android.
+    /// Large radial % ring loading variant (progress_value static). Parity with Android.
     func testLoading_radialRing() throws {
         let view = try render("""
         {
@@ -1101,7 +1101,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — cog/gear spinner loading variant. Parity with Android.
+    /// cog/gear spinner loading variant. Parity with Android.
     func testLoading_cogSpinner() throws {
         let view = try render("""
         {
@@ -1116,7 +1116,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — splash-bottom spinner (small spinner anchored to the bottom). Parity with Android.
+    /// Splash-bottom spinner (small spinner anchored to the bottom). Parity with Android.
     func testLoading_splashBottom() throws {
         let view = try render("""
         {
@@ -1131,7 +1131,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — loading text styling (message above the ring, custom size/color). Parity with Android.
+    /// Loading text styling (message above the ring, custom size/color). Parity with Android.
     func testLoading_textStyling() throws {
         let view = try render("""
         {
@@ -1149,7 +1149,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-3 — media gallery (horizontal row of image tiles). Parity with Android.
+    /// Media gallery (horizontal row of image tiles). Parity with Android.
     func testMedia_gallery() throws {
         let view = try render("""
         {
@@ -1209,7 +1209,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-1 — multi-column grid select (display_style "grid", grid_columns 2). Parity with Android.
+    /// Multi-column grid select (display_style "grid", grid_columns 2). Parity with Android.
     func testSelect_gridMultiColumn() throws {
         let view = try render("""
         {
@@ -1230,7 +1230,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-9 — rich_text markdown (heading, bold, italic, link, bullet list). Parity with Android.
+    /// rich_text markdown (heading, bold, italic, link, bullet list). Parity with Android.
     func testRichText_inlineStyles() throws {
         let view = try render("""
         {
@@ -1247,7 +1247,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-479 (#605) — `++underline++` and a link together.
+    /// `++underline++` and a link together.
     ///
     /// `testRichText_inlineStyles` above covers bold/italic/link but NOT the AppDNA-specific `++underline++`
     /// marker, which is applied by `applyUnderlineMarkers` AFTER the native markdown parse. That post-processing
@@ -1270,7 +1270,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-7 — social login provider buttons (Apple / Google / Email) brand defaults. Parity with Android.
+    /// Social login provider buttons (Apple / Google / Email) brand defaults. Parity with Android.
     func testSocial_providers() throws {
         let view = try render("""
         {
@@ -1309,7 +1309,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-8 — swipeable carousel: 3 pages + dot indicator (page 0). Parity with Android.
+    /// Swipeable carousel: 3 pages + dot indicator (page 0). Parity with Android.
     func testLayout_carousel() throws {
         let view = try render("""
         {
@@ -1328,7 +1328,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-10 — pricing plan cards: Monthly + Yearly (highlighted "BEST VALUE"). Parity with Android.
+    /// Pricing plan cards: Monthly + Yearly (highlighted "BEST VALUE"). Parity with Android.
     func testPricing_card() throws {
         let view = try render("""
         {
@@ -1346,7 +1346,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-5 — variables + conditional logic. Heading uses a `{{responses.user_name}}` template (value
+    /// Variables + conditional logic. Heading uses a `{{responses.user_name}}` template (value
     /// carried over from a prior step); two blocks are gated by an age condition — the "verified" block
     /// shows (age 25 > 18), the "too young" block is hidden. Parity with Android.
     func testEpic5_variablesConditional() throws {
@@ -1368,7 +1368,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-6 — authored button_height resizes the CTA itself (default ~52 vs tall 72). Parity with Android.
+    /// Authored button_height resizes the CTA itself (default ~52 vs tall 72). Parity with Android.
     func testEpic6_buttonHeight() throws {
         let view = try renderMany([
             """
@@ -1385,7 +1385,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — OTP / code-input: 6 boxes, "1234" entered (4 filled + active 5th + empty 6th). Parity w/ Android.
+    /// OTP / code-input: 6 boxes, "1234" entered (4 filled + active 5th + empty 6th). Parity w/ Android.
     func testEpic11_otpInput() throws {
         let view = try render("""
         {"id": "otp", "type": "otp_input", "active_color": "#6366F1", "field_config": {"otp_length": 6, "otp_value": "1234"}}
@@ -1397,7 +1397,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — warning/info banner variants: warning (amber) / error (red) / success (green). Parity w/ Android.
+    /// warning/info banner variants: warning (amber) / error (red) / success (green). Parity w/ Android.
     func testEpic11_warningBanner() throws {
         let view = try renderMany([
             """
@@ -1417,12 +1417,12 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-481 (#601) — the warning banner's new authoring surface, all five in one render:
+    /// The warning banner's new authoring surface, all five in one render:
     /// a chosen icon, a subtitle under the message, centre alignment, the banner's own border
     /// width/colour/corner-radius, independent message + subtitle sizes, and a font family.
     ///
     /// `testEpic11_warningBanner` above is the OTHER half of this proof: it is deliberately left
-    /// untouched, so if any SPEC-481 default drifted from the pre-SPEC-481 render its committed
+    /// untouched, so if any default drifted from the earlier render its committed
     /// reference would stop matching. New capability here, no regression there.
     func testSpec481_warningBannerSubtitleAndChrome() throws {
         let view = try renderMany([
@@ -1449,7 +1449,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-483 (#610) — "the device mockup stretches vertically only, distorting the image".
+    /// "the device mockup stretches vertically only, distorting the image".
     ///
     /// It did: the screen was the authored `height` tall by a HARDCODED 260 wide, so at the default
     /// height of 200 the "phone" was a 260×200 LANDSCAPE box, and changing Height only changed one
@@ -1475,7 +1475,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// SPEC-482 (#609) — "no way to arrange 3 buttons 2-then-1 with its own background container".
+    /// "no way to arrange 3 buttons 2-then-1 with its own background container".
     ///
     /// There is: a Row is also a COLUMN (`row_direction: "vertical"`) and Rows NEST, so the grid is
     /// an outer vertical Row holding a horizontal Row of two buttons plus a third button, with the
@@ -1515,7 +1515,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — password-strength meter: weak (1/4) / good (3/4) / strong (4/4). Parity with Android.
+    /// Password-strength meter: weak (1/4) / good (3/4) / strong (4/4). Parity with Android.
     func testEpic11_passwordStrength() throws {
         let view = try renderMany([
             """
@@ -1535,7 +1535,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — speech bubble (mascot dialogue): white bubble + downward left tail. Parity with Android.
+    /// Speech bubble (mascot dialogue): white bubble + downward left tail. Parity with Android.
     func testEpic11_speechBubble() throws {
         let view = try render("""
         {"id": "sb", "type": "speech_bubble", "text": "Great job! You're on a 7-day streak 🔥", "bg_color": "#FFFFFF", "text_color": "#111827", "field_config": {"bubble_tail": "left"}}
@@ -1547,7 +1547,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — quiz feedback panel: correct (green ✓) + wrong (red ✗), headline + detail. Parity w/ Android.
+    /// Quiz feedback panel: correct (green ✓) + wrong (red ✗), headline + detail. Parity w/ Android.
     func testEpic11_feedbackPanel() throws {
         let view = try renderMany([
             """
@@ -1564,7 +1564,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — session summary: headline + 2x2 stat grid (Time / Accuracy / XP / Streak). Parity w/ Android.
+    /// Session summary: headline + 2x2 stat grid (Time / Accuracy / XP / Streak). Parity w/ Android.
     func testEpic11_summaryScreen() throws {
         let view = try render("""
         {"id": "sum", "type": "summary_screen", "text": "Lesson complete!", "field_config": {"summary_stats": [{"value": "5:32", "label": "Time", "color": "#6366F1"}, {"value": "92%", "label": "Accuracy", "color": "#10B981"}, {"value": "+120", "label": "XP earned", "color": "#F59E0B"}, {"value": "7", "label": "Day streak", "color": "#EF4444"}]}}
@@ -1576,7 +1576,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — press-and-hold-to-confirm: pill 65% filled (left→right accent fill behind text). Parity w/ Android.
+    /// Press-and-hold-to-confirm: pill 65% filled (left→right accent fill behind text). Parity w/ Android.
     func testEpic11_pressHoldConfirm() throws {
         let view = try render("""
         {"id": "ph", "type": "press_hold_confirm", "text": "Hold to confirm", "active_color": "#6366F1", "field_config": {"hold_progress": 0.65}}
@@ -1588,7 +1588,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — Health connect card. Provider is PLATFORM-FIXED: iOS renders Apple Health (Google Fit is
+    /// Health connect card. Provider is PLATFORM-FIXED: iOS renders Apple Health (Google Fit is
     /// Android-only), so this golden intentionally differs from the Android one. Two states: connect + connected.
     func testEpic11_healthConnect() throws {
         let view = try renderMany([
@@ -1606,7 +1606,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — interactive footer: dark-mode capsule toggle (off/on) + language switcher pill. Parity w/ Android.
+    /// Interactive footer: dark-mode capsule toggle (off/on) + language switcher pill. Parity w/ Android.
     func testEpic11_settingsFooter() throws {
         let view = try renderMany([
             """
@@ -1623,7 +1623,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — memory/pair-match: 3-col grid, all 3 states (up 🍎 / down ? / matched 🍌). Parity with Android.
+    /// memory/pair-match: 3-col grid, all 3 states (up 🍎 / down ? / matched 🍌). Parity with Android.
     func testEpic11_memoryMatch() throws {
         let view = try render("""
         {"id": "mm", "type": "memory_match", "active_color": "#6366F1", "field_config": {"match_columns": 3, "match_cards": [{"symbol": "🍎", "state": "up"}, {"state": "down"}, {"symbol": "🍌", "state": "matched"}, {"state": "down"}, {"symbol": "🍎", "state": "up"}, {"symbol": "🍌", "state": "matched"}]}}
@@ -1635,7 +1635,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-11 — month calendar: June 2026, days 12-14 selected (accent), today=15 (ring). Parity with Android.
+    /// Month calendar: June 2026, days 12-14 selected (accent), today=15 (ring). Parity with Android.
     func testEpic11_calendarMonth() throws {
         let view = try render("""
         {"id": "cal", "type": "calendar_month", "active_color": "#6366F1", "field_config": {"month_label": "June 2026", "days_in_month": 30, "start_offset": 1, "selected_days": [12, 13, 14], "today": 15}}
@@ -1647,7 +1647,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// EPIC-9 parity — heading + text centered via STYLE.alignment only (no horizontal_align). Was iOS-left; now centered (matches Android).
+    /// Parity — heading + text centered via STYLE.alignment only (no horizontal_align). Was iOS-left; now centered (matches Android).
     func testEpic9_styleAlignment() throws {
         let view = try renderMany([
             """

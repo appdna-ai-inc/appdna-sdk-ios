@@ -11,7 +11,7 @@ public struct BlurConfig: Codable {
         self.saturation = saturation
     }
 
-    // SPEC-205: Zod + console editor treat `blur_backdrop` as a boolean for
+    // Zod + console editor treat `blur_backdrop` as a boolean for
     // convenience (simple toggle), but the iOS SDK uses a richer BlurConfig
     // struct for future tuning. Accept both wire shapes so messages with
     // `blur_backdrop: true` decode into a sensible default config, and

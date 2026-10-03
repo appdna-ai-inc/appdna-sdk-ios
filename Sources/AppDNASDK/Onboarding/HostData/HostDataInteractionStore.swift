@@ -1,6 +1,6 @@
 import Foundation
 
-// SPEC-496 §5b (Phase 1b) — "Show more": `ElementInteractionResult.dataContext` and `refresh_step`.
+// "Show more": `ElementInteractionResult.dataContext` and `refresh_step`.
 //
 //   HostDataInteractionLayer  the pure per-step interaction data layer: `effective` / `apply` /
 //                             `applyBase` (C3). Unit-tested, and the only place the merge rules live.
@@ -75,7 +75,7 @@ enum HostDataInteractionLayer {
         return out
     }
 
-    /// C3 / §B0 "cached": the layer holds at least one VALUE entry under a key the step references.
+    /// "Cached": the layer holds at least one VALUE entry under a key the step references.
     /// Removal markers and unreferenced keys do not count. `"*"` (a bare `hook_data` reference) is
     /// satisfied by any value entry.
     static func hasReferencedValue(_ layer: Layer, referencedKeys: Set<String>) -> Bool {
@@ -84,7 +84,7 @@ enum HostDataInteractionLayer {
     }
 }
 
-/// C3 — the flow-level owner of the interaction data layer, its stamps and `callSeq`, beside the
+/// The flow-level owner of the interaction data layer, its stamps and `callSeq`, beside the
 /// renderer's `configOverrides` and with exactly its lifetime (one per flow presentation; a dismiss or
 /// completion drops it with the flow host).
 ///
@@ -156,7 +156,7 @@ final class HostDataInteractionStore: ObservableObject {
         }
     }
 
-    /// C3 — an `onBeforeStepRender` reply was written to `configOverrides[stepId]`.
+    /// An `onBeforeStepRender` reply was written to `configOverrides[stepId]`.
     func recordBase(stepId: String, override: StepConfigOverride, stamp: Int) {
         bases[stepId] = (override, stamp)
         let layer = layers[stepId] ?? [:]
@@ -189,7 +189,7 @@ final class HostDataInteractionStore: ObservableObject {
     /// The LIVE base override of `stepId` (nil when none was recorded here).
     func baseOverride(stepId: String) -> StepConfigOverride? { bases[stepId]?.override }
 
-    /// C3 — the step's referenced top-level `hook_data` keys, computed once per step content.
+    /// The step's referenced top-level `hook_data` keys, computed once per step content.
     func referencedHookDataKeys(_ step: OnboardingStep) -> Set<String> {
         guard let raw = step.rawContentBlocks else { return [] }
         let locs = step.config.localizations
@@ -199,13 +199,13 @@ final class HostDataInteractionStore: ObservableObject {
         return k
     }
 
-    /// §B0 / C3 "cached" — the ONE expression the renderer and the fixture driver use: a base for
+    /// "cached" — the ONE expression the renderer and the fixture driver use: a base for
     /// the step, OR a layer VALUE under a key the step references.
     func isCached(_ step: OnboardingStep, hasBase: Bool) -> Bool {
         hasBase || hasReferencedLayerValue(stepId: step.id, referencedKeys: referencedHookDataKeys(step))
     }
 
-    /// §B0 "cached" (P1b): a layer VALUE under a key the step references.
+    /// "cached" (P1b): a layer VALUE under a key the step references.
     func hasReferencedLayerValue(stepId: String, referencedKeys: Set<String>) -> Bool {
         HostDataInteractionLayer.hasReferencedValue(layers[stepId] ?? [:], referencedKeys: referencedKeys)
     }
@@ -223,13 +223,13 @@ final class HostDataInteractionStore: ObservableObject {
     }
 }
 
-/// C5 — one presentation's interaction seam. Every `onElementInteraction` call of the presentation
+/// One presentation's interaction seam. Every `onElementInteraction` call of the presentation
 /// (a `refresh_step` tap, an OTP entry, a press-hold confirm…) starts here.
 final class InteractionCoordinator: ObservableObject {
     typealias Call = () async throws -> ElementInteractionResult?
     typealias Schedule = HostDataPendingCoordinator.Schedule
 
-    /// C5.5 — a `refresh` call ends at min(reply, 8 s). The same ceiling §D allows the host-data hook.
+    /// A `refresh` call ends at min(reply, 8 s). The same ceiling the host-data hook gets.
     static let refreshTimeout: TimeInterval = 8.0
     static let refreshAction = "refresh"
 
@@ -240,9 +240,9 @@ final class InteractionCoordinator: ObservableObject {
         case refusedNotCurrent
         /// Another interaction of this presentation is in flight.
         case refusedInFlight
-        /// `refresh_step` while the presentation is §B0-pending.
+        /// `refresh_step` while the presentation is pending.
         case refusedPending
-        /// C5.2 — no native `onElementInteraction` handler.
+        /// No native `onElementInteraction` handler.
         case noDelegate
     }
 
@@ -294,8 +294,8 @@ final class InteractionCoordinator: ObservableObject {
         }
     }
 
-    /// C5.3 / C5.4 — may a `refresh_step` button of this presentation be tapped now? Not while ANY
-    /// interaction of the presentation is in flight, and not while the presentation is §B0-pending.
+    /// May a `refresh_step` button of this presentation be tapped now? Not while ANY
+    /// interaction of the presentation is in flight, and not while the presentation is pending.
     func isTappable(blockId: String, pending: Bool) -> Bool {
         !inFlight && !pending
     }
@@ -398,10 +398,10 @@ final class InteractionCoordinator: ObservableObject {
     }
 }
 
-/// SPEC-496 §5b C4 — the ONE fold of an interaction reply, used by `OnboardingStepRouter` and by the
+/// The ONE fold of an interaction reply, used by `OnboardingStepRouter` and by the
 /// fixture driver alike. The four outputs are computed from the CURRENT state and committed together
 /// (`commit` — patches onto the current inputs, the layer, and the two overlays under THIS presentation
-/// only), then exactly one re-resolve + §B0 prune (`resolveAndPrune`), then — if asked — the gated
+/// only), then exactly one re-resolve + prune (`resolveAndPrune`), then — if asked — the gated
 /// advance (`advance`, which runs the gate itself).
 ///
 /// No `inout` on purpose: an `inout` of view state is written back only when the call returns, so the
@@ -440,7 +440,7 @@ enum InteractionReplyFold {
         // 2. `dataContext` → the step's layer, stamped with the call's `callSeq` — same turn.
         store.applyInteractionData(stepId: stepId, dataContext: applied.dataContext, stamp: seq)
         commit(w)
-        // 5. + 6. One re-resolve from the state just written, and the §B0 prune — BEFORE the gate.
+        // 5. + 6. One re-resolve from the state just written, and the prune — BEFORE the gate.
         resolveAndPrune()
         // 7. The gated advance.
         if applied.advance { advance() }

@@ -6,7 +6,7 @@ import SwiftUI
 final class OnboardingFlowManager {
     private let remoteConfigManager: RemoteConfigManager
     private let eventTracker: EventTracker
-    /// SPEC-036-F §1.2 — consulted at present-time for a running onboarding
+    /// Consulted at present-time for a running onboarding
     /// experiment targeting the resolved flow.
     private let experimentManager: ExperimentManager?
 
@@ -33,7 +33,7 @@ final class OnboardingFlowManager {
             return false
         }
 
-        // SPEC-036-F §1.2 — experiment-aware presentation. A running onboarding
+        // Experiment-aware presentation. A running onboarding
         // experiment targeting this flow + a treatment bucket → render the
         // treatment payload flow; otherwise the active flow (cohort isolation).
         var flow = activeFlow
@@ -106,7 +106,7 @@ final class OnboardingFlowManager {
             },
             onFlowCompleted: { [weak self] responses in
                 let durationMs = Int(Date().timeIntervalSince(startTime) * 1000)
-                // SPEC-070-B: the completion contract (event name, props, track → persist → delegate
+                // The completion contract (event name, props, track → persist → delegate
                 // ordering) lives in `OnboardingCompletion` so it is reachable — and provable —
                 // without a UIViewController. This closure used to BE the contract, which meant the
                 // funnel's denominator had no test seam at all.

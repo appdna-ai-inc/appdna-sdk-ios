@@ -6,7 +6,7 @@ final class EventTracker {
     private weak var eventQueue: EventQueue?
     private var analyticsConsent = true
 
-    /// SPEC-070-B PN row 1 (D-h): lazy supplier of the currently-visible screen name, so every
+    /// Lazy supplier of the currently-visible screen name, so every
     /// envelope carries `context.screen`. Returns nil before any screen is announced. This is the
     /// iOS half of a chain Android already had end to end (`EventTracker.kt:65`).
     private var screenProvider: (() -> String?)?
@@ -52,7 +52,7 @@ final class EventTracker {
     /// copy of the rules, not the SDK's. Nil in production: zero cost, no behavior change.
     internal var eventSink: ((SDKEvent) -> Void)?
 
-    /// SPEC-070-B PN row 14 (AC-36): apply the persisted consent decision at `configure()` time.
+    /// Apply the persisted consent decision at `configure()` time.
     /// Unlike `setConsent`, this does NOT purge the queue — events persisted during an earlier,
     /// consented session are not a revocation, and startup is not the moment to delete them.
     func setInitialConsent(analytics: Bool) {
@@ -60,7 +60,7 @@ final class EventTracker {
     }
 
     /// Set analytics consent. When false, track() silently drops events AND any already-queued
-    /// events are purged (SPEC-424 STEP-1a / CL-7).
+    /// events are purged.
     func setConsent(analytics: Bool) {
         analyticsConsent = analytics
         // Revoking consent MUST purge any queued-but-unsent events (in-memory + on-disk) WITHOUT
@@ -81,11 +81,11 @@ final class EventTracker {
             return
         }
 
-        // SPEC-428 CL-1/D2: surface any silently-dropped events (cap/quota evictions) as a
+        // Surface any silently-dropped events (cap/quota evictions) as a
         // _sdk_events_dropped meta-event so the loss is SERVER-VISIBLE. Drain before the real event;
         // guard against the meta-event itself re-triggering the drain.
         if event != "_sdk_events_dropped" {
-            // SPEC-428 STEP-4: PEEK (don't reset) — the count is decremented only after the meta is durable
+            // PEEK (don't reset) — the count is decremented only after the meta is durable
             // (in emitDroppedMeta's onPersisted), so a crash before the meta lands re-emits it (no under-count).
             let dropped = DroppedEventsCounter.peek()
             if dropped > 0 { emitDroppedMeta(count: dropped) }
@@ -103,7 +103,7 @@ final class EventTracker {
             experimentExposures: experimentExposureProvider?() ?? nil,
             screen: screenProvider?(),
             pushId: pushIdProvider?() ?? nil,
-            clientSeq: clientSeq // SPEC-428 STEP-9: a pre-init event carries the seq it stamped at track() time
+            clientSeq: clientSeq // A pre-init event carries the seq it stamped at track() time
         )
 
         eventQueue?.enqueue(sdkEvent)
@@ -111,7 +111,7 @@ final class EventTracker {
         Log.debug("Tracked event: \(event)")
     }
 
-    /// SPEC-428 CL-1/D2: build + enqueue the _sdk_events_dropped meta-event directly (NOT via track(),
+    /// Build + enqueue the _sdk_events_dropped meta-event directly (NOT via track(),
     /// to avoid re-entrancy). The count reflects events evicted since the last drain.
     private func emitDroppedMeta(count: Int) {
         let identity = identityManager.currentIdentity
@@ -126,7 +126,7 @@ final class EventTracker {
             screen: screenProvider?(),
             pushId: pushIdProvider?() ?? nil
         )
-        // SPEC-428 STEP-4: decrement by exactly `count` ONLY after the meta is durably persisted (never a
+        // Decrement by exactly `count` ONLY after the meta is durably persisted (never a
         // zero-reset). Crash before persist → counter keeps `count` → re-emit (no under-count).
         eventQueue?.enqueue(ev, onPersisted: { DroppedEventsCounter.subtract(count) })
         eventSink?(ev)
