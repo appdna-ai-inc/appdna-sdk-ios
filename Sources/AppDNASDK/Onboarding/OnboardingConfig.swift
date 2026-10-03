@@ -692,7 +692,7 @@ public enum StepAdvanceResult {
     case stay(message: String? = nil)
 }
 
-// MARK: - SPEC-497 §4.2 — sign-in hook bridge floor
+// MARK: - — sign-in hook bridge floor
 
 extension StepAdvanceResult {
     /// The floor a wrapper bridge applies to `onBeforeStepAdvance` for a sign-in action: 120 s.
@@ -716,14 +716,14 @@ extension StepAdvanceResult {
     }
 
     /// The wait a wrapper bridge applies to `onBeforeStepAdvance`: `max(configured, floor)` — the one
-    /// line §4.2 prescribes. INTERNAL (impl audit round 2, I2): the §4.3 public API is
+    /// line prescribes. INTERNAL: the public API is
     /// `minimumBridgeTimeout(stepData:)` only; each wrapper computes the max itself.
     static func bridgeTimeout(configured: TimeInterval, stepData: [String: Any]?) -> TimeInterval {
         max(configured, minimumBridgeTimeout(stepData: stepData) ?? 0)
     }
 }
 
-// MARK: - SPEC-497 — a wrapper bridge's onBeforeStepAdvance reply
+// MARK: - — a wrapper bridge's onBeforeStepAdvance reply
 
 extension StepAdvanceResult {
     /// The decision types a wrapper bridge understands in a host's `onBeforeStepAdvance` reply

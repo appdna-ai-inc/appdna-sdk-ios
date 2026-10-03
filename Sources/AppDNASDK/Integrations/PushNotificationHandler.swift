@@ -6,7 +6,7 @@ import UserNotifications
 
 /// Handles push notification display and tracking.
 ///
-/// SPEC-497 B6: the SDK no longer relies on a host instantiating this class (nothing ever did — its
+/// The SDK no longer relies on a host instantiating this class (nothing ever did — its
 /// `init` is internal). The installed `AppDNANotificationCenterProxy` is the SDK's delegate now; this
 /// class stays for source compatibility and forwards to the same `AppDNA.pushModule` entry points.
 public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate {
@@ -76,7 +76,7 @@ extension PushActionCategories {
     }
 }
 
-/// SPEC-497 §17 item 28 — a `text_reply` button's typed text. The notification-centre adapters copy it
+/// A `text_reply` button's typed text. The notification-centre adapters copy it
 /// into the userInfo they hand the push module under `appdna_reply_text`; the host receives it as
 /// `notification.data["reply_text"]` in `onPushTapped`.
 enum PushReply {
@@ -106,7 +106,7 @@ enum PushPayloadParser {
         let pushId = userInfo["push_id"] as? String ?? ""
         let imageUrl = userInfo["image_url"] as? String
         var data = userInfo["data"] as? [String: Any]
-        // SPEC-497 §17 item 28 — the typed text of a `text_reply` button (`PushReply`).
+        // The typed text of a `text_reply` button (`PushReply`).
         if let reply = userInfo[PushReply.userInfoKey] as? String {
             data = (data ?? [:]).merging([PushReply.dataKey: reply]) { _, new in new }
         }
@@ -153,7 +153,7 @@ enum PushPayloadParser {
 /// without a `UNNotificationResponse` (which cannot be constructed in a unit test — which is exactly
 /// how iOS shipped for months routing `show_screen` and silently dropping `deep_link`).
 ///
-/// SPEC-497 §9.2: the same routing ladder as Android (see `PushTapRouter.route`). Android additionally
+/// The same routing ladder as Android (see `PushTapRouter.route`). Android additionally
 /// routes `show_paywall` / `show_survey` from a push — iOS does not (known gap, not closed here).
 enum PushTapRoute: Equatable {
     case showScreen(String)
@@ -163,12 +163,12 @@ enum PushTapRoute: Equatable {
 }
 
 enum PushTapRouter {
-    /// SPEC-497 §8.7 — the route-sink test seam. Production leaves it nil. When set, the tap router
+    /// The route-sink test seam. Production leaves it nil. When set, the tap router
     /// reports `("show_screen", id)` / `("deep_link", url)` to it BEFORE `showScreen` / `handleURL`
     /// run, so a failure in the real navigation can never hide the decision from a test.
     static var routeSink: ((_ type: String, _ value: String) -> Void)?
 
-    /// The routing ladder (SPEC-497 §9.2, the same one Android uses):
+    /// The routing ladder (the same one Android uses):
     ///   (0) a tapped BUTTON's own action (`tappedActionId` matches an entry of `actions`);
     ///   (1) the canonical body `action` `{type, value}`;
     ///   (2) flat `action_type` / `action_value`;

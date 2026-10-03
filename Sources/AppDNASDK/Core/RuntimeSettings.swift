@@ -7,7 +7,9 @@ import Foundation
 /// bootstrap answer carries in `settings` > the built-in default. The built-in default applies until a
 /// bootstrap answer arrives, and stays when none does or when it does not carry the field. A bootstrap value
 /// of 0 or less is ignored, so a server answer can never stop uploads; so is a host value of 0 or less (logged as a
-/// warning): the setting then resolves as if the host had not set it.
+/// warning): the setting then resolves as if the host had not set it. So is a host value EQUAL to the option's
+/// default (flushInterval 30, batchSize 100, configTTL 3600): Android's options keep non-null public values, so
+/// there a value at its default is the only "not set" there is; both platforms read it the same way.
 ///
 /// `batchSize` is a cap on the adaptive, network-sized batch (100 on Wi-Fi or wired, 50 on cellular, 20 on an
 /// expensive connection, 0 offline): the effective size is the adaptive one when no cap is set, otherwise the
@@ -17,6 +19,14 @@ import Foundation
 enum RuntimeSettings {
     static let defaultFlushInterval: TimeInterval = 30
     static let defaultConfigTTL: TimeInterval = 3600
+    /// `AppDNAOptions.batchSize`'s default (the largest network-sized batch: no cap of the host's own).
+    static let defaultBatchSizeOption = 100
+
+    /// The host's value, or nil when it passed none or passed the option's default (Android: the same rule).
+    static func hostValue<T: Equatable>(_ requested: T?, default value: T) -> T? {
+        guard let requested, requested != value else { return nil }
+        return requested
+    }
 
     /// The values in force after resolving host options against a bootstrap answer.
     struct Resolved: Equatable {
@@ -40,13 +50,14 @@ enum RuntimeSettings {
         warnIgnored("configTTL", options.requestedConfigTTL)
         return Resolved(
             flushInterval: resolve(
-                explicit: options.requestedFlushInterval,
+                explicit: hostValue(options.requestedFlushInterval, default: defaultFlushInterval),
                 bootstrap: bootstrap?.flushInterval.map(TimeInterval.init),
                 fallback: defaultFlushInterval
             ) ?? defaultFlushInterval,
-            batchSizeCap: resolve(explicit: options.requestedBatchSize, bootstrap: bootstrap?.batchSize, fallback: nil),
+            batchSizeCap: resolve(explicit: hostValue(options.requestedBatchSize, default: defaultBatchSizeOption),
+                                  bootstrap: bootstrap?.batchSize, fallback: nil),
             configTTL: resolve(
-                explicit: options.requestedConfigTTL,
+                explicit: hostValue(options.requestedConfigTTL, default: defaultConfigTTL),
                 bootstrap: bootstrap?.configTTL.map(TimeInterval.init),
                 fallback: defaultConfigTTL
             ) ?? defaultConfigTTL

@@ -1,9 +1,9 @@
 // BillingModuleNoProviderTests.swift
 //
-// SPEC-497 §3.2 rule 3 / rule 5, §3.4, §3.10 — the direct `AppDNA.billing.purchase` / `restorePurchases`
+// The direct `AppDNA.billing.purchase` / `restorePurchases`
 // on every path the SDK cannot buy through:
 //   - before `configure` wired billing (and after `shutdown()`): an `unknown` error with the message
-//     "AppDNA SDK not configured yet — call configure() first" (no new error type, R65–R67);
+//     "AppDNA SDK not configured yet — call configure() first" (no new error type);
 //   - configured with `none`: `BillingError.providerNotAvailable` (was `BillingModuleError.noBillingProvider`)
 //     and exactly one `purchase_failed` (no `paywall_id`, no `purchase_started`);
 //   - a non-owning bridge (RevenueCat / Adapty not linked): the bridge throws `providerNotAvailable`
@@ -43,11 +43,11 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertTrue(events.isEmpty, "no tracker before configure → nothing emitted")
     }
 
-    /// SPEC-497 I4 R8 m3 — a not-configured purchase that does reach a tracker carries
+    /// A not-configured purchase that does reach a tracker carries
     /// `reason: "not_configured"`, as Android's (`AppDNAModules.kt` `purchase`). NEGATIVE CONTROL: without
     /// the `reason:` argument in `purchase`'s not-configured branch the key is missing — this fails.
     ///
-    /// ⚠️ SPEC-497 I3 m1 — the tracker is INJECTED here. In production an unconfigured module has no
+    /// ⚠️ — the tracker is INJECTED here. In production an unconfigured module has no
     /// tracker (`configure` wires it, `teardown()` nils it), so this emit never reaches the pipeline on a
     /// device — `testPurchaseBeforeConfigureIsUnknownNotConfiguredYet` above is the production shape. This test
     /// pins the event's shape only; it is not proof of production behaviour.
@@ -125,7 +125,7 @@ final class BillingModuleNoProviderTests: XCTestCase {
             XCTAssertEqual(billingErrorType(error), "unknown")
             XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
         }
-        // SPEC-497 round 5 (I4 m4), round 6 (I4 m1) — the test still holds `tracker` strongly, so the
+        // The test still holds `tracker` strongly, so the
         // weak facade reference would still resolve had `teardown()` not cleared it. `teardown()` does
         // clear it, and restore after teardown is the not-configured error and tracks nothing.
         XCTAssertNotNil(tracker, "the tracker is retained across teardown")
@@ -141,7 +141,7 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertTrue(events.isEmpty, "a restore after teardown tracks nothing — got \(events.map(\.event_name))")
     }
 
-    /// SPEC-497 round 5 (I4 m1) — a host that cancels its Task gets the `CancellationError` back as-is,
+    /// A host that cancels its Task gets the `CancellationError` back as-is,
     /// and no `purchase_restore_failed` is tracked (Android rethrows `CancellationException` the same way).
     func testDirectRestoreCancellationIsRethrownUntracked() async {
         final class CancellingBridge: BillingBridgeProtocol {
@@ -162,7 +162,7 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertTrue(events.isEmpty, "a cancelled restore tracks nothing — got \(events.map(\.event_name))")
     }
 
-    /// R40 parity — a direct purchase that the bridge fails emits `purchase_started` then ONE terminal
+    /// Parity — a direct purchase that the bridge fails emits `purchase_started` then ONE terminal
     /// event, like Android.
     func testDirectPurchaseFailureEmitsStartedThenFailed() async {
         final class FailingBridge: BillingBridgeProtocol {
@@ -179,7 +179,7 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertEqual(events.last?.properties?["error_type"]?.value as? String, "productNotFound")
     }
 
-    // MARK: - SPEC-497 §13b.2 R37/R38/R39 — a failed DIRECT restore tracks exactly one purchase_restore_failed
+    // MARK: - — a failed DIRECT restore tracks exactly one purchase_restore_failed
 
     private func restoreFailedEvents() -> [SDKEvent] {
         events.filter { $0.event_name == "purchase_restore_failed" }
@@ -255,7 +255,7 @@ final class BillingModuleNoProviderTests: XCTestCase {
         XCTAssertTrue(restoreFailedEvents().isEmpty)
     }
 
-    /// R40/R41 — a re-buy of an owned item: one `purchase_restored{reason: item_already_owned}`, no price,
+    /// A re-buy of an owned item: one `purchase_restored{reason: item_already_owned}`, no price,
     /// no conversion; `purchase()` still returns the TransactionInfo.
     func testRebuyOfAnOwnedItemBooksNoRevenue() async throws {
         final class OwnedBridge: BillingBridgeProtocol {

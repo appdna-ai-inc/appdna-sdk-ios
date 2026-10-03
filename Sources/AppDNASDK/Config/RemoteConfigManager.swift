@@ -334,9 +334,15 @@ final class RemoteConfigManager {
         queue.sync { surveys }
     }
 
-    /// Register a handler that fires when survey configs are updated.
+    /// Register a handler that fires when survey configs are updated — and at once with the surveys already
+    /// loaded (the disk cache read in `init`, or the bundle), which arrived before any handler existed: without that
+    /// replay an offline cold start's cached surveys never reached `SurveyManager` until a fetch. On `queue`, where
+    /// the handler is read. Android `surveyUpdateHandler`, same rule.
     func onSurveyConfigsUpdated(_ handler: @escaping ([String: SurveyConfig]) -> Void) {
-        self.surveyUpdateHandler = handler
+        queue.async {
+            self.surveyUpdateHandler = handler
+            if !self.surveys.isEmpty { handler(self.surveys) }
+        }
     }
 
     /// A failed bootstrap recovered: the manager now knows the tenant's Firestore path, and fetches the
@@ -1124,6 +1130,55 @@ struct ExperimentConfig: Codable {
     var targeting: ExperimentTargeting? = nil
     /// When the experiment started (epoch ms) — "new users only" compares the install date with it.
     var started_at_ms: Int64? = nil
+}
+
+extension ExperimentConfig {
+    /// Field by field, so one odd value cannot drop the whole experiment — the same reading as Android
+    /// `RemoteConfigManager.parseExperiments` (a field of the wrong type is treated as absent), except where absent
+    /// would fail OPEN:
+    ///  - `traffic_allocation` present but not a number (a string, a bool, an object) → NaN, which allocates no one
+    ///    (absent / null still means everyone, for docs written before the field was served);
+    ///  - `started_at_ms` present but not a number → absent, so "new users only" fails closed; a fractional number is
+    ///    truncated to whole milliseconds;
+    ///  - `targeting` present but not an object → malformed targeting (fails closed).
+    /// Before, any type mismatch dropped the experiment on iOS while Android kept it (and allocated everyone on a
+    /// malformed `traffic_allocation`).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        func present(_ key: CodingKeys) -> Bool { c.contains(key) && (try? c.decodeNil(forKey: key)) != true }
+        func lenient<T: Decodable>(_ type: T.Type, _ key: CodingKeys) -> T? { (try? c.decodeIfPresent(type, forKey: key)) ?? nil }
+        id = lenient(String.self, .id)
+        name = lenient(String.self, .name)
+        status = lenient(String.self, .status)
+        type = lenient(String.self, .type)
+        salt = lenient(String.self, .salt)
+        platforms = lenient([String].self, .platforms)
+        variants = lenient([ExperimentVariant].self, .variants)
+        segments = lenient([String].self, .segments)
+        if present(.traffic_allocation) {
+            traffic_allocation = (try? c.decode(Double.self, forKey: .traffic_allocation)) ?? .nan
+        } else {
+            traffic_allocation = nil
+        }
+        if present(.targeting) {
+            if let t = lenient(ExperimentTargeting.self, .targeting) {
+                targeting = t
+            } else {
+                var bad = ExperimentTargeting()
+                bad.malformed = true
+                targeting = bad
+            }
+        } else {
+            targeting = nil
+        }
+        if let ms = try? c.decode(Int64.self, forKey: .started_at_ms) {
+            started_at_ms = ms
+        } else if let d = try? c.decode(Double.self, forKey: .started_at_ms), d.isFinite, abs(d) < 9.2e18 {
+            started_at_ms = Int64(d)
+        } else {
+            started_at_ms = nil
+        }
+    }
 }
 
 public struct ExperimentVariant: Codable {

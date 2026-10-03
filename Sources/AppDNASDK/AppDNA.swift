@@ -70,7 +70,7 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Delegate for billing/purchase events.
     ///
-    /// Still a weak reference. Since SPEC-497 it is stored by `AppDNA.billing` (with the
+    /// Still a weak reference. Since it is stored by `AppDNA.billing` (with the
     /// `deliversPurchases` flag of `billing.setDelegate(_:deliversPurchases:)`); setting it here is
     /// `billing.setDelegate(newValue, deliversPurchases: true)`, which also delivers any purchase queued
     /// while no delegate was set.
@@ -421,7 +421,7 @@ public final class AppDNA: @unchecked Sendable {
     /// than merely observing that `track()` did not throw. Its `eventSink` fires on every enqueue.
     internal static var eventTrackerForTesting: EventTracker? { shared.eventTracker }
 
-    /// SPEC-497 §11.9 — test-only: install a capturing tracker as the SDK's event tracker (under the same
+    /// Test-only: install a capturing tracker as the SDK's event tracker (under the same
     /// lock `configure` publishes it under), so a test can drive the PUBLIC `AppDNA.track`. Mirrors
     /// Android `installEventTrackerForTest`. Pass nil to uninstall.
     internal static func installEventTrackerForTest(_ tracker: EventTracker?) {
@@ -700,7 +700,7 @@ public final class AppDNA: @unchecked Sendable {
                 await AppDNA.billing.refreshEntitlementCache()
             }
 
-            // SPEC-497 D-R40-1 — trigger (iii): a purchase queued for this user (or deferred to them as
+            // Trigger (iii): a purchase queued for this user (or deferred to them as
             // its owner) is emitted / delivered now.
             Task {
                 await PurchaseDeliveryQueue.shared.drain()
@@ -777,7 +777,7 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Track a custom event.
     public static func track(event: String, properties: [String: Any]? = nil) {
-        // SPEC-497 §11.9 (R74) — `emitted_by` marks the SDK's OWN billing events and `_appdna_origin` is
+        // `emitted_by` marks the SDK's OWN billing events and `_appdna_origin` is
         // a server-only marker; a host may forge neither. Stripped FIRST, before the pre-init buffer
         // decision, so a buffered event is stripped too. (The SDK's billing emitters never come through
         // here — they track on the `EventTracker` directly, with `BillingEventProps.marked`.)
@@ -860,8 +860,12 @@ public final class AppDNA: @unchecked Sendable {
 
     // MARK: - Public API: Experiments
 
-    /// Get the variant assignment for an experiment.
-    /// Exposure is auto-tracked on first call per session.
+    /// Get the variant assignment for an experiment: the variant ID set in the Console, or nil when the user is not
+    /// in the experiment — it is not running (or not in the config yet), does not target iOS, a targeting rule
+    /// excludes the user, or the user is outside the traffic allocation (or the SDK is not configured).
+    /// The `experiment_exposure` event is tracked automatically on the first assignment of each experiment, once
+    /// until `reset()` or the next app launch (exposures are kept in memory; a new session does not reset them).
+    /// A nil answer tracks nothing.
     public static func getExperimentVariant(experimentId: String) -> String? {
         shared.experimentManager?.getVariant(experimentId: experimentId)
     }
@@ -1261,7 +1265,7 @@ public final class AppDNA: @unchecked Sendable {
 
             // 2. Environment
             lines.append("║ ✅ Environment: \(shared.environment.rawValue)")
-            // SPEC-497 §3.11 — the resolved API base. The E2E hosts match `base_url: ` by substring.
+            // The resolved API base. The E2E hosts match `base_url: ` by substring.
             lines.append("║ base_url: \(APIBaseURL.resolve(environment: diagnoseEnvironmentForTesting ?? shared.environment))")
 
             // 3. Network
@@ -1342,7 +1346,7 @@ public final class AppDNA: @unchecked Sendable {
             if shared.experimentManager != nil { modules.append("experiments") }
             lines.append("║ ✅ Modules: \(modules.isEmpty ? "none" : modules.joined(separator: ", "))")
 
-            // SPEC-497 B6 — the notification proxy's state (read through the installed slot; the
+            // The notification proxy's state (read through the installed slot; the
             // disabled / not-installed states read no notification centre).
             for line in NotificationProxyBootstrap.diagnoseLines() {
                 lines.append("║ ℹ️ \(line)")
@@ -1404,7 +1408,7 @@ public final class AppDNA: @unchecked Sendable {
     /// A selected suggestion returns the full object; text the user typed without selecting returns
     /// `{formatted_address, raw_query}` = that text with null coordinates. Returns nil if the field was
     /// not answered (or holds an empty string, a number or null). Never serialises the stored value,
-    /// so no stored shape can crash the host (SPEC-497 §13h).
+    /// so no stored shape can crash the host.
     public static func getLocationData(fieldId: String) -> LocationData? {
         let responses = SessionDataStore.shared.onboardingResponses
         for key in responses.keys.sorted() {
@@ -1648,7 +1652,7 @@ public final class AppDNA: @unchecked Sendable {
         // it immediately: `testEverySubsystemFailingAtOnceStillLeavesATrackingSDK` injects a failure into
         // EVERY subsystem and asserts none comes up — and billing came up anyway, because it was never
         // in the seam to fail. The oracle was blind in exactly the place the code was unguarded.
-        // SPEC-497 §3.2 (A1) — ownership comes from the REQUESTED provider, decided once by
+        // Ownership comes from the REQUESTED provider, decided once by
         // `BillingOwnership.policy`. A provider whose SDK is not linked into this build (RevenueCat /
         // Adapty on every published channel) gets `ExternalProviderBridge`, which refuses to buy or
         // restore and never finishes anything — it used to get a silent `StoreKit2Bridge` fallback that
@@ -1663,7 +1667,7 @@ public final class AppDNA: @unchecked Sendable {
         // policy (no purchase, no restore, providerNotAvailable, no observer).
         if self.billingBridge == nil { billingPolicy = BillingOwnership.unavailable }
 
-        // D-R39-1 / R64–R68 — billing is ready from the first call: the facade gets the bridge, the
+        // Billing is ready from the first call: the facade gets the bridge, the
         // policy and the tracker HERE, right after the bridge is built and before the observer starts
         // (so both see the same bridge) — not after the bootstrap. This point is already after
         // `tracker.setEventQueue` and the preInitLock publish above, so the tracker never meets a nil
@@ -1671,10 +1675,10 @@ public final class AppDNA: @unchecked Sendable {
         AppDNA.billing.wire(bridge: self.billingBridge, policy: billingPolicy, tracker: tracker)
 
         // 4b. Subscription lifecycle — the observer runs under every provider that has one; its MODE
-        // comes from the ownership policy (SPEC-497 §3.2 rule 1): `.storeKitOwned` ONLY for `storeKit2`.
+        // comes from the ownership policy: `.storeKitOwned` ONLY for `storeKit2`.
         // Under `.providerOwned` it never drains `Transaction.updates` and never calls `finish()`.
-        // Device lifecycle events follow `emitsLifecycleEvents` (owner Q2: none under RevenueCat — its
-        // webhook is the single source; LD-R10-1: kept under Adapty); the snapshot is persisted either way.
+        // Device lifecycle events follow `emitsLifecycleEvents` (none under RevenueCat — its
+        // webhook is the single source; kept under Adapty); the snapshot is persisted either way.
         if let observerMode = billingPolicy.observerMode.subscriptionObserverMode {
             let observer = SubscriptionStatusObserver(
                 eventTracker: tracker,
@@ -1682,7 +1686,7 @@ public final class AppDNA: @unchecked Sendable {
                 emitsLifecycleEvents: billingPolicy.emitsLifecycleEvents,
                 // After every pass (launch, foreground, `Transaction.updates`, provider callback): the
                 // diff-guarded entitlement refresh — so a renewal, an expiry or a refund reaches
-                // `onEntitlementsChanged` — and a retry of unverified purchases (§17-4).
+                // `onEntitlementsChanged` — and a retry of unverified purchases.
                 afterPass: {
                     await AppDNA.billing.refreshEntitlementCache()
                     await PurchaseVerificationQueue.shared.retryPending()
@@ -1692,7 +1696,7 @@ public final class AppDNA: @unchecked Sendable {
             observer.start()
         }
 
-        // D-R40-1 — the delivery queue is activated once the identity is loaded; trigger (iv): drain at
+        // The delivery queue is activated once the identity is loaded; trigger (iv): drain at
         // the end of billing initialisation when a delivering delegate was set before `configure`.
         Task {
             await PurchaseDeliveryQueue.shared.activate(session: epoch)
@@ -1702,16 +1706,16 @@ public final class AppDNA: @unchecked Sendable {
         // 5. Initialize push token manager (v0.2 + v0.4 SPEC-030: backend registration)
         self.pushTokenManager = PushTokenManager(keychainStore: keychainStore, eventTracker: tracker, apiClient: client)
         AppDNA.pushModule.manager = self.pushTokenManager
-        // SPEC-497 B6 — the push CONFIGURED POINT (R72): from here the SDK can track, so buffered
+        // The push CONFIGURED POINT: from here the SDK can track, so buffered
         // launch taps / deliveries (from the notification proxy and from host forwarding) drain now, on
         // the main queue, in arrival order. Then the configure fallback decides whether the proxy has
-        // to be installed here because no launch-time observer was ever registered (§9a.4 table).
+        // to be installed here because no launch-time observer was ever registered (table).
         // Epoch-scoped: a `shutdown()` that already ended this configure (it can land between the
         // superseded check above and this line) keeps the gate closed.
         PushGate.shared.markConfigured(epoch: epoch)
         DispatchQueue.main.async {
             NotificationProxyBootstrap.configureFallback(plist: Bundle.main.infoDictionary ?? [:])
-            // SPEC-497 §17 item 28 — button categories of AppDNA pushes delivered while the app was not
+            // Button categories of AppDNA pushes delivered while the app was not
             // running (no Notification Service Extension to register them).
             PushActionCategories.registerFromDeliveredNotifications()
         }
@@ -1734,15 +1738,15 @@ public final class AppDNA: @unchecked Sendable {
     private func applyBootstrapSettings(_ data: BootstrapData, identityMgr: IdentityManager) {
         Log.info("Bootstrap successful: orgId=\(data.orgId), appId=\(data.appId)")
 
-        // SPEC-404 — reconcile runtime lock state from the bootstrap
+        // Reconcile runtime lock state from the bootstrap
         // response. Fire delegate callbacks ONLY on a state transition
         // (idle → locked or locked → idle), not on every bootstrap.
         // Repeated bootstraps in the same state are a no-op for delegate
         // notification.
         AppDNA.applyRemoteMapboxToken(data.settings.mapboxToken)
-        // SPEC-495 §B — same path, same ownership rules, for the Google provider.
+        // Same path, same ownership rules, for the Google provider.
         AppDNA.applyRemoteGoogleMapsKey(data.settings.googleMapsApiKey)
-        // SPEC-495 — the engine those two keys select between, same delivery path.
+        // The engine those two keys select between, same delivery path.
         AppDNA.applyRemoteMapProvider(data.settings.mapProvider)
 
         let previousLock = AppDNA.runtimeLock
@@ -1830,10 +1834,13 @@ public final class AppDNA: @unchecked Sendable {
                 // Ready now (on cached and bundled config); the bootstrap is retried for the rest of the
                 // session and applied when it answers — unless the server refused the key (401 / 403):
                 // retrying that cannot help.
-                if BootstrapRecovery.outcome(for: error) == .stop {
+                // A 429's Retry-After holds back the first retry too (not only the retries' own).
+                let outcome = BootstrapRecovery.outcome(for: error)
+                if outcome == .stop {
                     Log.warning("Bootstrap not retried — the server refused the API key")
                 } else {
-                    self.startBootstrapRecovery(client: client, identityMgr: identityMgr, tracker: tracker, epoch: epoch)
+                    self.startBootstrapRecovery(client: client, identityMgr: identityMgr, tracker: tracker, epoch: epoch,
+                                                after: outcome)
                 }
             }
         }
@@ -1864,7 +1871,8 @@ public final class AppDNA: @unchecked Sendable {
     /// (`applyRecoveredBootstrap`). The SDK is already ready: `onReady` does not fire again and
     /// `sdk_initialized` is not tracked again. An attempt for a configure that has ended applies nothing.
     /// On `queue`.
-    private func startBootstrapRecovery(client: APIClient, identityMgr: IdentityManager, tracker: EventTracker, epoch: Int) {
+    private func startBootstrapRecovery(client: APIClient, identityMgr: IdentityManager, tracker: EventTracker, epoch: Int,
+                                        after initial: BootstrapRecovery.Outcome? = nil) {
         let recovery = BootstrapRecovery(
             isOnline: Self.bootstrapRetryOnlineForTesting ?? { NetworkMonitor.shared.isConnected },
             backoff: Self.bootstrapRetryBackoffForTesting ?? BootstrapRecovery.defaultBackoff
@@ -1876,7 +1884,7 @@ public final class AppDNA: @unchecked Sendable {
         initLock.unlock()
         previous?.stop()
 
-        recovery.start { [weak self] in
+        recovery.start(after: initial) { [weak self] in
             guard let self, self.isCurrentConfigure(epoch) else { return .done }
             let data: BootstrapData
             do {
@@ -2081,7 +2089,7 @@ public final class AppDNA: @unchecked Sendable {
         }
 
         // Wire module namespaces (v1.0). (Billing is wired in `performConfigure`, right after its bridge
-        // is built — SPEC-497 D-R39-1: ready from the first call, not after the bootstrap.)
+        // is built: ready from the first call, not after the bootstrap.)
         AppDNA.onboarding.manager = self.onboardingFlowManager
         AppDNA.paywall.paywallManager = self.paywallManager
         AppDNA.remoteConfig.manager = remoteCfg
@@ -2138,7 +2146,7 @@ public final class AppDNA: @unchecked Sendable {
     /// next app foreground. The pass is serialized inside the observer, so this is safe to call from any
     /// thread, as often as the provider fires: a redundant call re-reads the same entitlements, diffs
     /// them against the snapshot it just wrote, and emits nothing.
-    /// SPEC-497 §13a.2 — the purchase path's one snapshot pass after a subscription purchase, so the
+    /// The purchase path's one snapshot pass after a subscription purchase, so the
     /// first renewal diffs against the right baseline. Awaits the pass (serialized in the observer).
     internal static func reconcileSubscriptionStateNow() async {
         let observer: SubscriptionStatusObserver? = shared.queue.sync { shared.subscriptionObserver }
@@ -2205,7 +2213,7 @@ public final class AppDNA: @unchecked Sendable {
         // `onWebEntitlementChanged` went silent for the rest of the process.
         removeAllWebEntitlementChangedHandlers()
 
-        // SPEC-497 B6 — clear the push configured point synchronously: the notification proxy stays
+        // Clear the push configured point synchronously: the notification proxy stays
         // installed (removing it could orphan a library that wrapped it) but becomes pass-through for
         // AppDNA pushes until the next `configure()`.
         PushGate.shared.markShutDown(epoch: shutdownEpoch)
@@ -2224,7 +2232,7 @@ public final class AppDNA: @unchecked Sendable {
             //
             // Order the teardown by blast radius: stop what can spend money, then stop what observes it.
             billing.teardown()
-            // D-R40-1 — no drain until the next `configure` has loaded the identity again.
+            // No drain until the next `configure` has loaded the identity again.
             // (Session-scoped: a `configure()` that followed on the same tick has a newer epoch and its
             // activation is never undone by this late deactivation.)
             Task { await PurchaseDeliveryQueue.shared.deactivate(session: shutdownEpoch) }

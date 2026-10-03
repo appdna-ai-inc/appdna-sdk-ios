@@ -212,7 +212,7 @@ final class PurchaseMeteringAndShutdownTests: XCTestCase {
                 "signed-out user, and with eventTracker already nil nobody would ever be told."
             )
         } catch {
-            // Correct: billing is down, and says so — since SPEC-497 (R67) with the `unknown`
+            // Correct: billing is down, and says so — since with the `unknown`
             // "not configured yet" error, because `shutdown()` resets the facade's `configured` flag.
             XCTAssertEqual(error.localizedDescription, AppDNA.BillingModule.notConfiguredMessage)
             XCTAssertEqual(billingErrorType(error), "unknown")

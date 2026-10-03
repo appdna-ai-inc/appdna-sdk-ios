@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-497 §13h — what a location field stores as its answer. One rule for both writers (the form-step
+/// What a location field stores as its answer. One rule for both writers (the form-step
 /// Location field and the `input_location` content block) and for both platforms (Android
 /// `LocationAnswer.kt`); the `location_answer_from_input` shared fixtures pin it.
 ///

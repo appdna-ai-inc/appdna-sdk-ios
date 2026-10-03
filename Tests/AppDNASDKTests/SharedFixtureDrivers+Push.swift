@@ -1,6 +1,6 @@
 // SharedFixtureDrivers+Push.swift
 //
-// SPEC-497 — iOS drivers for the Push-area fixture kinds (classify_push, notification_proxy).
+// iOS drivers for the Push-area fixture kinds (classify_push, notification_proxy).
 // Dispatched from `SharedFixtureTests.drive`'s default branch. Every value asserted is produced by a
 // REAL SDK symbol (see the header of SharedFixtureTests.swift).
 //

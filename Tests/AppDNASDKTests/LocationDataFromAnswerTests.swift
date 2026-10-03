@@ -1,6 +1,6 @@
 // LocationDataFromAnswerTests.swift
 //
-// SPEC-497 §13h (D2) — `getLocationData` never crashes and builds its result from any stored answer.
+// `getLocationData` never crashes and builds its result from any stored answer.
 //
 // © 2026 AppDNA AI, Inc.
 

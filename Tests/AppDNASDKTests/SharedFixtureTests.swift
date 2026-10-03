@@ -71,7 +71,7 @@ final class SharedFixtureTests: XCTestCase {
         let session_data: AnyJSON?
         let experiment_assignments: AnyJSON?
         let remote_config: AnyJSON?
-        /// SPEC-497 — every `setup` key, including the ones declared after SPEC-496
+        /// Every `setup` key, including the ones declared after
         /// (`previous_snapshot`, `current`, `transaction_facts`, `pending_deliveries`, `offer`, …).
         let raw: [String: AnyJSON]
 
@@ -469,7 +469,7 @@ final class SharedFixtureTests: XCTestCase {
         case "show_screen":                    runShowScreen(fixture, harness)
         case "show_paywall":                   runShowPaywall(fixture, harness)
         case "purchase":
-            // SPEC-497 §3.9 — a paywall that declares a `billing_provider` is driven through the REAL
+            // A paywall that declares a `billing_provider` is driven through the REAL
             // PaywallManager tap path (SharedFixtureDrivers+Billing.swift); the outcome fixtures below
             // still need a real store.
             if await runPurchaseUnderProvider(fixture, harness) { break }
@@ -495,7 +495,7 @@ final class SharedFixtureTests: XCTestCase {
         // SPEC-496 §5b C2 — the core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         default:
-            // SPEC-497 — the new kinds are driven from one file per area, each returning `true` for
+            // The new kinds are driven from one file per area, each returning `true` for
             // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift.
             if await driveSpec497Billing(fixture, harness) { return }
             if await driveSpec497Push(fixture, harness) { return }
@@ -1999,7 +1999,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["current_screen"] = screenName
         }
 
-        // SPEC-497 §11.9 — through the PUBLIC `AppDNA.track` (it strips the host-forgeable
+        // Through the PUBLIC `AppDNA.track` (it strips the host-forgeable
         // `emitted_by` / `_appdna_origin` first), with the harness tracker installed as the SDK's.
         let previous = AppDNA.eventTrackerForTesting
         AppDNA.installEventTrackerForTest(h.tracker)
@@ -2166,7 +2166,14 @@ final class SharedFixtureTests: XCTestCase {
     static func eligibilityContext(_ f: Fixture) -> ([String: Any]) -> ExperimentEligibilityContext {
         let session = f.setup.session_data?.objectValue ?? [:]
         let appVersion = session["app_version"]?.stringValue
-        let region = session["device_region"]?.stringValue
+        // `region_candidates` (instead of `device_region`): the raw locale regions, resolved by the REAL
+        // `DeviceRegion.resolve` — the first ISO-3166 alpha-2 code.
+        let region: String?
+        if let candidates = session["region_candidates"]?.arrayValue {
+            region = DeviceRegion.resolve(candidates.map { $0.stringValue })
+        } else {
+            region = session["device_region"]?.stringValue
+        }
         let installed = session["install_epoch_ms"]?.doubleValue.map { Int64($0) }
         return { traits in
             ExperimentEligibilityContext(platform: "ios", appVersion: appVersion, deviceRegion: region, installEpochMs: installed, traits: traits)
@@ -2175,7 +2182,7 @@ final class SharedFixtureTests: XCTestCase {
 
     // MARK: - Driver: receive_push / tap_push
     //
-    // SPEC-497 §8.7 — the drivers call the PUBLIC entry points and observe tracking, the delegate and
+    // The drivers call the PUBLIC entry points and observe tracking, the delegate and
     // routing as outputs:
     //   receive_push with `via: "handleMessageData"` → REAL `AppDNA.pushModule.handleMessageData`
     //     (marker gate, idempotency, push_delivered with delivery_id, onPushReceived; never presents);
@@ -2252,7 +2259,7 @@ final class SharedFixtureTests: XCTestCase {
 
         h.state["registered_action_button_count"] = payload.actions.count
 
-        // SPEC-497 §17 item 28 — the category the extension / delivered path registers, read back from
+        // The category the extension / delivered path registers, read back from
         // an in-memory notification-centre slot through the REAL `PushActionCategories.register`.
         let slot = InMemoryNotificationCenterSlot()
         PushActionCategories.register(from: userInfo, slot: slot)
@@ -2356,7 +2363,7 @@ final class SharedFixtureTests: XCTestCase {
             h.delegateCalls.count, expectedCalls.count,
             "\(prefix) delegate-call count — expected \(expectedCalls.map(\.name)), got \(h.delegateCalls.map(\.name))"
         )
-        // SPEC-497 §14 (R69) — `push_payload` fixtures compare `delegate_calls` ORDER-INSENSITIVELY: each
+        // `push_payload` fixtures compare `delegate_calls` ORDER-INSENSITIVELY: each
         // expected call must match a distinct actual call (same name, every expected arg equal). Every
         // other category compares them in order.
         if f.category == "push_payload" {

@@ -1,6 +1,6 @@
 // LocationAnswerTests.swift
 //
-// SPEC-497 §13h — the stored answer of the `input_location` content block's MapKit path, which the
+// The stored answer of the `input_location` content block's MapKit path, which the
 // shared fixtures cannot reach (they drive the server-suggestion path). A missing city / state /
 // country is left out, and a failed time-zone lookup stores no zone at all.
 //

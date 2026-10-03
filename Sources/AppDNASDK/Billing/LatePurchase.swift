@@ -1,7 +1,7 @@
 import Foundation
 import StoreKit
 
-// SPEC-497 §13a.2, D-R40-1(a) — iOS late purchases.
+// iOS late purchases.
 //
 // Before: under `.storeKitOwned` the observer called `finish()` on every `Transaction.updates` item and
 // emitted nothing. An interrupted purchase, an Ask-to-Buy approval or an offer-code redemption completing
@@ -53,13 +53,13 @@ enum LateDecision: String, Equatable {
 
 enum LatePurchaseFilter {
 
-    /// SPEC-497 §13a.2 (R41–R51, R76). First match wins.
+    /// First match wins.
     static func decide(_ f: TransactionFacts) -> LateDecision {
         guard f.ownershipType == "purchased" else { return .finishSilently }   // family-shared
         guard f.revocationDate == nil else { return .finishSilently }
         guard !f.isUpgraded else { return .finishSilently }
         // A FIRST purchase only — renewals are never reported. iOS 17+ says so directly; before that a
-        // renewal is an auto-renewable whose id differs from its original id. (Known, R42: a resubscribe
+        // renewal is an auto-renewable whose id differs from its original id. (Known limitation: a resubscribe
         // or crossgrade made outside the app is reported on 17+ and silent on 16.)
         if let reason = f.reason {
             guard reason == "purchase" else { return .finishSilently }
@@ -68,7 +68,7 @@ enum LatePurchaseFilter {
         }
         guard !f.alreadyReported else { return .finishSilently }
 
-        // Whose purchase is it? (R49) nil token, the current user's token, or a (custom) token the owner
+        // Whose purchase is it? nil token, the current user's token, or a (custom) token the owner
         // map attributes to the current user → report. A token the owner map attributes to ANOTHER user →
         // defer to that owner. An unmapped token → report, queued untagged.
         guard let token = f.appAccountToken else { return .report }
@@ -155,7 +155,7 @@ struct LateEnvelope {
 
     /// `purchase_completed` properties: `paywall_id: ""` (no paywall), `emitted_by: "sdk"`, the charged
     /// price, `is_trial`, the ids, and `purchased_at_ms` (the event's `ts_ms` is the emit time; this
-    /// carries the purchase time, Int64 epoch ms — R49).
+    /// carries the purchase time, Int64 epoch ms).
     func properties(purchasedAtMs: Int64) -> [String: Any] {
         var props = PurchaseSuccessEvents.properties(paywallId: "", result: result, extra: ["purchased_at_ms": Int(purchasedAtMs)])
         if !priceKnown {
@@ -191,7 +191,7 @@ struct LateEnvelope {
     }
 }
 
-/// One `Transaction.updates` item as the observer handles it (SPEC-497 §13a.2): its ids, whether it is
+/// One `Transaction.updates` item as the observer handles it: its ids, whether it is
 /// revoked, how to build its facts and envelope, and how to finish it. Production wraps a verified
 /// StoreKit `Transaction` (`init(transaction:)`); a unit test cannot construct a `Transaction`, so it
 /// passes plain values and a recording `finish` — and drives the REAL
@@ -227,7 +227,7 @@ extension OwnedTransactionUpdate {
             },
             envelope: { facts in await OwnedTransactionUpdate.lateEnvelope(for: transaction, facts: facts) },
             // Called only by `SubscriptionStatusObserver.handleOwnedUpdate`, behind its
-            // `mode == .storeKitOwned` guard (SPEC-497 §3.8).
+            // `mode ==.storeKitOwned` guard.
             finish: { await transaction.finish() }
         )
     }
@@ -304,7 +304,7 @@ enum LatePurchaseProcessor {
                 isSubscription: env.result.isSubscription,
                 environment: facts.environment
             )
-            // R46 (1) — persist first; the caller then finishes, so nothing stays unfinished (no StoreKit
+            // Persist first; the caller then finishes, so nothing stays unfinished (no StoreKit
             // re-delivery, no re-buy blocking, no cross-user misgrant).
             await queue.recordDeferred(entry)
             return decision

@@ -1,8 +1,8 @@
 import Foundation
 
-// SPEC-497 §13a.2, D-R40-1 (b)+(c) — the durable delivery queue for `onPurchaseCompleted`.
+// The durable delivery queue for `onPurchaseCompleted`.
 //
-// The model (the same rules as Android's `drainDeliveries`, R41/R60/R61):
+// The model (the same rules as Android's `drainDeliveries`):
 //   1. What is queued: every report that did NOT resolve a live `purchase()` caller. On iOS that is the
 //      late purchases of `Transaction.updates` (interrupted, Ask-to-Buy, offer codes) — `report` and
 //      `deferToOwner`. A purchase whose caller is alive is delivered by its bridge, as before.
@@ -261,7 +261,7 @@ actor PurchaseDeliveryQueue {
             guard isDeliverable(entry) else { continue }
             inFlight.insert(id)
 
-            // Deferred emit (R46 (2)), from the stored envelope — regardless of the delegate. With no
+            // Deferred emit ((2)), from the stored envelope — regardless of the delegate. With no
             // tracker yet the entry is left untouched (emit still pending, not delivered ahead of it).
             // With one: persist `emitPending = false` and the reported id in ONE write, THEN emit, in the
             // same actor turn — at most once, never a double emit after a crash.
@@ -403,7 +403,7 @@ actor PurchaseDeliveryQueue {
     }
 }
 
-/// SPEC-497 §13a.2 (R47–R50) — which user made the purchase that carried a given `appAccountToken`.
+/// Which user made the purchase that carried a given `appAccountToken`.
 ///
 /// The purchase path records the token of EVERY purchase — SDK-derived or a host's custom
 /// `PurchaseOptions.appAccountToken` — BEFORE the StoreKit purchase call, whatever the outcome (pending and

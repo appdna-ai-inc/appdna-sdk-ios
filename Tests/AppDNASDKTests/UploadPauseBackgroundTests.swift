@@ -11,9 +11,9 @@
 // NOT prove that the production pause writes the gate. `UploadPauseGatePersistenceTests` does: it drives five
 // real failed upload cycles.
 //
-// NEGATIVE CONTROLS (build Mac): without the pause check in `enterBackground` the schedule runs (round 30);
+// NEGATIVE CONTROLS (build Mac): without the pause check in `enterBackground` the schedule runs;
 // without the `guard !paused` in `BackgroundUploader.runUpload` the paused background run sends its batch
-// (round 31).
+// .
 //
 // © 2026 AppDNA AI, Inc.
 

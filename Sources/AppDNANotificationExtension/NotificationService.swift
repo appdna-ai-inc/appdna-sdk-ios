@@ -37,7 +37,7 @@ open class NotificationService: UNNotificationServiceExtension {
         stateLock.unlock()
         let userInfo = content.userInfo
 
-        // SPEC-497 §17 item 28 — register the action buttons' category BEFORE the notification is shown:
+        // Register the action buttons' category BEFORE the notification is shown:
         // iOS displays buttons only for a category that is already registered, and this extension is the
         // one place that runs before display while the app is not running. The server marks every push
         // with buttons `mutable-content`, so this runs for them.
@@ -112,7 +112,7 @@ open class NotificationService: UNNotificationServiceExtension {
                 return
             }
 
-            // SPEC-085: Determine file extension from MIME type or URL
+            // Determine file extension from MIME type or URL
             let ext: String
             if let mimeType = (response as? HTTPURLResponse)?.mimeType {
                 switch mimeType {

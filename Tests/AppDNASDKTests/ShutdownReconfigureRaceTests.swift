@@ -18,12 +18,12 @@ import XCTest
 /// This drives the exact back-to-back sequence a host issues and asserts the SDK comes back UP.
 ///
 /// Every request goes to a local server (bootstrap answered, events accepted). These tests used to bootstrap
-/// against the real sandbox API, and since `shutdown()` makes one last upload (round 30) their tearDown also
-/// waited for that upload to reach the real API — the time they gained with round 30 was the network's.
+/// against the real sandbox API, and since `shutdown()` makes one last upload their tearDown also
+/// waited for that upload to reach the real API — the time they gained with was the network's.
 ///
-/// The `onReady` waits are 90 s. Timed on the Mac (status file round 31): the time to ready is the first
+/// The `onReady` waits are 90 s. Timed on the Mac: the time to ready is the first
 /// `configure()` in a fresh test process (Firebase, keychain, the first connection) — 0.15–3.3 s quiet, the
-/// same before and after round 30 — and with the CPU saturated (load average above 200) it reached 34–41 s,
+/// same before and after — and with the CPU saturated (load average above 200) it reached 34–41 s,
 /// past the old 30 s. What these tests assert is that the SDK comes back up and builds once, not how fast.
 final class ShutdownReconfigureRaceTests: XCTestCase {
 

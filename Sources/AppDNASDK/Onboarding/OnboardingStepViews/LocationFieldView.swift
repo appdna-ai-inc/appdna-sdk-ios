@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Structured location data — a geocoding suggestion, or what `AppDNA.getLocationData(fieldId:)`
-/// builds from a stored location answer. @see SPEC-089, SPEC-497 §13h
+/// builds from a stored location answer.
 ///
 /// Every field except `formatted_address` is optional: a stored answer may be a typed string (no
 /// coordinates), a legacy `{address, latitude, longitude}` dict, or a selection that lacked some keys.
@@ -47,7 +47,7 @@ public struct LocationData: Codable, Equatable {
         self.raw_query = raw_query
     }
 
-    /// SPEC-497 §13h — builds the result from a stored location answer, tolerantly and WITHOUT any
+    /// Builds the result from a stored location answer, tolerantly and WITHOUT any
     /// serialisation. (`JSONSerialization.data(withJSONObject:)` raises an Objective-C exception for a
     /// string / number / `NSNull` top level, which `try?` cannot catch — that aborted the host app.)
     ///
@@ -338,7 +338,7 @@ struct LocationFieldView: View {
             state: suggestion.state ?? "",
             country: suggestion.country ?? ""
         )
-        // SPEC-497 §13h — the one stored shape on both platforms and both writers (`LocationAnswer`).
+        // The one stored shape on both platforms and both writers (`LocationAnswer`).
         // Stored BEFORE `query` changes, so `storeTyped` sees the selection and leaves it alone.
         value = LocationAnswer.selection(from: suggestion, rawQuery: typed)
         query = display
@@ -353,7 +353,7 @@ struct LocationFieldView: View {
         Log.debug("Location suggestion selected")
     }
 
-    /// SPEC-497 §13h — typing without selecting stores the typed text, as Android and the
+    /// Typing without selecting stores the typed text, as Android and the
     /// `input_location` block do (this field used to store nothing, so `getLocationData` returned nil
     /// and a required field stayed empty). Editing after a selection replaces it with the text. The
     /// display text a selection or a restore writes into `query` is not typing: it is skipped.

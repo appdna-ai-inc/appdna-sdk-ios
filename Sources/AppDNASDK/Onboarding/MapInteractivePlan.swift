@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-497 §7.2 — decoder for Google's encoded polyline format, precision 5.
+/// Decoder for Google's encoded polyline format, precision 5.
 ///
 /// Pure Swift on purpose: it does not use `GMSPath(fromEncodedPath:)`, so the plan (and the shared
 /// fixtures that pin it) run without the GoogleMaps bundle. It is the inverse of `encodePolyline`,
@@ -49,7 +49,7 @@ enum MapPolyline {
     }
 }
 
-/// SPEC-497 §7.2 — what the interactive map draws and where its camera goes, decided in one pure
+/// What the interactive map draws and where its camera goes, decided in one pure
 /// function that `GoogleInteractiveMap` and the shared-fixture runner both call.
 struct MapInteractivePlan: Equatable {
     struct LatLng: Equatable {

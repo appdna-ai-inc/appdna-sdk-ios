@@ -7,7 +7,7 @@
 // `resilience/runtime_settings_precedence` (ResilienceFixtureTests); Android `RuntimeSettingsTest`, same
 // contract.
 //
-// NEGATIVE CONTROLS (build Mac, patched sources — status file round 33): the queue ignoring its cap → the
+// NEGATIVE CONTROLS (build Mac, patched sources): the queue ignoring its cap → the
 // threshold / upload-size tests fail (no upload, 5 events left); `applyRuntimeSettings` not called → the
 // bootstrap tests fail; the bootstrap value beating the host option → the explicit test fails; a
 // non-positive bootstrap value accepted → the non-positive test fails.
@@ -272,5 +272,26 @@ final class RuntimeSettingsTests: XCTestCase {
         waitUntil("recovered") { AppDNA.bootstrapOrgIdForTesting == org }
         AppDNA.drainSDKQueueForTesting()
         assertApplied(flush: 50, cap: 6, ttl: 700)
+    }
+
+    /// A 429 at configure holds the FIRST retry back for its `Retry-After` (the recovery starts from the
+    /// configure-time outcome). Before, only a rate-limited retry's `Retry-After` was honoured, and the first
+    /// retry ran after the 0.2 s test backoff. Android `BootstrapRetryAfterAtConfigureTest`, same rule.
+    /// NEGATIVE CONTROL (build Mac): `startBootstrapRecovery` without `after:` → 2 bootstrap requests at 1.2 s.
+    func testARateLimitedConfigureHoldsTheFirstRetryForItsRetryAfter() throws {
+        let server = try XCTUnwrap(server, "could not open a local socket")
+        plan.set(0, { .init(status: 429, headers: ["Retry-After": "2"], body: "{}") })
+        plan.set(1, { [unowned self] in self.bootstrap("{}") })
+        var ready = false
+        let start = Date()
+        AppDNA.configure(apiKey: "adn_test_placeholder", environment: .sandbox)
+        AppDNA.onReady { ready = true }
+        waitUntil("ready after the rate-limited bootstrap") { ready }
+        idle(1.2)
+        XCTAssertEqual(server.count("GET /api/v1/sdk/bootstrap"), 1,
+                       "the first retry did not wait for the configure-time Retry-After")
+        let org = self.org
+        waitUntil("recovered") { AppDNA.bootstrapOrgIdForTesting == org }
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(start), 2)
     }
 }

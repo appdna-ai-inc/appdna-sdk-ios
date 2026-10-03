@@ -1,6 +1,6 @@
 // EmittedByMarkerTests.swift
 //
-// SPEC-497 §11.9 (S2-M3, R74) — `emitted_by: "sdk"` marks the SDK's own billing events; the public
+// `emitted_by: "sdk"` marks the SDK's own billing events; the public
 // `AppDNA.track` strips `emitted_by` and the server-only `_appdna_origin` FIRST, before the pre-init
 // buffer decision, so a host can forge neither — also for an event buffered before `configure`.
 

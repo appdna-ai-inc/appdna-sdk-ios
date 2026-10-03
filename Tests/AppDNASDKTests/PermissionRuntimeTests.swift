@@ -1,6 +1,6 @@
 // PermissionRuntimeTests.swift
 //
-// SPEC-497 §13i.4 (D3) — every runtime-resolved permission type, through `PermissionManager` with an
+// Every runtime-resolved permission type, through `PermissionManager` with an
 // injected Info.plist reader and a recording fake class resolver:
 //   key present  → the request reaches the fake class, with the right selector and arguments;
 //   key absent   → `.unavailable` without touching the class;
@@ -154,7 +154,7 @@ final class PermissionRuntimeTests: XCTestCase {
     }
 
     /// The ATT REQUEST, through the fake tracking manager: while the app is active it prompts (the fake
-    /// answers authorized, 3); while it is not, it only reads the status (SPEC-497 §13i.4, impl audit 29).
+    /// answers authorized, 3); while it is not, it only reads the status.
     func testTrackingRequestReachesTheFakeOnlyWhileActive() async throws {
         let os = ProcessInfo.processInfo.operatingSystemVersion
         try XCTSkipIf(PermissionManager.attGrantedWithoutPrompt(major: os.majorVersion, minor: os.minorVersion),

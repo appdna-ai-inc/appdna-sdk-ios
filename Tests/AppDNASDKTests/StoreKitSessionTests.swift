@@ -1,13 +1,13 @@
 // StoreKitSessionTests.swift
 //
-// SPEC-497 §3.10 / §3.11 / §13a.2 — the StoreKit half of the billing proof, driven by `SKTestSession`
+// The StoreKit half of the billing proof, driven by `SKTestSession`
 // over `AppDNATestProducts.storekit` (no Apple account, no UI: dialogs disabled).
 //
 //   SubscriptionObserverOwnership (a) storeKit2: a forced renewal is FINISHED by the owning observer.
 //                                  (b) revenueCat (unlinked): baseline, forced renewal → NO lifecycle event,
 //                                      the renewal stays in `Transaction.unfinished`, entitlements still
 //                                      read the product, the snapshot is persisted.
-//                                  (c) adapty (unlinked, LD-R10-1): the same sequence → `subscription_renewed`
+//                                  (c) adapty (unlinked): the same sequence → `subscription_renewed`
 //                                      IS emitted, and the renewal still stays unfinished.
 //   StoreKitRestoreNoNetwork       a storeKit2 restore succeeds with every network request failing, and
 //                                  makes none (replaces device row C1-7i).
@@ -17,7 +17,7 @@
 //   Late purchase                  an interrupted purchase resolved later arrives through
 //                                  `Transaction.updates` → exactly one `purchase_completed`, then finished.
 //
-// The spec calls SKTestSession inside the hostless SPM test target "unproven" (round-3 SDK minor 8). If
+// The spec calls SKTestSession inside the hostless SPM test target "unproven". If
 // the session cannot be created here, every test SKIPS with that reason (the fallback target is the RN
 // pod's app-hosted `test_spec`); the emission half is always asserted hostless in
 // SubscriptionObserverEmissionTests.
@@ -73,7 +73,7 @@ final class StoreKitSessionTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// SKTestSession purchases in the HOSTLESS SPM test target are "unproven" (round-3 SDK minor 8). On
+    /// SKTestSession purchases in the HOSTLESS SPM test target are "unproven". On
     /// the Mac bridge (Xcode 26, iOS 26 simulator) `Product.purchase()` there fails with an unknown
     /// StoreKit error, so these tests skip with that reason and the SPM run stays honest; the fallback
     /// is the RN pod's app-hosted `test_spec`. Probed once per process with a consumable.

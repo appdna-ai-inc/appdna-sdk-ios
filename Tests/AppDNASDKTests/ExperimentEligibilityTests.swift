@@ -129,4 +129,97 @@ final class ExperimentEligibilityTests: XCTestCase {
         XCTAssertEqual(em.getVariant(experimentId: "e"), "a")
         XCTAssertEqual(events.filter { $0 == "experiment_exposure" }.count, 1)
     }
+
+    // MARK: - parity (Android answers the same — ExperimentEligibilityTest / ExperimentCacheAndDocParseTest)
+
+    func testDeviceRegionIsTheFirstAlpha2Candidate() {
+        XCTAssertEqual(DeviceRegion.resolve(["us"]), "US")
+        XCTAssertEqual(DeviceRegion.resolve(["", nil, "419", " de "]), "DE")
+        XCTAssertNil(DeviceRegion.resolve(["419", "USA", "", nil]))
+        XCTAssertNil(DeviceRegion.resolve([]))
+        XCTAssertNil(DeviceRegion.resolve(["D1", "Ü1"]), "not ASCII letters")
+    }
+
+    /// NEGATIVE CONTROL (base code): the install date was the earlier of the Documents date and a UserDefaults key —
+    /// which backups restore — so a restored key from the original device made this a years-old install
+    /// (`AppInstallDate.read` did not exist; the old `read()` returned the restored date).
+    func testInstallDateIgnoresARestoredDefaultsKeyAndKeepsItsOwnBackupExcludedMarker() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("install-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let suite = "ai.appdna.sdk.test.install.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // A backup from the original device carried the old key: 2020.
+        defaults.set(Date(timeIntervalSince1970: 1_577_836_800).timeIntervalSince1970, forKey: AppInstallDate.legacyStoredKey)
+        let now = Date(timeIntervalSince1970: 1_767_312_000)
+
+        let first = AppInstallDate.read(documentsDirectory: nil, sdkDirectory: dir, defaults: defaults, now: now)
+        XCTAssertEqual(first, 1_767_312_000_000, "a restored app is a new install on this device")
+
+        // The marker is kept (a later launch reads the same date) and is excluded from backup.
+        let later = AppInstallDate.read(documentsDirectory: nil, sdkDirectory: dir, defaults: defaults, now: now.addingTimeInterval(86_400))
+        XCTAssertEqual(later, first)
+        let marker = dir.appendingPathComponent(AppInstallDate.markerFileName)
+        XCTAssertEqual(try marker.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
+    }
+
+    func testInstallDateIsTheEarlierOfTheContainerAndTheMarker() {
+        let older = Date(timeIntervalSince1970: 1_000), newer = Date(timeIntervalSince1970: 2_000)
+        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: older, marker: newer), 1_000_000, "an app that adopted the SDK in an update")
+        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: newer, marker: older), 1_000_000)
+        XCTAssertEqual(AppInstallDate.earliestEpochMs(documentsCreated: nil, marker: newer), 2_000_000)
+        XCTAssertNil(AppInstallDate.earliestEpochMs(documentsCreated: nil, marker: nil))
+    }
+
+    /// NEGATIVE CONTROL (base code): each of these docs threw out of the synthesized decode — the whole experiment was
+    /// dropped on iOS while Android served it (and allocated everyone on a malformed allocation).
+    func testMalformedAllocationAndStartDoNotDropTheExperiment() throws {
+        func decode(_ extra: String) throws -> ExperimentConfig {
+            let doc = #"{"id":"e","status":"running","salt":"s","platforms":["ios"],"variants":[{"id":"a","weight":1}]"# + extra + "}"
+            return try JSONDecoder().decode(ExperimentConfig.self, from: Data(doc.utf8))
+        }
+        for bad in [#""1""#, "true", #"{"v":1}"#] {
+            let cfg = try decode(#","traffic_allocation":"# + bad)
+            XCTAssertEqual(cfg.traffic_allocation?.isNaN, true, "traffic_allocation=\(bad) must read as malformed")
+            XCTAssertFalse(ExperimentEligibility.isAllocated(experimentId: "e", salt: "s", userId: "u", trafficAllocation: cfg.traffic_allocation))
+        }
+        XCTAssertNil(try decode(#","traffic_allocation":null"#).traffic_allocation, "null = everyone")
+        XCTAssertNil(try decode(#","started_at_ms":"2026-01-01""#).started_at_ms)
+        XCTAssertEqual(try decode(#","started_at_ms":1767225600000.9"#).started_at_ms, 1_767_225_600_000)
+        XCTAssertEqual(try decode(#","targeting":"US""#).targeting?.malformed, true)
+        XCTAssertEqual(try decode(#","salt":5"#).variants?.first?.id, "a", "an odd field is absent, not fatal")
+    }
+
+    /// NEGATIVE CONTROL (base code): the rule without a trait name was skipped (pass), and an `NSNumber` Bool compared
+    /// as 1 (a numeric rule let it in); a `UInt` trait was not a number.
+    func testTraitValueTypesCompareLikeAndroid() throws {
+        func rule(_ op: String, _ value: String) throws -> ExperimentTargeting {
+            try targeting(#"{"user_traits":[{"trait":"x","operator":""# + op + #"","value":"# + value + "}]}")
+        }
+        let E = ExperimentEligibility.self
+        XCTAssertNil(E.failedRule(targeting: try rule("gte", #""10""#), startedAtMs: nil, context: ctx(traits: ["x": Int64(12)])))
+        XCTAssertNil(E.failedRule(targeting: try rule("gte", #""10""#), startedAtMs: nil, context: ctx(traits: ["x": UInt(12)])))
+        XCTAssertNil(E.failedRule(targeting: try rule("eq", #""9007199254740993""#), startedAtMs: nil, context: ctx(traits: ["x": Int64(9_007_199_254_740_993)])))
+        let bools: [Any] = [true, NSNumber(value: true)]
+        for b in bools {
+            XCTAssertEqual(E.failedRule(targeting: try rule("gte", #""1""#), startedAtMs: nil, context: ctx(traits: ["x": b])), .userTraits, "a Bool is not a number")
+            XCTAssertEqual(E.failedRule(targeting: try rule("eq", "1"), startedAtMs: nil, context: ctx(traits: ["x": b])), .userTraits, "a Bool is not 1")
+            XCTAssertNil(E.failedRule(targeting: try rule("eq", #""true""#), startedAtMs: nil, context: ctx(traits: ["x": b])))
+            XCTAssertNil(E.failedRule(targeting: try rule("eq", "true"), startedAtMs: nil, context: ctx(traits: ["x": b])))
+        }
+        XCTAssertNil(E.failedRule(targeting: try rule("eq", "12.0"), startedAtMs: nil, context: ctx(traits: ["x": NSNumber(value: 12)])))
+        // A number 1 is still 1, never `true`.
+        XCTAssertFalse(ConditionEvaluator.valuesEqual(NSNumber(value: 1), true))
+        XCTAssertTrue(ConditionEvaluator.valuesEqual(NSNumber(value: 1), 1))
+    }
+
+    func testATraitConditionWithoutAStringTraitOrOperatorFailsClosed() throws {
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"trait":5,"operator":"neq","value":"x"}]}"#).malformed, true)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"trait":"plan","operator":7,"value":"pro"}]}"#).malformed, true)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"operator":"neq","value":"x"}]}"#).malformed, true)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"trait":" ","operator":"neq","value":"x"}]}"#).malformed, true)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"field":3,"operator":"eq","value":"x"}]}"#).malformed, true)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"field":"plan","value":"pro"}]}"#).malformed, false)
+        XCTAssertEqual(try targeting(#"{"user_traits":[{"trait":"","field":"plan","operator":"eq","value":"pro"}]}"#).malformed, false)
+    }
 }

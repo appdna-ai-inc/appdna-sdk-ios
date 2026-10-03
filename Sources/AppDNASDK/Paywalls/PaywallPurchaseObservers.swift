@@ -1,10 +1,10 @@
 import Foundation
 import Combine
 
-/// SPEC-497 round 11 — owns `PaywallRenderer`'s three post-purchase observer tokens for exactly the life
+/// Owns `PaywallRenderer`'s three post-purchase observer tokens for exactly the life
 /// of the view (a `@StateObject`), and removes them in `deinit`.
 ///
-/// They used to be removed in `.onDisappear` (I4 m3, to stop a leak). But `.onDisappear` also fires when the
+/// They used to be removed in `.onDisappear` (to stop a leak). But `.onDisappear` also fires when the
 /// host covers the paywall with a full-screen cover while a purchase is in flight, so a
 /// `.paywallPurchaseEnded` / `.paywallPurchaseFailure` posted in that window reached no one and the CTA
 /// stayed spinning when the paywall came back. The paywall is still alive then, so its observers must be too.

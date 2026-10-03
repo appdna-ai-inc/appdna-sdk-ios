@@ -266,7 +266,9 @@ final class EventStoreBacklogTests: XCTestCase {
         let built = Date().timeIntervalSince(start)
         release.signal()
         XCTAssertLessThan(built, 1, "EventQueue.init waited for the store's file queue (\(built) s)")
-        XCTAssertEqual(queue.consecutiveFailuresForTesting, 0)   // drains the queue: the load ran
+        // The second half of the claim: the persisted events are loaded before the first flush. The load is
+        // queued first on the queue's serial queue, so a read queued after it sees the loaded window.
+        XCTAssertEqual(queue.inMemoryCountForTesting, 10, "the persisted events were not loaded into the window")
         withExtendedLifetime(queue) {}
     }
 }

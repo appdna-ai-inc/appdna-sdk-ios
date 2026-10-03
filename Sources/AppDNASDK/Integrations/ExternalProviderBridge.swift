@@ -1,7 +1,7 @@
 import Foundation
 import StoreKit
 
-/// SPEC-497 §3.2 rule 2 — the bridge for a provider that owns billing but is NOT linked into this build
+/// The bridge for a provider that owns billing but is NOT linked into this build
 /// (RevenueCat or Adapty on every published channel).
 ///
 /// Before this, `.revenueCat` without RevenueCat linked silently built a `StoreKit2Bridge`: the SDK's
@@ -45,7 +45,7 @@ final class ExternalProviderBridge: BillingBridgeProtocol {
     func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult {
         _ = appAccountToken
         let error = refusal
-        // SPEC-400 parity: every bridge reports its failures to the billing delegate.
+        // Parity: every bridge reports its failures to the billing delegate.
         await MainActor.run {
             AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)
         }

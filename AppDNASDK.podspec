@@ -10,7 +10,7 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   s.license          = { :type => 'Proprietary', :file => 'LICENSE' }
   s.author           = { 'AppDNA' => 'hello@appdna.ai' }
   s.source           = { :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => "v#{s.version}" }
-  # SPEC-497 B6 — the ObjC launch hook that installs the notification proxy. A `.m` with no public
+  # The ObjC launch hook that installs the notification proxy. A `.m` with no public
   # header, so nothing in it reaches the module's umbrella header. This file and
   # Sources/AppDNASDK/AppDNASDK.podspec must stay byte-identical (check:native-pins).
   # Sources/AppDNANotificationExtension is the extension-safe Notification Service Extension helper; it is

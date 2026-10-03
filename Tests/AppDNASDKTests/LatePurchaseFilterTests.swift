@@ -1,6 +1,6 @@
 // LatePurchaseFilterTests.swift
 //
-// SPEC-497 §13a.2 (D-R40-1(a), R41–R51) — every branch of `LatePurchaseFilter.decide` and of the queue
+// Every branch of `LatePurchaseFilter.decide` and of the queue
 // entry's `ownerToken`: family-shared, upgraded, revoked, renewal (17+ and pre-17), already reported, nil
 // token, the current user's token, a custom token mapped to the current user, a token mapped to another
 // user, an unmapped custom token, and a pending purchase approved after a user switch.
@@ -90,7 +90,7 @@ final class LatePurchaseFilterTests: XCTestCase {
         XCTAssertNil(LatePurchaseFilter.ownerToken(for: unmapped, decision: .report))
     }
 
-    /// R49 — user A starts a purchase with the derived token that goes PENDING, the app switches to user
+    /// User A starts a purchase with the derived token that goes PENDING, the app switches to user
     /// B, the purchase is approved → deferred to A.
     func testPendingPurchaseApprovedAfterUserSwitchIsDeferredToItsOwner() {
         let approvedWhileB = facts(token: tokenA, owner: "user_a", currentUser: "user_b")
@@ -118,7 +118,7 @@ final class LatePurchaseFilterTests: XCTestCase {
         XCTAssertEqual(PurchaseOwnerMap.owner(of: custom, defaults: defaults), "user_c")
     }
 
-    // MARK: - Trial detection + charged price (R42–R47, R64)
+    // MARK: - Trial detection + charged price
 
     func testTrialDetection() {
         func t(_ type: String?, _ mode: String?, intro: String? = nil, api: Bool = true) -> Bool {

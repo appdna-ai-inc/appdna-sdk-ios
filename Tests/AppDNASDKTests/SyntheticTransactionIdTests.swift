@@ -1,8 +1,8 @@
 // SyntheticTransactionIdTests.swift
 //
-// SPEC-497 impl audit round 2 (I3) — an Adapty purchase with no store transaction id gets a unique,
+// An Adapty purchase with no store transaction id gets a unique,
 // clearly-marked id for the host's idempotent grant, and that id never reaches analytics as
-// `transaction_id` (§13e.5 dedupe sees an unknown id).
+// `transaction_id` (dedupe sees an unknown id).
 //
 // © 2026 AppDNA AI, Inc.
 

@@ -13,12 +13,12 @@
 // a 401 / 403 ends it (and a 401 at configure starts none); a 429's Retry-After holds the next attempt back;
 // every wait is jittered and a trigger starts its attempt after a short random delay.
 //
-// NEGATIVE CONTROLS (build Mac, patched sources — status file round 30):
+// NEGATIVE CONTROLS (build Mac, patched sources):
 //   - no `startBootstrapRecovery` call → the recovery tests fail (org id stays nil);
 //   - the retry loop ignoring `isOnline()` → the offline test fails (attempts made offline);
 //   - `shutdown()` not stopping the loop AND the epoch checks removed from the retry → the stale-retry test
 //     fails (either guard alone holds).
-// Round 31:
+//
 //   - the wait polling every 0.1 s again (the old `tick` loop) → the no-wakeup test fails;
 //   - the `stopped` check removed from `start()` → the start-after-stop test fails (observers registered;
 //     no attempt is made even then — the loop itself checks `stopped` before waiting: two guards);
@@ -106,7 +106,7 @@ final class BootstrapRecoveryTests: XCTestCase {
 
     /// 90 s: these waits bound correctness (the SDK gets there), not speed. On a saturated runner one failed
     /// bootstrap attempt can take its whole 15 s limit, and a test pays that before ready and again before the
-    /// retry is applied (status file round 31: CI runner, and the Mac under load).
+    /// retry is applied (CI runner, and the Mac under load).
     private func waitUntil(_ what: String, timeout: TimeInterval = 90, _ cond: @escaping () -> Bool,
                            file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(timeout)
@@ -218,7 +218,7 @@ final class BootstrapRecoveryTests: XCTestCase {
                        "a retry of the ended configure overwrote the new one")
     }
 
-    // MARK: - Round 31
+    // MARK: -
 
     final class Counter: @unchecked Sendable {
         private let lock = NSLock(); private var n = 0

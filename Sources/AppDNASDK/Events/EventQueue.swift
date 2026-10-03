@@ -152,7 +152,7 @@ final class EventQueue {
     private let pauseOwner: UInt64
     private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
 
-    /// SPEC-067: The current effective batch size — the network-sized one, capped by `batchSizeCap`. On `queue`.
+    /// The current effective batch size — the network-sized one, capped by `batchSizeCap`. On `queue`.
     private var effectiveBatchSize: Int {
         RuntimeSettings.effectiveBatchSize(adaptive: NetworkMonitor.shared.adaptiveBatchSize, cap: batchSizeCap)
     }
@@ -179,7 +179,7 @@ final class EventQueue {
         // `configure()`, and the store's file queue can be busy (the last flush of a queue `shutdown()` ended, a
         // background upload): the load waited for it there and so did the whole configure. Queued first, it
         // still runs before any `enqueue` / flush of this queue, which are queued after it.
-        // SPEC-428 P1: only the in-memory window (the newest `maxInMemoryEvents`) is loaded — disk keeps them
+        // Only the in-memory window (the newest `maxInMemoryEvents`) is loaded — disk keeps them
         // all, RAM holds the most recent 1000 — and only those lines are decoded.
         let window = maxInMemoryEvents
         queue.async { [weak self] in
@@ -244,7 +244,7 @@ final class EventQueue {
             self.eventStore.save(events: [event])
             onPersisted?() // SPEC-428 STEP-4: meta now durable → safe to decrement the drop counter
 
-            // SPEC-067: Check adaptive threshold. A threshold flush keeps the failure pause: during an
+            // Check adaptive threshold. A threshold flush keeps the failure pause: during an
             // outage every `track()` reaching the batch size would otherwise run a full upload cycle.
             let currentBatchSize = self.effectiveBatchSize
             if currentBatchSize > 0 && self.pendingEvents.count >= currentBatchSize {
@@ -401,7 +401,7 @@ final class EventQueue {
         queue.async { [weak self] in
             guard let self else { return }
             self.endBackgroundTask()
-            // SPEC-067: Schedule background upload for remaining events — unless the queue is paused:
+            // Schedule background upload for remaining events — unless the queue is paused:
             // backgrounding keeps the pause, and a background upload would bypass it.
             if self.consecutiveFailures >= self.maxConsecutiveFailures {
                 Log.debug("Uploads paused — no background upload scheduled until the next foreground / AppDNA.flush()")
@@ -425,6 +425,21 @@ final class EventQueue {
     /// Test reader: failed upload cycles in a row (the queue pauses at `maxConsecutiveFailures`).
     var consecutiveFailuresForTesting: Int { queue.sync { consecutiveFailures } }
 
+    /// Test reader: the events in the in-memory window (after the load queued by `init`).
+    var inMemoryCountForTesting: Int { queue.sync { pendingEvents.count } }
+
+    /// On `queue`. The in-memory window is drained, but the store may hold more — the older events of a backlog
+    /// larger than the window (`init` loads only the newest `maxInMemoryEvents`), or events that left the window
+    /// when it was full. Load the oldest of them, so the in-process queue keeps sending them. Before, a drained
+    /// window stayed empty until the next `track()` or launch, and only the background uploader sent the rest.
+    private func reloadWindowFromDisk() {
+        guard eventStore.pendingCount > 0 else { return }
+        let more = eventStore.loadOldest(maxInMemoryEvents).filter { !EventUploadCoordinator.wasResolved($0.event_id) }
+        guard !more.isEmpty else { return }
+        pendingEvents = more
+        Log.debug("Reloaded \(more.count) persisted events into the drained in-memory window")
+    }
+
     private func endBackgroundTask() {
         guard backgroundTask != .invalid else { return }
         UIApplication.shared.endBackgroundTask(backgroundTask)
@@ -447,6 +462,7 @@ final class EventQueue {
     private func performFlush() {
         // Already on queue
         pruneStaleEvents()
+        if pendingEvents.isEmpty { reloadWindowFromDisk() }
         guard !pendingEvents.isEmpty else { return }
 
         // Stop hammering the server after repeated failures — wait for next app session
@@ -528,7 +544,7 @@ final class EventQueue {
                     self.retryCount = 0
                     self.consecutiveFailures = 0
                     Log.debug("Flush successful: \(batch.count) events delivered")
-                } else if self.apiClient.eventUploadPermanentlyFailed {
+                } else if self.apiClient.lastEventUploadRejectedPermanently {
                     // 🔴 DROP THE POISON BATCH — don't just pause. A permanent 4xx (400 malformed /
                     // 401 bad key, NOT 408/429) fails identically forever, and `flush()` always takes
                     // the OLDEST `batchSize` events (`prefix`, above). Pausing WITHOUT removing this

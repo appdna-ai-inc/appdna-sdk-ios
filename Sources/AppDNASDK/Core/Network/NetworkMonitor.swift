@@ -16,30 +16,49 @@ final class NetworkMonitor {
 
     private let monitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "ai.appdna.sdk.networkmonitor")
-    private(set) var currentConnectionType: ConnectionType = .wifi
-    private(set) var isExpensive: Bool = false
+
+    /// The state is written on the monitor's queue and read from any thread (the event queue, the background
+    /// uploader, the bootstrap retry loop): every access goes through `stateLock`.
+    private let stateLock = NSLock()
+    private var _currentConnectionType: ConnectionType = .wifi
+    private var _isExpensive: Bool = false
+
+    var currentConnectionType: ConnectionType { stateLock.lock(); defer { stateLock.unlock() }; return _currentConnectionType }
+    var isExpensive: Bool { stateLock.lock(); defer { stateLock.unlock() }; return _isExpensive }
 
     private init() {
         monitor.pathUpdateHandler = { [weak self] path in
             guard let self else { return }
-            let wasNone = self.currentConnectionType == .none
-            if path.status == .satisfied {
-                if path.usesInterfaceType(.wifi) {
-                    self.currentConnectionType = .wifi
-                } else if path.usesInterfaceType(.cellular) {
-                    self.currentConnectionType = .cellular
-                } else {
-                    // Wired or other connected interface — treat as wifi
-                    self.currentConnectionType = .wifi
-                }
-            } else {
-                self.currentConnectionType = .none
-            }
-            self.isExpensive = path.isExpensive
-            Log.debug("Network changed: \(self.currentConnectionType), expensive=\(self.isExpensive)")
-            if wasNone && self.currentConnectionType != .none { self.notifyRegained() }
+            let type = NetworkMonitor.connectionType(
+                satisfied: path.status == .satisfied,
+                usesWifi: path.usesInterfaceType(.wifi),
+                usesCellular: path.usesInterfaceType(.cellular)
+            )
+            self.apply(type: type, expensive: path.isExpensive)
         }
         monitor.start(queue: monitorQueue)
+    }
+
+    /// The connection type of a path: not satisfied → none; Wi-Fi → wifi; cellular → cellular; a wired or any other
+    /// connected interface → wifi (Android `ConnectivityMonitor.typeOf`, same mapping).
+    static func connectionType(satisfied: Bool, usesWifi: Bool, usesCellular: Bool) -> ConnectionType {
+        guard satisfied else { return .none }
+        if usesWifi { return .wifi }
+        if usesCellular { return .cellular }
+        return .wifi
+    }
+
+    /// Applies a new state atomically; "was none" is decided under the same lock, so concurrent updates report a
+    /// regain exactly once per none → connected transition. Observers run outside the lock. Internal: the test seam
+    /// drives it without an `NWPath`.
+    func apply(type: ConnectionType, expensive: Bool) {
+        stateLock.lock()
+        let wasNone = _currentConnectionType == .none
+        _currentConnectionType = type
+        _isExpensive = expensive
+        stateLock.unlock()
+        Log.debug("Network changed: \(type), expensive=\(expensive)")
+        if wasNone && type != .none { notifyRegained() }
     }
 
     /// Whether a network is available now.
@@ -76,11 +95,14 @@ final class NetworkMonitor {
     /// Returns the adaptive batch size based on current network conditions.
     var adaptiveBatchSize: Int {
         if let forced = Self.adaptiveBatchSizeOverrideForTesting { return forced }
-        switch currentConnectionType {
+        stateLock.lock()
+        let type = _currentConnectionType, expensive = _isExpensive
+        stateLock.unlock()
+        switch type {
         case .wifi:
             return 100
         case .cellular:
-            return isExpensive ? 20 : 50
+            return expensive ? 20 : 50
         case .none:
             return 0
         }

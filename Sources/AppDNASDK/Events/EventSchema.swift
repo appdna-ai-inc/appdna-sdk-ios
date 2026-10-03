@@ -160,7 +160,7 @@ public struct AnyCodable: Codable {
             try container.encode(bool)
         case let int as Int:
             try container.encode(int)
-        // SPEC-497 — an `Int64` (epoch milliseconds: `purchase_time`, `purchased_at_ms`) used to fall
+        // An `Int64` (epoch milliseconds: `purchase_time`, `purchased_at_ms`) used to fall
         // through to `String(describing:)` and reach the server as a STRING.
         case let int64 as Int64:
             try container.encode(int64)

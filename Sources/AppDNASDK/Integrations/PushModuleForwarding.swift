@@ -5,12 +5,12 @@ import Foundation
 import UIKit
 import UserNotifications
 
-// SPEC-497 B2 (§9.2) + B6 (§9a.4) — the push forwarding API, its idempotency set, the launch buffer and
+// The push forwarding API, its idempotency set, the launch buffer and
 // the one gate ("the push configured point") that the notification proxy and host forwarding share.
 
 // MARK: - Marker
 
-/// The AppDNA push marker. The server stamps `appdna: "1"` on every push it sends (SPEC-497 B1). A
+/// The AppDNA push marker. The server stamps `appdna: "1"` on every push it sends. A
 /// bare `push_id` is NOT enough: hosts and third-party pushers commonly use a `push_id` key of their
 /// own, and claiming their messages is exactly the defect B2 removes.
 enum PushMarker {
@@ -47,7 +47,7 @@ enum PushMarker {
 
 // MARK: - Idempotency
 
-/// SPEC-497 §9.2 — an in-process set of handled keys per kind, capped at 256 (oldest evicted). A second
+/// An in-process set of handled keys per kind, capped at 256 (oldest evicted). A second
 /// call for the same key and kind is a no-op, so the SDK's automatic path (the B6 proxy) and a host's
 /// forwarding can both run for one message and it is tracked once. Across a process restart the set is
 /// empty — the server's per-delivery status transition keeps that from double-counting.
@@ -82,7 +82,7 @@ enum PushIdempotency {
 
 // MARK: - The gate + launch buffer
 
-/// The push **configured point** (SPEC-497 §9a.4, R72): set right after `AppDNA.pushModule.manager` is
+/// The push **configured point**: set right after `AppDNA.pushModule.manager` is
 /// wired in `configure`, cleared in `shutdown()` — deliberately NOT `isConfigured` (set before anything
 /// is built) and NOT `isReady` (set after the bootstrap network call). While it is false, every
 /// `handleMessageData` / `handleNotificationTap` — from the proxy AND from host forwarding — goes into
@@ -104,7 +104,7 @@ final class PushGate {
         let actionIdentifier: String?
         let fromLaunchOptions: Bool
         var capturedAt: Date = Date()
-        /// A delivered entry's foreground state, as its caller saw it (impl audit round 2, I4) — the
+        /// A delivered entry's foreground state, as its caller saw it — the
         /// proxy's `willPresent` is foreground, a host forward may not be. `nil`: not known where it
         /// arrived (off the main thread); the drain reads it on main when it handles the entry.
         var inForeground: Bool? = true
@@ -182,7 +182,7 @@ final class PushGate {
     }
 
     /// `shutdown()`: the proxy becomes pass-through for AppDNA pushes until the next configure. The
-    /// launch buffer is CLEARED (impl audit round 2, I6): a push buffered before `shutdown()` belongs to
+    /// launch buffer is CLEARED: a push buffered before `shutdown()` belongs to
     /// the session that ended — the next `configure()` (possibly another user, after a sign-out) must
     /// not track, deliver or route it.
     func markShutDown(epoch: Int? = nil) {
@@ -232,7 +232,7 @@ final class PushGate {
             lock.unlock()
             switch head.kind {
             case .delivered:
-                // The state each entry was buffered with (I4); one that arrived off the main thread is
+                // The state each entry was buffered with; one that arrived off the main thread is
                 // read now, on main.
                 AppDNA.pushModule.processDelivered(
                     head.userInfo,
@@ -272,7 +272,7 @@ extension AppDNA.PushModule {
     public func handleMessageData(_ userInfo: [AnyHashable: Any]) -> Bool {
         guard PushMarker.isAppDNA(userInfo) else { return false }
         // Off the main thread (a host's FCM callback) the application state cannot be read here.
-        // Per §9.2/§8.2: the delivery is TRACKED synchronously, on this thread, before this returns; the
+        // Per: the delivery is TRACKED synchronously, on this thread, before this returns; the
         // off-main work — reading the foreground state and firing `onPushReceived` — runs async on main.
         // (A `DispatchQueue.main.sync` read would deadlock when the main thread is waiting on this thread
         // — proven by `testHandleMessageDataOffMainDoesNotBlockOnMain`.)
@@ -351,7 +351,7 @@ extension AppDNA.PushModule {
             return
         }
         let pushId = PushMarker.pushId(userInfo)
-        // The TRACKED action is the system identifier for a body tap (R69); routing and `onPushTapped`
+        // The TRACKED action is the system identifier for a body tap; routing and `onPushTapped`
         // keep `nil` for a body tap, as they always have.
         manager?.trackTapped(
             pushId: pushId,
@@ -362,14 +362,14 @@ extension AppDNA.PushModule {
 
         let (title, body) = PushMarker.titleAndBody(userInfo)
         let payload = PushPayloadParser.parse(userInfo: userInfo, title: title, body: body)
-        // SPEC-497 §17 item 28 — a push tapped from the background (no extension registered its
+        // A push tapped from the background (no extension registered its
         // category): register it now, so the next push with the same buttons shows them.
         DispatchQueue.main.async {
             PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
         }
         let tappedAction = (actionIdentifier == nil || actionIdentifier == UNNotificationDefaultActionIdentifier)
             ? nil : actionIdentifier
-        // I4 minor 5 — the delegate is a UI callback: on main, like `onPushReceived` above. A host forwarding
+        // The delegate is a UI callback: on main, like `onPushReceived` above. A host forwarding
         // a tap from a background queue used to get `onPushTapped` on that queue. Directly when already on
         // main (unchanged ordering for the proxy's `didReceive`); the route below is posted to main 0.5 s
         // later, so the delegate still runs first.
@@ -381,7 +381,7 @@ extension AppDNA.PushModule {
             }
         }
 
-        // SPEC-089c / SPEC-497 §9.2: auto-route with the ladder.
+        // Auto-route with the ladder.
         PushTapRouter.perform(PushTapRouter.route(payload: payload, userInfo: userInfo, tappedActionId: tappedAction))
     }
 

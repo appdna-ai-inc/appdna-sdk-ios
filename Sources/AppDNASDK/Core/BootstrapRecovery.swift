@@ -24,6 +24,12 @@ import UIKit
 /// rate-limited the request (no attempt — not even a triggered one — before `s` seconds), `.stop` when the
 /// server refused the key (401 / 403: retrying cannot help). `stop()` ends the loop; a `start()` after
 /// `stop()` does nothing. When the loop ends — for any reason — it removes its observers.
+///
+/// The configure-time bootstrap's own failure is the loop's starting point: `start(after:)` takes its
+/// outcome, so a 429 at configure holds the FIRST retry back for its `Retry-After` too (before, only a
+/// rate-limited retry did). Triggers coalesce: a trigger that arrives while an attempt is in flight (or in
+/// its trigger delay) is spent by that attempt — it does not start the next one 0–1 s later, so a failed
+/// attempt is always followed by its backoff (or a later trigger).
 final class BootstrapRecovery: @unchecked Sendable {
     static let defaultMaxAttempts = 10
     /// The jitter applied to every backoff wait: ±25 %.
@@ -97,6 +103,8 @@ final class BootstrapRecovery: @unchecked Sendable {
     var observerRegistrations: Int { lock.lock(); defer { lock.unlock() }; return _registrations }
     /// Whether observers are registered now (test reader).
     var isObserving: Bool { lock.lock(); defer { lock.unlock() }; return foregroundObserver != nil || networkObserver != nil }
+    /// Whether the loop is waiting for a trigger or its backoff now (test reader).
+    var isWaiting: Bool { lock.lock(); defer { lock.unlock() }; return waiter != nil }
 
     init(isOnline: @escaping () -> Bool,
          backoff: @escaping (Int) -> TimeInterval = BootstrapRecovery.defaultBackoff,
@@ -155,7 +163,9 @@ final class BootstrapRecovery: @unchecked Sendable {
 
     private var isEnded: Bool { lock.lock(); defer { lock.unlock() }; return stopped || Task.isCancelled }
 
-    func start(_ attempt: @escaping () async -> Outcome) {
+    /// Starts the loop. `initial` is the outcome of the configure-time bootstrap that failed (nil: none known):
+    /// a `.retryAfter(s)` holds the first attempt back `s` seconds, like a rate-limited retry's.
+    func start(after initial: Outcome? = nil, _ attempt: @escaping () async -> Outcome) {
         // Observers first, then — under the lock — the stop check: a `stop()` that came before (or while)
         // they were added removes them here, and the loop never starts.
         let fg = NotificationCenter.default.addObserver(
@@ -172,15 +182,19 @@ final class BootstrapRecovery: @unchecked Sendable {
         foregroundObserver = fg
         networkObserver = net
         _registrations += 1
+        let firstNotBefore: Date? = {
+            if case .retryAfter(let s)? = initial { return Date().addingTimeInterval(s) }
+            return nil
+        }()
         task = Task { [self] in
-            await self.run(attempt)
+            await self.run(attempt, notBefore: firstNotBefore)
             self.removeObservers()
         }
         lock.unlock()
     }
 
-    private func run(_ attempt: @escaping () async -> Outcome) async {
-        var notBefore: Date?
+    private func run(_ attempt: @escaping () async -> Outcome, notBefore initialNotBefore: Date?) async {
+        var notBefore: Date? = initialNotBefore
         while !isEnded && attempts < maxAttempts {
             var deadline = Date().addingTimeInterval(Self.jittered(backoff(attempts), unit: random()))
             if let nb = notBefore, nb > deadline { deadline = nb }
@@ -206,7 +220,10 @@ final class BootstrapRecovery: @unchecked Sendable {
             notBefore = nil
             lock.lock(); _attempts += 1; let n = _attempts; lock.unlock()
             Log.info("Retrying the bootstrap (attempt \(n) of \(maxAttempts)\(wasTriggered ? ", triggered" : ""))")
-            switch await attempt() {
+            let outcome = await attempt()
+            // Coalesce: a trigger that came during this attempt (or its trigger delay) was answered by it.
+            lock.lock(); triggered = false; lock.unlock()
+            switch outcome {
             case .done:
                 return
             case .stop:

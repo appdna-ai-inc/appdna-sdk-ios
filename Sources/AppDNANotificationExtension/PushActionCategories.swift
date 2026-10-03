@@ -19,7 +19,7 @@ import UserNotifications
     /// The category ids of the notifications still in Notification Centre (category pruning keeps them).
     func deliveredCategoryIds(_ completion: @escaping (Set<String>) -> Void)
     /// The ONLY route by which the SDK may post a notification itself. iOS never does from a received
-    /// push (the OS or the host presents; `handleMessageData` never displays — SPEC-497 §8.7), so
+    /// push (the OS or the host presents; `handleMessageData` never displays), so
     /// nothing calls it today; the push fixtures read `notification_posted` from this slot instead of
     /// asserting a constant.
     func add(_ request: UNNotificationRequest)
@@ -49,7 +49,7 @@ import UserNotifications
 
 // MARK: - Action categories
 
-/// SPEC-084 / SPEC-497 §17 item 28 — registers the push's action buttons as a notification category.
+/// Registers the push's action buttons as a notification category.
 /// iOS shows buttons only for a category registered BEFORE the notification is displayed, so the server
 /// sends every distinct button set under its own id (`aps.category` = `appdna_` + a hash of the set) and
 /// the SDK registers it:
@@ -58,7 +58,7 @@ import UserNotifications
 ///   - when the app sees the push (foreground delivery, a tap) and at `configure` from the notifications
 ///     still in Notification Centre, so a later push with the same set shows its buttons without the
 ///     extension.
-/// Goes through a `NotificationCenterSlot` (SPEC-497 §9a.8) so it never touches
+/// Goes through a `NotificationCenterSlot` so it never touches
 /// `UNUserNotificationCenter.current()` in a hostless test, where that call raises.
 @_spi(AppDNAInternal) public enum PushActionCategories {
     /// The category id a payload's buttons register under: `aps.category`, else a top-level `category`,
@@ -95,7 +95,7 @@ import UserNotifications
                 )
             }
 
-            // SPEC-085: Action button icon support (iOS 15+)
+            // Action button icon support (iOS 15+)
             if #available(iOS 15.0, *) {
                 if let iconData = actionData["icon"] as? [String: Any],
                    let iconLib = iconData["library"] as? String,

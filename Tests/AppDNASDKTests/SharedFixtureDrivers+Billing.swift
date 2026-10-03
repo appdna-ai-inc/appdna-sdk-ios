@@ -1,6 +1,6 @@
 // SharedFixtureDrivers+Billing.swift
 //
-// SPEC-497 — iOS drivers for the billing-area fixture kinds, dispatched from `SharedFixtureTests.drive`:
+// iOS drivers for the billing-area fixture kinds, dispatched from `SharedFixtureTests.drive`:
 //
 //   billing_ownership          REAL: BillingOwnership.policy(for:bridgeLinked:) — the table configure uses.
 //   purchase (billing_provider set; the `paywall_purchase_*_fails_loudly` fixtures)
@@ -10,7 +10,7 @@
 //   derive_app_account_token   REAL: AppAccountTokenResolver.token(forUserId:).
 //   subscription_snapshot_diff REAL: SubscriptionStatusObserver.reconcile() (diffAndEmit + saveSnapshot)
 //                              over an injected loader and a per-fixture UserDefaults suite. Event
-//                              properties are compared EXACTLY (no extra, no missing key — R49).
+//                              properties are compared EXACTLY (no extra, no missing key).
 //   trial_price                REAL: TrialDetection.isFreeTrial + chargedPrice + PurchaseSuccessEvents.properties.
 //   late_purchase              REAL: LatePurchaseProcessor.process (LatePurchaseFilter.decide + the queue
 //                              write + the emit) into a real PurchaseDeliveryQueue.
@@ -185,7 +185,7 @@ extension SharedFixtureTests {
                 return out
             }
 
-        // R49 — the properties are compared EXACTLY: an extra or a missing key fails.
+        // The properties are compared EXACTLY: an extra or a missing key fails.
         for (i, expected) in (f.expect.events ?? []).enumerated() where i < h.events.count {
             let expectedKeys = Set(expected.properties?.objectValue?.keys.map { $0 } ?? [])
             let actualKeys = Set(h.events[i].properties?.keys.map { $0 } ?? [])
@@ -374,7 +374,7 @@ extension SharedFixtureTests {
     }
 
     /// The `rebuy_already_owned` pipeline, shared with its positive control
-    /// (`RebuyDriverPositiveControlTests`, impl audit round 2 I8): `alreadyOwned == false` must deliver
+    /// (`RebuyDriverPositiveControlTests`): `alreadyOwned == false` must deliver
     /// exactly one `onPurchaseCompleted`, so a driver that never delivers cannot pass the re-buy fixture
     /// vacuously. Returns `alreadyOwned`.
     static func driveRebuy(

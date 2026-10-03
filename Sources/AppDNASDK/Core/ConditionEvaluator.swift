@@ -10,10 +10,10 @@ internal enum ConditionEvaluator {
         guard let l = lhs, let r = rhs else { return false }
 
         if let ls = l as? String, let rs = r as? String { return ls == rs }
+        if let lb = strictBool(l), let rb = strictBool(r) { return lb == rb }
         if let ln = toDouble(l), let rn = toDouble(r) { return ln == rn }
-        if let lb = l as? Bool, let rb = r as? Bool { return lb == rb }
 
-        return "\(l)" == "\(r)"
+        return stringForm(l) == stringForm(r)
     }
 
     static func compareNumeric(_ lhs: Any?, _ rhs: Any?) -> ComparisonResult {
@@ -72,12 +72,46 @@ internal enum ConditionEvaluator {
         return current
     }
 
+    /// A number, or a string that spells one — never a Bool. Android `ConditionEvaluator.toDouble`, same rule: every
+    /// integer width counts (an `Int64` / `UInt` trait used to read as "not a number" here while Android compared
+    /// it), and a Bool is not a number (an `NSNumber` Bool — a trait restored from storage or passed by a wrapper —
+    /// used to compare as 1 / 0 here and as no number on Android).
     static func toDouble(_ value: Any?) -> Double? {
         guard let v = value else { return nil }
-        if let n = v as? Double { return n }
-        if let n = v as? Int { return Double(n) }
-        if let n = v as? Float { return Double(n) }
         if let s = v as? String { return Double(s) }
-        return nil
+        if strictBool(v) != nil { return nil }
+        switch v {
+        case let n as Double: return n
+        case let n as Int: return Double(n)
+        case let n as Int64: return Double(n)
+        case let n as Int32: return Double(n)
+        case let n as Int16: return Double(n)
+        case let n as Int8: return Double(n)
+        case let n as UInt: return Double(n)
+        case let n as UInt64: return Double(n)
+        case let n as UInt32: return Double(n)
+        case let n as UInt16: return Double(n)
+        case let n as UInt8: return Double(n)
+        case let n as Float: return Double(n)
+        case let n as NSNumber: return n.doubleValue
+        default: return nil
+        }
+    }
+
+    /// The value as a Bool only when it IS one: a Swift `Bool` or a CoreFoundation boolean `NSNumber` — not a number
+    /// that happens to be 0 or 1 (Swift bridging would read `NSNumber(1)` as `true`).
+    static func strictBool(_ value: Any?) -> Bool? {
+        guard let v = value else { return nil }
+        if let n = v as? NSNumber {
+            return CFGetTypeID(n) == CFBooleanGetTypeID() ? n.boolValue : nil
+        }
+        return v as? Bool
+    }
+
+    /// The text form the last-resort equality compares — a Bool reads `true` / `false` whatever its storage (an
+    /// `NSNumber` Bool would print `1`), like Android's `toString()`.
+    private static func stringForm(_ value: Any) -> String {
+        if let b = strictBool(value) { return b ? "true" : "false" }
+        return "\(value)"
     }
 }

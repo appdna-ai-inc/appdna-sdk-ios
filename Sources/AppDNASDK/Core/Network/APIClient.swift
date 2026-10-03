@@ -53,6 +53,12 @@ final class APIClient {
     /// halted all uploads until app restart. Android has always retried them.
     private(set) var eventUploadPermanentlyFailed = false
 
+    /// Whether the LAST event upload was rejected permanently (a genuine 4xx) — per request, unlike the
+    /// `eventUploadPermanentlyFailed` latch, which a transient failure leaves set. An upload owner decides
+    /// whether to drop the batch it just sent from this: a network error or a 429 after an earlier 401 must
+    /// not drop a batch the server never judged.
+    private(set) var lastEventUploadRejectedPermanently = false
+
     /// Seconds the server asked us to wait, parsed from a `Retry-After` header on
     /// the last 429/503. Consumed (and cleared) by `EventQueue` when scheduling its
     /// next attempt. Capped so a hostile or mistaken header cannot park the queue.
@@ -189,7 +195,7 @@ final class APIClient {
         }
     }
 
-    /// The request `post` sends: the resolved base URL (SPEC-497 §3.11 — the test-only override applies
+    /// The request `post` sends: the resolved base URL (the test-only override applies
     /// here exactly as it does to `request` and event ingest), the auth and SDK headers, the JSON body.
     func postRequest(path: String, body: [String: Any]) throws -> URLRequest {
         let base = APIBaseURL.resolve(environment: environment)
@@ -199,7 +205,7 @@ final class APIClient {
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        // Round-10 #15 — backend version-gating/attribution keys on these; Android sends both on
+        // Backend version-gating/attribution keys on these; Android sends both on
         // every request, iOS sent neither, so every iOS call looked like an unknown SDK version.
         request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
         request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
@@ -209,6 +215,7 @@ final class APIClient {
 
     /// Fire-and-forget POST for event batches with gzip compression. Returns success status.
     func sendEvents(_ data: Data) async -> Bool {
+        lastEventUploadRejectedPermanently = false
         do {
             var urlRequest = try buildRequest(for: .ingestEvents)
 
@@ -272,6 +279,7 @@ final class APIClient {
     /// - Returns: true when the batch was accepted.
     @discardableResult
     func applyEventUploadStatus(_ statusCode: Int, retryAfterHeader: String?, body: String = "no body") -> Bool {
+        lastEventUploadRejectedPermanently = Self.disposition(for: statusCode) == .dropPermanent
         switch Self.disposition(for: statusCode) {
         case .success:
             eventUploadPermanentlyFailed = false

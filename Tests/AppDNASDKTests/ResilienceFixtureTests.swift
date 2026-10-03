@@ -64,6 +64,8 @@ final class ResilienceFixtureTests: XCTestCase {
         let failure_status: Int?
         let retry_after_s: Int?
         let recovery: String?
+        let configure_failure_status: Int?
+        let trigger_during_attempt: Bool?
         // contract=resolved_events_not_resent
         let mark: [String]?
         let query: String?
@@ -79,6 +81,7 @@ final class ResilienceFixtureTests: XCTestCase {
         private enum CodingKeys: String, CodingKey {
             case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
             case attempt_index, backoff_ms, online, triggered, attempts_made, triggers, failure_status, retry_after_s, recovery
+            case configure_failure_status, trigger_during_attempt
             case mark, query, resolved
             case setting, explicit, bootstrap, adaptive, cap, expected
         }
@@ -101,6 +104,8 @@ final class ResilienceFixtureTests: XCTestCase {
             failure_status = try c.decodeIfPresent(Int.self, forKey: .failure_status)
             retry_after_s = try c.decodeIfPresent(Int.self, forKey: .retry_after_s)
             recovery = try c.decodeIfPresent(String.self, forKey: .recovery)
+            configure_failure_status = try c.decodeIfPresent(Int.self, forKey: .configure_failure_status)
+            trigger_during_attempt = try c.decodeIfPresent(Bool.self, forKey: .trigger_during_attempt)
             mark = try c.decodeIfPresent([String].self, forKey: .mark)
             query = try c.decodeIfPresent(String.self, forKey: .query)
             resolved = try c.decodeIfPresent(Bool.self, forKey: .resolved)
@@ -421,19 +426,33 @@ final class ResilienceFixtureTests: XCTestCase {
                     } else if let online = c.online, let want = c.attempts_made {
                         let triggers = c.triggers ?? ((c.triggered ?? false) ? 1 : 0)
                         let answer: BootstrapRecovery.Outcome = c.failure_status.map { outcome($0, c.retry_after_s) } ?? .done
+                        // The configure-time failure the loop starts from (its own outcome, as `configure` hands it).
+                        let initial = c.configure_failure_status.map { outcome($0, c.retry_after_s) }
+                        let duringAttempt = c.trigger_during_attempt ?? false
                         let recovery = BootstrapRecovery(isOnline: { online }, backoff: { _ in 3600 },
                                                          random: { 0 }, triggerDelayMax: 0)
                         let made = Counter()
-                        recovery.start { made.bump(); return answer }
+                        recovery.start(after: initial) { [weak recovery] in
+                            made.bump()
+                            if duringAttempt { recovery?.trigger() }   // a trigger while this attempt is in flight
+                            return answer
+                        }
+                        // Each trigger is fired while the loop waits (not while an attempt is in flight).
+                        func awaitWaiting() {
+                            let deadline = Date().addingTimeInterval(0.5)
+                            while Date() < deadline && !recovery.isWaiting { Thread.sleep(forTimeInterval: 0.005) }
+                        }
                         for t in 0..<triggers {
+                            awaitWaiting()
                             recovery.trigger()
                             let deadline = Date().addingTimeInterval(0.5)
                             while Date() < deadline && made.value <= t { Thread.sleep(forTimeInterval: 0.02) }
                         }
+                        awaitWaiting()
                         Thread.sleep(forTimeInterval: 0.1)
                         recovery.stop()
                         XCTAssertEqual(made.value, want,
-                                       "[\(f.id)] attempts with online=\(online) triggers=\(triggers) failure=\(String(describing: c.failure_status))")
+                                       "[\(f.id)] attempts with online=\(online) triggers=\(triggers) failure=\(String(describing: c.failure_status)) configure_failure=\(String(describing: c.configure_failure_status)) during_attempt=\(duringAttempt)")
                     } else if let status = c.failure_status, let want = c.recovery {
                         let got: String
                         switch outcome(status, c.retry_after_s) {

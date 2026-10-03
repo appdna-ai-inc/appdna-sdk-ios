@@ -440,7 +440,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertTrue(ok13, "a Transaction.updates item triggers a pass")
     }
 
-    /// §17-5 — NEGATIVE CONTROL: `subscription_renewed` had no `price` / `currency`.
+    /// NEGATIVE CONTROL: `subscription_renewed` had no `price` / `currency`.
     func testRenewalCarriesPriceAndCurrency() {
         let observer = SubscriptionStatusObserver(eventTracker: tracker, defaults: defaults, mode: .providerOwned, loadCurrent: { [:] })
         observer.diffAndEmit(
@@ -573,7 +573,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
     // MARK: - 6. Purchase path
 
-    /// Round-14 follow-up — NEGATIVE CONTROL: the direct `purchase()` tracked
+    /// NEGATIVE CONTROL: the direct `purchase()` tracked
     /// `purchase_started` + `purchase_failed{error_type: unknown}` for a cancelled Task.
     func testDirectPurchaseCancellationIsRethrownUntracked() async {
         let bridge = FakeBridge(); bridge.purchaseError = CancellationError()
@@ -621,7 +621,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(spy.failed, ["p1"])
     }
 
-    /// §17-2 — NEGATIVE CONTROL: `AdaptyBridge.purchase` tracked its own `purchase_started` (and the caller
+    /// NEGATIVE CONTROL: `AdaptyBridge.purchase` tracked its own `purchase_started` (and the caller
     /// another), so an Adapty purchase reported it twice.
     func testAdaptyBridgeEmitsNothingItself() async {
         let bridge = AdaptyBridge(apiKey: "k", eventTracker: tracker)
@@ -672,7 +672,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(env, "sandbox")
     }
 
-    // MARK: - Round 18
+    // MARK: -
 
     /// NEGATIVE CONTROL: one `<key>.corrupt` slot, so a second unreadable payload overwrote the first.
     func testCorruptCopiesAreTimestampedAndCappedAtThree() {
@@ -773,7 +773,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(relaunch.changes.last?.map(\.productId), ["monthly"])
     }
 
-    // MARK: - Round 19
+    // MARK: -
 
     /// NEGATIVE CONTROL: `reset()` (sign-out) left the signed-out user's server-only rows persisted.
     func testResetClearsTheServerOnlyEntitlementCache() async {
@@ -842,7 +842,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
     private let crossRow = ServerEntitlement(productId: "cross", store: "google_play", status: "active",
                                              expiresAt: nil, isTrial: false, offerType: nil)
 
-    /// Round 20 — a refresh in flight across a sign-out. NEGATIVE CONTROL: the pass read the server for user-1,
+    /// A refresh in flight across a sign-out. NEGATIVE CONTROL: the pass read the server for user-1,
     /// `reset()` cleared user-1's server-only rows while it was suspended, and when the answer arrived the pass
     /// saved them again — the signed-out user's cross-platform purchase back on the device, and reported.
     func testARefreshInFlightAcrossResetDoesNotReSaveTheSignedOutUsersRows() async {
@@ -924,7 +924,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertTrue(reported)
     }
 
-    /// Round 21 (I4+I5 m1) — sign-out and sign-in again while a refresh is in flight. NEGATIVE CONTROL: the
+    /// Sign-out and sign-in again while a refresh is in flight. NEGATIVE CONTROL: the
     /// overtaken pass still swapped the fingerprint and posted what it had read (the device set, without the
     /// server rows its stale answer lost), then the sign-in's own refresh posted the full set — two changes,
     /// the first one wrong. Now the overtaken pass publishes nothing and the sign-in's refresh reports once.
@@ -955,7 +955,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertEqual(ServerOnlyEntitlementCache.load(defaults)?.items.map(\.productId), ["cross"])
     }
 
-    /// Round 21 (I4+I5 m1/m2) — a pass a sign-out overtook publishes nothing: no change, no persisted
+    /// A pass a sign-out overtook publishes nothing: no change, no persisted
     /// fingerprint, no expiry re-check. NEGATIVE CONTROL: it posted the signed-out user's StoreKit set (read
     /// under their `appAccountToken`), saved it as the last-known state and scheduled a re-check for its expiry.
     func testAStalePassPublishesNothing() async {
@@ -992,7 +992,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
     /// A switch to another user with no sign-out (identify user-2 while user-1's pass is in flight) makes the
     /// pass stale too — user-1's state is never published, and user-2's refresh reports once.
     ///
-    /// Round 22 (m1): the device set depends on the user, as StoreKit's does through the `appAccountToken`
+    /// The device set depends on the user, as StoreKit's does through the `appAccountToken`
     /// filter — user-1 holds `[monthly, legacy]`, user-2 `[monthly]`. Before, both passes read the same
     /// `[monthly]`, so the stale pass posting its answer was indistinguishable from user-2's and the test
     /// passed without the user check. NEGATIVE CONTROL: with `passUserId == currentUserId` removed from
@@ -1020,9 +1020,9 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
                        "user-2's state, without user-1's legacy product or server row")
     }
 
-    // MARK: - Round 22 — sign-out reports the signed-out state
+    // MARK: - — sign-out reports the signed-out state
 
-    /// Round 22 (M1) — a sign-out with no sign-in after it. NEGATIVE CONTROL: `reset()` only cleared the
+    /// A sign-out with no sign-in after it. NEGATIVE CONTROL: `reset()` only cleared the
     /// server-only rows and queued no refresh, so the host was never told the signed-out user's
     /// cross-platform purchase was gone (Android fires `[]` from `EntitlementCache.clear()`). Now one change,
     /// with the anonymous state: on iOS the device's StoreKit set, without the server-only row.
@@ -1049,8 +1049,8 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         XCTAssertNil(ServerOnlyEntitlementCache.load(defaults))
     }
 
-    /// Round 22 (M1) — the sign-out refresh does not add a second change when the user signs straight back
-    /// in while an earlier pass is in flight (the round-21 case, now with the refresh `signOut()` queues).
+    /// The sign-out refresh does not add a second change when the user signs straight back
+    /// in while an earlier pass is in flight (now with the refresh `signOut()` queues).
     func testSignOutRefreshAndReIdentifyDuringARefreshStillFireExactlyOneChange() async {
         let bridge = FakeBridge(); let world = World(); let gate = AwaitGate()
         world.userId = "user-1"
@@ -1076,7 +1076,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
                        "the one change is the signed-in user's full state")
     }
 
-    /// Round 22 (M1) — the same through the public `AppDNA.reset()`, on the process-wide `AppDNA.billing`.
+    /// The same through the public `AppDNA.reset()`, on the process-wide `AppDNA.billing`.
     /// NEGATIVE CONTROL: as above — `reset()` posted nothing.
     ///
     /// It borrows process-wide state and leaves it as it found it: the billing module's wiring, sources,
@@ -1109,7 +1109,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
 
         world.userId = nil
         AppDNA.reset()
-        // Wait on what the report depends on, not on a clock (round 28): `reset()` runs on the SDK queue and
+        // Wait on what the report depends on, not on a clock: `reset()` runs on the SDK queue and
         // appends the sign-out pass to the serial refresh chain; a refresh appended after it returns once that
         // pass has run. In CI order an earlier test's pass can still hold the chain on a server read — each pass
         // now waits at most `serverReadDeadline` for it, where it used to wait out the 30 s timeout and retries,
@@ -1217,7 +1217,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         }
     }
 
-    /// Under StoreKit 2 the sign-out still refreshes (the round-22 behaviour, kept).
+    /// Under StoreKit 2 the sign-out still refreshes (behaviour, kept).
     func testSignOutStillRefreshesUnderStoreKit2() async {
         let bridge = FakeBridge(); let world = World(); let spy = Spy()
         bridge.ids = ["monthly"]

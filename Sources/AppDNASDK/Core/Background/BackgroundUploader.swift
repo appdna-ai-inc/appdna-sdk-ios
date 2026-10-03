@@ -129,19 +129,21 @@ final class BackgroundUploader {
         case noNetwork
         /// A batch was sent and accepted.
         case uploaded
+        /// The server rejected the batch permanently (a genuine 4xx): it was dropped and counted.
+        case droppedRejected
         /// A batch could not be built or sent.
         case failed
 
         /// What the BGProcessingTask reports.
         var taskSucceeded: Bool {
             switch self {
-            case .skippedPaused, .deferred, .nothingToUpload, .uploaded: return true
+            case .skippedPaused, .deferred, .nothingToUpload, .uploaded, .droppedRejected: return true
             case .unavailable, .noNetwork, .failed: return false
             }
         }
 
         /// Whether the run tried to upload (sent a request).
-        var attemptedUpload: Bool { self == .uploaded || self == .failed }
+        var attemptedUpload: Bool { self == .uploaded || self == .failed || self == .droppedRejected }
     }
 
     /// One run of the background upload — the body of the BGProcessingTask. `paused` is the queue's failure
@@ -217,6 +219,29 @@ final class BackgroundUploader {
                 reschedule()
             }
             return .uploaded
+        }
+        if apiClient.lastEventUploadRejectedPermanently {
+            // A permanent 4xx (400 malformed / 401 bad key) fails the same way every time. Kept, this batch —
+            // always the oldest — was sent again by every later run and blocked every event behind it until
+            // the 7-day horizon pruned it. Drop it and count the loss, exactly as the in-process queue does
+            // (`EventQueue`'s permanent-failure branch): each normal event +1, a carried
+            // `_sdk_events_dropped` meta its count. Android `EventUploadWorker`, same rule.
+            var loss = 0
+            for event in batch {
+                if event.event_name == "_sdk_events_dropped" {
+                    loss += (event.properties?["count"]?.value as? Int) ?? 0
+                } else {
+                    loss += 1
+                }
+            }
+            if loss > 0 { DroppedEventsCounter.increment(loss) }
+            let eventIds = Set(batch.map(\.event_id))
+            eventStore.removeSent(eventIds: eventIds)
+            EventUploadCoordinator.markResolved(eventIds)
+            retryCount = 0
+            Log.error("Background upload rejected permanently — dropped a batch of \(batch.count) events (loss metric +\(loss))")
+            if pendingCount > batch.count { reschedule() }
+            return .droppedRejected
         }
         retryCount += 1
         if retryCount < maxRetries {

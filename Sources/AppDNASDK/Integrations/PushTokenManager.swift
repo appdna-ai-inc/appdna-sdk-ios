@@ -72,7 +72,7 @@ final class PushTokenManager {
         trackDelivered(pushId: pushId, deliveryId: nil)
     }
 
-    /// SPEC-497 B1 — the delivered call with the per-token `delivery_id` the server stamps on every
+    /// The delivered call with the per-token `delivery_id` the server stamps on every
     /// AppDNA push. The id rides in both the `push_delivered` event and the `/push/delivered` body, so
     /// the server can move exactly this delivery row (the push id alone only increments counters).
     func trackDelivered(pushId: String, deliveryId: String?) {
@@ -98,7 +98,7 @@ final class PushTokenManager {
         trackTapped(pushId: pushId, action: action, deliveryId: nil)
     }
 
-    /// SPEC-497 B1 — the tapped call with `delivery_id`, sent in both the `push_tapped` event and the
+    /// The tapped call with `delivery_id`, sent in both the `push_tapped` event and the
     /// `/push/tapped` body.
     func trackTapped(pushId: String, action: String?, deliveryId: String?) {
         var props: [String: String] = ["push_id": pushId]

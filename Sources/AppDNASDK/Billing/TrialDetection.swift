@@ -1,7 +1,7 @@
 import Foundation
 import StoreKit
 
-// SPEC-497 §13a.2 (R42–R47, R64, R76) — is a purchase a free trial, and what was actually charged.
+// Is a purchase a free trial, and what was actually charged.
 //
 // Before: iOS `purchase_completed` carried the product's full list price and no `is_trial`, so every
 // free-trial start was booked as revenue at full price. Now a trial reports `is_trial: true` and price 0,
@@ -98,7 +98,7 @@ enum TrialDetection {
     }
 }
 
-/// SPEC-497 §13a.2 (R46, R64) — the reported price is what the store CHARGED: `transaction.price` when
+/// The reported price is what the store CHARGED: `transaction.price` when
 /// StoreKit has it (the intro price for a paid intro, 0 for a free trial), the product's list price only
 /// when it is nil. Used by `StoreKit2Bridge` and the late path.
 func chargedPrice(transactionPrice: Decimal?, productPrice: Decimal) -> Double {

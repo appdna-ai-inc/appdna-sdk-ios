@@ -6,7 +6,7 @@
 // permanent-4xx path. And a queue that `shutdown()` ended cannot set the gate after the next `configure()`'s
 // queue cleared it: the gate belongs to the newest queue. Android `UploadPauseGatePersistenceTest`, same contract.
 //
-// NEGATIVE CONTROLS (build Mac, patched sources — status file round 31):
+// NEGATIVE CONTROLS (build Mac, patched sources):
 //   - the `UploadPauseGate.set(true, …)` after the retries are exhausted removed → the transient test fails;
 //   - the one after the permanent-4xx drop removed → the permanent test fails;
 //   - the owner check in `UploadPauseGate.set` removed → the replaced-queue test fails (the ended queue's

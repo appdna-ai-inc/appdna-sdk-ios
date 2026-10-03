@@ -1,6 +1,6 @@
 // BillingOwnershipTests.swift
 //
-// SPEC-497 §3.10 — the §3.2 ownership table, row by row, plus the bridge production builds per provider.
+// The ownership table, row by row, plus the bridge production builds per provider.
 
 import XCTest
 @testable import AppDNASDK
@@ -97,7 +97,7 @@ final class BillingOwnershipTests: XCTestCase {
                        "Adapty: purchases are made by Adapty in your app")
     }
 
-    // MARK: - §11.9 marker helpers
+    // MARK: - marker helpers
 
     func testMarkedAddsEmittedBySdkAndStripRemovesBothReservedKeys() {
         XCTAssertEqual(BillingEventProps.marked(["a": 1])["emitted_by"] as? String, "sdk")

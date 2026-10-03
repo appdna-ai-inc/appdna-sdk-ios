@@ -1,9 +1,9 @@
 // Spec497ImplAuditFixTests.swift
 //
-// SPEC-497 implementation audit round 1 (I4, native iOS) — the tests the audit found missing (M6) and the
+// Implementation (native iOS) — the tests the audit found missing (M6) and the
 // regression tests for the minors fixed with them:
 //   M6  purchase right after `configure` while the bootstrap is in flight; Q5 through the observer;
-//       same-product `beginPurchase` / `waitForPurchaseToEnd`; R40 paywall `purchase_restore_failed`.
+//       same-product `beginPurchase` / `waitForPurchaseToEnd`; paywall `purchase_restore_failed`.
 //   11  a deferred emit survives a nil tracker;  12  activate/deactivate cannot reorder across shutdown;
 //   13  identity re-checked at delivery;  15  the late path omits an unknown price;  16  the real
 //   `configure` / `identify` drain triggers;  19  a cold-start action-button tap keeps its action id;
@@ -247,7 +247,7 @@ final class Spec497BillingFixTests: XCTestCase {
         try await super.tearDown()
     }
 
-    // M6 (§3.2 rule 3, R67) — billing is ready from the first call, not after the bootstrap.
+    // Billing is ready from the first call, not after the bootstrap.
     func testPurchaseRightAfterConfigureWhileTheBootstrapIsInFlightUsesStoreKit2AndEmitsOnce() async throws {
         let server = try XCTUnwrap(HoldingHTTPServer(), "could not open a local socket")
         self.server = server
@@ -459,7 +459,7 @@ final class Spec497QueueFixTests: XCTestCase {
     }
 
     // Minor 11, branch 2 — tracker present: `emitPending = false` (and the reported id) are PERSISTED
-    // before the emit (R46 (2)); the sink reads the stored store at the moment the event is tracked.
+    // before the emit; the sink reads the stored store at the moment the event is tracked.
     func testDeferredEmitPersistsBeforeEmittingAndEmitsOnce() async throws {
         let w = World()
         let owner = UUID()
@@ -570,7 +570,7 @@ final class Spec497QueueFixTests: XCTestCase {
     }
 }
 
-// MARK: - R40 paywall restore
+// MARK: - paywall restore
 
 final class Spec497PaywallRestoreFixTests: XCTestCase {
 
@@ -590,7 +590,7 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         }
     }
 
-    /// A restore whose task is cancelled (I4 r7 m3).
+    /// A restore whose task is cancelled.
     private final class CancelledRestoreBridge: BillingBridgeProtocol, @unchecked Sendable {
         func purchase(productId: String, appAccountToken: UUID?) async throws -> PurchaseResult { throw StoreKit2Error.unknown }
         func restore(appAccountToken: UUID?) async throws -> [String] { throw CancellationError() }
@@ -624,7 +624,7 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         return spy
     }
 
-    /// SPEC-497 I3 r7 m5 — a restore tap while billing is not configured (before `configure`, or after
+    /// A restore tap while billing is not configured (before `configure`, or after
     /// `shutdown()`) fails with the `unknown` "not configured yet" error, as the purchase tap in the same
     /// window — not `providerNotAvailable` — and never reaches the bridge or `onPaywallRestoreStarted`.
     /// NEGATIVE CONTROL: without the `billingConfigured()` check in `handleRestore`, the StoreKit bridge's
@@ -636,14 +636,14 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(failed.count, 1, "got \(log.names)")
         XCTAssertEqual(failed.first?.properties?["error_type"]?.value as? String, "unknown")
         XCTAssertEqual(failed.first?.properties?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
-        // I4 R8 m3 — as Android.
+        // As Android.
         XCTAssertEqual(failed.first?.properties?["reason"]?.value as? String, "not_configured")
         XCTAssertEqual(spy.failed.value, ["unknown"])
         XCTAssertEqual(spy.messages.value, [AppDNA.BillingModule.notConfiguredMessage])
         XCTAssertEqual(spy.started.value, 0, "the restore never started")
     }
 
-    /// SPEC-497 I4 r7 m3 — a cancelled paywall restore is untracked and calls no delegate (symmetry with
+    /// A cancelled paywall restore is untracked and calls no delegate (symmetry with
     /// Android). NEGATIVE CONTROL: without the `catch is CancellationError` the catch-all tracks one
     /// `purchase_restore_failed` and calls `onPaywallRestoreFailed` — this fails.
     func testCancelledPaywallRestoreIsUntracked() async {
@@ -676,7 +676,7 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(spy.failed.value, ["providerNotAvailable"])
     }
 
-    /// SPEC-497 I4 R8 m4 — the refused paywall restore under an unlinked `revenueCat` carries the same
+    /// The refused paywall restore under an unlinked `revenueCat` carries the same
     /// message on both platforms (Android `BillingOwnership.restoreRefusalMessage` now uses this wording).
     func testRevenueCatPaywallRestoreRefusalMessageMatchesAndroid() async {
         let log = EventLog()
@@ -699,14 +699,14 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
         XCTAssertEqual(spy.failed.value, [expected])
     }
 
-    /// SPEC-497 §13b.2 (R37–R39, I3 M1) — the direct `BillingModule.restorePurchases()` now tracks its own
+    /// The direct `BillingModule.restorePurchases()` now tracks its own
     /// `purchase_restore_failed`. A paywall restore must still track exactly ONE, even with the facade wired
     /// to the same tracker and bridge (the paywall calls `bridge.restore` itself, never the facade).
     func testPaywallRestoreStillTracksExactlyOneWithTheFacadeWired() async {
         let log = EventLog()
         let bridge = FailingRestoreBridge()
         let tracker = makeTracker(log)
-        // SPEC-497 round 5 (I4 m5) — `AppDNA.billing` is process-wide: save what an earlier test (or a
+        // `AppDNA.billing` is process-wide: save what an earlier test (or a
         // configure) left there and put exactly that back, rather than tearing it down, so the result
         // does not depend on test order.
         let prior = (configured: AppDNA.billing.configured, bridge: AppDNA.billing.bridge,
@@ -882,7 +882,7 @@ final class Spec497PushFixTests: XCTestCase {
         // The main thread (this test) waits for the background call — the old `main.sync` deadlocked here.
         XCTAssertEqual(done.wait(timeout: .now() + 3), .success, "handleMessageData blocked on the main thread")
         XCTAssertEqual(returned.value, true)
-        // Round 2 I5: TRACKED synchronously, before the call returned — the main thread has not run yet
+        // TRACKED synchronously, before the call returned — the main thread has not run yet
         // (it is this test, blocked in `done.wait` above); only `onPushReceived` waits for main.
         XCTAssertEqual(log.names, ["push_delivered"], "tracked before handleMessageData returned")
         XCTAssertEqual(spy.received.value, [], "onPushReceived waits for the main thread")

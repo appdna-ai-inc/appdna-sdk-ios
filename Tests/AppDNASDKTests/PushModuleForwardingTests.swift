@@ -1,6 +1,6 @@
 // PushModuleForwardingTests.swift
 //
-// SPEC-497 B1 / B2 (§8.2, §9.2, §9.8) — the iOS push forwarding API: the marker gate, delivered /
+// The iOS push forwarding API: the marker gate, delivered /
 // tapped tracking with `delivery_id`, idempotency, never presenting, the body-tap action sentinel, and
 // the push configured point (a tap before it is buffered and tracked exactly once after it).
 //
@@ -139,10 +139,10 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(recorder.tapped.count, 1)
     }
 
-    /// I4 minor 5 — a host forwarding a tap from a background queue gets `onPushTapped` on main.
+    /// A host forwarding a tap from a background queue gets `onPushTapped` on main.
     /// NEGATIVE CONTROL: the delegate used to run on the caller's queue — `onMain` was false.
     ///
-    /// SPEC-497 round 5 (I4 m3) — the tap carries a `deep_link` action, so the router runs as well: the
+    /// The tap carries a `deep_link` action, so the router runs as well: the
     /// delegate call and `PushTapRouter.routeSink` are recorded in ONE log, and the order must be the
     /// delegate first, then the route (posted to main after its 0.5 s settle delay).
     func testTapForwardedOffMainCallsTheDelegateOnMain() {
@@ -199,7 +199,7 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertTrue(recorder.tapped.isEmpty)
     }
 
-    // MARK: - The configured point (R72)
+    // MARK: - The configured point
 
     /// A tap after `configure()` returns but before the push manager is wired → exactly one
     /// `push_tapped`, after wiring.
@@ -247,9 +247,9 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(recorder.tapped.first?.1, "view", "the response's action id wins")
     }
 
-    // MARK: - Impl audit round 2 (I4, I6)
+    // MARK: - Impl
 
-    /// I4: a buffered delivery keeps the foreground state it arrived with. NEGATIVE CONTROL: the drain
+    /// A buffered delivery keeps the foreground state it arrived with. NEGATIVE CONTROL: the drain
     /// used to pass `inForeground: true` for every buffered delivery — this reported `true`.
     func testABufferedDeliveryKeepsItsForegroundState() {
         XCTAssertTrue(AppDNA.pushModule.handleMessageData(marked, inForeground: false, requestId: nil))
@@ -262,7 +262,7 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(recorder.received.map(\.1), [false, true])
     }
 
-    /// I6: `shutdown()` clears the launch buffer — a tap buffered before it is not tracked, delivered or
+    /// `shutdown()` clears the launch buffer — a tap buffered before it is not tracked, delivered or
     /// routed after the next `configure()`. NEGATIVE CONTROL: without the clear, the next configure's
     /// drain tracked it (one `push_tapped`).
     func testABufferedTapFollowedByShutdownIsNotTrackedAfterTheNextConfigure() {

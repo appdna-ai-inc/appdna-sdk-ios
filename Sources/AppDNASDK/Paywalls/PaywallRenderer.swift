@@ -25,7 +25,7 @@ struct PaywallRenderer: View {
     @State private var errorMessage = ""
     @State private var errorRetryText = ""
     @State private var errorAllowRetry = false
-    /// SPEC-497 I4 m3 / round 11 — the post-purchase observer tokens, owned for exactly the life of this
+    /// The post-purchase observer tokens, owned for exactly the life of this
     /// view and removed in the holder's `deinit` (not `.onDisappear`, which also fires under a host's
     /// full-screen cover and so lost a purchase-ended post, leaving the CTA spinning).
     @StateObject private var purchaseObservers = PaywallPurchaseObservers()
@@ -425,7 +425,7 @@ struct PaywallRenderer: View {
                     withAnimation { successOverlay.wrappedValue = true }
                     if info["confetti"] as? Bool == true { confetti.wrappedValue = true }
                 },
-                // SPEC-497 R9 — the purchase ended with the paywall still up: re-enable the CTA.
+                // The purchase ended with the paywall still up: re-enable the CTA.
                 onEnded: { _ in
                     purchasing.wrappedValue = false
                 },
@@ -452,7 +452,7 @@ struct PaywallRenderer: View {
                 }
             )
         }
-        // SPEC-497 round 11 — no `.onDisappear` removal: `purchaseObservers` removes them in its `deinit`.
+        // No `.onDisappear` removal: `purchaseObservers` removes them in its `deinit`.
         .gesture(
             config.dismiss?.style == "swipe_down" ?
             DragGesture()

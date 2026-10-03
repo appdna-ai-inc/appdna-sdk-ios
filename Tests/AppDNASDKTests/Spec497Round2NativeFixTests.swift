@@ -1,10 +1,10 @@
 // Spec497Round2NativeFixTests.swift
 //
-// SPEC-497 implementation audit round 2 — iOS minors without a better home:
-//   I8   the re-buy fixture driver's positive control (`alreadyOwned == false` delivers exactly once);
-//   I9   nothing in the SDK posts a notification except through `NotificationCenterSlot`, so a push
-//        fixture's `notification_posted` (read from the slot) means something;
-//   I10  the interactive map never overrides the user's pan / zoom (`MapCameraGate`).
+// iOS fixes without a better home:
+//   - the re-buy fixture driver's positive control (`alreadyOwned == false` delivers exactly once);
+//   - nothing in the SDK posts a notification except through `NotificationCenterSlot`, so a push
+//     fixture's `notification_posted` (read from the slot) means something;
+//   - the interactive map never overrides the user's pan / zoom (`MapCameraGate`).
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -12,7 +12,7 @@ import XCTest
 @testable import AppDNASDK
 @_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
-// MARK: - I8
+// MARK: -
 
 final class RebuyDriverPositiveControlTests: XCTestCase {
 
@@ -59,7 +59,7 @@ final class RebuyDriverPositiveControlTests: XCTestCase {
     }
 }
 
-// MARK: - I9
+// MARK: -
 
 /// Every `UNUserNotificationCenter` `add(` in `Sources/` must be the one inside
 /// `SystemNotificationCenterSlot`. The push fixtures read `notification_posted` from the slot; a post

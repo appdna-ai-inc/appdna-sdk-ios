@@ -3,7 +3,7 @@ import UserNotifications
 @testable import AppDNASDK
 @_spi(AppDNAInternal) @testable import AppDNANotificationExtension
 
-/// SPEC-497 §17 item 28 — the console's action buttons show on iOS: the server sends each button set
+/// The console's action buttons show on iOS: the server sends each button set
 /// under its own `aps.category`, the SDK registers that category (in the Notification Service Extension
 /// before display, and whenever the app sees the push), a `text_reply` button is a text-input action,
 /// and the typed text reaches the host as `data["reply_text"]`.
@@ -89,7 +89,7 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(PushTapRouter.route(payload: payload, userInfo: info, tappedActionId: "reply"), .ignored)
     }
 
-    // MARK: - Round 18
+    // MARK: -
 
     /// NEGATIVE CONTROL: a `dismiss` button sent with `foreground: true` got `[.foreground, .destructive]`,
     /// so tapping "Dismiss" launched the app.

@@ -166,11 +166,14 @@ public struct AppDNAOptions: Sendable {
     /// Remote config cache TTL in seconds: the value passed to `init`, or 3600 (1 hour) when none was; then
     /// the bootstrap answer's `settings.configTTL` (if positive) replaces the default.
     public let configTTL: TimeInterval
-    /// The `flushInterval` the host passed to `init`; nil when it passed none.
+    /// The `flushInterval` the host passed to `init`; nil when it passed none. A value equal to the default (30)
+    /// resolves as not set: the bootstrap answer's value, if any, applies (Android reads its options the same way).
     public let requestedFlushInterval: TimeInterval?
-    /// The `batchSize` the host passed to `init`; nil when it passed none (no cap of its own).
+    /// The `batchSize` the host passed to `init`; nil when it passed none (no cap of its own). A value equal to
+    /// the default (100) resolves as not set.
     public let requestedBatchSize: Int?
-    /// The `configTTL` the host passed to `init`; nil when it passed none.
+    /// The `configTTL` the host passed to `init`; nil when it passed none. A value equal to the default (3600)
+    /// resolves as not set.
     public let requestedConfigTTL: TimeInterval?
     /// Log verbosity. Default: .warning.
     public let logLevel: LogLevel
@@ -215,7 +218,7 @@ public struct AppDNAOptions: Sendable {
         self.requestedBatchSize = batchSize
         self.requestedConfigTTL = configTTL
         self.flushInterval = flushInterval.flatMap { $0 > 0 ? $0 : nil } ?? RuntimeSettings.defaultFlushInterval
-        self.batchSize = batchSize.flatMap { $0 > 0 ? $0 : nil } ?? 100
+        self.batchSize = batchSize.flatMap { $0 > 0 ? $0 : nil } ?? RuntimeSettings.defaultBatchSizeOption
         self.configTTL = configTTL.flatMap { $0 > 0 ? $0 : nil } ?? RuntimeSettings.defaultConfigTTL
         self.logLevel = logLevel
         self.billingProvider = billingProvider

@@ -150,7 +150,7 @@ final class DeepLinkHandledTests: XCTestCase {
         XCTAssertEqual(PushTapRouter.route(payload: none, userInfo: [:], tappedActionId: nil), .ignored)
     }
 
-    // MARK: - SPEC-497 §9.2 routing ladder (rungs 1–4 read the RAW userInfo)
+    // MARK: - routing ladder (rungs 1–4 read the RAW userInfo)
 
     private func ladder(_ userInfo: [AnyHashable: Any], tapped: String? = nil) -> PushTapRoute {
         let payload = PushPayloadParser.parse(userInfo: userInfo, title: "", body: "")

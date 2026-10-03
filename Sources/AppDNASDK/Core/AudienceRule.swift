@@ -35,7 +35,8 @@ public struct AudienceRule: Codable {
         let aliases = try decoder.container(keyedBy: AliasKeys.self)
         let traitKey = try c.decodeIfPresent(String.self, forKey: .trait)
         let fieldKey = try aliases.decodeIfPresent(String.self, forKey: .field)
-        self.trait = traitKey ?? fieldKey
+        // A blank `trait` defers to `field`, as on Android (`AudienceRule.fromMap`).
+        self.trait = traitKey.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 } ?? fieldKey
         self.operator = try c.decodeIfPresent(String.self, forKey: .operator)
         self.value = try c.decodeIfPresent(AnyCodable.self, forKey: .value)
         self.values = try c.decodeIfPresent([AnyCodable].self, forKey: .values)
@@ -179,11 +180,6 @@ internal enum AudienceRuleEvaluator {
     }
 
     private static func asDouble(_ value: Any?) -> Double? {
-        guard let v = value else { return nil }
-        if let n = v as? Double { return n }
-        if let n = v as? Int { return Double(n) }
-        if let n = v as? Float { return Double(n) }
-        if let s = v as? String { return Double(s) }
-        return nil
+        ConditionEvaluator.toDouble(value)
     }
 }

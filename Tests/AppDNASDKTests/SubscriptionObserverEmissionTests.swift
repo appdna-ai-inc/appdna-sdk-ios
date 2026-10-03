@@ -1,10 +1,10 @@
 // SubscriptionObserverEmissionTests.swift
 //
-// SPEC-497 §3.10 (round-12 SDK minor 1) — the EMISSION half of the ownership tests, always hostless: the
+// The EMISSION half of the ownership tests, always hostless: the
 // observer's injectable `loadCurrent` feeds scripted snapshots, and per `emitsLifecycleEvents` the three
 // lifecycle events are emitted or not — while the snapshot is persisted in both cases (a later switch to
 // `storeKit2` must diff against a current baseline, not emit a burst of stale events).
-// Plus §13e.5 rule 2: the ids and `cancel_semantics`, and old snapshots without ids still decoding.
+// Plus: the ids and `cancel_semantics`, and old snapshots without ids still decoding.
 
 import XCTest
 @testable import AppDNASDK

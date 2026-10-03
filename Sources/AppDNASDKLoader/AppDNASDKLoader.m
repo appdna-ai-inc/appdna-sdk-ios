@@ -1,6 +1,6 @@
 // AppDNASDKLoader.m
 //
-// SPEC-497 B6 (§9a.4) — the launch-time hook that installs AppDNA's notification delegate proxy.
+// The launch-time hook that installs AppDNA's notification delegate proxy.
 //
 // `+load` runs before `main`, when UIApplication does not exist yet, so it NEVER touches
 // UNUserNotificationCenter. It only registers an observer for UIApplicationDidFinishLaunchingNotification

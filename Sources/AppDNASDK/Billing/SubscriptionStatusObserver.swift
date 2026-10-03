@@ -13,7 +13,7 @@ struct SubSnapshot: Codable, Equatable {
     let productId: String
     let purchaseTime: Int64
     let isAutoRenewing: Bool
-    /// SPEC-497 §13e.5 rule 2 (S-M4) — the ids LAST SEEN for this product (`Transaction.id` /
+    /// The ids LAST SEEN for this product (`Transaction.id` /
     /// `originalID`), so lifecycle events can be matched against provider rows. Optional: a snapshot
     /// persisted by an older SDK lacks the keys and must still decode — a required field would make the
     /// `try? … ?? [:]` load silently reset the baseline and lose one cycle of events. When absent, the
@@ -106,7 +106,7 @@ final class SubscriptionStatusObserver {
     /// and a race that only reproduces on a device is a race nobody proves fixed.
     typealias EntitlementLoader = @Sendable () async -> [String: SubSnapshot]
 
-    /// SPEC-497 §13a.2 — the source of `Transaction.updates` items. Injectable so a test can feed a
+    /// The source of `Transaction.updates` items. Injectable so a test can feed a
     /// real `Transaction` captured from an `SKTestSession` purchase.
     typealias UpdatesSource = () -> AsyncStream<VerificationResult<Transaction>>
 
@@ -118,7 +118,7 @@ final class SubscriptionStatusObserver {
     private let defaults: UserDefaults
     private let mode: SubscriptionObserverMode
     private let loadCurrent: EntitlementLoader
-    /// SPEC-497 §3.2 rule 4 (owner Q2 / LD-R10-1) — device lifecycle events. `false` under RevenueCat
+    /// Device lifecycle events. `false` under RevenueCat
     /// (its webhook is the single source). The snapshot is computed and persisted EITHER WAY, so a later
     /// switch to `storeKit2` diffs against a current baseline instead of a burst of stale events.
     private let emitsLifecycleEvents: Bool
@@ -242,7 +242,7 @@ final class SubscriptionStatusObserver {
         chainLock.unlock()
     }
 
-    // MARK: - Late purchases (SPEC-497 §13a.2, D-R40-1(a))
+    // MARK: - Late purchases ((a))
 
     /// One verified `Transaction.updates` item under `.storeKitOwned` — the ONLY place this class
     /// finishes a transaction. Revoked → its queue entry is removed, nothing emitted (Q5). Otherwise
@@ -283,7 +283,7 @@ final class SubscriptionStatusObserver {
             await update.envelope(facts)
         }
         await update.finish()
-        // §17-4 — a late purchase is verified by the server like any other (in the background; never
+        // A late purchase is verified by the server like any other (in the background; never
         // awaited). A deferred one is sent as its OWNER's; a renewal (`finishSilently`) is not sent — the
         // store's server notifications carry renewals.
         if decision != .finishSilently, let jws = update.signedTransaction {
@@ -397,11 +397,11 @@ final class SubscriptionStatusObserver {
     /// property name here would be the same silent-analytics bug in a new place. Both names are spelled
     /// out as literals at the callsite so `check:event-name-parity` can see them.
     func diffAndEmit(previous: [String: SubSnapshot], current: [String: SubSnapshot]) {
-        // SPEC-497 §3.2 rule 4 — suppressed under RevenueCat (owner Q2). `saveSnapshot` still runs.
+        // Suppressed under RevenueCat. `saveSnapshot` still runs.
         guard emitsLifecycleEvents else { return }
 
         for (productId, prev) in previous where current[productId] == nil {
-            // SPEC-497 §13e.5 rule 2 — the product VANISHED, so no current transaction exists: the ids
+            // The product VANISHED, so no current transaction exists: the ids
             // are the LAST-SEEN ones from the snapshot (omitted when an older snapshot has none).
             var props: [String: Any] = ["product_id": productId]
             Self.addIds(prev, to: &props)
@@ -423,7 +423,7 @@ final class SubscriptionStatusObserver {
                     "purchase_time": now.purchaseTime,
                 ]
                 Self.addIds(now, to: &props)   // the CURRENT ids
-                // §17-5 — the renewal's revenue, under `purchase_completed`'s names. Both or neither: a price
+                // The renewal's revenue, under `purchase_completed`'s names. Both or neither: a price
                 // without a currency is not revenue anyone can convert.
                 if let price = now.price, let currency = now.currency, !currency.isEmpty {
                     props["price"] = price

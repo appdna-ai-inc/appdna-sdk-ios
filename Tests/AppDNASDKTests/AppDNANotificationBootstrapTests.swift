@@ -1,6 +1,6 @@
 // AppDNANotificationBootstrapTests.swift
 //
-// SPEC-497 B6 (§9a.4, §9a.8) — installing the proxy: the launch-options capture, the disabled key,
+// Installing the proxy: the launch-options capture, the disabled key,
 // the ObjC loader (present in the test bundle, inert under XCTest), the `observerRegistered` reader,
 // the configure-fallback decision table and the "configure → host sets its delegate → launch observer
 // fires" sequence. Hostless: an in-memory slot throughout.

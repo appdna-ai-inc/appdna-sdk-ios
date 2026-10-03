@@ -1,6 +1,6 @@
 import Foundation
 // AVFoundation stays linked for playback; only its typed `AVAuthorizationStatus` / `AVMediaType`
-// constants are used here — `AVCaptureDevice` is reached at runtime (SPEC-497 §13i).
+// constants are used here — `AVCaptureDevice` is reached at runtime.
 import AVFoundation
 import CoreLocation
 import UserNotifications
@@ -51,7 +51,7 @@ public final class PermissionManager {
     /// Reads an Info.plist key (production: `Bundle.main`).
     private let infoPlist: (String) -> Any?
     /// Contacts, Calendar, tracking, photo-library and camera/microphone authorisation, reached at
-    /// runtime so the SDK binary carries no link-time reference to them (SPEC-497 §13i).
+    /// runtime so the SDK binary carries no link-time reference to them.
     private let runtime: PermissionRuntime
     /// Is the app active? (ATT may only prompt while it is.) Read on the main actor.
     private let applicationIsActive: @MainActor () -> Bool

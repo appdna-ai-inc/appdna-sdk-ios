@@ -1,6 +1,6 @@
 // StepAdvanceResultFloorTests.swift
 //
-// SPEC-497 §4.9 — the sign-in bridge floor: every member of `AuthActionPolicy.bridgeFloorActions`
+// The sign-in bridge floor: every member of `AuthActionPolicy.bridgeFloorActions`
 // gets 120 s; anything else gets no floor.
 //
 // © 2026 AppDNA AI, Inc.
@@ -31,7 +31,7 @@ final class StepAdvanceResultFloorTests: XCTestCase {
 
     func testBridgeWaitIsMaxOfConfiguredAndFloor() {
         // The SDK's INTERNAL `max(configured, floor)` (reached through `@testable import`; not public API,
-        // impl audit round 2 I2) — the one line every wrapper bridge applies with the public
+        // ) — the one line every wrapper bridge applies with the public
         // `minimumBridgeTimeout(stepData:)`.
         XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 5, stepData: ["action": "social_login"]), 120)
         XCTAssertEqual(StepAdvanceResult.bridgeTimeout(configured: 150, stepData: ["action": "social_login"]), 150)

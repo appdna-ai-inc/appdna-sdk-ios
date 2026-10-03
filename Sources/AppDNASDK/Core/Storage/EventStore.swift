@@ -25,6 +25,14 @@ import Foundation
 /// The index tracks the file it was built from (size, modification date, file number). Anything else that
 /// changes the file — a test deleting it, a crash between our write and our bookkeeping — makes the next
 /// operation rebuild it, so the index never answers for a file it did not read.
+///
+/// A file that exists but cannot be read (a background launch before the first unlock, with the file under
+/// `completeUntilFirstUserAuthentication`) is never indexed as empty: the index stays unloaded, so the next
+/// operation tries again, and nothing that depends on knowing every line — the truncation of an emptied
+/// store, a compaction — runs until the whole file has been read. Events appended meanwhile are appended;
+/// events sent meanwhile stay on disk until the file can be read (sent again then; the server deduplicates
+/// by `event_id`). Before, the failed read left an index that said "0 events", the next append recorded the
+/// new signature, and the first flush that emptied that index truncated the unread backlog, uncounted.
 final class EventStore {
     /// ONE serial queue per store FILE, shared by every `EventStore` on it — not one per instance.
     ///
@@ -58,13 +66,17 @@ final class EventStore {
     private let queue: DispatchQueue
     private let state: FileState
     private let fileURL: URL
+    private let fileName: String
     private let maxEvents: Int
-    /// SPEC-067: Maximum disk usage for event storage (5 MB).
+    /// The disk quota — the LIVE events' bytes (each line's JSON plus its newline), 5 MB. Android
+    /// `EventDatabase.MAX_DISK_BYTES` measures the same thing (the events' payload bytes, not the file).
     static let maxDiskBytes = 5 * 1024 * 1024
+    /// This store's quota (`maxDiskBytes`; injectable so the shared fixtures drive it at a small size).
+    private let maxLiveBytes: Int
     /// Removed / pruned lines the file may carry before a compaction reclaims them. The 5 MB quota caps the
-    /// LIVE events; the file can be up to this much larger between compactions. A compaction also runs once
-    /// the dead bytes outweigh the live ones (and pass `minDeadBytesToCompact`), so a small queue's file
-    /// stays small.
+    /// LIVE events; the file can be up to this much larger between compactions (so up to 6 MB on disk). A
+    /// compaction also runs once the dead bytes outweigh the live ones (and pass `minDeadBytesToCompact`), so
+    /// a small queue's file stays small.
     static let deadBytesSlack = 1024 * 1024
     static let minDeadBytesToCompact = 64 * 1024
     /// SPEC-428 CL-8: compact (enforce caps by rewriting) at most every N appends → amortized O(1).
@@ -73,8 +85,11 @@ final class EventStore {
     /// SPEC-428: `maxEvents`/`compactionInterval`/`fileName` are injectable so the shared behavioral
     /// fixtures (`events/` category) can drive eviction at a small cap with a clean, isolated store.
     /// Production callers use the defaults (10k cap / compact-every-500 / the canonical file).
-    init(maxEvents: Int = 10_000, compactionInterval: Int = 500, fileName: String = "pending_events.json") {
+    init(maxEvents: Int = 10_000, compactionInterval: Int = 500, fileName: String = "pending_events.json",
+         maxDiskBytes: Int = EventStore.maxDiskBytes) {
         self.maxEvents = maxEvents
+        self.maxLiveBytes = maxDiskBytes
+        self.fileName = fileName
         self.compactionInterval = compactionInterval
         let base = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory)
@@ -130,8 +145,8 @@ final class EventStore {
             appendEvents(events)
             state.appendsSinceCompaction += events.count
             if state.appendsSinceCompaction >= self.compactionInterval
-                || state.liveBytes > Self.maxDiskBytes
-                || state.fileLength > Self.maxDiskBytes + Self.deadBytesSlack {
+                || state.liveBytes > maxLiveBytes
+                || state.fileLength > maxLiveBytes + Self.deadBytesSlack {
                 compact()
             }
         }
@@ -214,7 +229,7 @@ final class EventStore {
                 if Self.isStale(tsMs: line.tsMs, nowMs: nowMs, horizonMs: horizonMs) {
                     staleIds.insert(line.eventId)
                     staleLines += 1
-                    // SPEC-428 STEP-4: count the loss meta-aware — 1 per normal event, but the carried N for an
+                    // Count the loss meta-aware — 1 per normal event, but the carried N for an
                     // evicted `_sdk_events_dropped` meta (so a meta aged past the horizon doesn't lose its N).
                     lost += line.metaCount ?? 1
                 } else {
@@ -235,8 +250,11 @@ final class EventStore {
     /// consent was revoked, so queued-but-unsent events must never be transmitted.
     func clearAll() {
         queue.sync {
-            writeFresh(Data())
-            state.reset(signature: Self.signature(of: fileURL))
+            if writeFresh(Data()) {
+                state.reset(signature: Self.signature(of: fileURL))
+            } else {
+                state.loaded = false   // not purged: read the file again before answering for it
+            }
         }
     }
 
@@ -252,6 +270,39 @@ final class EventStore {
     var rewritesForTesting: Int { queue.sync { state.rewrites } }
     /// Forget the in-memory index, as a new process would: the next operation rebuilds it from the file.
     func dropIndexForTesting() { queue.sync { state.loaded = false } }
+    /// The live events' bytes (each line's JSON plus its newline) — what the disk quota caps.
+    var liveBytesForTesting: Int { queue.sync { ensureIndexed(); return state.liveBytes } }
+    /// Whether the index describes every line of the current file.
+    var isFullyIndexedForTesting: Bool { queue.sync { state.loaded && state.complete } }
+
+    /// Fault injection for tests, per store file name (nil / empty in production). `failReads`: reading the
+    /// whole file fails (the file is there but unreadable — data protection before the first unlock);
+    /// `failRangeReads`: reading part of it fails; `failWriteHandle`: opening the file for appending fails;
+    /// `writesAllowed`: how many more writes reach the disk before every write fails (a process that dies
+    /// after its Nth write).
+    struct Faults {
+        var failReads: Set<String> = []
+        var failRangeReads: Set<String> = []
+        var failWriteHandle: Set<String> = []
+        var writesAllowed: [String: Int] = [:]
+    }
+    private static let faultsLock = NSLock()
+    private static var _faults = Faults()
+    static var faultsForTesting: Faults {
+        get { faultsLock.lock(); defer { faultsLock.unlock() }; return _faults }
+        set { faultsLock.lock(); _faults = newValue; faultsLock.unlock() }
+    }
+    private var readFails: Bool { Self.faultsForTesting.failReads.contains(fileName) }
+    private var rangeReadFails: Bool { Self.faultsForTesting.failRangeReads.contains(fileName) }
+    private var writeHandleFails: Bool { Self.faultsForTesting.failWriteHandle.contains(fileName) }
+    /// Consumes one allowed write; false when the injected budget is spent.
+    private func takeWrite() -> Bool {
+        Self.faultsLock.lock(); defer { Self.faultsLock.unlock() }
+        guard let left = Self._faults.writesAllowed[fileName] else { return true }
+        if left <= 0 { return false }
+        Self._faults.writesAllowed[fileName] = left - 1
+        return true
+    }
 
     // MARK: - Index
 
@@ -272,6 +323,9 @@ final class EventStore {
     /// The shared, in-memory index of one file. Every member is read and written on the file's queue.
     final class FileState {
         var loaded = false
+        /// The index describes every line of the file (false after a failed read of an existing file: then
+        /// it describes at most what this process appended, and nothing may truncate or compact the file).
+        var complete = false
         var lines: [Line] = []
         /// Live lines by `event_id` (a duplicate id maps to every live line carrying it).
         var liveById: [String: [Int]] = [:]
@@ -294,6 +348,7 @@ final class EventStore {
 
         func reset(signature: FileSignature?) {
             loaded = true
+            complete = true
             lines = []; liveById = [:]
             liveCount = 0; liveBytes = 0; deadBytes = 0; fileLength = Int(signature?.size ?? 0)
             minLiveTsMs = .max; needsLeadingNewline = false; firstLiveHint = 0
@@ -381,23 +436,75 @@ final class EventStore {
 
     /// SPEC-428 CL-8: parse the NDJSON log (one event per line). A crash mid-append can leave a
     /// trailing partial line — unparseable lines are dead bytes, so the log is self-healing. Back-compat:
-    /// an older single-JSON-array file is decoded once and rewritten as NDJSON.
+    /// an older single-JSON-array file is decoded once and rewritten as NDJSON in ONE atomic write.
     private func rebuildIndex(_ current: FileSignature?) {
         state.reset(signature: current)
         state.indexBuilds += 1
-        guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
+        guard let current, current.size > 0 else {
             state.fileLength = 0
             return
         }
-        if data.first == UInt8(ascii: "["),
-           let arr = try? JSONDecoder().decode([SDKEvent].self, from: data) {
-            state.decodedLines += arr.count
-            writeFresh(Data())
-            state.reset(signature: Self.signature(of: fileURL))
-            state.rewrites += 1
-            appendEvents(arr)
+        guard !readFails, let data = try? Data(contentsOf: fileURL) else {
+            // The file is there and holds events, but cannot be read now. Never answer "empty" for it: stay
+            // unloaded (the next operation reads again) and incomplete (nothing truncates or compacts it).
+            Log.warning("Event store: the pending-events file could not be read; it is left as it is and read again later")
+            state.loaded = false
+            state.complete = false
+            state.signature = nil
+            state.needsLeadingNewline = true   // whatever the unread file ends with, an append starts a line
             return
         }
+        guard !data.isEmpty else { state.fileLength = 0; return }
+        if data.first == UInt8(ascii: "["), migrateLegacyArray(data) { return }
+        indexLines(data)
+    }
+
+    /// An older SDK's single-JSON-array file — possibly followed by lines this SDK appended before it could
+    /// migrate it — rewritten as NDJSON in one atomic write: a crash leaves either the old file or the new
+    /// one, never a truncated file. Before, the file was truncated first and the events appended after, so a
+    /// crash in between lost every one of them. Returns false when the data is not such a file.
+    private func migrateLegacyArray(_ data: Data) -> Bool {
+        let decoder = JSONDecoder()
+        let arr: [SDKEvent]
+        var tail = Data()
+        if let whole = try? decoder.decode([SDKEvent].self, from: data) {
+            arr = whole
+        } else {
+            let firstNewline = data.firstIndex(of: 0x0A) ?? data.endIndex
+            guard firstNewline < data.endIndex,
+                  let head = try? decoder.decode([SDKEvent].self, from: data.subdata(in: data.startIndex..<firstNewline)) else {
+                return false
+            }
+            arr = head
+            tail = data.subdata(in: data.index(after: firstNewline)..<data.endIndex)
+        }
+        state.decodedLines += arr.count
+        let encoder = JSONEncoder()
+        var blob = Data()
+        for event in arr {
+            guard let line = try? encoder.encode(event) else { continue }
+            blob.append(line)
+            blob.append(0x0A)
+        }
+        if !tail.isEmpty {
+            blob.append(tail)
+            if blob.last != 0x0A { blob.append(0x0A) }
+        }
+        state.rewrites += 1
+        guard writeFresh(blob) else {
+            // Not migrated (the legacy file is untouched): read again by the next operation.
+            state.loaded = false
+            state.complete = false
+            state.signature = nil
+            return true
+        }
+        state.reset(signature: Self.signature(of: fileURL))
+        indexLines(blob)
+        return true
+    }
+
+    /// Indexes NDJSON `data` (the whole file) into the freshly reset state.
+    private func indexLines(_ data: Data) {
         let decoder = JSONDecoder()
         var offset = 0
         let bytes = [UInt8](data)
@@ -491,10 +598,14 @@ final class EventStore {
     /// One removal record for `ids`.
     private func appendRemovalRecord(_ ids: [String]) {
         guard !ids.isEmpty else { return }
-        if state.liveCount == 0 {
-            // Nothing left: an empty file is cheaper than any record.
-            writeFresh(Data())
-            state.reset(signature: Self.signature(of: fileURL))
+        if state.liveCount == 0 && state.loaded && state.complete {
+            // Nothing left: an empty file is cheaper than any record. Only for a file the index has read
+            // in full — an index that missed lines must not truncate them.
+            if writeFresh(Data()) {
+                state.reset(signature: Self.signature(of: fileURL))
+            } else {
+                state.loaded = false
+            }
             return
         }
         guard var data = try? JSONSerialization.data(withJSONObject: [Self.removalKey: ids]) else { return }
@@ -510,14 +621,21 @@ final class EventStore {
     /// in which case the index is rebuilt by the next operation).
     private func appendRaw(_ blob: Data) -> Int? {
         var base: Int?
-        if let handle = try? FileHandle(forWritingTo: fileURL) {
+        if !takeWrite() {
+            base = nil
+        } else if !writeHandleFails, let handle = try? FileHandle(forWritingTo: fileURL) {
             defer { try? handle.close() }
             if let end = try? handle.seekToEnd(), (try? handle.write(contentsOf: blob)) != nil {
                 base = Int(end)
             }
-        } else if (try? blob.write(to: fileURL, options: .atomic)) != nil {
-            // File doesn't exist yet — create it atomically with these lines.
+        } else if !FileManager.default.fileExists(atPath: fileURL.path),
+                  (try? blob.write(to: fileURL, options: .withoutOverwriting)) != nil {
+            // The file does not exist yet: create it with these lines. `.withoutOverwriting` — never replace a
+            // file that exists but could not be opened for appending (it holds events); this append fails
+            // instead, and the caller keeps the events in memory. It used to write the blob over the file.
             base = 0
+        } else {
+            Log.warning("Event store: could not append to the pending-events file; nothing was overwritten")
         }
         guard let base else {
             state.loaded = false
@@ -528,9 +646,12 @@ final class EventStore {
         return base
     }
 
-    /// Replaces the file (atomic). The caller resets or rebuilds the index.
-    private func writeFresh(_ data: Data) {
-        try? data.write(to: fileURL, options: .atomic)
+    /// Replaces the file (atomic: the old file or the new one, never a mix). The caller resets or rebuilds the
+    /// index. False when nothing was written.
+    @discardableResult
+    private func writeFresh(_ data: Data) -> Bool {
+        guard takeWrite() else { return false }
+        return (try? data.write(to: fileURL, options: .atomic)) != nil
     }
 
     /// Decodes the given live lines into events, oldest first. A line that no longer decodes as an event is
@@ -566,7 +687,7 @@ final class EventStore {
     }
 
     private func readRange(_ offset: Int, _ length: Int) -> Data? {
-        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        guard !rangeReadFails, !readFails, let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
         defer { try? handle.close() }
         guard (try? handle.seek(toOffset: UInt64(offset))) != nil,
               let data = try? handle.read(upToCount: length), data.count == length else { return nil }
@@ -585,15 +706,18 @@ final class EventStore {
         return dead > Self.deadBytesSlack || (dead > Self.minDeadBytesToCompact && dead > state.liveBytes)
     }
 
-    /// SPEC-428 CL-8: compaction enforces the count + disk caps and reclaims dead bytes by rewriting the
+    /// Compaction enforces the count + disk caps and reclaims dead bytes by rewriting the
     /// log from the live lines' raw bytes (no JSON work) — the amortized O(n) work. It rewrites only when
-    /// there is something to do. Dropped events are counted (CL-1).
+    /// there is something to do, and only a file the index has read in full. Dropped events are counted
+    /// (CL-1) exactly once: after the live bytes were read (a failed read drops and counts nothing) and
+    /// before the rewrite (a crash after the count over-counts, never under-counts); a rewrite that fails
+    /// gives the count back, so the next compaction — which drops them again — counts them once.
     private func compact() {
         state.appendsSinceCompaction = 0
+        guard state.loaded && state.complete else { return }
         var live = state.liveIndices()
-        let originalCount = live.count
 
-        // Count cap, then the disk quota (drop the oldest 10% until the live bytes fit) — SPEC-067.
+        // Count cap, then the disk quota (drop the oldest 10% until the live bytes fit) —.
         var dropped: [Int] = []
         if live.count > self.maxEvents {
             let excess = live.count - self.maxEvents
@@ -601,7 +725,7 @@ final class EventStore {
             live.removeFirst(excess)
         }
         var liveBytes = live.reduce(0) { $0 + state.lines[$1].length }
-        while liveBytes > Self.maxDiskBytes && !live.isEmpty {
+        while liveBytes > maxLiveBytes && !live.isEmpty {
             let dropCount = max(live.count / 10, 1)
             for i in live.prefix(dropCount) { liveBytes -= state.lines[i].length }
             dropped += live.prefix(dropCount)
@@ -609,17 +733,26 @@ final class EventStore {
         }
 
         guard !dropped.isEmpty || deadBytesCallForCompaction else { return }
-        rewrite(keeping: live)
+        state.rewrites += 1
+        guard let blob = rewriteBlob(keeping: live) else {
+            // The file could not be read: nothing dropped, nothing counted; the next operation re-reads it.
+            state.loaded = false
+            return
+        }
 
-        let droppedCount = originalCount - live.count
-        if droppedCount > 0 {
-            // SPEC-428 STEP-4: never UNDER-count the loss metric. All drops are from the FRONT (oldest), so
-            // the evicted set is the prefix. For a normal event count 1; for an evicted `_sdk_events_dropped`
-            // META event, RECOVER the N drops it carried (they were already reset to 0 when it was composed,
-            // so evicting it before delivery would otherwise lose them) — re-adding N re-emits them later.
-            let lost = dropped.reduce(0) { $0 + (state.lines[$1].metaCount ?? 1) }
-            if lost > 0 { DroppedEventsCounter.increment(lost) } // CL-1/D2: count the loss (never silent)
-            Log.warning("Event store compaction dropped \(droppedCount) oldest events (loss metric +\(lost))")
+        // Never UNDER-count the loss metric. All drops are from the FRONT (oldest), so
+        // the evicted set is the prefix. For a normal event count 1; for an evicted `_sdk_events_dropped`
+        // META event, RECOVER the N drops it carried (they were already reset to 0 when it was composed,
+        // so evicting it before delivery would otherwise lose them) — re-adding N re-emits them later.
+        let lost = dropped.reduce(0) { $0 + (state.lines[$1].metaCount ?? 1) }
+        if lost > 0 { DroppedEventsCounter.increment(lost) } // CL-1/D2: count the loss (never silent)
+        guard writeFresh(blob) else {
+            if lost > 0 { DroppedEventsCounter.subtract(lost) }   // nothing was dropped after all
+            state.loaded = false
+            return
+        }
+        if !dropped.isEmpty {
+            Log.warning("Event store compaction dropped \(dropped.count) oldest events (loss metric +\(lost))")
         }
         // Rebuild the in-memory lines for the rewritten file (every line now ends in a newline).
         var newLines: [Line] = []
@@ -636,17 +769,14 @@ final class EventStore {
         state.reset(signature: signature)
         for l in newLines { appendLine(l) }
         state.fileLength = offset
-        if Int(signature?.size ?? 0) != offset { state.loaded = false }   // the write failed: re-read the file
+        if Int(signature?.size ?? 0) != offset { state.loaded = false }   // not the file we wrote: re-read it
     }
 
-    /// Writes a fresh file holding exactly the given live lines, copied byte for byte.
-    private func rewrite(keeping live: [Int]) {
-        state.rewrites += 1
-        guard !live.isEmpty else { writeFresh(Data()); return }
-        guard let all = readRange(0, state.fileLength) else {
-            state.loaded = false
-            return
-        }
+    /// The bytes of a fresh file holding exactly the given live lines, copied byte for byte; nil when the
+    /// file could not be read.
+    private func rewriteBlob(keeping live: [Int]) -> Data? {
+        guard !live.isEmpty else { return Data() }
+        guard let all = readRange(0, state.fileLength) else { return nil }
         var blob = Data()
         blob.reserveCapacity(live.reduce(0) { $0 + state.lines[$1].jsonLength + 1 })
         for i in live {
@@ -654,7 +784,7 @@ final class EventStore {
             blob.append(all.subdata(in: l.offset..<(l.offset + l.jsonLength)))
             blob.append(0x0A)
         }
-        writeFresh(blob)
+        return blob
     }
 }
 

@@ -101,15 +101,15 @@ enum GoogleMapsBootstrap {
 ///
 /// Every camera, styling and overlay decision below mirrors `MapInteractive.kt` field for field, so
 /// switching platform does not change what the author authored. What is drawn and where the camera
-/// goes come from `MapInteractivePlan.compute` (SPEC-497 §7.2) — the same pure function the shared
+/// goes come from `MapInteractivePlan.compute` — the same pure function the shared
 /// fixtures drive, so a fixture cannot pass against a copy of the logic.
 struct GoogleInteractiveMap: UIViewRepresentable {
     let block: ContentBlock
-    /// SPEC-497 §7.2 — as `mapStaticURL(…, rawResolved:)`: a raw host polyline containing `{{` is kept.
+    /// As `mapStaticURL(…, rawResolved)`: a raw host polyline containing `{{` is kept.
     var rawResolved: Bool = false
 
     /// Computed from the block on every read — so each pass reads it ONCE into a local and hands that
-    /// to everything it calls (impl audit round 1 minor 28 / round 2 I10: `updateUIView` used to decode
+    /// to everything it calls (`updateUIView` used to decode
     /// the plan twice, once for the overlays and once for the camera).
     var plan: MapInteractivePlan { MapInteractivePlan.compute(block: block, rawResolved: rawResolved) }
 
@@ -264,7 +264,7 @@ struct GoogleInteractiveMap: UIViewRepresentable {
 }
 
 /// Hosts the `GMSMapView` and applies the plan's camera on the first layout with a non-zero size,
-/// and again only when the camera input changes (SPEC-497 §7.2 rule 4).
+/// and again only when the camera input changes.
 final class InteractiveMapContainer: UIView {
     let mapView: GMSMapView
     private var gate = MapCameraGate()
@@ -295,7 +295,7 @@ final class InteractiveMapContainer: UIView {
     }
 }
 
-/// SPEC-497 §7.2 rule 4 — when the container may move the camera: the first time it has a non-zero size,
+/// When the container may move the camera: the first time it has a non-zero size,
 /// and afterwards ONLY when the camera INPUT changes. Re-requesting the camera already applied (every
 /// `updateUIView`, a styling change, a recomposition) is a no-op, so it never overrides the user's
 /// pan / zoom. Pure, so the rule is testable without a live Google map.

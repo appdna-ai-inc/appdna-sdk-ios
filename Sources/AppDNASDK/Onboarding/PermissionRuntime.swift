@@ -1,7 +1,7 @@
 import Foundation
 import ObjectiveC
 
-/// SPEC-497 §13i (D3, LD-D3-1) — the permission APIs, reached at RUNTIME instead of linked.
+/// The permission APIs, reached at RUNTIME instead of linked.
 ///
 /// The pod is a static framework, so every class the SDK references by symbol lands in the HOST's
 /// binary — and App Store Connect's static check (ITMS-90683) then asks the host for the Contacts,

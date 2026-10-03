@@ -1,6 +1,6 @@
 // PaywallManagerNoProviderTests.swift
 //
-// SPEC-497 §3.10 / §3.2 rule 5 — a paywall tap the SDK cannot buy (`none`, or RevenueCat / Adapty not
+// A paywall tap the SDK cannot buy (`none`, or RevenueCat / Adapty not
 // linked) fails LOUDLY: one `purchase_failed{error_type: providerNotAvailable}`, one
 // `onPaywallPurchaseFailed(errorType: providerNotAvailable, productId:)`, no `purchase_started`, no
 // `onPaywallPurchaseStarted`, and the paywall's failure routing runs. It used to be a silent no-op.
@@ -126,7 +126,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         await assertFailsLoudly(.adapty(apiKey: "k"), message: "Adapty: purchases are made by Adapty in your app")
     }
 
-    /// SPEC-497 I3 r7 m5 / §3.2 rule 3 (R65–R67) — a tap while billing is not configured (before
+    /// A tap while billing is not configured (before
     /// `configure`, or after `shutdown()`) fails with the `unknown` "not configured yet" error, as Android's
     /// paywall tap and the direct API — even with a StoreKit bridge in hand. NEGATIVE CONTROL: without the
     /// `billingConfigured()` check the StoreKit bridge is called and `purchase_started` is emitted — this fails.
@@ -136,7 +136,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         let props = events.first?.properties
         XCTAssertEqual(props?["error_type"]?.value as? String, "unknown")
         XCTAssertEqual(props?["error"]?.value as? String, AppDNA.BillingModule.notConfiguredMessage)
-        // I4 R8 m3 — as Android.
+        // As Android.
         XCTAssertEqual(props?["reason"]?.value as? String, "not_configured")
         XCTAssertEqual(spy.failed.first?.errorType, "unknown")
         XCTAssertEqual(spy.failed.first?.productId, "plan_monthly")
@@ -144,7 +144,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         XCTAssertEqual(failureRoutes, ["show_error"], "the paywall's failure routing runs")
     }
 
-    // MARK: - SPEC-497 R9 — the CTA stops spinning whenever the purchase ends with the paywall still up
+    // MARK: - — the CTA stops spinning whenever the purchase ends with the paywall still up
 
     private final class ScriptedBridge: BillingBridgeProtocol, @unchecked Sendable {
         let fail: Bool
@@ -193,7 +193,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         XCTAssertEqual(purchaseEnded, 1, "the CTA is re-enabled")
     }
 
-    /// SPEC-497 I4 m4 — a success whose `on_success.action` this SDK does not know leaves the paywall up,
+    /// A success whose `on_success.action` this SDK does not know leaves the paywall up,
     /// so the CTA is re-enabled (as Android). NEGATIVE CONTROL: with `handlePostPurchaseSuccess`'s
     /// `default:` back to `break`, `purchaseEnded` stays 0.
     func testSuccessWithUnknownSuccessActionEndsThePurchase() async {

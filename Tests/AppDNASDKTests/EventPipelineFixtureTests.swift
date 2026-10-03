@@ -43,6 +43,10 @@ final class EventPipelineFixtureTests: XCTestCase {
         let no_duplicate_event_id: Bool?
         let monotonic_client_seq: Bool?
         let ingested_order_key: String?
+        let live_bytes_within_quota: Bool?
+        let min_live_bytes_fraction: Double?
+        let survivors_are_newest: Bool?
+        let dropped_exact: Bool?
     }
 
     private static let seqKey = "ai.appdna.sdk.client_seq"
@@ -79,9 +83,10 @@ final class EventPipelineFixtureTests: XCTestCase {
         resetCounters()
         let cfg = f.pipeline.config
         let cap = cfg?.max_events ?? 10_000
+        let maxBytes = cfg?.max_bytes ?? EventStore.maxDiskBytes
         let fileName = "spec428_\(f.id).json"
         // compactionInterval:1 → caps enforced on every save (so a small cap evicts deterministically).
-        var store = EventStore(maxEvents: cap, compactionInterval: 1, fileName: fileName)
+        var store = EventStore(maxEvents: cap, compactionInterval: 1, fileName: fileName, maxDiskBytes: maxBytes)
         store.clearAll()
         resetCounters() // clearAll may have run compaction paths; start from a clean ledger
 
@@ -90,6 +95,7 @@ final class EventPipelineFixtureTests: XCTestCase {
         var ingested: [SDKEvent] = []
         var rawSent = 0
         var hadRedeliver = false
+        var tracked: [String] = []
 
         func flush() {
             guard online else { return }
@@ -112,7 +118,9 @@ final class EventPipelineFixtureTests: XCTestCase {
                 let base = step.name ?? "evt"
                 for i in 0..<n {
                     let name = n > 1 ? "\(base)_\(i)" : base
-                    store.save(events: [makeEvent(name)])
+                    let event = makeEvent(name)
+                    tracked.append(event.event_id)
+                    store.save(events: [event])
                 }
             case "flush":
                 flush()
@@ -122,7 +130,7 @@ final class EventPipelineFixtureTests: XCTestCase {
                 online = true
             case "restart":
                 // persistence survives: same on-disk file + UserDefaults-backed ClientSeqCounter.
-                store = EventStore(maxEvents: cap, compactionInterval: 1, fileName: fileName)
+                store = EventStore(maxEvents: cap, compactionInterval: 1, fileName: fileName, maxDiskBytes: maxBytes)
             case "redeliver":
                 hadRedeliver = true
                 flush() // re-sends the still-unacked events (same event_id) → sink must dedup them
@@ -134,6 +142,22 @@ final class EventPipelineFixtureTests: XCTestCase {
         }
 
         let e = f.pipeline.expect
+        // The disk quota: what is left, and what it cost (read before `dropped_events_min` resets the counter).
+        let left = store.loadPending().map(\.event_id)
+        if e.live_bytes_within_quota == true {
+            XCTAssertLessThanOrEqual(store.liveBytesForTesting, maxBytes, "[\(f.id)] live bytes within the quota")
+        }
+        if let fraction = e.min_live_bytes_fraction {
+            XCTAssertGreaterThan(Double(store.liveBytesForTesting), fraction * Double(maxBytes),
+                                 "[\(f.id)] the quota is spent on events (live \(store.liveBytesForTesting) of \(maxBytes))")
+        }
+        if e.survivors_are_newest == true {
+            XCTAssertFalse(left.isEmpty, "[\(f.id)] nothing survived")
+            XCTAssertEqual(left, Array(tracked.suffix(left.count)), "[\(f.id)] the survivors are the newest, in order")
+        }
+        if e.dropped_exact == true {
+            XCTAssertEqual(DroppedEventsCounter.peek(), tracked.count - left.count, "[\(f.id)] each evicted event counted once")
+        }
         if let want = e.ingested_count {
             XCTAssertEqual(ingested.count, want, "[\(f.id)] ingested_count")
         }

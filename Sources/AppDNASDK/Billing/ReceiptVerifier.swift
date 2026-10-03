@@ -127,7 +127,7 @@ enum VerifyFailureClass: Equatable {
 ///   purchase's critical path, and a failure never fails the purchase.
 /// - `GET /api/v1/billing/entitlements?app_user_id=` — read by `BillingModule.refreshEntitlementCache`.
 ///
-/// Every body carries `billing_owner` (LD-R4-1) and, when known, `product_type` and `app_user_id` — the
+/// Every body carries `billing_owner` and, when known, `product_type` and `app_user_id` — the
 /// fields Android's `ReceiptVerifier` sends.
 final class ReceiptVerifier {
     typealias Send = (Endpoint) async throws -> Data

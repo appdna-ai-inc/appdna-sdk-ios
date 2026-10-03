@@ -5,7 +5,7 @@ let package = Package(
     name: "AppDNASDK",
     platforms: [.iOS(.v16)],
     products: [
-        // SPEC-497 B6 — the product carries the ObjC `AppDNASDKLoader` target (the `+load` launch hook
+        // The product carries the ObjC `AppDNASDKLoader` target (the `+load` launch hook
         // that installs the notification proxy). Consumers' `Package.swift` lines are unchanged.
         .library(name: "AppDNASDK", targets: ["AppDNASDK", "AppDNASDKLoader"]),
         // The extension-safe Notification Service Extension helper (`NotificationService` + the push
@@ -71,7 +71,7 @@ let package = Package(
                 .copy("PrivacyInfo.xcprivacy")
             ]
         ),
-        // SPEC-497 B6 — a `.m` only, NO public header, so nothing here is exposed to Swift hosts.
+        // A `.m` only, NO public header, so nothing here is exposed to Swift hosts.
         // `publicHeadersPath` is omitted, so SwiftPM uses the default `include/` — and SwiftPM (Xcode
         // 26) REFUSES to resolve the package when that directory is missing ("public headers
         // ("include") directory path … is invalid"), so an empty `include/` is committed with a
@@ -95,7 +95,7 @@ let package = Package(
                 // our own code did not throw — which is exactly the kind of proof #671 slipped past.
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
             ],
-            // SPEC-497 §3.10 / §3.11 — the StoreKit test configuration the SKTestSession tests load
+            // The StoreKit test configuration the SKTestSession tests load
             // (`Bundle.module`): coins (consumable), lifetime (non-consumable), and three monthly
             // subscriptions each in its own group (no offer, free-trial intro, pay-up-front intro).
             resources: [.copy("AppDNATestProducts.storekit")]

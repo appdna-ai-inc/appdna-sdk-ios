@@ -1,6 +1,6 @@
 // PaywallPurchaseObserversTests.swift
 //
-// SPEC-497 round 11 — `PaywallRenderer`'s post-purchase observers live exactly as long as the view.
+// `PaywallRenderer`'s post-purchase observers live exactly as long as the view.
 // They used to be removed in `.onDisappear`, which also fires while a host full-screen cover hides the
 // paywall: a `.paywallPurchaseEnded` posted then reached no one and the CTA stayed spinning. The holder has
 // no "disappear" path at all — only `deinit` removes the observers.
@@ -37,7 +37,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
         wait(for: [ended, failed], timeout: 2)
     }
 
-    /// The observers are removed at `deinit` — the I4 m3 leak stays fixed. NEGATIVE CONTROL: without the
+    /// The observers are removed at `deinit` — the leak stays fixed. NEGATIVE CONTROL: without the
     /// `removeAll()` in `deinit`, the block-based observers outlive the holder and these posts are delivered.
     ///
     /// One inverted expectation PER NOTIFICATION NAME: a single shared one with `expectedFulfillmentCount = 3`
@@ -77,7 +77,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
     }
 }
 
-/// SPEC-497 round 12 — source gate: the blocks `PaywallRenderer` passes to `purchaseObservers.register(…)`
+/// Source gate: the blocks `PaywallRenderer` passes to `purchaseObservers.register(…)`
 /// never capture the view. The holder is the view's `@StateObject`, so a block that captures it makes a cycle
 /// (holder → token → block → view → holder) and `deinit` — the only place the observers are removed — never
 /// runs. In a SwiftUI `struct` a capture needs no `self.`: naming a stored property or method bare

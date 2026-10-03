@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-497 §3.11 — the one resolver for the API / event-ingest base URL.
+/// The one resolver for the API / event-ingest base URL.
 ///
 /// TEST-ONLY override: the Info.plist key `AppDNABaseURLOverride` is honoured only when the SDK is
 /// configured with `.sandbox` AND the build is not from the App Store (simulator, a sandbox receipt —

@@ -1,6 +1,6 @@
 // DeliveryQueueTests.swift
 //
-// SPEC-497 §13a.2, D-R40-1 — the iOS durable delivery queue (`PurchaseDeliveryQueue`, an actor):
+// The iOS durable delivery queue (`PurchaseDeliveryQueue`, an actor):
 // Q1 one write, Q2 drain-only delivery, Q3 in-flight marking and one pass per snapshot, queue rule 4
 // (identity), Q5 revocation removal, the deferred emit, the `assignBillingDelegate` trigger and its
 // `deliversPurchases: false` opt-out, "no drain before configure", the cap and the 30-day purge.
@@ -122,7 +122,7 @@ final class DeliveryQueueTests: XCTestCase {
         XCTAssertEqual(ids, ["7"])
     }
 
-    /// SPEC-497 I4 minor 3 — `shutdown(); configure()` on one tick, with the two Tasks running out of
+    /// `shutdown(); configure()` on one tick, with the two Tasks running out of
     /// order: the new session's `activate(2)` lands BEFORE the old session's `deactivate(1)`, and the host
     /// wiped its defaults in between. The late `deactivate(1)` must neither deactivate session 2 nor bring
     /// session 1's in-memory store back: the queue stays active and reads only what is persisted.
@@ -158,7 +158,7 @@ final class DeliveryQueueTests: XCTestCase {
         XCTAssertEqual(persisted?.reported, ["8"], "only this session's report is persisted")
     }
 
-    /// SPEC-497 I4 minor 3 — a drain SUSPENDED at step (b) (inside `MainActor.run`, held there by a
+    /// A drain SUSPENDED at step (b) (inside `MainActor.run`, held there by a
     /// gate-awaiting delegate provider) across `deactivate` → wipe → `activate`, which then resumes. The
     /// actor is free while the drain is suspended, so the restart and a new report run meanwhile. On
     /// resume the call completes once, step (c) removes the entry from the store the NEW session reads —

@@ -115,7 +115,7 @@ final class SessionDataStore {
 
     private func persistDict(_ dict: [String: Any], key: String) {
         // `data(withJSONObject:)` RAISES (an Objective-C exception `try?` cannot catch) on a NaN /
-        // infinite number or a non-JSON leaf, so each entry is validated first (SPEC-497 §13h) and only
+        // infinite number or a non-JSON leaf, so each entry is validated first and only
         // the entries that are not valid JSON are left out of the saved copy. It used to drop the WHOLE
         // store — the next launch lost every other value because one was NaN. The skip is logged (the
         // entry's name only — never the values, which can be answers the user typed); the in-memory

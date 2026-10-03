@@ -1,6 +1,6 @@
 import Foundation
 
-// SPEC-497 §3.2 (A1) — who owns a store transaction, decided ONCE.
+// Who owns a store transaction, decided ONCE.
 //
 // The defect this retires: the observer's mode used to be derived from the bridge that got BUILT
 // (`bridge is StoreKit2Bridge`). A host that asked for RevenueCat without linking it got the
@@ -31,7 +31,7 @@ enum BillingObserverMode: String, Equatable {
     }
 }
 
-/// The ownership table of SPEC-497 §3.2, one row per provider.
+/// The ownership table of, one row per provider.
 struct BillingOwnershipPolicy: Equatable {
     /// The SDK finishes (iOS) / acknowledges (Android) transactions. Only `storeKit2`.
     let ownsTransactions: Bool
@@ -40,7 +40,7 @@ struct BillingOwnershipPolicy: Equatable {
     /// The SDK can restore itself.
     let sdkCanRestore: Bool
     let observerMode: BillingObserverMode
-    /// Device-side `subscription_renewed` / `_canceled` / `_renewal_failed` (owner Q2, LD-R10-1).
+    /// Device-side `subscription_renewed` / `_canceled` / `_renewal_failed`.
     let emitsLifecycleEvents: Bool
     /// The wire name of the requested provider (`storeKit2`, `revenueCat`, `adapty`, `none`).
     let provider: String
@@ -61,7 +61,7 @@ struct BillingOwnershipPolicy: Equatable {
         }
     }
 
-    /// The message a refused purchase or restore carries (§3.2 rule 2, §3.3).
+    /// The message a refused purchase or restore carries.
     var refusalMessage: String {
         switch provider {
         case "revenueCat": return "RevenueCat: purchases are made by RevenueCat in your app"
@@ -73,15 +73,15 @@ struct BillingOwnershipPolicy: Equatable {
 
 enum BillingOwnership {
 
-    /// SPEC-497 §3.2 — the whole ownership table.
+    /// The whole ownership table.
     ///
     /// | provider              | owns | purchase/restore | observer      | lifecycle events |
     /// |-----------------------|------|------------------|---------------|------------------|
     /// | storeKit2             | yes  | yes / yes        | storeKitOwned | yes              |
-    /// | revenueCat, unlinked  | no   | no / no          | providerOwned | no  (owner Q2)   |
-    /// | revenueCat, linked    | no   | yes / yes        | providerOwned | no  (owner Q2)   |
-    /// | adapty, linked        | no   | no / yes         | providerOwned | yes (LD-R10-1)   |
-    /// | adapty, unlinked      | no   | no / no          | providerOwned | yes (LD-R10-1)   |
+    /// | revenueCat, unlinked  | no   | no / no          | providerOwned | no               |
+    /// | revenueCat, linked    | no   | yes / yes        | providerOwned | no               |
+    /// | adapty, linked        | no   | no / yes         | providerOwned | yes              |
+    /// | adapty, unlinked      | no   | no / no          | providerOwned | yes              |
     /// | none                  | no   | no / no          | none          | no               |
     static func policy(for provider: BillingProvider, bridgeLinked: Bool) -> BillingOwnershipPolicy {
         switch provider {
@@ -151,7 +151,7 @@ enum BillingOwnership {
 
 extension BillingOwnership {
     /// The bridge production builds for a requested provider — `configure` and the shared fixtures call
-    /// this one function (SPEC-497 §3.9: "runners drive production code").
+    /// this one function ("runners drive production code").
     static func makeBridge(for provider: BillingProvider, tracker: EventTracker) -> BillingBridgeProtocol? {
         switch provider {
         case .storeKit2:
@@ -177,7 +177,7 @@ extension BillingOwnership {
     }
 }
 
-/// SPEC-497 §11.9 — the marker that tells revenue dedupe an SDK-device row from a host-tracked one.
+/// The marker that tells revenue dedupe an SDK-device row from a host-tracked one.
 /// Every internal billing emitter adds it through this one helper; the public `AppDNA.track` strips it
 /// (and the server-only `_appdna_origin`) so a host cannot forge it.
 enum BillingEventProps {

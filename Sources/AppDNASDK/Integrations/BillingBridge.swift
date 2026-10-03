@@ -28,22 +28,22 @@ public struct PurchaseResult {
     /// This is the Android `Entitlement.expiresAt != null` discriminator, in the iOS type that carries it.
     public let isSubscription: Bool
 
-    /// SPEC-497 §13a.2 (C1, round-19/20 SDK minor 7/2) — is this product a CONSUMABLE? Emitted as
+    /// Is this product a CONSUMABLE? Emitted as
     /// `is_consumable` on `purchase_completed`. No default, for the same reason as `isSubscription`:
     /// every bridge answers it from the product type it actually sold (StoreKit2 `Transaction.productType`,
     /// RevenueCat `storeProduct.productType`, Adapty a StoreKit `Product` lookup).
     public let isConsumable: Bool
 
-    /// SPEC-497 §13a.2 (R42, R45) — a free-trial start. `StoreKit2Bridge` and the late path always set
+    /// A free-trial start. `StoreKit2Bridge` and the late path always set
     /// it (so `is_trial` is always a Bool on `storeKit2`); the RevenueCat and Adapty bridges leave it nil
     /// and `is_trial` is omitted. When true, the reported price is 0.
     public var isTrial: Bool? = nil
 
     /// The store's original transaction id (`Transaction.originalID`), emitted as
-    /// `original_transaction_id` so revenue dedupe can match provider rows (round-7 SDK minor 5).
+    /// `original_transaction_id` so revenue dedupe can match provider rows.
     public var originalTransactionId: String? = nil
 
-    /// SPEC-497 §13a.2 (R40/R41) — a re-buy of an owned non-consumable / subscription: StoreKit returned a
+    /// A re-buy of an owned non-consumable / subscription: StoreKit returned a
     /// transaction that was ALREADY among the current entitlements before the purchase call. The caller
     /// emits one `purchase_restored{reason: "item_already_owned"}` instead of a conversion.
     internal var alreadyOwned: Bool = false

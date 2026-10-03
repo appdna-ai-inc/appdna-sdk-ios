@@ -1,6 +1,6 @@
 // APIBaseURLTests.swift
 //
-// SPEC-497 §3.11 — the test-only base-URL override (Info.plist `AppDNABaseURLOverride`).
+// The test-only base-URL override (Info.plist `AppDNABaseURLOverride`).
 //
 // © 2026 AppDNA AI, Inc.
 

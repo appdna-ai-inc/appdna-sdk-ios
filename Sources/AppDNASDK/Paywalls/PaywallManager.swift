@@ -5,7 +5,7 @@ import SwiftUI
 extension Notification.Name {
     static let paywallPurchaseSuccess = Notification.Name("ai.appdna.paywallPurchaseSuccess")
     static let paywallPurchaseFailure = Notification.Name("ai.appdna.paywallPurchaseFailure")
-    /// SPEC-497 R9 — a paywall purchase ended and the paywall stays on screen: every non-success outcome
+    /// A paywall purchase ended and the paywall stays on screen: every non-success outcome
     /// (whatever `on_failure` says), and a success with no `on_success` config. The renderer re-enables
     /// its CTA (`isPurchasing = false`). Mirrors Android's `PaywallActivity.purchaseEndedSignal`.
     static let paywallPurchaseEnded = Notification.Name("ai.appdna.paywallPurchaseEnded")
@@ -27,10 +27,10 @@ final class PaywallDismissGuard {
 final class PaywallManager {
     private let remoteConfigManager: RemoteConfigManager
     private let billingBridge: BillingBridgeProtocol?
-    /// SPEC-497 §3.2 rule 5 — the ownership policy `configure` chose. A tap the SDK cannot buy (no
+    /// The ownership policy `configure` chose. A tap the SDK cannot buy (no
     /// bridge, or `!sdkCanPurchase`) fails LOUDLY instead of silently.
     private let billingPolicy: BillingOwnershipPolicy
-    /// SPEC-497 §3.2 rule 3 (R65–R67; I3 r7 m5) — is billing configured right now? `configure` passes
+    /// Is billing configured right now? `configure` passes
     /// `{ AppDNA.billing.configured }`, so a tap after `shutdown()` (whose teardown resets it) fails with
     /// the `unknown` "not configured yet" error, as the direct `AppDNA.billing` API does — never with
     /// `providerNotAvailable`, and never through a bridge captured from the torn-down configure.
@@ -260,16 +260,16 @@ final class PaywallManager {
 
     // MARK: - Purchase flow
 
-    /// Internal (not private) so the shared fixtures drive the REAL tap path (SPEC-497 §3.9).
+    /// Internal (not private) so the shared fixtures drive the REAL tap path.
     func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
-        // SPEC-497 §3.2 rule 5 — evaluated BEFORE anything else in the handler. This used to be a bare
+        // Evaluated BEFORE anything else in the handler. This used to be a bare
         // `Log.error("No billing bridge configured"); return`: a tap on a paywall plan did NOTHING — no
         // delegate call, no event. Now: exactly one `purchase_failed`, one `onPaywallPurchaseFailed`
         // (`providerNotAvailable`, with the tapped plan's product id — the documented recipe is to start
         // the purchase with the host's own provider from that callback), then the normal failure
         // routing. No `purchase_started` and no `onPaywallPurchaseStarted`: the purchase never started.
         // Before `configure` has wired billing, or after `shutdown()`: the `unknown` "not configured yet"
-        // error, as Android's paywall tap and the direct API (§3.2 rule 3, R65–R67).
+        // error, as Android's paywall tap and the direct API.
         let configured = billingConfigured()
         guard configured, let bridge = billingBridge, billingPolicy.sdkCanPurchase else {
             let error: Error = configured
@@ -317,7 +317,7 @@ final class PaywallManager {
                 // to the currently-identified app user via `appAccountToken`.
                 // See `AppAccountTokenResolver` for the derivation contract.
                 let token = AppAccountTokenResolver.tokenForCurrentUser()
-                // SPEC-497 §13a.2 (R47–R50) — the owner map, BEFORE the StoreKit call, whatever the outcome.
+                // The owner map, BEFORE the StoreKit call, whatever the outcome.
                 PurchaseOwnerMap.recordBeforePurchase(token: token)
                 let result = try await bridge.purchase(
                     productId: plan.productId ?? "",
@@ -328,19 +328,19 @@ final class PaywallManager {
                 // envelope; the rule lives in `PurchaseSuccessEvents` so StoreKit2 / RevenueCat / Adapty
                 // all obey it from the single result they each return. A re-buy of an owned item books
                 // no revenue: one `purchase_restored{reason: item_already_owned}` and no
-                // `onPaywallPurchaseCompleted` (SPEC-497 R40/R41).
+                // `onPaywallPurchaseCompleted`.
                 let converted = !result.alreadyOwned
                 if converted {
                     PurchaseSuccessEvents.emit(tracker: eventTracker, paywallId: paywallId, result: result)
                 } else {
                     PurchaseSuccessEvents.emitAlreadyOwned(tracker: eventTracker, paywallId: paywallId, result: result)
                 }
-                // SPEC-497 §13a.2 — one snapshot pass after a subscription purchase (the right baseline
+                // One snapshot pass after a subscription purchase (the right baseline
                 // for its first renewal).
                 if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }
                 // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
                 // purchase too (matches Android + the direct billing.purchase path). Diff-guarded.
-                // Queued, not awaited (round 28): the success callback, the post-purchase action and the
+                // Queued, not awaited: the success callback, the post-purchase action and the
                 // auto-dismiss must not wait on `/billing/entitlements` (`refreshInBackground`).
                 AppDNA.billing.refreshInBackground()
                 DispatchQueue.main.async { [weak self] in
@@ -417,7 +417,7 @@ final class PaywallManager {
     private func handlePostPurchaseSuccess(config: PostPurchaseSuccessConfig?, paywallId: String, delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
         guard let config = config else {
             // No config = legacy behavior (delegate-only): the paywall stays up for the host to close,
-            // so its CTA stops spinning (SPEC-497 R9, as Android).
+            // so its CTA stops spinning (as Android).
             NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
             return
         }
@@ -463,14 +463,14 @@ final class PaywallManager {
             }
 
         default:
-            // SPEC-497 I4 m4 — an unknown action leaves the paywall up (nothing dismisses it), so re-enable
+            // An unknown action leaves the paywall up (nothing dismisses it), so re-enable
             // its CTA as the no-config branch does; it kept spinning before.
             NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
         }
     }
 
     private func handlePostPurchaseFailure(config: PostPurchaseFailureConfig?, paywallId: String, viewController: UIViewController) {
-        // SPEC-497 R9 — every failed / cancelled / pending / refused purchase re-enables the paywall's CTA,
+        // Every failed / cancelled / pending / refused purchase re-enables the paywall's CTA,
         // whatever `on_failure` says (with no config, nothing else ever did).
         NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
         guard let config = config else { return }
@@ -501,10 +501,10 @@ final class PaywallManager {
     ) {
         let configured = billingConfigured()
         guard configured, let bridge = billingBridge, billingPolicy.sdkCanRestore else {
-            // No billing bridge, or a provider that owns restoring (SPEC-497 §3.3) — surface the failure
-            // so hosts don't see silence, and emit it (R40 event parity: it used to emit nothing).
+            // No billing bridge, or a provider that owns restoring — surface the failure
+            // so hosts don't see silence, and emit it (event parity: it used to emit nothing).
             // Not configured (before `configure`, or after `shutdown()`): the `unknown` "not configured
-            // yet" error, as the purchase tap in the same window (I3 r7 m5; §3.2 rule 3, R65–R67).
+            // yet" error, as the purchase tap in the same window.
             let error: Error = configured
                 ? BillingError.providerNotAvailable(billingPolicy.refusalMessage)
                 : AppDNA.BillingModule.notConfiguredError()
@@ -513,7 +513,7 @@ final class PaywallManager {
                 "error": error.localizedDescription,
                 "error_type": billingErrorType(error),
             ]
-            // I4 R8 m3 — as Android: a refusal before `configure` says why.
+            // As Android: a refusal before `configure` says why.
             if !configured { props["reason"] = "not_configured" }
             eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked(props))
             DispatchQueue.main.async {
@@ -549,7 +549,7 @@ final class PaywallManager {
                 ]))
                 // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
                 // restore too (matches Android + the direct restorePurchases path). Diff-guarded.
-                // Queued, not awaited (round 28): `onPaywallRestoreCompleted` and the auto-dismiss must not
+                // Queued, not awaited: `onPaywallRestoreCompleted` and the auto-dismiss must not
                 // wait on `/billing/entitlements` (`refreshInBackground`).
                 AppDNA.billing.refreshInBackground()
                 // SPEC-401 Fix 1C — fire delegate forward FIRST so a host
@@ -602,13 +602,13 @@ final class PaywallManager {
                     }
                 }
             } catch is CancellationError {
-                // SPEC-497 (I4 r7 m3) — a cancelled restore is not a failed restore: untracked, no delegate
-                // call (symmetry with Android `handleRestore`, I3 r6 m3). The one-shot skip flag is still
+                // A cancelled restore is not a failed restore: untracked, no delegate
+                // call (symmetry with Android `handleRestore`). The one-shot skip flag is still
                 // cleared, as on every other terminal path.
                 DispatchQueue.main.async { AppDNA.paywall.skipNextAutoDismissOnRestore = false }
                 return
             } catch {
-                // SPEC-497 R40 — `error_type`, as Android.
+                // `error_type`, as Android.
                 eventTracker.track(event: "purchase_restore_failed", properties: BillingEventProps.marked([
                     "paywall_id": paywallId,
                     "error": error.localizedDescription,
@@ -667,8 +667,8 @@ enum PaywallPlacementResolver {
 /// `product_id` is the column that answers "WHICH product failed"; it has to be right.
 enum PurchaseFailedProps {
     /// `paywallId` nil (a direct `AppDNA.billing.purchase`) omits the key rather than inventing one.
-    /// Carries the SPEC-497 §11.9 `emitted_by` marker.
-    /// `reason` (SPEC-497 I4 R8 m3): `"not_configured"` for a purchase refused before `configure`, as Android
+    /// Carries the `emitted_by` marker.
+    /// `reason`: `"not_configured"` for a purchase refused before `configure`, as Android
     /// sends it; nil omits the key.
     static func build(
         paywallId: String?,

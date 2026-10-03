@@ -69,7 +69,7 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
             throw err
         }
 
-        // SPEC-497 §11.9 (R74) — keep the StoreTransaction: its `transactionIdentifier` is the STORE
+        // Keep the StoreTransaction: its `transactionIdentifier` is the STORE
         // transaction id revenue dedupe matches against the RevenueCat webhook. This used to be discarded
         // and the RevenueCat app-user id was reported as `transaction_id` instead. (`customerInfo` is not
         // needed any more.) No CI job compiles this file (RevenueCat is not linked); it was compiled against
@@ -133,8 +133,8 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
             // renewal — an over-count on a METERED event, and the exact double-count
             // `SubscriptionStatusObserver` was written to avoid.
             isSubscription: product.subscriptionPeriod != nil,
-            // SPEC-497 §13a.2 (C1, round-20 SDK minor 2). `isTrial` stays nil: `is_trial` is omitted for
-            // RevenueCat purchases (R45).
+            // `isTrial` stays nil: `is_trial` is omitted for
+            // RevenueCat purchases.
             isConsumable: product.productType == .consumable,
             environment: environment
         )

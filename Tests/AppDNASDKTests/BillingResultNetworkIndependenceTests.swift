@@ -1,6 +1,6 @@
 // BillingResultNetworkIndependenceTests.swift
 //
-// SPEC-497 round 28 — a purchase or restore result never waits on `/billing/entitlements`.
+// A purchase or restore result never waits on `/billing/entitlements`.
 //
 // `purchase()`, `restorePurchases()` and the paywall's purchase / restore success all AWAITED
 // `refreshEntitlementCache()`, which for an identified user awaits `GET /billing/entitlements` (30 s timeout,
@@ -12,7 +12,7 @@
 //     late answer as one more pass — one more change when it differs, none when it matches, none when a sign-out
 //     or a newer answer overtook it.
 //
-// NEGATIVE CONTROLS (run on the Mac against patched sources, see the round-28 report):
+// NEGATIVE CONTROLS (run on the Mac against patched sources):
 //   - the four call sites awaiting `refreshEntitlementCache()` again → the four "completes promptly" tests fail;
 //   - `readServer` awaiting the request with no deadline → the "slow server" tests fail.
 
@@ -220,7 +220,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
 
     /// A late answer older than one already applied is not applied: it would report an older state back.
     ///
-    /// Round 29: two passes of one user no longer produce two requests while the first is in flight — the
+    /// Two passes of one user no longer produce two requests while the first is in flight — the
     /// second shares it (`joinOrStartServerRead`) — so the older answer is queued directly, as the timed-out
     /// pass would queue it (`deliverLateServerAnswer`), after a newer read has been applied.
     func testALateAnswerOlderThanTheAppliedOneIsNotApplied() async {
@@ -250,7 +250,7 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         XCTAssertEqual(Set(spy.changes.last?.map(\.productId) ?? []), ["p", "old"])
     }
 
-    // MARK: - Round 29
+    // MARK: -
 
     /// `identify(A)` → `identify(B)` with A's read still in flight. A switch between two identified users does
     /// NOT bump the sign-out count (`resetGeneration`), so the user check on the late answer is the only thing

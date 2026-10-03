@@ -2816,7 +2816,7 @@ struct FormInputLocationPlaceholderBlock: View {
         }
     }
 
-    /// SPEC-497 §13h — the stored answer for a resolved MapKit place, through the one rule both
+    /// The stored answer for a resolved MapKit place, through the one rule both
     /// writers and both platforms share (`LocationAnswer`). A missing city / state / country is left
     /// out (it used to be stored as `""`), and a failed time-zone lookup (`timeZone == nil`) stores no
     /// `timezone` / `timezone_offset` (it used to store `"UTC"`, a real zone the place is not in).
@@ -2856,7 +2856,7 @@ struct FormInputLocationPlaceholderBlock: View {
         let searchRequest = MKLocalSearch.Request(completion: result)
         let search = MKLocalSearch(request: searchRequest)
         search.start { response, _ in
-            // SPEC-497 §13h — the completion's own text is `formatted_address`.
+            // The completion's own text is `formatted_address`.
             let formattedAddress = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
             guard let mapItem = response?.mapItems.first else {
                 // Fallback: the completion text only (no placemark → no coordinates, no zone).

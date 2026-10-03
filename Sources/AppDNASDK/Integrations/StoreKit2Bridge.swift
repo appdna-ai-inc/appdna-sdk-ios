@@ -4,7 +4,7 @@ import StoreKit
 /// Native StoreKit 2 billing bridge. Default fallback when RevenueCat is not available.
 final class StoreKit2Bridge: BillingBridgeProtocol {
 
-    /// The shared reported set / delivery queue (SPEC-497 §13a.2). The purchase path writes each
+    /// The shared reported set / delivery queue. The purchase path writes each
     /// transaction id into the reported set BEFORE `finish()`, so the late observer never re-reports it,
     /// and marks the product in flight so the observer does not finish its update mid-purchase.
     private let deliveryQueue: PurchaseDeliveryQueue
@@ -43,14 +43,14 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
         Task.detached { await queue.submit(entry) }
     }
 
-    /// SPEC-497 §13a.2 (R40/R41) — the pure re-buy seam: StoreKit handed back a transaction that was
+    /// The pure re-buy seam: StoreKit handed back a transaction that was
     /// ALREADY among the current entitlements before the purchase call (an owned non-consumable or
     /// subscription). No date check.
     static func isAlreadyOwned(preCallIds: Set<String>, transactionId: String) -> Bool {
         preCallIds.contains(transactionId)
     }
 
-    /// SPEC-497 §13a.2 (R40/R41) — the live caller's `onPurchaseCompleted` delivery, after `finish()`.
+    /// The live caller's `onPurchaseCompleted` delivery, after `finish()`.
     /// A re-buy of an owned item (`alreadyOwned`) delivers NOTHING. The purchase path calls this with
     /// `AppDNA.billingDelegate`; the `rebuy_already_owned` fixture calls it with its recording spy, so
     /// `delegate_calls: []` fails the moment a re-buy delivers. Returns whether it delivered.
@@ -102,7 +102,7 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             Log.warning("StoreKit2Bridge.purchase: no appAccountToken — host should call AppDNA.identify(userId:) BEFORE purchase to avoid cross-account entitlement leaks.")
         }
 
-        // R40/R41 — the entitlement ids BEFORE the purchase call: a returned transaction among them is a
+        // The entitlement ids BEFORE the purchase call: a returned transaction among them is a
         // re-buy of something the user already owns.
         var preCallIds: Set<String> = []
         for await entitlement in Transaction.currentEntitlements {
@@ -139,10 +139,10 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             await transaction.finish()
             await deliveryQueue.endPurchase(productId: product.id)
 
-            // SPEC-400 — fire onPurchaseCompleted to the host's registered AppDNABillingDelegate (the live
+            // Fire onPurchaseCompleted to the host's registered AppDNABillingDelegate (the live
             // caller's fire-and-forget delivery). Single source of truth for billing-delegate purchase
             // callbacks; PaywallManager does NOT fire here. A re-buy of an owned item delivers nothing
-            // (SPEC-497 R40/R41, as Android) — decided inside `deliverToLiveCaller`, the seam the
+            // (as Android) — decided inside `deliverToLiveCaller`, the seam the
             // `rebuy_already_owned` fixture drives.
             let environment = StoreKitEnvironment.name(of: transaction)
             let txInfo = TransactionInfo(
@@ -151,14 +151,14 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
                 purchaseDate: transaction.purchaseDate,
                 environment: environment
             )
-            // §17-4 — server verification, in the background. A re-buy of an owned item is sent too: the
+            // Server verification, in the background. A re-buy of an owned item is sent too: the
             // server's upsert is idempotent and it may never have seen the original.
             Self.submitForVerification(transaction, signedTransaction: verification.jwsRepresentation, queue: verificationQueue)
             await MainActor.run {
                 Self.deliverToLiveCaller(alreadyOwned: alreadyOwned, transaction: txInfo, delegate: AppDNA.billingDelegate)
             }
 
-            // SPEC-497 §13a.2 (R42–R46) — the price the store CHARGED (`transaction.price`, the intro price
+            // The price the store CHARGED (`transaction.price`, the intro price
             // for a paid intro, 0 for a free trial; the list price only when StoreKit has none) and
             // whether this is a free trial.
             let isTrial = TrialDetection.isFreeTrial(transaction: transaction, product: product)
@@ -238,7 +238,7 @@ final class StoreKit2Bridge: BillingBridgeProtocol {
             }
         }
 
-        // §17-4 — every granted transaction goes to `/billing/verify` in the background (the untagged ones
+        // Every granted transaction goes to `/billing/verify` in the background (the untagged ones
         // are how the server claims them for this user). Never awaited: a restore does not wait for it.
         for (transaction, jws) in granted {
             Self.submitForVerification(transaction, signedTransaction: jws, queue: verificationQueue)

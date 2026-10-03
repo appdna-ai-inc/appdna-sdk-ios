@@ -53,6 +53,12 @@ struct ExperimentTargeting: Codable {
         new_users_only = field(Bool.self, .new_users_only)
         user_traits = field([AudienceRule].self, .user_traits)
         platforms = field([String].self, .platforms)
+        // A trait condition the device cannot evaluate — no trait name (`trait` / `field`), or a `trait` /
+        // `operator` that is not a string (that one already fails the decode above) — fails closed too. Android
+        // `ExperimentTargeting.fromAny`, same rule.
+        if let rules = user_traits, rules.contains(where: { ($0.trait ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) {
+            bad = true
+        }
         malformed = bad
     }
 
@@ -75,48 +81,103 @@ struct ExperimentEligibilityContext {
     let platform: String
     /// The host app's version (`CFBundleShortVersionString`).
     let appVersion: String?
-    /// The device region setting (ISO-3166 alpha-2), not an IP lookup.
+    /// The device region (ISO-3166 alpha-2, upper case) — `DeviceRegion.current()`, not an IP lookup.
     let deviceRegion: String?
-    /// When the app was first installed on this device (epoch ms).
+    /// When the app was first installed on this device (epoch ms) — `AppInstallDate`.
     let installEpochMs: Int64?
-    /// The identity's traits (`setUserProperties` + bootstrap geo).
+    /// The identity's traits: the ones the host passed to `AppDNA.identify(userId:traits:)`, plus the `country`,
+    /// `region`, `city` and `timezone` the bootstrap answer carries (merged without overwriting the host's). There is
+    /// no API that sets traits for an anonymous user, so until `identify` only the bootstrap traits are present.
     let traits: [String: Any]
 
     static func current(traits: [String: Any]) -> ExperimentEligibilityContext {
         ExperimentEligibilityContext(
             platform: "ios",
             appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-            deviceRegion: Locale.current.region?.identifier,
+            deviceRegion: DeviceRegion.current(),
             installEpochMs: AppInstallDate.epochMs(),
             traits: traits
         )
     }
 }
 
-/// The app's first install on this device: the earlier of the Documents directory's creation date (created with the
-/// app container at install — so it predates this SDK version on upgraded installs) and the install date the SDK
-/// stores on first use. A reinstall is a new install.
+/// The device's country for the targeting "Countries" rule — one definition on both platforms (Android
+/// `DeviceRegion`): the first candidate that is an ISO-3166 alpha-2 code (exactly two ASCII letters, upper-cased; a
+/// UN M.49 area such as `419` is not a country), from the current locale's region, then the region of each preferred
+/// language in order. None → nil (a country rule then fails closed).
+enum DeviceRegion {
+    static func current() -> String? {
+        resolve([Locale.current.region?.identifier] + Locale.preferredLanguages.map { Locale(identifier: $0).region?.identifier })
+    }
+
+    /// The first ISO-3166 alpha-2 code among `candidates`, upper-cased; nil when there is none.
+    static func resolve(_ candidates: [String?]) -> String? {
+        for candidate in candidates {
+            guard let raw = candidate?.trimmingCharacters(in: .whitespaces), raw.count == 2,
+                  raw.unicodeScalars.allSatisfy({ (65...90).contains($0.value) || (97...122).contains($0.value) }) else { continue }
+            return raw.uppercased()
+        }
+        return nil
+    }
+}
+
+/// When the app was first installed ON THIS DEVICE — one definition on both platforms (Android uses
+/// `PackageInfo.firstInstallTime`, which behaves this way): an app update keeps the date; deleting and reinstalling the
+/// app, or restoring it onto a device from a backup or a device transfer, starts a new one.
+///
+/// iOS: the earlier of the Documents directory's creation date (made with the app container at install, so it
+/// predates this SDK on an app that adopted it in an update) and the SDK's own install marker — a file in the SDK's
+/// backup-excluded directory, written on first use. The marker used to be a UserDefaults key, which iCloud / device
+/// backups restore — a restored app then kept the original device's install date, where Android starts a new one.
+/// Targeting no longer reads that key (the survey trigger's own "days since install" still keeps it).
 enum AppInstallDate {
-    static let storedKey = "ai.appdna.sdk.install_date"
+    /// The old UserDefaults marker (backed up with the app's preferences). Not read here.
+    static let legacyStoredKey = "ai.appdna.sdk.install_date"
+    static let markerFileName = "install_marker"
 
     /// Read once per process (a file-attribute read); the install date does not change while the app runs.
     static func epochMs() -> Int64? { cached }
-    private static let cached: Int64? = read()
+    private static let cached: Int64? = {
+        let fm = FileManager.default
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first ?? fm.temporaryDirectory
+        return read(documentsDirectory: documents,
+                    sdkDirectory: base.appendingPathComponent("ai.appdna.sdk", isDirectory: true),
+                    defaults: .standard, now: Date())
+    }()
 
-    private static func read() -> Int64? {
-        var candidates: [Date] = []
-        if let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-           let created = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.creationDate] as? Date {
-            candidates.append(created)
+    /// The install date from the device's own facts. `sdkDirectory` holds the marker (created there, excluded from
+    /// backup, on first use); a `legacyStoredKey` in `defaults` — restored from a backup or not — is not consulted.
+    static func read(documentsDirectory: URL?, sdkDirectory: URL, defaults: UserDefaults, now: Date) -> Int64? {
+        let documentsCreated = documentsDirectory.flatMap {
+            (try? FileManager.default.attributesOfItem(atPath: $0.path))?[.creationDate] as? Date
         }
-        let defaults = UserDefaults.standard
-        if defaults.object(forKey: storedKey) != nil {
-            candidates.append(Date(timeIntervalSince1970: defaults.double(forKey: storedKey)))
-        } else {
-            defaults.set(Date().timeIntervalSince1970, forKey: storedKey)
-        }
-        guard let earliest = candidates.min() else { return nil }
+        return earliestEpochMs(documentsCreated: documentsCreated, marker: marker(in: sdkDirectory, now: now))
+    }
+
+    /// The earlier of the two dates, in epoch ms; nil when neither is known.
+    static func earliestEpochMs(documentsCreated: Date?, marker: Date?) -> Int64? {
+        guard let earliest = [documentsCreated, marker].compactMap({ $0 }).min() else { return nil }
         return Int64(earliest.timeIntervalSince1970 * 1000)
+    }
+
+    /// The SDK's install marker in `directory`: the date it holds, or — when there is none yet — `now`, written there
+    /// and excluded from backup. nil only when the marker can neither be read nor written.
+    static func marker(in directory: URL, now: Date) -> Date? {
+        let url = directory.appendingPathComponent(markerFileName)
+        if let text = try? String(contentsOf: url, encoding: .utf8),
+           let seconds = Double(text.trimmingCharacters(in: .whitespacesAndNewlines)), seconds.isFinite {
+            return Date(timeIntervalSince1970: seconds)
+        }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        guard (try? String(format: "%.3f", now.timeIntervalSince1970).write(to: url, atomically: true, encoding: .utf8)) != nil else {
+            return nil
+        }
+        var target = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? target.setResourceValues(values)
+        return now
     }
 }
 

@@ -5,9 +5,9 @@ import UserNotifications
 @_spi(AppDNAInternal) import AppDNANotificationExtension
 #endif
 
-// SPEC-497 B6 (§9a) — the iOS SDK installs its notification handler itself, as a DELEGATE PROXY that
+// The iOS SDK installs its notification handler itself, as a DELEGATE PROXY that
 // holds the previous `UNUserNotificationCenter` delegate and forwards everything that is not an AppDNA
-// push to it. Swizzling was rejected (§9a.2): it mutates host classes and composes badly with
+// push to it. Swizzling was rejected: it mutates host classes and composes badly with
 // Firebase's own swizzling. FlutterFire, RNFirebase and notifee all use this same pattern, so the
 // proxy composes with them in either install order — outermost or innermost.
 
@@ -19,7 +19,7 @@ import UserNotifications
 // MARK: - Pure decisions
 
 enum NotificationProxyPolicy {
-    /// Push libraries that install their own proxy later and would wrap AppDNA (§9a.4 rule 3).
+    /// Push libraries that install their own proxy later and would wrap AppDNA.
     static let knownPushLibraryClasses = [
         "FLTFirebaseMessagingPlugin",
         "RNFBMessagingUNUserNotificationCenter",
@@ -123,7 +123,7 @@ enum NotificationProxyInstall {
         case installFallback = "install_fallback"
     }
 
-    /// What `configure` does about the proxy (§9a.4, S5-M2). `configure` runs INSIDE
+    /// What `configure` does about the proxy. `configure` runs INSIDE
     /// `didFinishLaunching`, before `UIApplicationDidFinishLaunchingNotification` is posted; a host that
     /// sets its own delegate after `configure` would replace a proxy installed here, and the install-once
     /// launch observer would then do nothing. So `configure` installs only when no launch observer was
@@ -183,7 +183,7 @@ final class ProxyCore {
             AppDNA.pushModule.handleMessageData(userInfo, inForeground: true, requestId: requestId)
             completion(appDNAOptions)
         case .passThrough:
-            // After `shutdown()`: the DEFAULT presentation (§9a.4) — the Info.plist override belongs to a
+            // After `shutdown()`: the DEFAULT presentation — the Info.plist override belongs to a
             // configured SDK — and neither tracked nor routed.
             completion(NotificationProxyPolicy.options(NotificationProxyPolicy.defaultPresentation))
         case .forward:
@@ -332,7 +332,7 @@ final class AppDNANotificationCenterProxy: NSObject, UNUserNotificationCenterDel
 
 // MARK: - Bootstrap (installation)
 
-/// One class, two names (round-20 SDK minor 4): `NotificationProxyBootstrap` in Swift and
+/// One class, two names: `NotificationProxyBootstrap` in Swift and
 /// `AppDNANotificationBootstrap` in the ObjC runtime — the name the `AppDNASDKLoader` `+load` observer
 /// resolves with `NSClassFromString`, so it does not depend on the module name (SPM vs CocoaPods).
 @objc(AppDNANotificationBootstrap)
@@ -458,7 +458,7 @@ final class NotificationProxyBootstrap: NSObject {
             disabled: NotificationProxyPolicy.isDisabled(plist)
         )
         guard action == .installFallback else { return }
-        // Under XCTest with no injected slot this is a no-op that records nothing (round-11 SDK minor 3).
+        // Under XCTest with no injected slot this is a no-op that records nothing.
         guard let slot = injectedSlot ?? (isRunningUnderXCTest ? nil : SystemNotificationCenterSlot()) else { return }
         Log.warning("launch-time notification proxy not registered; launch taps before configure may be missed")
         install(slot: slot, plist: plist, source: .configureFallback)
@@ -509,7 +509,7 @@ final class NotificationProxyBootstrap: NSObject {
         ]
     }
 
-    /// Test isolation (round-16/17 SDK minor 1).
+    /// Test isolation (17 SDK minor 1).
     static func resetForTesting() {
         lock.lock()
         installed = false

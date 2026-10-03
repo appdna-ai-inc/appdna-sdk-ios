@@ -88,7 +88,7 @@ final class GoogleInteractiveMapTests: XCTestCase {
         AppDNA.googleMapsApiKey = key
         XCTAssertTrue(GoogleMapsBootstrap.ready(), "GMSServices rejected the key — the map cannot be live")
 
-        // Fit off → the authored centre and zoom (SPEC-497 §7.2 rule 3).
+        // Fit off → the authored centre and zoom.
         let map = makeMap(try routeBlock(fit: false))
 
         // A finger has to reach the engine. These are the flags `map_interactive` sets, and they are
@@ -140,7 +140,7 @@ final class GoogleInteractiveMapTests: XCTestCase {
 }
 
 extension GoogleInteractiveMapTests {
-    /// SPEC-497 §7.8 — "applies plan camera fit": the container applies the plan's fit on its first
+    /// "applies plan camera fit": the container applies the plan's fit on its first
     /// non-zero layout, and the whole route is inside the visible region.
     func testAppliesPlanCameraFit() throws {
         guard let key = ProcessInfo.processInfo.environment["GOOGLE_MAPS_TEST_KEY"], !key.isEmpty else {

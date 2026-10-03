@@ -1,4 +1,4 @@
-// MapPolylineTests.swift — SPEC-497 §7.8.
+// MapPolylineTests.swift
 // © 2026 AppDNA AI, Inc.
 
 import XCTest

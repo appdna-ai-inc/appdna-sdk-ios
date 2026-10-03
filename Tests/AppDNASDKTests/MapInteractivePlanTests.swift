@@ -1,4 +1,4 @@
-// MapInteractivePlanTests.swift — SPEC-497 §7.8.
+// MapInteractivePlanTests.swift
 // © 2026 AppDNA AI, Inc.
 
 import XCTest

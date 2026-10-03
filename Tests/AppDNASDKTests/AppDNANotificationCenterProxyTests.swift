@@ -1,6 +1,6 @@
 // AppDNANotificationCenterProxyTests.swift
 //
-// SPEC-497 B6 (§9a.8) — the notification delegate proxy, driven through `ProxyCore` (UNNotification
+// The notification delegate proxy, driven through `ProxyCore` (UNNotification
 // cannot be constructed in a test) with recording fake previous delegates, and through the proxy object
 // for the `responds(to:)` / `forwardingTarget` / `conforms(to:)` rules. Hostless: an in-memory
 // `NotificationCenterSlot`, never the real centre.
