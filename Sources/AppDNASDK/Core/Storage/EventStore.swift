@@ -143,6 +143,7 @@ final class EventStore {
         queue.sync {
             ensureIndexed()
             appendEvents(events)
+            enforceCountCapOnAppend()
             state.appendsSinceCompaction += events.count
             if state.appendsSinceCompaction >= self.compactionInterval
                 || state.liveBytes > maxLiveBytes
@@ -601,26 +602,45 @@ final class EventStore {
         }
     }
 
-    /// One removal record for `ids`.
-    private func appendRemovalRecord(_ ids: [String]) {
-        guard !ids.isEmpty else { return }
+    /// The event-count cap, exactly, after every append (as Android's): the oldest events over `maxEvents` are
+    /// marked removed with one removal record — O(excess), no rewrite — and counted once the record is written. A
+    /// record that cannot be written leaves the index to be re-read, and the events with it: nothing is dropped and
+    /// nothing counted. The cap used to be applied only by a compaction (every `compactionInterval` appends), so the
+    /// queue could hold up to ~500 events over it.
+    private func enforceCountCapOnAppend() {
+        guard state.loaded, state.complete, state.liveCount > maxEvents else { return }
+        let oldest = state.liveIndices(oldest: state.liveCount - maxEvents)
+        let ids = Set(oldest.map { state.lines[$0].eventId })
+        let lost = oldest.reduce(0) { $0 + (state.lines[$1].metaCount ?? 1) }
+        guard appendRemovalRecord(markDead(ids: ids)) else { return }
+        DroppedEventsCounter.increment(lost)   // the cap's loss is counted, never silent
+        Log.warning("Event store over \(maxEvents) events: dropped the \(oldest.count) oldest (loss metric +\(lost))")
+    }
+
+    /// One removal record for `ids`. False when it could not be written (the index is then re-read).
+    @discardableResult
+    private func appendRemovalRecord(_ ids: [String]) -> Bool {
+        guard !ids.isEmpty else { return true }
         if state.liveCount == 0 && state.loaded && state.complete {
             // Nothing left: an empty file is cheaper than any record. Only for a file the index has read
             // in full — an index that missed lines must not truncate them.
             if writeFresh(Data()) {
                 state.reset(signature: Self.signature(of: fileURL))
-            } else {
-                state.loaded = false
+                return true
             }
-            return
+            state.loaded = false
+            return false
         }
-        guard var data = try? JSONSerialization.data(withJSONObject: [Self.removalKey: ids]) else { return }
+        guard var data = try? JSONSerialization.data(withJSONObject: [Self.removalKey: ids]) else {
+            state.loaded = false
+            return false
+        }
         data.append(0x0A)
         if state.needsLeadingNewline { data.insert(0x0A, at: 0) }
-        if appendRaw(data) != nil {
-            state.needsLeadingNewline = false
-            state.deadBytes += data.count
-        }
+        guard appendRaw(data) != nil else { return false }
+        state.needsLeadingNewline = false
+        state.deadBytes += data.count
+        return true
     }
 
     /// Appends `blob` at the end of the file; returns the offset it landed at (nil when nothing was written,

@@ -628,7 +628,8 @@ final class ResilienceFixtureTests: XCTestCase {
             let uploader = BackgroundUploader(apiClient: client, eventStore: store)
             let rescheduled = Counter()
             let outcome = Self.runBlocking { await uploader.runUpload(paused: false, reschedule: { rescheduled.bump() }) }
-            XCTAssertEqual(outcome, .droppedRejected, "[\(id)] HTTP \(status): background outcome")
+            let accepted = (200..<300).contains(status)
+            XCTAssertEqual(outcome, accepted ? .uploaded : .droppedRejected, "[\(id)] HTTP \(status): background outcome")
             XCTAssertEqual(ingests(), row.background_requests, "[\(id)] HTTP \(status): event uploads in one background run")
             XCTAssertEqual(store.pendingCount, row.pending_after, "[\(id)] HTTP \(status): events left after the run")
             XCTAssertEqual(rescheduled.value > 0, row.background_reschedules, "[\(id)] HTTP \(status): another run scheduled?")
@@ -645,9 +646,10 @@ final class ResilienceFixtureTests: XCTestCase {
             XCTAssertFalse(UploadPauseGate.isPaused, "[\(id)] a new queue starts unpaused")
             q.flushClearingPause()
             let deadline = Date().addingTimeInterval(10)
-            while Date() < deadline && q.consecutiveFailuresForTesting == 0 { Thread.sleep(forTimeInterval: 0.02) }
-            XCTAssertEqual(qStore.pendingCount, runs.backlog - runs.batch, "[\(id)] HTTP \(status): the queue drops the rejected batch")
-            XCTAssertEqual(q.consecutiveFailuresForTesting, row.pauses_uploads ? 5 : 1,
+            while Date() < deadline && qStore.pendingCount > runs.backlog - runs.batch { Thread.sleep(forTimeInterval: 0.02) }
+            while Date() < deadline && !accepted && q.consecutiveFailuresForTesting == 0 { Thread.sleep(forTimeInterval: 0.02) }
+            XCTAssertEqual(qStore.pendingCount, runs.backlog - runs.batch, "[\(id)] HTTP \(status): the queue's flush resolves one batch")
+            XCTAssertEqual(q.consecutiveFailuresForTesting, row.pauses_uploads ? 5 : accepted ? 0 : 1,
                            "[\(id)] HTTP \(status): failed cycles counted (5 = paused)")
             XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] HTTP \(status): queue paused uploads?")
             withExtendedLifetime((q, client)) {}

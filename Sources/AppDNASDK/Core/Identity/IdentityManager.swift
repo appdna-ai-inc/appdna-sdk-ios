@@ -21,6 +21,13 @@ final class IdentityManager {
     private var _anonId: String
     private var _userId: String?
     private var _traits: [String: Any]?
+    /// The device-scoped traits the bootstrap answer carries (`country`, `region`, `city`, `timezone`, from the IP
+    /// address), kept apart from the host's: every change of the host's traits — `identify(userId, traits)`, an
+    /// account switch, `reset()` — keeps them under the host's (a host key wins). `identify` with traits used to
+    /// replace the whole set, so the location traits were gone until the next bootstrap (the next app start), and
+    /// a "user trait" rule on `country` stopped matching after a login. In memory: the bootstrap sends them on every
+    /// start, and the persisted traits keep the last merge for the start before it answers.
+    private var _deviceTraits: [String: Any] = [:]
 
     var currentIdentity: DeviceIdentity {
         queue.sync {
@@ -61,24 +68,44 @@ final class IdentityManager {
             _userId = userId
             keychainStore.setUserId(userId)
             if let traits = traits {
-                _traits = traits
-                keychainStore.setUserTraits(traits)
+                let merged = withDeviceTraits(traits)
+                _traits = merged
+                keychainStore.setUserTraits(merged)
             } else if let previousUserId, previousUserId != userId {
                 // Clear only on a genuine account SWITCH (a known user → a DIFFERENT known user), not on
                 // the first anonymous→login transition (previousUserId == nil). Device-scoped traits such
                 // as bootstrap geo (merged via mergeTraits before the host's first identify) should
                 // survive first login.
-                _traits = nil
-                keychainStore.clearUserTraits()
+                // The device's location traits stay.
+                setDeviceTraitsOnly()
             }
             // else: same user or first login with no new traits → keep existing traits.
         }
     }
 
-    /// Merge additional traits without overwriting existing ones.
-    /// Used for auto-injected geo traits from bootstrap.
+    /// On `queue`: `hostTraits` with the device traits under them (a host key wins).
+    private func withDeviceTraits(_ hostTraits: [String: Any]) -> [String: Any] {
+        var merged = hostTraits
+        for (key, value) in _deviceTraits where merged[key] == nil { merged[key] = value }
+        return merged
+    }
+
+    /// On `queue`: the host's traits are gone; only the device traits remain (none → nil).
+    private func setDeviceTraitsOnly() {
+        if _deviceTraits.isEmpty {
+            _traits = nil
+            keychainStore.clearUserTraits()
+        } else {
+            _traits = _deviceTraits
+            keychainStore.setUserTraits(_deviceTraits)
+        }
+    }
+
+    /// Merge the bootstrap's location traits without overwriting the host's ones; they are also kept as device
+    /// traits (see `_deviceTraits`).
     func mergeTraits(_ newTraits: [String: Any]) {
         queue.sync {
+            for (key, value) in newTraits { _deviceTraits[key] = value }
             var merged = _traits ?? [:]
             for (key, value) in newTraits {
                 if merged[key] == nil { // Don't overwrite user-set traits
@@ -94,9 +121,8 @@ final class IdentityManager {
     func reset() {
         queue.sync {
             _userId = nil
-            _traits = nil
             keychainStore.clearUserId()
-            keychainStore.clearUserTraits()
+            setDeviceTraitsOnly()
         }
     }
 }

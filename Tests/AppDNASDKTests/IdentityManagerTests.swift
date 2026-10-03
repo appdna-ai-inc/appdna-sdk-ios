@@ -120,6 +120,30 @@ final class IdentityManagerTests: XCTestCase {
         XCTAssertEqual(manager.currentIdentity.userId, "user_2")
     }
 
+    // MARK: - Bootstrap location traits
+
+    /// The bootstrap's location traits (`mergeTraits`) survive `identify(userId, traits)`, an account switch and
+    /// `reset()`; a host key with the same name wins. NEGATIVE CONTROL (build Mac, base code): `identify` with traits
+    /// replaced the whole set — `country` was nil after the login until the next bootstrap.
+    func testBootstrapLocationTraitsSurviveIdentifyWithTraitsSwitchAndReset() {
+        manager.mergeTraits(["country": "DE", "city": "Berlin"])
+        manager.identify(userId: "user_1", traits: ["plan": "pro", "city": "Hamburg"])
+        var traits = manager.currentIdentity.traits
+        XCTAssertEqual(traits?["country"] as? String, "DE", "identify with traits dropped the location traits")
+        XCTAssertEqual(traits?["city"] as? String, "Hamburg", "a host trait wins over a location trait")
+        XCTAssertEqual(traits?["plan"] as? String, "pro")
+
+        manager.identify(userId: "user_2")   // an account switch: the host's traits go, the location stays
+        traits = manager.currentIdentity.traits
+        XCTAssertNil(traits?["plan"])
+        XCTAssertEqual(traits?["country"] as? String, "DE")
+        XCTAssertEqual(traits?["city"] as? String, "Berlin")
+
+        manager.reset()
+        XCTAssertEqual(manager.currentIdentity.traits?["country"] as? String, "DE")
+        XCTAssertNil(manager.currentIdentity.userId)
+    }
+
     // MARK: - Reset
 
     func testResetClearsUserId() {

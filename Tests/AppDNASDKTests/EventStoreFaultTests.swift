@@ -140,6 +140,30 @@ final class EventStoreFaultTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: fileURL(file)).first, UInt8(ascii: "{"), "the file is NDJSON now")
     }
 
+    /// The count cap holds exactly after every append (it was applied only at a compaction, every 500 appends, so
+    /// the queue could hold ~500 over it), the oldest go, and they are counted. A removal record that cannot be
+    /// written drops and counts nothing. NEGATIVE CONTROL (build Mac): without the cap on append, 15 events are
+    /// pending and the counter is 0.
+    func testTheCountCapHoldsExactlyOnEveryAppend() throws {
+        let file = newFile("cap")
+        let store = EventStore(maxEvents: 10, compactionInterval: 500, fileName: file)
+        let events = backlog(15)
+        for e in events { store.save(events: [e]) }
+        XCTAssertEqual(store.pendingCount, 10)
+        XCTAssertEqual(DroppedEventsCounter.peek(), 5)
+        store.dropIndexForTesting()   // a new process reads the same 10
+        XCTAssertEqual(store.loadPending().map(\.event_id), events.suffix(10).map(\.event_id))
+
+        // The removal record cannot be written: nothing dropped, nothing counted (the appended event is there).
+        let more = EventStoreBacklogTests.event("over_the_cap")
+        EventStore.faultsForTesting.writesAllowed = [file: 1]   // the append, not the record
+        store.save(events: [more])
+        EventStore.faultsForTesting.writesAllowed = [:]
+        XCTAssertEqual(DroppedEventsCounter.peek(), 5, "an unwritten removal was counted")
+        store.dropIndexForTesting()
+        XCTAssertEqual(store.loadPending().count, 11)
+    }
+
     /// The mixed file: lines this SDK appended after an array it had not migrated yet are kept.
     func testALegacyArrayFollowedByLinesIsMigratedWithThem() throws {
         let file = newFile("legacy-mixed")

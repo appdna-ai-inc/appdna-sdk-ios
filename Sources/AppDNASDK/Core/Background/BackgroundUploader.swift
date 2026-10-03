@@ -192,72 +192,81 @@ final class BackgroundUploader {
             return .noNetwork
         }
 
-        // Only the batch is read and decoded, not the whole backlog.
-        let batch = eventStore.loadOldest(batchSize)
-        guard !batch.isEmpty else { return .nothingToUpload }
-        let payload: [String: Any] = ["batch": batch.compactMap { event -> [String: Any]? in
-            guard let data = try? JSONEncoder().encode(event),
-                  let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                return nil
-            }
-            return dict
-        }]
-
-        guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return .failed }
-
-        let success = await apiClient.sendEvents(bodyData)
-
-        if success {
-            let eventIds = Set(batch.map(\.event_id))
-            eventStore.removeSent(eventIds: eventIds)
-            EventUploadCoordinator.markResolved(eventIds)
-            retryCount = 0
-            Log.info("Background upload successful: \(batch.count) events")
-
-            // If more events remain, reschedule
-            if pendingCount > batch.count {
-                reschedule()
-            }
-            return .uploaded
-        }
-        if apiClient.lastEventUploadRejectedPermanently {
-            // A permanent 4xx (400 malformed / 401 bad key) fails the same way every time. Kept, this batch —
-            // always the oldest — was sent again by every later run and blocked every event behind it until
-            // the 7-day horizon pruned it. Drop it and count the loss, exactly as the in-process queue does
-            // (`EventQueue`'s permanent-failure branch): each normal event +1, a carried
-            // `_sdk_events_dropped` meta its count. Android `EventUploadWorker`, same rule.
-            var loss = 0
-            for event in batch {
-                if event.event_name == "_sdk_events_dropped" {
-                    loss += (event.properties?["count"]?.value as? Int) ?? 0
-                } else {
-                    loss += 1
+        // Batch after batch — up to `maxBatchesPerRun` — until none is left, a batch fails or one is rejected:
+        // Android `EventUploadWorker`, same rule (it sent up to 50 batches per run where this sent one, so a large
+        // backlog took one scheduled run per 100 events here). Only each batch is read and decoded, never the whole
+        // backlog.
+        var sentAny = false
+        for _ in 0..<Self.maxBatchesPerRun {
+            let batch = eventStore.loadOldest(batchSize)
+            guard !batch.isEmpty else { return sentAny ? .uploaded : .nothingToUpload }
+            let payload: [String: Any] = ["batch": batch.compactMap { event -> [String: Any]? in
+                guard let data = try? JSONEncoder().encode(event),
+                      let dict = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    return nil
                 }
+                return dict
+            }]
+
+            guard let bodyData = try? JSONSerialization.data(withJSONObject: payload) else { return .failed }
+
+            let success = await apiClient.sendEvents(bodyData)
+
+            if success {
+                let eventIds = Set(batch.map(\.event_id))
+                eventStore.removeSent(eventIds: eventIds)
+                EventUploadCoordinator.markResolved(eventIds)
+                retryCount = 0
+                sentAny = true
+                Log.info("Background upload successful: \(batch.count) events")
+                continue
             }
-            if loss > 0 { DroppedEventsCounter.increment(loss) }
-            let eventIds = Set(batch.map(\.event_id))
-            eventStore.removeSent(eventIds: eventIds)
-            EventUploadCoordinator.markResolved(eventIds)
-            retryCount = 0
-            Log.error("Background upload rejected permanently — dropped a batch of \(batch.count) events (loss metric +\(loss))")
-            // The run ends here (one batch per run). A 401 / 403 rejects every batch the same way: uploads pause —
-            // the in-process queue's rule — until the next foreground or `AppDNA.flush()`, and no run is scheduled.
-            // Any other rejection was about this batch: the next run sends the events behind it.
-            if apiClient.lastEventUploadRejectionPausesUploads {
-                UploadPauseGate.pauseFromBackgroundUpload()
-                Log.error("Background upload: the API key was rejected — uploads paused until the next foreground / AppDNA.flush()")
-            } else if pendingCount > batch.count {
+            if apiClient.lastEventUploadRejectedPermanently {
+                // A permanent 4xx (400 malformed / 401 bad key) fails the same way every time. Kept, this batch —
+                // always the oldest — was sent again by every later run and blocked every event behind it until
+                // the 7-day horizon pruned it. Drop it and count the loss, exactly as the in-process queue does
+                // (`EventQueue`'s permanent-failure branch): each normal event +1, a carried
+                // `_sdk_events_dropped` meta its count. Android `EventUploadWorker`, same rule.
+                var loss = 0
+                for event in batch {
+                    if event.event_name == "_sdk_events_dropped" {
+                        loss += (event.properties?["count"]?.value as? Int) ?? 0
+                    } else {
+                        loss += 1
+                    }
+                }
+                if loss > 0 { DroppedEventsCounter.increment(loss) }
+                let eventIds = Set(batch.map(\.event_id))
+                eventStore.removeSent(eventIds: eventIds)
+                EventUploadCoordinator.markResolved(eventIds)
+                retryCount = 0
+                Log.error("Background upload rejected permanently — dropped a batch of \(batch.count) events (loss metric +\(loss))")
+                // The run ends here. A 401 / 403 rejects every batch the same way: uploads pause — the in-process
+                // queue's rule — until the next foreground or `AppDNA.flush()`, and no run is scheduled. Any other
+                // rejection was about this batch: the next run sends the events behind it.
+                if apiClient.lastEventUploadRejectionPausesUploads {
+                    UploadPauseGate.pauseFromBackgroundUpload()
+                    Log.error("Background upload: the API key was rejected — uploads paused until the next foreground / AppDNA.flush()")
+                } else if eventStore.pendingCount > 0 {
+                    reschedule()
+                }
+                return .droppedRejected
+            }
+            retryCount += 1
+            if retryCount < maxRetries {
                 reschedule()
+            } else {
+                retryCount = 0
+                Log.warning("Background upload max retries reached")
             }
-            return .droppedRejected
+            return .failed
         }
-        retryCount += 1
-        if retryCount < maxRetries {
-            reschedule()
-        } else {
-            retryCount = 0
-            Log.warning("Background upload max retries reached")
-        }
-        return .failed
+        // More than one run's worth: the next run takes the rest.
+        if eventStore.pendingCount > 0 { reschedule() }
+        return .uploaded
     }
+
+    /// Batches one background run uploads at most before it schedules another run for the rest (Android
+    /// `EventUploadWorker.MAX_BATCHES_PER_RUN`).
+    static let maxBatchesPerRun = 50
 }
