@@ -41,7 +41,7 @@ internal class SectionRegistry {
             }
         }
 
-        // Unknown section type → empty (AC-066, AC-089)
+        // Unknown section type → empty
         return AnyView(EmptyView())
     }
 

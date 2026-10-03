@@ -25,7 +25,7 @@ struct BannerView: View {
         }
         .background(Color.black.opacity(0.01)) // Tap-through background
         .onAppear {
-            // SPEC-085: Haptic on appear
+            // Haptic on appear
             HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                 isVisible = true
@@ -64,7 +64,7 @@ struct BannerView: View {
                         onCTATap()
                     } label: {
                         HStack(spacing: 4) {
-                            // SPEC-085: CTA icon
+                            // CTA icon
                             if let icon = content.cta_icon {
                                 IconView(ref: icon, size: 12)
                             }

@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-421 — pure/testable logic of the onboarding runtime-permission pipeline. The OS dialog
+/// pure/testable logic of the onboarding runtime-permission pipeline. The OS dialog
 /// itself is not unit-testable; everything around it (key mapping, crash-guard decision,
 /// status→routing, ATT short-circuit) is.
 final class PermissionManagerTests: XCTestCase {
@@ -120,7 +120,7 @@ final class PermissionManagerTests: XCTestCase {
         XCTAssertFalse(PermissionManager.attGrantedWithoutPrompt(major: 17, minor: 2))
     }
 
-    // MARK: - Delegate defaults (SPEC-421)
+    // MARK: - Delegate defaults
 
     func testDelegateDefaultsAreInert() async {
         final class BareDelegate: AppDNAOnboardingDelegate {}
@@ -137,9 +137,9 @@ final class PermissionManagerTests: XCTestCase {
         XCTAssertNotEqual(PermissionHandling.handledByHost(granted: true), .handledByHost(granted: false))
     }
 
-    // MARK: - SPEC-421 console-shape decode (permission_type at step-content TOP LEVEL)
+    // MARK: - console-shape decode (permission_type at step-content TOP LEVEL)
 
-    /// Regression for the SPEC-421 contract bug: the console serializer writes
+    /// Regression for the contract bug: the console serializer writes
     /// `permission_type` / `show_settings_fallback_on_denied` / `settings_fallback_label`
     /// as SIBLINGS of `content_blocks` at the step-content top level (`step.layout = stepConfig`),
     /// NOT inside the inner `layout` sub-map. The SDK previously read them from the inner map →

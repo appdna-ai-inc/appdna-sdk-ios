@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-448 §"The selected item" — what the user actually picked, addressable as
+/// §"The selected item" — what the user actually picked, addressable as
 /// `{{selected.<field_id>.description}}` on a later screen.
 ///
 /// 🔴 This is deliberately NOT stored in `responses`, and that is an acceptance criterion rather

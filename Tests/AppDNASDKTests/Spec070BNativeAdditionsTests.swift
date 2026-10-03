@@ -1,8 +1,8 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B PN — the native additions, each asserted against the behavior it exists to produce.
-/// Every test here was checked to go RED with its fix reverted (AC-33: no gate ships unfalsified).
+/// PN — the native additions, each asserted against the behavior it exists to produce.
+/// Every test here was checked to go RED with its fix reverted (no gate ships unfalsified).
 final class Spec070BNativeAdditionsTests: XCTestCase {
 
     override func setUp() {

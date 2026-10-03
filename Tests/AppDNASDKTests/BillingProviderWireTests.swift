@@ -1,11 +1,11 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B B5 — `BillingProvider` wire format.
+/// `BillingProvider` wire format.
 ///
 /// THE BUG: iOS's `BillingProvider` wasn't `Codable` and had no wire form at all, so the one case
 /// that carries data — `.adapty(apiKey:)` — could not cross a wrapper channel: the key had nowhere
-/// to go. Android has carried `fromWire` / `toWire` since SPEC-070-B PN
+/// to go. Android has carried `fromWire` / `toWire` for a long time
 /// (`Configuration.kt:71` / `:95`). The shared fixture
 /// `dto_parsing/billing_provider_adapty_tagged_map` claims `ios` and asserts a LOSSLESS round-trip.
 ///

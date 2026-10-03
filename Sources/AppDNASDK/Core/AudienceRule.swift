@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Audience targeting models for SPEC-089c (SDUI engine prerequisite)
+// MARK: - Audience targeting models (SDUI engine prerequisite)
 
 public struct AudienceRule: Codable {
     /// The user-trait key. The console emits `field`; older payloads emit `trait`. Both decode here —
@@ -141,7 +141,7 @@ internal enum AudienceRuleEvaluator {
             guard let t = asDouble(traitValue) else { return false }
             var lower = asDouble(rule.min?.value)
             var upper = asDouble(rule.max?.value)
-            // Round-31 — bounds may also arrive as a 2-element `value` list (matches Android
+            // Bounds may also arrive as a 2-element `value` list (matches Android
             // `betweenBounds`). Without this iOS ignored `{between, value:[18,65]}` entirely and
             // returned false where Android matched. min/max keys win when present.
             if lower == nil && upper == nil, let list = rule.value?.value as? [Any], list.count >= 2 {

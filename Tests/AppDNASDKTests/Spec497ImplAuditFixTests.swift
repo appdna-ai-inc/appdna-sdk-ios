@@ -372,7 +372,7 @@ final class Spec497QueueFixTests: XCTestCase {
                         properties: properties, isSubscription: false)
     }
 
-    // M6 — Q5 through the observer: a revoked update removes its queue entry, emits nothing, is finished.
+    // Q5 through the observer: a revoked update removes its queue entry, emits nothing, is finished.
     func testRevokedUpdateThroughTheObserverRemovesTheQueueEntry() async {
         let w = World()
         let q = PurchaseDeliveryQueue(environment: w.env())
@@ -402,7 +402,7 @@ final class Spec497QueueFixTests: XCTestCase {
         XCTAssertEqual(finished.value, ["rv1", "rv2"], "never finished under .providerOwned")
     }
 
-    // M6 — same-product `beginPurchase` / `waitForPurchaseToEnd`, at the queue and through the observer.
+    // Same-product `beginPurchase` / `waitForPurchaseToEnd`, at the queue and through the observer.
     func testSameProductPurchaseInFlightHoldsTheObserverUntilTheLastOneEnds() async throws {
         let w = World()
         let q = PurchaseDeliveryQueue(environment: w.env())

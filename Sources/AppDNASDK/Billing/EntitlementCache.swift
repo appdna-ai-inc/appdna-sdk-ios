@@ -3,7 +3,7 @@ import FirebaseFirestore
 
 /// Caches entitlements locally and listens to Firestore for real-time updates.
 class EntitlementCache {
-    // Round-10 #10 — the Firestore snapshot callback and StoreKit `update()` mutate this cache from
+    // The Firestore snapshot callback and StoreKit `update()` mutate this cache from
     // different threads; the old in-place mutation of `entitlements` + append-while-iterating over
     // `changeHandlers` raced. All access to the two mutable stores now goes through `lock`. Handlers are
     // ALWAYS invoked OUTSIDE the lock (snapshot under lock, call out after) so a host callback that
@@ -24,7 +24,7 @@ class EntitlementCache {
 
     private let userDefaultsKey = "com.appdna.entitlements"
 
-    // Round-10 #11 — remove the Firestore snapshot listener when the cache is deallocated (e.g. on
+    // Remove the Firestore snapshot listener when the cache is deallocated (e.g. on
     // re-configure), mirroring the sibling WebEntitlementManager's teardown. Without this the old
     // listener leaked on every re-create.
     deinit {

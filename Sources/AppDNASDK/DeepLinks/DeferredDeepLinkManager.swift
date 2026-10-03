@@ -95,7 +95,7 @@ final class DeferredDeepLinkManager {
                 "visitor_id": visitorId,
             ])
 
-            // SPEC-089c: Auto-show server-driven screen from deep link (AC-077)
+            // Auto-show server-driven screen from deep link
             if let screenId = data["screen_id"] as? String, !screenId.isEmpty {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     AppDNA.showScreen(screenId)

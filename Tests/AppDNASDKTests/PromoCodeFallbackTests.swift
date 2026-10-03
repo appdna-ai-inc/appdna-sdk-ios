@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- SPEC-070-B AC-30(b) — *"a paywall with NO delegate REJECTS a non-blank promo code — on both
+ *"a paywall with NO delegate REJECTS a non-blank promo code — on both
  platforms."*
 
  🔴 The bug this guards is a REVENUE path. A paywall presented with no `AppDNAPaywallDelegate` ran

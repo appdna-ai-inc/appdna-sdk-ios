@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-070-B — the decision seam for a `permission` CTA.
+/// The decision seam for a `permission` CTA.
 ///
 /// WHY THIS FILE EXISTS (and what it FIXES on iOS):
 ///

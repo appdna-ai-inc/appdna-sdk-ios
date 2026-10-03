@@ -49,7 +49,7 @@ final class IdentityManager {
 
     /// Link anonymous user to a known user.
     ///
-    /// Round-11 Finding 1 — traits behavior on a nil `traits` argument now matches Android AND is
+    /// Traits behavior on a nil `traits` argument now matches Android AND is
     /// internally consistent (in-memory + keychain agree): clear traits ONLY when the user actually
     /// CHANGES (an account switch — the prior user's traits don't apply to the new one); retain them on a
     /// same-user re-identify (the common per-launch call). The old iOS code wiped in-memory traits on

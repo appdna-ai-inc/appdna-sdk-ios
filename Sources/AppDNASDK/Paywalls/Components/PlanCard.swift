@@ -8,7 +8,7 @@ struct PlanCard: View {
     let onSelect: () -> Void
     var planIndex: Int = 0
     var loc: ((String, String) -> String)? = nil
-    /// SPEC-084: Per-section style with element overrides.
+    /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
     /// Gap 11: Card/badge styling from section data.
     var cardStyle: PlanCardStyle = PlanCardStyle()
@@ -144,7 +144,7 @@ struct PlanCard: View {
                         priceBlockView
 
                         if let trial = plan.trialLabel {
-                            // Round-30 — render `trialLabel` verbatim; the " free trial"
+                            // Render `trialLabel` verbatim; the " free trial"
                             // suffix for duration-only trials now lives in the computed
                             // property (PaywallConfig.swift) so every layout + Android match.
                             if let ts = trialTextStyle {
@@ -219,7 +219,7 @@ struct PlanCard: View {
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .fill({
-                        // SPEC-419 — default the UNSELECTED card to a subtle translucent overlay
+                        // Default the UNSELECTED card to a subtle translucent overlay
                         // (matches Android PaywallActivity `Color.White.copy(alpha = 0.1f)`), NOT
                         // `Color(.systemBackground)`. systemBackground resolves to solid WHITE under a
                         // light color scheme, so on a dark paywall the unselected card was a glaring
@@ -281,7 +281,7 @@ struct PlanCard: View {
         .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 
-    // MARK: - Price block (SPEC-438 #548)
+    // MARK: - Price block
 
     private var strikeGap: CGFloat { cardStyle.strikethroughGap ?? 4 }
     private var strikeColor: Color { Color(hex: cardStyle.strikethroughColor ?? "#9CA3AF") }
@@ -352,7 +352,7 @@ struct PlanCard: View {
         }
     }
 
-    /// SPEC-438 (#544) — the subtitle renders as a coloured pill when the product
+    /// The subtitle renders as a coloured pill when the product
     /// authored one, and as plain text otherwise. The pill hugs its text rather than
     /// filling the row, which is what makes it read as a badge instead of a banner.
     // MARK: - Subtitle helper
@@ -408,7 +408,7 @@ struct PlanCard: View {
 
     // MARK: - Badge helpers
 
-    // Round-21 F2 — the console writes HYPHENATED positions ("top-left"/"top-right"/"top-center"), but
+    // The console writes HYPHENATED positions ("top-left"/"top-right"/"top-center"), but
     // the switch matched only UNDERSCORED constants, so every authored value hit the default. Normalize
     // hyphen→underscore. Also: the default was `.topLeading` while the nil-fallback is "top_right"
     // (`.topTrailing`) and Android's `else` is TopEnd (top-right) — so an authored "top-right" landed on
@@ -533,11 +533,11 @@ struct PlanCardStyle {
     var showDivider: Bool = false        // Divider line between price and features
     var dividerColor: String? = nil
     var strikethroughColor: String? = nil  // Color of struck-through original_price_display
-    // SPEC-438 (#548) — size of the struck price and its gap to the current price were
+    // Size of the struck price and its gap to the current price were
     // hardcoded, so authors could set the colour but nothing else.
     var strikethroughFontSize: CGFloat? = nil
     var strikethroughGap: CGFloat? = nil
-    // SPEC-438 (#548) — "inline" (default, unchanged) or "headline_stacked".
+    // "inline" (default, unchanged) or "headline_stacked".
     var priceLayout: String? = nil
     // Show flags
     var showIcon: Bool = false

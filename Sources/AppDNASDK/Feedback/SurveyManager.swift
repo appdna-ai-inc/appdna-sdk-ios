@@ -6,7 +6,7 @@ final class SurveyManager {
     private let remoteConfigManager: RemoteConfigManager
     private let eventTracker: EventTracker
     private let apiClient: APIClient?
-    /// SPEC-036-F §1.2 — consulted per-survey (inside the present path) for a
+    /// Consulted per-survey (inside the present path) for a
     /// running survey experiment targeting the survey being shown.
     private let experimentManager: ExperimentManager?
     private let frequencyTracker = SurveyFrequencyTracker()
@@ -45,7 +45,7 @@ final class SurveyManager {
     func onEvent(eventName: String, properties: [String: Any]?) {
         guard !isPresenting else { return }
 
-        // Round-31 — iterate in ASCENDING surveyId order for a DETERMINISTIC winner when
+        // Iterate in ASCENDING surveyId order for a DETERMINISTIC winner when
         // multiple surveys match one event. `surveyConfigs` is an unordered Dictionary, so the
         // plain `for-in ... break` picked a hash-order survey that varied run-to-run AND diverged
         // from Android. SurveyConfig has no priority field, so id-asc is the tie-break — the same
@@ -98,7 +98,7 @@ final class SurveyManager {
     private func presentSurvey(surveyId: String, config activeConfig: SurveyConfig, triggerEvent: String) {
         guard !isPresenting else { return }
 
-        // SPEC-404 — pause new survey presentation while the SDK is
+        // Pause new survey presentation while the SDK is
         // backend-locked (per-key suspended day 20+ OR org cancelled). No
         // analytics event, no delegate fire.
         if AppDNA.runtimeLock != nil {
@@ -106,12 +106,12 @@ final class SurveyManager {
             return
         }
 
-        // SPEC-036-F §1.2 — experiment-aware presentation, attached inside the
+        // Experiment-aware presentation, attached inside the
         // present path (surveys are event-auto-triggered, not host present()).
         // A running survey experiment targeting this survey + a treatment
         // bucket renders the treatment payload; control / none / old-doc →
-        // active (cohort isolation §1.3).
-        // Round-13 F2 — resolveSurfacePresentation records an experiment_exposure as a side effect, so it
+        // active (cohort isolation).
+        // resolveSurfacePresentation records an experiment_exposure as a side effect, so it
         // MUST run AFTER every synchronous suppression gate (isPresenting above + runtimeLock here): a
         // survey that is never shown must never count as exposed. Was above the runtimeLock guard, so a
         // runtime-locked (suspended/cancelled) org recorded exposures for surveys it never displayed.
@@ -132,7 +132,7 @@ final class SurveyManager {
             "trigger_event": triggerEvent,
         ])
 
-        // SPEC-400 — fire onSurveyPresented to the host's registered
+        // Fire onSurveyPresented to the host's registered
         // survey delegate. Read fresh on every callback; no init-time
         // capture. Default extension (empty no-op) means hosts that
         // don't implement this method are unaffected.
@@ -157,7 +157,7 @@ final class SurveyManager {
                 self.trackSurveyCompleted(surveyId: surveyId, config: config, answers: answers)
                 self.submitResponse(surveyId: surveyId, config: config, answers: answers)
                 self.executeFollowUpAction(surveyId: surveyId, config: config, answers: answers)
-                // SPEC-400 — fire onSurveyCompleted with the responses
+                // Fire onSurveyCompleted with the responses
                 // mapped to the public `[SurveyResponse]` shape.
                 let responses = answers.map { SurveyResponse(questionId: $0.question_id, answer: $0.answer) }
                 DispatchQueue.main.async {
@@ -170,7 +170,7 @@ final class SurveyManager {
                     "survey_id": surveyId,
                     "questions_answered": answeredCount,
                 ])
-                // SPEC-400 — fire onSurveyDismissed.
+                // Fire onSurveyDismissed.
                 DispatchQueue.main.async {
                     AppDNA.surveys.delegate?.onSurveyDismissed(surveyId: surveyId)
                 }

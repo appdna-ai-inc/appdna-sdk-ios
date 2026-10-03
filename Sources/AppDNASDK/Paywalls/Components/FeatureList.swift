@@ -7,7 +7,7 @@ struct FeatureList: View {
     var richItems: [PaywallGenericItem]? = nil
     var columns: Int = 1
     var gap: CGFloat = 12
-    /// SPEC-084: Per-section style with element overrides.
+    /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
     /// Direct icon color override from section.data.icon_color — takes priority
     /// over sectionStyle.elements["icon"].textStyle.color. Exposed in the console

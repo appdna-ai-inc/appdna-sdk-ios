@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-428 — event-pipeline behavioral fixtures (`packages/sdk-shared-fixtures/events/*.fixture.json`).
+/// Event-pipeline behavioral fixtures (`packages/sdk-shared-fixtures/events/*.fixture.json`).
 ///
 /// The event pipeline (EventStore eviction, ClientSeqCounter monotonicity, DroppedEventsCounter,
 /// event_id-stable redelivery) is NATIVE-owned per ADR-001, so iOS + Android assert these fixtures in
@@ -189,7 +189,7 @@ final class EventPipelineFixtureTests: XCTestCase {
         resetCounters()
     }
 
-    // MARK: - Pre-init client_seq carry (SPEC-428 STEP-9/§4.E) + persistence (D6)
+    // MARK: - Pre-init client_seq carry + persistence (D6)
 
     /// A pre-init event STAMPS its client_seq at facade track() time and carries it through the drain,
     /// used VERBATIM. This proves the configure-window inversion is fixed: even though the pre-init event
@@ -210,7 +210,7 @@ final class EventPipelineFixtureTests: XCTestCase {
         resetCounters()
     }
 
-    /// D6 — client_seq is persistence-backed: it advances monotonically across independent reads.
+    /// client_seq is persistence-backed: it advances monotonically across independent reads.
     func testClientSeqPersistsAcrossReads() {
         resetCounters()
         let a = ClientSeqCounter.next(), b = ClientSeqCounter.next()
@@ -233,7 +233,7 @@ final class EventPipelineFixtureTests: XCTestCase {
         resetCounters()
     }
 
-    /// R14 / §6 — concurrent next() from many threads must NEVER hand out a duplicate client_seq.
+    /// Concurrent next() from many threads must NEVER hand out a duplicate client_seq.
     func testClientSeqConcurrentEmitUnique() {
         resetCounters()
         let count = 800

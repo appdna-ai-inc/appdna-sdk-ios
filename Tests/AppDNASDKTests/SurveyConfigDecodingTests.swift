@@ -489,7 +489,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertNil(question.emoji_config?.emojis)
     }
 
-    // MARK: - Question with image_url (SPEC-085)
+    // MARK: - Question with image_url
 
     func testDecodeQuestionWithImageUrl() throws {
         let json = """
@@ -741,7 +741,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(appearance.show_progress, true)
         XCTAssertEqual(appearance.corner_radius, 20)
 
-        // Theme — SPEC-205: legacy flat theme now decodes through `ThemeSet<SurveyTheme>`;
+        // Theme: legacy flat theme now decodes through `ThemeSet<SurveyTheme>`;
         // the flat payload is stored as the `light` variant with no `dark`.
         XCTAssertNotNil(appearance.theme)
         XCTAssertEqual(appearance.theme?.light.background_color, "#FAFAFA")
@@ -751,7 +751,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(appearance.theme?.light.font_family, "Helvetica Neue")
         XCTAssertNil(appearance.theme?.dark)
 
-        // SPEC-084: Style engine
+        // Style engine
         XCTAssertNotNil(appearance.question_text_style)
         XCTAssertEqual(appearance.question_text_style?.font_family, "Georgia")
         XCTAssertEqual(appearance.question_text_style?.font_size, 18.0)
@@ -800,7 +800,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         }
     }
 
-    // MARK: - Appearance: Rich media (SPEC-085)
+    // MARK: - Appearance: Rich media
 
     func testDecodeThemeWithRichMedia() throws {
         let json = """
@@ -871,7 +871,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertNil(theme.haptic?.triggers?.on_plan_select)
         XCTAssertNil(theme.haptic?.triggers?.on_toggle)
 
-        // SPEC-088: Thank-you text
+        // Thank-you text
         XCTAssertEqual(theme.thank_you_text, "Thanks, {{user_name}}! Your feedback means a lot.")
     }
 

@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-419 STEP-2 — pure seams of the element-interaction wiring: the delegate fire-fold, the required-field
+/// Pure seams of the element-interaction wiring: the delegate fire-fold, the required-field
 /// advance gate, and the per-block field_config override read-layer. No SwiftUI host needed.
 final class ElementInteractionWiringTests: XCTestCase {
 

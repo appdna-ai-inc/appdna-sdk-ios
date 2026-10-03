@@ -2,7 +2,7 @@ import SwiftUI
 import GoogleMaps
 
 /**
- SPEC-495 §A tier 2 — a REAL, pannable, zoomable map, drawn by the bundled Google Maps SDK.
+ Tier 2 — a REAL, pannable, zoomable map, drawn by the bundled Google Maps SDK.
 
  This is the tier #671 asked for. Before it, `map_interactive: true` on a Flutter or React Native
  host silently produced a still image, because the only interactive path went through
@@ -15,7 +15,7 @@ import GoogleMaps
  at build time, so a server-delivered key cannot reach it and a host must add a `<meta-data>` line.
  iOS has `GMSServices.provideAPIKey(_:)` — a RUNTIME setter — so the key that arrives in the
  bootstrap payload is enough, and a Flutter host gets a pannable map with no wiring at all. That is
- the promise SPEC-495 §D4 made; it holds here and is corrected there for Android.
+ the promise made; it holds here and is corrected there for Android.
  */
 enum GoogleMapsBootstrap {
     private static var provided = false
@@ -167,7 +167,7 @@ struct GoogleInteractiveMap: UIViewRepresentable {
 
         // 🔴 NEVER true. `isMyLocationEnabled` makes the Maps SDK request a location fix, and on a
         // host that already holds the permission it starts one silently. An onboarding map must not
-        // turn the user's first run into a location prompt they did not ask for (SPEC-495 §D3).
+        // turn the user's first run into a location prompt they did not ask for.
         mapView.isMyLocationEnabled = false
 
         // The authored gate. `map_interactive` is what the console's "Pan & zoom" switch sets, and

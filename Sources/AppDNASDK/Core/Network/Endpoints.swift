@@ -11,14 +11,14 @@ enum Endpoint {
     /// `GET /billing/entitlements?app_user_id=` — the server's entitlements for one identified user.
     case getEntitlements(appUserId: String)
     case signOffer(body: [String: Any])
-    // Push endpoints (SPEC-030)
+    // Push endpoints
     case registerPushToken(body: [String: Any])
     case deactivatePushToken(body: [String: Any])
     case pushDelivered(body: [String: Any])
     case pushTapped(body: [String: Any])
-    // Geocoding (SPEC-089)
+    // Geocoding
     case geocodeAutocomplete
-    // SPEC-448 — a page of an Option Set, or a search within it.
+    // A page of an Option Set, or a search within it.
     case optionSet(id: String, cursor: String?, query: String?)
 
     var path: String {

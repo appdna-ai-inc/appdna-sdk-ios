@@ -4,7 +4,7 @@ import SwiftUI
 struct SocialProof: View {
     let data: PaywallSectionData?
     var loc: ((String, String) -> String)? = nil
-    /// SPEC-084: Per-section style with element overrides.
+    /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
 
     private var valueTextStyle: TextStyleConfig? {
@@ -57,7 +57,7 @@ struct SocialProof: View {
     }
 
     private func formatCount(_ count: Int) -> String {
-        // Round-27 — match Android formatCompactCount exactly: an M tier + suppress the tenths digit
+        // Match Android formatCompactCount exactly: an M tier + suppress the tenths digit
         // when it's 0 or the whole is >= 10. iOS was naive (no M tier, always a decimal), so 1,000,000
         // rendered "1000.0K" (vs "1M") and 12,450 rendered "12.4K" (vs "12K") on the paywall's
         // social-proof review count — a user-visible conversion surface.

@@ -1,17 +1,17 @@
 import SwiftUI
 
-// MARK: - SPEC-419 STEP-2 — interactive EPIC-11 elements
+// MARK: - interactive elements
 //
 // These were static renders in ContentBlockRendererView; STEP-2 makes them gesture-driven with local
 // optimistic @State that works regardless of the delegate. Each writes `inputValues[field_id ?? id]` and
 // fires `onInteract(blockId, action, value)` at its pinned trigger so the host delegate can push backend
 // state (field_config overrides / advance) back into the live step. REUSES existing field_config keys.
 
-/// SPEC-419 STEP-2 — fold host-pushed per-block `field_config` overrides onto a block at READ TIME.
+/// Fold host-pushed per-block `field_config` overrides onto a block at READ TIME.
 /// ContentBlock is immutable, so we JSON round-trip a mutable copy (mirrors `resolveBlockBindings`), overlay
 /// `overrides[block.id]` key-by-key (override wins), and decode back. Empty/absent overrides → the block is
 /// returned unchanged. Applied UNCONDITIONALLY at the render call site (not inside resolveBlockBindings,
-/// which early-returns raw blocks that have no bindings — i.e. every EPIC-11 element).
+/// which early-returns raw blocks that have no bindings — i.e. every element).
 func resolvedFieldConfig(_ block: ContentBlock, _ overrides: [String: [String: Any]]) -> ContentBlock {
     guard let patch = overrides[block.id], !patch.isEmpty else { return block }
     guard let data = try? JSONEncoder().encode(block),
@@ -50,7 +50,7 @@ func resolvedFieldOptions(_ block: ContentBlock, _ overrides: [String: [InputOpt
 
 // MARK: - OTP / code input
 
-/// EPIC-11 — OTP boxes backed by a hidden numeric TextField. Tapping focuses the field; on reaching
+/// OTP boxes backed by a hidden numeric TextField. Tapping focuses the field; on reaching
 /// `otp_length` digits it writes `inputValues[fid]` and fires `("otp_entered", code)`.
 struct OTPInputBlockView: View {
     let block: ContentBlock
@@ -129,7 +129,7 @@ struct OTPInputBlockView: View {
 
 // MARK: - Press-and-hold to confirm
 
-/// EPIC-11 — a pill that fills left→right while held. A `DragGesture(minimumDistance: 0)` starts a hold
+/// A pill that fills left→right while held. A `DragGesture(minimumDistance: 0)` starts a hold
 /// timer; on full hold it writes `inputValues[fid] = true` and fires `("confirmed", nil)`. Releasing early
 /// rewinds. `hold_progress` seeds the initial (static preview) fill.
 struct PressHoldConfirmBlockView: View {
@@ -228,7 +228,7 @@ struct PressHoldConfirmBlockView: View {
 
 // MARK: - Memory / pair-match grid
 
-/// EPIC-11 — tap flips a face-down card; two face-up cards resolve to match (stay up, fire `("pair_matched",
+/// Tap flips a face-down card; two face-up cards resolve to match (stay up, fire `("pair_matched",
 /// symbol)`) or mismatch (flip back). When all cards are matched it fires `("completed", nil)`. Initial card
 /// `state`s seed the grid (preview parity).
 struct MemoryMatchBlockView: View {

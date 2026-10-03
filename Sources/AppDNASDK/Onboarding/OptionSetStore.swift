@@ -17,7 +17,7 @@ private struct OptionSetEnvelope: Decodable {
     let data: OptionSetPage
 }
 
-/// SPEC-448 §A/§C — the device side of a dynamic option list.
+/// The device side of a dynamic option list.
 ///
 /// 🔴 The rule this exists to satisfy is "**never looks like it is fetching**". A Select bound to a
 /// set must render instantly with whatever it already has, and improve quietly. So the fallback

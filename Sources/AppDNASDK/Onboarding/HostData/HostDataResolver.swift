@@ -1,13 +1,13 @@
 import Foundation
 
-// SPEC-496 §A1–§A6, §B0 — the RAW host-data pass, iOS.
+// The RAW host-data pass, iOS.
 //
 // A LINE-FOR-LINE PORT of the console's reference resolver `src/lib/onboarding/host-data-resolve.ts`:
 // same rules, same order, same unresolved-token behaviour. The shared `resolve_block` fixtures run
 // through this file on iOS, through `host-data-resolve.ts` on the console and through
 // `HostDataResolver.kt` on Android, so the three cannot drift. When one changes, all three change.
 //
-// The pass, in order (§A4):
+// The pass, in order:
 //
 //   deep copy + id stamping → skip rule → bindings (every block depth; allowlist by generated key
 //   class) → strip authored markers → repeat expansion (top-level `input_select` only) → ONE
@@ -18,7 +18,7 @@ import Foundation
 //
 // Unlike the console, a token whose root is NOT a block root (`device`, `computed`, `remote_config`,
 // `input`, bare names) is resolved per token through TemplateEngine's existing variable resolver
-// (§A5) — `loc()` is lookup-only for raw-resolved blocks, so nothing else would resolve it.
+// `loc()` is lookup-only for raw-resolved blocks, so nothing else would resolve it.
 //
 // Key classes come from the GENERATED `BlockKeyTypes` (scripts/check-template-reach.ts) — never a
 // hand-kept list.
@@ -27,7 +27,7 @@ import Foundation
 
 /// Everything one resolve reads. Roots are JSON (`HostJSON`) so the pass never guesses a type.
 struct HostDataContext {
-    /// Step id + top-level index drive id stamping (§A1 "Stable ids").
+    /// Step id + top-level index drive id stamping ("Stable ids").
     var stepId: String = "fixture_step"
     var blockIndex: Int = 0
     var hookData: HostJSON? = nil
@@ -38,10 +38,10 @@ struct HostDataContext {
     var session: HostJSON? = nil
     /// `SelectedOptionStore` snapshot (`{{selected.<field_id>.label}}`).
     var selected: HostJSON? = nil
-    /// §B0 "Host data pending".
+    /// "Host data pending".
     var pending: Bool = false
     var localizations: [String: [String: String]]? = nil
-    /// §A5 — TemplateEngine's per-token resolver for non-block roots: `(path, fallback) -> String`.
+    /// TemplateEngine's per-token resolver for non-block roots: `(path, fallback) -> String`.
     /// Nil keeps the token as authored (what the console does).
     var legacyResolve: ((_ path: String, _ fallback: String?) -> String)? = nil
 }
@@ -51,10 +51,10 @@ struct HostDataResolveResult {
     var block: HostJSON
     /// This block's (and descendants') `block.<id>.*` entries after the pass. Nil without localizations.
     var localizations: [String: [String: String]]?
-    /// True when the §A1 skip rule applied (the block is the stamped raw block, untouched).
+    /// True when the skip rule applied (the block is the stamped raw block, untouched).
     var skipped: Bool
     var log: [String]
-    /// iOS-only extras for the §A1 per-key decode revert: the block after bindings + marker strip +
+    /// iOS-only extras for the per-key decode revert: the block after bindings + marker strip +
     /// expansion (BEFORE the structural pass), the stamped authored block, and the top-level keys a
     /// binding wrote (those revert to their AUTHORED value).
     var postExpansion: HostJSON
@@ -130,13 +130,13 @@ struct HDIdentityMap<V> {
 
 enum HostDataResolver {
 
-    // §A2 — the roots the block resolver owns. `item` / `index` exist only inside a repeat template.
+    // The roots the block resolver owns. `item` / `index` exist only inside a repeat template.
     static let blockRoots: Set<String> = ["responses", "hook_data", "step", "selected", "user", "session", "item", "index"]
     static let excluded: Set<String> = BlockKeyTypes.excludedKeys
     static let markers: Set<String> = BlockKeyTypes.internalMarkers
-    /// §A4 — the only key classes a `bindings` entry may target.
+    /// The only key classes a `bindings` entry may target.
     static let bindableClasses: Set<String> = ["string", "number", "bool", "string_list"]
-    /// Option-bearing inputs (§B0 "Select").
+    /// Option-bearing inputs ("Select").
     static let optionBearingTypes: Set<String> = ["input_select", "input_chips", "input_segmented"]
     /// Keys whose array elements are content blocks.
     static let blockListKeys: [String] = ["children", "stack_children"]
@@ -179,7 +179,7 @@ enum HostDataResolver {
         }
     }
 
-    /// §A1 "Stringification" — strings as-is; `true`/`false`; integral numbers below 2^53 without a
+    /// "Stringification" — strings as-is; `true`/`false`; integral numbers below 2^53 without a
     /// decimal part; every other number in plain decimal notation (never exponent form) with at most
     /// 15 significant digits and trailing zeros trimmed. `null`, objects, arrays → nil (= unresolved).
     static func stringify(_ v: HDVal?) -> String? {
@@ -246,7 +246,7 @@ enum HostDataResolver {
         )
     }()
 
-    /// §A6 — a template-resolved URL must be an absolute `https` URL (pinned, all three implementations).
+    /// A template-resolved URL must be an absolute `https` URL (pinned, all three implementations).
     static func isValidTemplatedUrl(_ s: String) -> Bool {
         let ns = s as NSString
         return urlRegex.firstMatch(in: s, range: NSRange(location: 0, length: ns.length)) != nil
@@ -255,7 +255,7 @@ enum HostDataResolver {
     private static let pathSafe = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$&'()*+,;=:@".unicodeScalars)
     private static let querySafe = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~!$'()*,;:@/?".unicodeScalars)
 
-    /// §A6 — percent-encode a value substituted INSIDE a longer URL (UTF-8, upper-case hex).
+    /// Percent-encode a value substituted INSIDE a longer URL (UTF-8, upper-case hex).
     static func percentEncode(_ value: String, query: Bool) -> String {
         let safe = query ? querySafe : pathSafe
         var out = ""
@@ -284,7 +284,7 @@ enum HostDataResolver {
         return Scope(roots: roots, item: nil)
     }
 
-    /// §A2 — any depth, numeric array index, miss → nil. Two or more segments are required except
+    /// Any depth, numeric array index, miss → nil. Two or more segments are required except
     /// for exactly `item` and `index`.
     static func resolveScopePath(_ path: String, _ scope: Scope) -> HDVal? {
         let parts = path.components(separatedBy: ".")
@@ -341,7 +341,7 @@ enum HostDataResolver {
             last = t.index + t.length
             if deferStep && t.root == "step" { out += t.raw; res.deferredStep = true; continue }
             if !blockRoots.contains(t.root) {
-                // §A5 — TemplateEngine roots, per token, same semantics as today.
+                // TemplateEngine roots, per token, same semantics as today.
                 out += legacy?(t.path, t.fallback) ?? t.raw
                 continue
             }
@@ -381,7 +381,7 @@ enum HostDataResolver {
         }
     }
 
-    /// §A1 "Stable ids" — stamp every id-less block at any depth with `<stepId>/<index path>`.
+    /// "Stable ids" — stamp every id-less block at any depth with `<stepId>/<index path>`.
     static func stampBlockIds(_ raw: HostJSON, stepId: String, blockIndex: Int) -> HostJSON {
         let copy = HDVal(raw)
         guard let root = copy.obj else { return raw }
@@ -431,7 +431,7 @@ enum HostDataResolver {
         }
     }
 
-    /// §A1 "Skip rule (the only one)".
+    /// "Skip rule (the only one)".
     static func blockSkipsRawPass(_ stamped: HDObj, _ localizations: [String: [String: String]]?) -> Bool {
         if containsSkipMarker(.obj(stamped)) { return false }
         let ids = blockIndexOf(stamped).map(\.id)
@@ -468,7 +468,7 @@ enum HostDataResolver {
         }
     }
 
-    // MARK: Pending / hook_data reference analysis (§B0)
+    // MARK: Pending / hook_data reference analysis
 
     static func hasRootToken(_ s: String?, _ root: String, requireNoFallback: Bool = false) -> Bool {
         guard let s else { return false }
@@ -477,7 +477,7 @@ enum HostDataResolver {
 
     static func firstSegment(_ s: String) -> String { s.components(separatedBy: ".").first ?? "" }
 
-    /// §B0 "resolve_state: pending" — can a `hook_data` reference change WHICH options exist or their
+    /// "resolve_state: pending" — can a `hook_data` reference change WHICH options exist or their
     /// STORED ANSWER? Media-only references never count.
     static func optionsDependOnHookData(_ block: HDObj) -> Bool {
         guard let type = block.d["type"]?.str, optionBearingTypes.contains(type) else { return false }
@@ -492,7 +492,7 @@ enum HostDataResolver {
         return false
     }
 
-    /// §B0 "Applies" — does this step's raw content reference `hook_data` at all?
+    /// "Applies" — does this step's raw content reference `hook_data` at all?
     static func stepReferencesHookData(_ blocks: [HostJSON], localizations: [String: [String: String]]?) -> Bool {
         func scan(_ v: HostJSON, _ key: String?) -> Bool {
             switch v {
@@ -520,7 +520,7 @@ enum HostDataResolver {
         return false
     }
 
-    /// SPEC-496 §5b C3 "cached" — the TOP-LEVEL `hook_data` keys the step references: the first path
+    /// "cached" — the TOP-LEVEL `hook_data` keys the step references: the first path
     /// segment after `hook_data` of every reference `stepReferencesHookData` counts (tokens,
     /// `data_templates`, `repeat.source`, `hook_data` bindings, `block.<id>.*` localizations). A bare
     /// `hook_data` reference (no key) is recorded as `"*"`, which any key satisfies.
@@ -702,9 +702,9 @@ enum HostDataResolver {
         return (results, localizations)
     }
 
-    /// §A4 — an `ElementInteractionResult.fieldConfigPatches` entry, resolved by the SAME structural
+    /// An `ElementInteractionResult.fieldConfigPatches` entry, resolved by the SAME structural
     /// walker as a block's own `field_config`: the patch is walked as the `field_config` of a block of
-    /// `blockType`, so the §A6 URL rule (`*_url` keys and `gallery_images` elements that are unresolved
+    /// `blockType`, so the URL rule (`*_url` keys and `gallery_images` elements that are unresolved
     /// or not absolute https are removed), the excluded keys, the generated `field_config` key classes
     /// (a `data_templates` entry on a non-string key is ignored) and the summary-stat placeholder
     /// rules all apply exactly as they do to authored content. A key the URL rule removed is ABSENT
@@ -770,7 +770,7 @@ private final class RawPass {
 
     func boundKeys(of o: HDObj) -> Set<String> { bound[o] ?? [] }
 
-    // MARK: Bindings (§A4)
+    // MARK: Bindings
 
     func applyBindings(_ block: HDObj, _ scope: H.Scope, _ inSheet: Bool) {
         guard let bindings = block.d["bindings"]?.obj else { return }
@@ -834,8 +834,8 @@ private final class RawPass {
         return copy
     }
 
-    /// §B0 "Sheet ids" — deferred `step` paths inside a sheet block's options are recorded as
-    /// `field_options.<i>.…` while walking, i.e. BEFORE the §A3 hide rule / dedupe settle the list.
+    /// "Sheet ids" — deferred `step` paths inside a sheet block's options are recorded as
+    /// `field_options.<i>.…` while walking, i.e. BEFORE the hide rule / dedupe settle the list.
     /// Re-point each to its option's settled index (options matched by identity); an option that was
     /// removed takes its paths with it. Mirrors the TS `remapOptionSheetPaths`.
     private func remapOptionSheetPaths(_ block: HDObj, _ before: [HDVal]) {
@@ -867,7 +867,7 @@ private final class RawPass {
         sheetPaths[block] = list
     }
 
-    // MARK: Repeat expansion (§B0)
+    // MARK: Repeat expansion
 
     func expandRepeat(_ block: HDObj, _ scope: H.Scope) -> Bool {
         guard block.d["type"]?.str == "input_select",
@@ -897,7 +897,7 @@ private final class RawPass {
         if let template, template.obj != nil {
             if let a = arr?.arr {
                 if a.count > max {
-                    // SPEC-496 §5b C6 — items past `max` are silently not rendered; say so ONCE per
+                    // Items past `max` are silently not rendered; say so ONCE per
                     // changed source (keyed on the source's content fingerprint, not per raw pass).
                     let line = "repeat \(blockId): source \(source) has \(a.count) items, max is \(max) — items past max are not rendered"
                     log.append(line)
@@ -1023,7 +1023,7 @@ private final class RawPass {
             }
         }
 
-        // data_templates (§A0) — after the plain keys, so a winning template replaces the resolved fallback.
+        // data_templates — after the plain keys, so a winning template replaces the resolved fallback.
         if let t = templates?.obj { applyDataTemplates(o, t, owner, scope, env, boundSet) }
     }
 
@@ -1076,8 +1076,8 @@ private final class RawPass {
             if let cls = H.classOf(owner, key), cls != "string" {
                 log.append("data_templates.\(key): \(cls) key — ignored"); continue
             }
-            if boundSet?.contains(key) == true { continue } // the binding wins (§A1)
-            // §B0 — a `step` token in a data_templates entry inside sheet_blocks is a publish error;
+            if boundSet?.contains(key) == true { continue } // the binding wins
+            // A `step` token in a data_templates entry inside sheet_blocks is a publish error;
             // at runtime the entry counts as unresolved (the sibling stays).
             if env.inSheet && H.extractTokens(tmpl).contains(where: { $0.root == "step" }) { continue }
             let url = H.isUrlKey(key)
@@ -1116,7 +1116,7 @@ private final class RawPass {
         }
     }
 
-    // MARK: Options after the pass (§A3, §B0)
+    // MARK: Options after the pass
 
     private func settleOptions(_ block: HDObj) {
         let opts = (block.d["field_options"]?.arr ?? []).compactMap { $0.obj }
@@ -1175,7 +1175,7 @@ private final class RawPass {
     }
 }
 
-/// SPEC-496 §5b C6 — the "source longer than max" debug line, once per changed source per block.
+/// The "source longer than max" debug line, once per changed source per block.
 /// Bounded: it forgets everything past 256 blocks.
 enum RepeatOverflowLog {
     private static let lock = NSLock()

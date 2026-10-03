@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-401 — public API surface tests for the entitlement-aware paywall
+/// Public API surface tests for the entitlement-aware paywall
 /// trigger + restore routing fixes.
 ///
 /// The internal pieces (OnboardingPaywallBridge, PaywallDismissGuard) are
@@ -31,7 +31,7 @@ final class SPEC401PaywallTests: XCTestCase {
     // MARK: - Fix 1C public API
 
     /// `AppDNA.paywall.skipNextAutoDismissOnRestore` exists as a public
-    /// mutable Bool. SPEC-401 R2 audit P0 — the flag is the host's only
+    /// mutable Bool. The flag is the host's only
     /// supported way to opt out of SDK auto-dismiss on restore success.
     /// Compile-time verification that the property exists with the
     /// declared shape; runtime verification that it round-trips.

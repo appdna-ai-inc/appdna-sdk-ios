@@ -70,7 +70,7 @@ func multiButtonFillerWeight(rowSize: Int, perRow: Int, stretchLastRow: Bool) ->
 /// Placeholder shown where a summary stat's value could not be resolved (#660).
 let unresolvedStatPlaceholder = "\u{2014}"
 
-/// One summary stat, made safe to render (#660, SPEC-446 AC).
+/// One summary stat, made safe to render (#660).
 ///
 /// Returns nil only when the card would say nothing at all. Mirrors Android
 /// `sanitizeSummaryStat` in ContentBlockRenderer.kt — the two must agree, because a stat that
@@ -180,7 +180,7 @@ struct OuterAlignmentBoxModifier: ViewModifier {
 // MARK: - Content Block Renderer
 
 /**
- SPEC-495 §C — where in the step this map is being drawn.
+ Where in the step this map is being drawn.
 
  The same block renders in three places and two of them are NOT inside the step's padded column, so
  two of its decisions move with the placement rather than being read off the block:
@@ -242,7 +242,7 @@ internal func mapResolvedHeight(_ block: ContentBlock) -> CGFloat {
         // inside the step's scrolling stack collapses every sibling to nothing.
         return 520
     case "fullscreen":
-        // SPEC-495 §C — the height the BACKDROP static image is requested at, not the height it
+        // The height the BACKDROP static image is requested at, not the height it
         // is laid out at (the layout fills the step). 844 is the logical height of the reference
         // device the console previews at, so all three implementations ask for the same picture.
         return 844
@@ -274,26 +274,26 @@ struct ContentBlockRendererView: View {
     var isZoneManaged: Bool = false
     /// Scroll offset from parent ScrollView — used for collapse_on_scroll blocks (Sprint 7).
     var scrollOffset: CGFloat = 0
-    /// SPEC-419 STEP-2 — fired by an interactive block; carries (blockId, action, value) to the step scope.
+    /// Fired by an interactive block; carries (blockId, action, value) to the step scope.
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
-    /// SPEC-419 STEP-2 — per-block field_config overrides (from `ElementInteractionResult.fieldConfigPatches`),
+    /// Per-block field_config overrides (from `ElementInteractionResult.fieldConfigPatches`),
     /// folded onto the resolved block at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
     /// #657 — per-block replacement options from a refresh interaction, layered at read time.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
-    /// SPEC-495 §C — where in the step a Map block is being drawn. See `MapPlacement`.
+    /// Where in the step a Map block is being drawn. See `MapPlacement`.
     var mapPlacement: MapPlacement = .inline
-    /// SPEC-496 §A1 — ids of blocks (any depth) the onboarding raw host-data pass produced. Those are
+    /// Ids of blocks (any depth) the onboarding raw host-data pass produced. Those are
     /// drawn AS RESOLVED: no view-level template pass, lookup-only `loc()` (the router's), markers
     /// honoured. Screens/SDUI pass nothing and keep today's view-level whitelist pass.
     var rawResolvedIds: Set<String> = []
-    /// SPEC-496 §A4 — the step's ONE layered block list, for the consent-CTA colour gate (a zone
+    /// The step's ONE layered block list, for the consent-CTA colour gate (a zone
     /// renderer only holds its own zone's blocks). Nil → this renderer's `blocks`.
     var gateBlocks: [ContentBlock]? = nil
-    /// SPEC-496 — set by a parent renderer on a raw-resolved block, so NESTED renderers (carousel
+    /// Set by a parent renderer on a raw-resolved block, so NESTED renderers (carousel
     /// pages, option sheets) never re-scan resolved strings either.
     @SwiftUI.Environment(\.appdnaRawResolved) private var envRawResolved: Bool
-    /// SPEC-496 §5b C5.1 — the onboarding step's interaction channel (nil on Screens / SDUI and inside
+    /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
 
@@ -303,7 +303,7 @@ struct ContentBlockRendererView: View {
     }
 
     /// A container's children (row / stack / section background) minus any child whose
-    /// `empty_state.mode == hidden` (§A3). The top-level list filters in `body`; containers render
+    /// `empty_state.mode == hidden`. The top-level list filters in `body`; containers render
     /// their children with `renderBlock(child)` directly, which skipped the filter, so a nested
     /// `hide_when_empty` Select still drew.
     private func containerChildren(_ block: ContentBlock) -> [ContentBlock] {
@@ -319,7 +319,7 @@ struct ContentBlockRendererView: View {
                 responses: responses,
                 hookData: hookData
             )
-            // SPEC-496 §A3 — `empty_state.mode == hidden` hides the whole block (raw-pass blocks only).
+            // `empty_state.mode == hidden` hides the whole block (raw-pass blocks only).
             && !OnboardingStepPipeline.isHiddenByEmptyState(block, rawResolved: isRawResolved(block))
         }
         // Entrance animation cap: max 10 animated blocks per step
@@ -337,12 +337,12 @@ struct ContentBlockRendererView: View {
         VStack(spacing: 12) {
             ForEach(visibleBlocks) { block in
                 let shouldAnimate = animatedBlockIds.contains(block.id)
-                // SPEC-419 STEP-2 — fold any host-pushed field_config overrides onto the resolved block
+                // Fold any host-pushed field_config overrides onto the resolved block
                 // UNCONDITIONALLY (resolveBlockBindings early-returns raw blocks with no bindings/templates —
-                // which is every EPIC-11 element — so the merge cannot live inside it). Empty overrides = no-op.
+                // which is every element — so the merge cannot live inside it). Empty overrides = no-op.
                 let isRaw = isRawResolved(block)
                 let resolvedBlock = isRaw
-                    // SPEC-496 — already resolved (and layered) by the step pipeline; only a sheet's
+                    // Already resolved (and layered) by the step pipeline; only a sheet's
                     // deferred `sheet_step_paths` remain, against this renderer's own inputs.
                     ? OnboardingStepPipeline.applySheetStepPaths(block, stepInputs: inputValues)
                     : resolvedFieldOptions(
@@ -424,7 +424,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    /// AC-064/065/066: Resolves dynamic bindings and template strings on a block.
+    /// Resolves dynamic bindings and template strings on a block.
     /// Returns a new block with resolved text fields and binding overrides.
     private func resolveBlockBindings(_ block: ContentBlock, hookData: [String: Any]?, responses: [String: Any]) -> ContentBlock {
         // `inputValues` is the live map of what the user has typed on THIS step — see the note on
@@ -446,7 +446,7 @@ struct ContentBlockRendererView: View {
         case .section_background: return AnyView(sectionBackgroundBlock(block))
         case .carousel: return AnyView(CarouselBlockView(block: block, onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,
                                                          // Onboarding passes the step's layered list; Screens pass nil, so a page
-                                                         // keeps gating on itself as before (Screens unchanged in P1, §A1).
+                                                         // keeps gating on itself as before (Screens unchanged in P1).
                                                          gateBlocks: gateBlocks, rawResolvedIds: rawResolvedIds))
         case .otp_input: return AnyView(OTPInputBlockView(block: block, inputValues: $inputValues, onInteract: onInteract))
         case .warning_banner: return AnyView(warningBannerBlock(block))
@@ -462,7 +462,7 @@ struct ContentBlockRendererView: View {
         case .button: return AnyView(buttonBlock(block))
         // Device QA (s20/s22) — CTA-style button that plays `audio_url` on tap.
         case .sound_button: return AnyView(soundButtonBlock(block))
-        case .spacer: return AnyView(Spacer().frame(height: CGFloat(block.spacer_height ?? 24))) // SPEC-419 pass-14 #11 — unset default 24 to match editor+preview (was 16)
+        case .spacer: return AnyView(Spacer().frame(height: CGFloat(block.spacer_height ?? 24))) // Unset default 24 to match editor+preview (was 16)
         case .list: return AnyView(listBlock(block))
         case .divider: return AnyView(dividerBlock(block))
         case .badge: return AnyView(badgeBlock(block))
@@ -528,7 +528,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Stub Placeholder (SPEC-089d)
+    // MARK: - Stub Placeholder
 
     /// Placeholder view for new block types whose full renderers are not yet implemented.
     /// Renders a subtle label in DEBUG builds; EmptyView in release builds.
@@ -558,7 +558,7 @@ struct ContentBlockRendererView: View {
         }()
 
         let text = block.text ?? ""
-        // EPIC-9 parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
+        // Parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
         // first, then fall back to the top-level horizontal_align. Was: read horizontal_align only → a heading
         // authored with style.alignment:center rendered CENTER on Android but LEFT on iOS.
         let alignSource = block.style?.alignment ?? block.horizontal_align
@@ -626,7 +626,7 @@ struct ContentBlockRendererView: View {
     @ViewBuilder
     private func textBlock(_ block: ContentBlock) -> some View {
         let text = block.text ?? ""
-        // EPIC-9 parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
+        // Parity fix — honor style.alignment (what the console sets + Android reads via effectiveStyle)
         // first, then fall back to the top-level horizontal_align. Was: read horizontal_align only → a heading
         // authored with style.alignment:center rendered CENTER on Android but LEFT on iOS.
         let alignSource = block.style?.alignment ?? block.horizontal_align
@@ -724,7 +724,7 @@ struct ContentBlockRendererView: View {
         .frame(height: height)
     }
 
-    // EPIC-3 — media_gallery: horizontal scrollable row of image tiles (rounded, fixed size, placeholder bg).
+    // media_gallery: horizontal scrollable row of image tiles (rounded, fixed size, placeholder bg).
     // Media-gallery v2 (Device QA): gallery_fill = full-width edge-to-edge cover tiles; gallery_autoscroll =
     // seamless marquee loop (gallery_autoscroll_speed = seconds per full cycle, default 20). Both default
     // off → identical to the existing static tile row (no timer/animation cost when off — non-breaking).
@@ -761,7 +761,7 @@ struct ContentBlockRendererView: View {
                         }
                     }
                     .padding(.horizontal, fill ? 0 : 2)
-                    // EPIC-3 — settable align (start/center/end) when tiles fit; scrolls when they overflow.
+                    // Settable align (start/center/end) when tiles fit; scrolls when they overflow.
                     .frame(minWidth: geo.size.width, alignment: fill ? .leading : galleryAlignment)
                 }
             }
@@ -786,7 +786,7 @@ struct ContentBlockRendererView: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 
-    /// SPEC-419 — shared image styling: image_fit (cover/contain/fill/none), aspect_ratio,
+    /// Shared image styling: image_fit (cover/contain/fill/none), aspect_ratio,
     /// and image_position alignment. Mirrors the console preview + Android ImageBlock.
     @ViewBuilder
     private func styledImage(_ image: Image, fit: String, aspect: CGFloat?, maxHeight: CGFloat, alignment: Alignment) -> some View {
@@ -830,10 +830,10 @@ struct ContentBlockRendererView: View {
         let cr = CGFloat(block.corner_radius ?? 0)
         let isCircle = (block.corner_radius ?? 0) >= 9999
         let imgHeight = CGFloat(block.height ?? 200)
-        // SPEC-419 — image_fit. Match preview objectFit values + Android ContentScale:
+        // image_fit. Match preview objectFit values + Android ContentScale:
         // contain/fit → .fit; fill → .fill (stretch-fill); none → no resize (intrinsic); else cover → .fill.
         let imageFit = block.image_fit ?? "cover"
-        // SPEC-419 (P2) — aspect_ratio routed through field_config (JVM-255 budget); preview applies it too.
+        // aspect_ratio routed through field_config (JVM-255 budget); preview applies it too.
         let aspectRatioValue: CGFloat? = {
             switch block.field_config?["aspect_ratio"]?.value as? String {
             case "16:9": return 16.0 / 9.0
@@ -844,7 +844,7 @@ struct ContentBlockRendererView: View {
             default: return nil
             }
         }()
-        // SPEC-419 (P3) — image_position top/bottom routed through field_config; preview uses objectPosition.
+        // image_position top/bottom routed through field_config; preview uses objectPosition.
         let positionAlignment: Alignment = {
             switch block.field_config?["image_position"]?.value as? String {
             case "top": return .top
@@ -902,7 +902,7 @@ struct ContentBlockRendererView: View {
                 BundledAsyncPhaseImage(url: url) { phase in
                     switch phase {
                     case .success(let image):
-                        // SPEC-419 pass-15 #24 — honor overflow="visible" (no clip), matching Android + preview.
+                        // Honor overflow="visible" (no clip), matching Android + preview.
                         if block.overflow == "visible" {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                                 .accessibilityLabel(block.alt ?? "Image")
@@ -929,7 +929,7 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// EPIC-3 — phone mockup: device bezel + dynamic-island notch, image as the "screen".
+    /// Phone mockup: device bezel + dynamic-island notch, image as the "screen".
     /// #581 — `thin: true` is the same mockup with a narrower bezel. One function rather than two,
     /// because everything except the padding and the two radii is identical, and a copy is how the
     /// notch or the width cap ends up different between them.
@@ -986,7 +986,7 @@ struct ContentBlockRendererView: View {
             .overlay(Image(systemName: "photo").foregroundColor(.gray))
     }
 
-    // MARK: - Button (with outline variant — SPEC-089d §3.18)
+    // MARK: - Button (with outline variant)
 
     private func buttonBlock(_ block: ContentBlock, onTapOverride: (() -> Void)? = nil) -> some View {
         let btnVariant = block.variant ?? "primary"
@@ -1000,7 +1000,7 @@ struct ContentBlockRendererView: View {
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
             guard enabledHex != nil || disabledHex != nil else { return Color(hex: fallback) }
-            // SPEC-496 §A4 — the step's ONE layered list (every zone), markers honoured.
+            // The step's ONE layered list (every zone), markers honoured.
             let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
             return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
         }()
@@ -1010,12 +1010,12 @@ struct ContentBlockRendererView: View {
         let borderColor = authoredButtonBorderColorHex(block.border_color).map { Color(hex: $0) } ?? bgColor
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
-        // SPEC-496 §5b C5.1 / C5.3 — the step channel applies only to a `refresh_step` button with no
+        // The step channel applies only to a `refresh_step` button with no
         // tap override (a `sound_button` plays audio instead and never dispatches its action).
         let isRefresh = onTapOverride == nil && (block.action ?? "next") == "refresh_step"
         let channel: StepInteraction? = isRefresh ? stepInteraction : nil
         let isLoading = channel?.loadingBlockId == block.id
-        // C5.3 — the spinner takes the colour the LABEL actually draws in: an authored `text_color`
+        // The spinner takes the colour the LABEL actually draws in: an authored `text_color`
         // wins (#594), else a Typography style's colour (`applyTextStyle` bakes `.primary` when the
         // style sets none), else the variant's foreground.
         let labelColor: Color = {
@@ -1034,7 +1034,7 @@ struct ContentBlockRendererView: View {
                 // for new content without ALSO advancing — which sent the user to the next screen.
                 // The host returns `advance: false` (the default) and the step re-renders.
                 if let channel {
-                    // C5.3 / C5.4 — locked while any interaction is in flight or host data is
+                    // Locked while any interaction is in flight or host data is
                     // pending: the button draws normally, and a tap is not a call.
                     channel.tapRefresh(blockId: block.id, actionValue: block.action_value)
                 } else {
@@ -1102,7 +1102,7 @@ struct ContentBlockRendererView: View {
                 }
             }
             .foregroundColor(fgColor)
-            // SPEC-496 §5b C5.3 — the tapped refresh button, while its call is in flight: label and
+            // The tapped refresh button, while its call is in flight: label and
             // icon at opacity 0 (the frame, colours and border stay), a centred platform spinner
             // tinted with the label colour on top.
             .opacity(isLoading ? 0 : 1)
@@ -1113,7 +1113,7 @@ struct ContentBlockRendererView: View {
                         .tint(labelColor)
                 }
             }
-            // EPIC-6 — apply authored button_height (resize the button) instead of only intrinsic padding.
+            // Apply authored button_height (resize the button) instead of only intrinsic padding.
             .padding(.vertical, block.button_height == nil ? 14 : 0)
             // #654/#659/#663 — `element_width: "auto"` means "as wide as the label"; this was an
             // unconditional `.infinity`, so an auto-width button still spanned the row. `nil` here
@@ -1136,7 +1136,7 @@ struct ContentBlockRendererView: View {
             )
         }
         .applyPressedStyle(block.pressed_style)
-        // C5.3 — the loading button is not tappable: no pressed-style feedback, no tap.
+        // The loading button is not tappable: no pressed-style feedback, no tap.
         .allowsHitTesting(!isLoading)
         .accessibilityValue(isLoading ? Text("Loading") : Text(""))
     }
@@ -1221,7 +1221,7 @@ struct ContentBlockRendererView: View {
         return UnitPoint(x: 0.5 + sin(rads) / 2, y: 0.5 - cos(rads) / 2)
     }
 
-    // EPIC-11 — warning/info banner: tinted rounded card + leading icon + message. Parity with Android.
+    // warning/info banner: tinted rounded card + leading icon + message. Parity with Android.
     private func warningBannerBlock(_ block: ContentBlock) -> some View {
         let variant = (block.field_config?["banner_variant"]?.value as? String) ?? "warning"
         let accentHex: String
@@ -1239,8 +1239,8 @@ struct ContentBlockRendererView: View {
         // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
         let bgOverride = block.bg_color.map { Color(hex: $0) }
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
-        // SPEC-481 (#601) — subtitle + alignment, own border/radius, per-role font size, font family.
-        // EVERY default below reproduces the pre-SPEC-481 render (14/medium, radius 12, 1pt accent@0.45,
+        // Subtitle + alignment, own border/radius, per-role font size, font family.
+        // EVERY default below reproduces the earlier render (14/medium, radius 12, 1pt accent@0.45,
         // leading), so an already-published banner is pixel-identical until an author changes something.
         // Chrome is deliberately NOT routed through `block_style`: that wrapper clips at
         // `border_radius ?? 0` and strokes on top, so it would square these corners and double the border.
@@ -1278,7 +1278,7 @@ struct ContentBlockRendererView: View {
         .overlay(RoundedRectangle(cornerRadius: radius).stroke(borderColor, lineWidth: borderWidth))
     }
 
-    // EPIC-11 — password-strength meter: 4 segment bars + label, red→amber→yellow→green ramp. Parity w/ Android.
+    // Password-strength meter: 4 segment bars + label, red→amber→yellow→green ramp. Parity w/ Android.
     private func passwordStrengthBlock(_ block: ContentBlock) -> some View {
         let rawLevel = (block.field_config?["strength_level"]?.value as? Int)
             ?? cfgDouble(block.field_config?["strength_level"]).map { Int($0) } ?? 0
@@ -1309,7 +1309,7 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // EPIC-11 — speech bubble (mascot dialogue): rounded card + downward tail triangle. Parity with Android.
+    // Speech bubble (mascot dialogue): rounded card + downward tail triangle. Parity with Android.
     private func speechBubbleBlock(_ block: ContentBlock) -> some View {
         let bubbleColor = Color(hex: block.bg_color ?? "#FFFFFF")
         let textColor = Color(hex: block.text_color ?? "#111827")
@@ -1349,7 +1349,7 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // EPIC-11 — quiz feedback panel (correct/wrong): tinted panel + circled icon + headline + detail.
+    // Quiz feedback panel (correct/wrong): tinted panel + circled icon + headline + detail.
     private func feedbackPanelBlock(_ block: ContentBlock) -> some View {
         let state = (block.field_config?["feedback_state"]?.value as? String) ?? "correct"
         let accentHex: String
@@ -1397,7 +1397,7 @@ struct ContentBlockRendererView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 
-    // EPIC-11 — session summary screen (end-of-lesson): optional headline + 2-column stat-card grid.
+    // Session summary screen (end-of-lesson): optional headline + 2-column stat-card grid.
     /// #593 — stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
     /// strings from the console. Coerced the same way `statDouble` coerces those, with a fallback
     /// rather than a zero-size font on anything unparseable.
@@ -1468,7 +1468,7 @@ struct ContentBlockRendererView: View {
                         let value = (m["value"] as? String) ?? (m["value"]).map { "\($0)" } ?? ""
                         let label = (m["label"] as? String) ?? (m["label"]).map { "\($0)" } ?? ""
                         let color = Color(hex: (m["color"] as? String) ?? defaultAccent)
-                        // SPEC-446 §3 — a stat may HOST a control instead of showing a fixed value.
+                        // A stat may HOST a control instead of showing a fixed value.
                         // The required-gate half of this shipped without the rendering half, on both
                         // platforms: `RequiredFieldGate` blocks on an unanswered stat input while nothing
                         // ever drew one, so a stat marked required could not be satisfied and the step
@@ -1521,10 +1521,10 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // EPIC-11 — Health/HealthKit connect: a tappable card (icon + title + subtitle + chevron/✓). Native connect
+    // Health/HealthKit connect: a tappable card (icon + title + subtitle + chevron/✓). Native connect
     // flow is host-driven via onAction("health_connect"). Parity with Android.
     private func healthConnectBlock(_ block: ContentBlock) -> some View {
-        // EPIC-11 — provider is PLATFORM-FIXED: iOS always shows Apple Health (Google Fit is Android-only).
+        // Provider is PLATFORM-FIXED: iOS always shows Apple Health (Google Fit is Android-only).
         let connected = (block.field_config?["connected"]?.value as? Bool) ?? false
         let icon = "❤️"
         let defLabel = "Connect Apple Health"
@@ -1533,7 +1533,7 @@ struct ContentBlockRendererView: View {
         let subtitle = (block.field_config?["health_subtitle"]?.value as? String) ?? "Sync steps, workouts & vitals"
         return Button {
             onAction("health_connect", nil)
-            // SPEC-419 STEP-2 — provider is platform-fixed on iOS (Apple Health).
+            // Provider is platform-fixed on iOS (Apple Health).
             onInteract(block.id, "health_connect", "apple_health")
         } label: {
             HStack(spacing: 14) {
@@ -1560,7 +1560,7 @@ struct ContentBlockRendererView: View {
         .buttonStyle(.plain)
     }
 
-    // EPIC-11 — interactive footer: dark-mode capsule toggle + language switcher pill. Custom capsule switch
+    // Interactive footer: dark-mode capsule toggle + language switcher pill. Custom capsule switch
     // (not the native widget) so both platforms pixel-match. Parity with Android.
     private func settingsFooterBlock(_ block: ContentBlock) -> some View {
         let darkMode = (block.field_config?["dark_mode"]?.value as? Bool) ?? false
@@ -1610,7 +1610,7 @@ struct ContentBlockRendererView: View {
             ForEach(Array((block.items ?? []).enumerated()), id: \.offset) { index, item in
                 HStack(spacing: 10) {
                     listMarker(style: block.list_style ?? "bullet", index: index, checkColor: block.check_color)
-                    // SPEC-084 Gap #9: localize each list item using block id + index key
+                    // Localize each list item using block id + index key
                     Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
                         .applyTextStyle(block.style)
                 }
@@ -1625,7 +1625,7 @@ struct ContentBlockRendererView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundColor(.secondary))
         case "check":
-            // SPEC-419 pass-15 #5 — honor authored check_color (editor default green #22C55E); was hardcoded brandAccent.
+            // Honor authored check_color (editor default green #22C55E); was hardcoded brandAccent.
             return AnyView(Image(systemName: "checkmark.circle.fill")
                 .font(.subheadline)
                 .foregroundColor(Color(hex: checkColor ?? "#22C55E")))
@@ -1642,7 +1642,7 @@ struct ContentBlockRendererView: View {
         Rectangle()
             .fill(Color(hex: block.divider_color ?? "#E5E7EB"))
             .frame(height: CGFloat(block.divider_thickness ?? 1))
-            .padding(.vertical, CGFloat(block.divider_margin_y ?? 16)) // SPEC-419 pass-14 #12 — unset default 16 to match editor+preview (was 8)
+            .padding(.vertical, CGFloat(block.divider_margin_y ?? 16)) // Unset default 16 to match editor+preview (was 8)
     }
 
     // MARK: - Badge
@@ -1669,7 +1669,7 @@ struct ContentBlockRendererView: View {
         }()
 
         return Group {
-            // SPEC-085: Support IconReference (structured icon) or plain emoji string
+            // Support IconReference (structured icon) or plain emoji string
             if let iconRef = block.icon_ref {
                 IconView(ref: iconRef, size: CGFloat(block.icon_size ?? 32))
             } else {
@@ -1699,21 +1699,21 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Video (SPEC-085: Full VideoBlockView with playback)
+    // MARK: - Video (Full VideoBlockView with playback)
 
     private func videoBlock(_ block: ContentBlock) -> some View {
         let effectiveHeight = CGFloat(block.video_height ?? block.height ?? 200)
         let effectiveCornerRadius = CGFloat(block.video_corner_radius ?? block.corner_radius ?? 8)
 
         return Group {
-            // SPEC-085: Use VideoBlockView for full playback when video_url is present
+            // Use VideoBlockView for full playback when video_url is present
             if let videoUrl = block.video_url {
                 let videoBlock = VideoBlock(
                     video_url: videoUrl,
                     video_thumbnail_url: block.video_thumbnail_url ?? block.image_url,
                     video_height: Double(effectiveHeight),
                     video_corner_radius: Double(effectiveCornerRadius),
-                    // SPEC-419 pass-14 #3 — fall back to the video_*-prefixed
+                    // Fall back to the video_*-prefixed
                     // keys the console editor + preview + Android write, so an
                     // authored video_autoplay/_loop/_muted/_controls is honored.
                     autoplay: block.autoplay ?? block.video_autoplay,
@@ -1755,7 +1755,7 @@ struct ContentBlockRendererView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Lottie (SPEC-085)
+    // MARK: - Lottie
 
     private func lottieBlock(_ block: ContentBlock) -> some View {
         Group {
@@ -1765,10 +1765,10 @@ struct ContentBlockRendererView: View {
                     lottie_json: nil,
                     autoplay: block.autoplay ?? true,
                     loop: block.loop ?? true,
-                    speed: block.lottie_speed ?? 1.0,  // SPEC-419 pass-23 — editor now authors lottie_speed (decoupled from the overloaded string `speed` particle key)
+                    speed: block.lottie_speed ?? 1.0,  // Editor now authors lottie_speed (decoupled from the overloaded string `speed` particle key)
                     width: block.lottie_width,
                     height: block.lottie_height ?? block.height ?? 160,
-                    alignment: block.icon_alignment ?? block.alignment ?? "center",  // SPEC-419 pass-22 — editor writes block.alignment
+                    alignment: block.icon_alignment ?? block.alignment ?? "center",  // Editor writes block.alignment
                     play_on_scroll: block.play_on_scroll,
                     play_on_tap: block.play_on_tap,
                     color_overrides: nil
@@ -1780,7 +1780,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Rive (SPEC-085)
+    // MARK: - Rive
 
     private func riveBlock(_ block: ContentBlock) -> some View {
         Group {
@@ -1791,7 +1791,7 @@ struct ContentBlockRendererView: View {
                     state_machine: block.state_machine,
                     autoplay: block.autoplay ?? true,
                     height: block.height ?? 160,
-                    alignment: block.icon_alignment ?? block.alignment ?? "center",  // SPEC-419 pass-22 — editor writes block.alignment
+                    alignment: block.icon_alignment ?? block.alignment ?? "center",  // Editor writes block.alignment
                     inputs: nil,
                     trigger_on_step_complete: block.trigger_on_step_complete
                 )
@@ -1802,12 +1802,12 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Page Indicator (SPEC-089d AC-012)
+    // MARK: - Page Indicator
 
     private func pageIndicatorBlock(_ block: ContentBlock) -> some View {
-        // SPEC-419 — clamp to a sane range; ForEach(0..<dotCount) crashes on a negative/huge count.
+        // Clamp to a sane range; ForEach(0..<dotCount) crashes on a negative/huge count.
         let dotCount = min(max(block.dot_count ?? totalSteps, 0), 50)
-        // AC-012: Auto-bind active_index to current step index when not explicitly set
+        // Auto-bind active_index to current step index when not explicitly set
         let activeIdx = block.active_index ?? currentStepIndex
         let dotSize = CGFloat(block.dot_size ?? 8)
         let dotSpacing = CGFloat(block.dot_spacing ?? 8)
@@ -1862,7 +1862,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Social Login (SPEC-089d AC-015)
+    // MARK: - Social Login
 
     private func socialLoginBlock(_ block: ContentBlock) -> some View {
         let providerList = (block.providers ?? []).filter { $0.enabled != false }
@@ -1871,7 +1871,7 @@ struct ContentBlockRendererView: View {
         let btnSpacing = CGFloat(block.spacing ?? 12)
         let btnRadius = CGFloat(block.button_corner_radius ?? 12)
 
-        // SPEC-089e amendment — when email_login_placement == "below_inputs"
+        // When email_login_placement == "below_inputs"
         // the email provider renders first, then a spacer, then the other
         // providers. This is the expected layout when the social_login block
         // sits directly under email+password input blocks.
@@ -1942,7 +1942,7 @@ struct ContentBlockRendererView: View {
             if dividerSlot == 0 { divider }
             ForEach(Array(topGroup.enumerated()), id: \.offset) { index, provider in
                 socialLoginButton(provider, index: index, blockId: block.id, btnStyle: btnStyle, btnHeight: btnHeight, blockRadius: btnRadius, textAlign: textAlign, blockAccentColor: block.accent_color, blockBgColor: block.bg_color, pressedStyle: block.pressed_style)
-                // SPEC-478 (#615) — `&& dividerSlot < topGroup.count` is load-bearing. "bottom" is the DEFAULT and
+                // `&& dividerSlot < topGroup.count` is load-bearing. "bottom" is the DEFAULT and
                 // resolves to `topGroup.count`, so without it this fires on the last provider AND the end slot
                 // below fires too: two dividers on every default-configured block, confirmed on a simulator and
                 // two physical iPhones. Android (ContentBlockRenderer.kt:4465) and the console preview
@@ -1962,14 +1962,14 @@ struct ContentBlockRendererView: View {
             // The end slot. Guarded on the slot rather than "not top", so an interior slot does
             // not also draw one down here — which is what a `!= top` test would do.
             //
-            // SPEC-478 — `topGroup.count > 0` closes the other overlap: with NO providers, "bottom" also resolves
+            // `topGroup.count > 0` closes the other overlap: with NO providers, "bottom" also resolves
             // to slot 0, so the head slot above and this one both fired. Head owns the empty case.
             if dividerSlot >= topGroup.count && topGroup.count > 0 { divider }
         }
     }
 
     /// One social-login button with per-provider color/radius overrides applied.
-    /// SPEC-089e amendment — any nil override falls back to the brand default
+    /// Any nil override falls back to the brand default
     /// (Apple=black, Google=#4285F4, email=#6366F1, etc.).
     private func socialLoginButton(_ provider: SocialProviderConfig, index: Int, blockId: String, btnStyle: String, btnHeight: CGFloat, blockRadius: CGFloat, textAlign: String = "center", blockAccentColor: String? = nil, blockBgColor: String? = nil, pressedStyle: PressedStyle? = nil) -> some View {
         let providerType = provider.type ?? ""
@@ -2005,7 +2005,7 @@ struct ContentBlockRendererView: View {
                         EmptyView()
                     }
                 } else if providerType != "email" {
-                    // SPEC-419 — no glyph for the email provider (parity with Android): the
+                    // No glyph for the email provider (parity with Android): the
                     // envelope rendered awkwardly on the brand-tinted "Continue with Email"
                     // button and its reserved spacing offset the label. Plain centered CTA.
                     socialLoginIcon(providerType, iconStyle: provider.icon_style, buttonTextColor: textColor, btnStyle: btnStyle)
@@ -2135,7 +2135,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Timeline (SPEC-089d AC-016)
+    // MARK: - Timeline
 
     private func timelineBlock(_ block: ContentBlock) -> some View {
         let itemList = block.timeline_items ?? []
@@ -2204,7 +2204,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Rich Text (SPEC-089d AC-020)
+    // MARK: - Rich Text
 
     private func richTextBlock(_ block: ContentBlock) -> some View {
         let rawContent = block.markdown_content ?? block.text ?? ""
@@ -2216,7 +2216,7 @@ struct ContentBlockRendererView: View {
         // so a style-only rich_text block renders identically across platforms.
         let rtStyle = block.base_style ?? block.style
 
-        // SPEC-205 adjacent fix: honor `base_style.alignment` for rich_text.
+        // Adjacent fix: honor `base_style.alignment` for rich_text.
         // Previously both `.multilineTextAlignment` and the outer frame alignment
         // were hardcoded based ONLY on `rich_text_variant == "legal"`, which
         // meant authored center/right alignment was silently dropped — most
@@ -2259,7 +2259,7 @@ struct ContentBlockRendererView: View {
                     .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
                     .applyTextStyleDecorations(rtStyle)
-                    // SPEC-419 pass-15 #23 — honor max_lines like Android (ClickableText maxLines)
+                    // Honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
                     // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
                     // would otherwise override ours when base_style.alignment is unset.
@@ -2284,7 +2284,7 @@ struct ContentBlockRendererView: View {
     /// pairs verbatim so we can post-process them here.
     @available(iOS 15.0, *)
     private func parseMarkdownToAttributedString(_ markdown: String, linkColor: Color, textColor: Color? = nil) -> AttributedString {
-        // EPIC-9 two fixes: (1) `.inlineOnlyPreservingWhitespace` STOPS at the first paragraph
+        // Two fixes: (1) `.inlineOnlyPreservingWhitespace` STOPS at the first paragraph
         // break (\n\n), so multi-paragraph content previously rendered only its first line — parse
         // each line separately and rejoin with newlines. (2) `Text(AttributedString)` ignores the
         // `.foregroundColor` view modifier because the markdown runs carry their own label color —
@@ -2350,12 +2350,12 @@ struct ContentBlockRendererView: View {
         return result
     }
 
-    // MARK: - Progress Bar (SPEC-089d AC-021)
+    // MARK: - Progress Bar
 
     private func progressBarBlock(_ block: ContentBlock) -> some View {
         let variant = block.progress_variant ?? "continuous"
-        // AC-021: Auto-bind to step index when no explicit values set
-        // SPEC-419 — clamp; ForEach(0..<totalSegs) crashes on a negative/huge count.
+        // Auto-bind to step index when no explicit values set
+        // Clamp; ForEach(0..<totalSegs) crashes on a negative/huge count.
         let totalSegs = min(max(block.total_segments ?? totalSteps, 0), 50)
         let filledSegs: Int = {
             if let explicit = block.filled_segments { return explicit }
@@ -2372,27 +2372,27 @@ struct ContentBlockRendererView: View {
         let barH = min(CGFloat(block.bar_height ?? 8), 24)
         let barRadius = CGFloat(block.corner_radius ?? 3)
         let fillColor = Color(hex: block.bar_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        // EPIC-2 — multiple progress colors at once (horizontal gradient across the fill).
+        // Multiple progress colors at once (horizontal gradient across the fill).
         let gradCols = (block.bar_gradient_colors ?? []).map { Color(hex: $0) }
         let fillStyle: AnyShapeStyle = gradCols.count >= 2
             ? AnyShapeStyle(LinearGradient(colors: gradCols, startPoint: .leading, endPoint: .trailing))
             : AnyShapeStyle(fillColor)
         let trackCol = Color(hex: block.track_color ?? "#E5E7EB")
         let gap = CGFloat(block.segment_gap ?? 4)
-        // SPEC-419 gap#2 — explicit continuous fill from `progress_value`
+        // Explicit continuous fill from `progress_value`
         // (0–1 fraction OR 0–100 percent), clamped. When unset the bar keeps
         // auto-binding to the step index (filledSegs/totalSegs). Matches the
         // console preview which fills `width: progress_value%`.
         let pvFraction: CGFloat? = block.progress_value.map {
             min(1, max(0, CGFloat($0 > 1 ? $0 / 100 : $0)))
         }
-        // SPEC-419 pass-13 correctness — the percentage/fraction label must use
+        // Correctness — the percentage/fraction label must use
         // the SAME normalization as the fill (`pvFraction`). Previously the
         // label rendered the RAW `progress_value` → `progress_value=0.75` filled
         // 75% but the label read "0%". Matches Android pvPercent.
         let effFraction = pvFraction ?? (variant == "segmented" ? 0 : (totalSegs > 0 ? CGFloat(filledSegs) / CGFloat(totalSegs) : 0))
         let pvPercent = Int((effFraction * 100).rounded())
-        // SPEC-419 gap#6 — honor `label_format`/`custom_label`; default keeps
+        // Honor `label_format`/`custom_label`; default keeps
         // the existing "Step X of Y" when no format is authored. Mirrors the
         // console preview progress_bar label logic.
         let labelText: String = {
@@ -2409,7 +2409,7 @@ struct ContentBlockRendererView: View {
             }
         }()
 
-        // SPEC-419 pass-14 #13 — show_label defaults TRUE (unset) to match the
+        // show_label defaults TRUE (unset) to match the
         // editor (inits true) + preview (`show_label !== false`).
         let showLbl = block.show_label != false
         // Progress/Loading v2 — label placement relative to the bar.
@@ -2481,13 +2481,13 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    // MARK: - Stack (ZStack container — SPEC-089d AC-024)
+    // MARK: - Stack (ZStack container)
 
     @ViewBuilder
     private func stackBlock(_ block: ContentBlock) -> some View {
         let childBlocks = containerChildren(block).sorted { ($0.z_index ?? 0) < ($1.z_index ?? 0) } // stack_children = the editor's key (match rowBlock); was dropped → ZStack rendered empty
         let align: Alignment = {
-            // SPEC-419 — normalize hyphenated editor values (top-left, center-left, bottom-center)
+            // Normalize hyphenated editor values (top-left, center-left, bottom-center)
             // to underscores so they map; also handle the *-center / center-* variants.
             switch (block.alignment ?? "").replacingOccurrences(of: "-", with: "_") {
             case "top_left", "topLeading": return .topLeading
@@ -2507,14 +2507,14 @@ struct ContentBlockRendererView: View {
                 renderBlock(child)
             }
         }
-        // SPEC-419 pass-14 #4 — apply authored `height` to the stack container
+        // Apply authored `height` to the stack container
         // (the editor default-inits 200; preview applies block.height at
         // OnboardingStepPreview.tsx:1735). A bare ZStack only sized to its
         // children, so authored heights were dropped on-device.
         .frame(height: block.height.map { CGFloat($0) }, alignment: align)
     }
 
-    // MARK: - Row (HStack container — SPEC-089d AC-025)
+    // MARK: - Row (HStack container)
 
     /// #609 — the Multi-buttons element: several CTAs laid out N per row, on one shared background.
     ///
@@ -2610,7 +2610,7 @@ struct ContentBlockRendererView: View {
     @ViewBuilder
     private func standardRowBlock(_ block: ContentBlock) -> some View {
         let childBlocks = containerChildren(block)
-        // SPEC-419 — the editor writes `spacing` (preview reads `spacing`); `gap` is the legacy/
+        // The editor writes `spacing` (preview reads `spacing`); `gap` is the legacy/
         // imported key. Read spacing first so authored row gap isn't lost on-device.
         let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
         let direction = block.row_direction ?? "horizontal"
@@ -2652,7 +2652,7 @@ struct ContentBlockRendererView: View {
             }
         }()
 
-        // SPEC-419 — row_distribution for the horizontal HStack. iOS decoded this but never applied
+        // row_distribution for the horizontal HStack. iOS decoded this but never applied
         // it (Android maps it to Arrangement; preview to justifyContent). Like the preview
         // (`justifyContent: rowChildFill ? undefined : rowDist`) + Android (weight(1f) when childFill),
         // distribution only takes effect when children DON'T fill — filling children make it moot.
@@ -2686,7 +2686,7 @@ struct ContentBlockRendererView: View {
 
         Group {
             if direction == "vertical" {
-                // SPEC-419 — apply row_distribution vertically too (Android applies vArrangement for
+                // Apply row_distribution vertically too (Android applies vArrangement for
                 // Column; preview applies justifyContent regardless of direction). Inert without a
                 // bounded height (Spacers→0, maxHeight:.infinity→content) — matches Android/preview.
                 VStack(alignment: hAlign, spacing: useSpacers ? 0 : rowGap) {
@@ -2729,7 +2729,7 @@ struct ContentBlockRendererView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
-                // SPEC-419 — apply row_distribution. When children fill (childFill), distribution is
+                // Apply row_distribution. When children fill (childFill), distribution is
                 // moot (matches preview/Android). When they don't, center/end use frame alignment;
                 // space_between/around/evenly interleave Spacers (around/evenly add leading+trailing).
                 HStack(alignment: vAlign, spacing: useSpacers ? 0 : rowGap) {
@@ -2787,7 +2787,7 @@ struct ContentBlockRendererView: View {
             }
             if UIImage(systemName: icon) != nil {
                 Image(systemName: icon)
-                    // SPEC-419 — render the glyph at the CONFIGURED leading_icon_size (was
+                    // Render the glyph at the CONFIGURED leading_icon_size (was
                     // size * 0.6, which shrank a 24pt setting to a tiny 14pt glyph). Now the
                     // console's leading_icon_size IS the glyph point size, so it scales
                     // directly. .fixedSize() keeps it from being clipped/compressed when the
@@ -2880,7 +2880,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    /// The Map block, resolved through the ladder in SPEC-451 §2:
+    /// The Map block, resolved through this ladder:
     ///   1. a host-registered map view, handed the authored config
     ///   2. the Mapbox static image
     ///   3. the authored fallback text
@@ -2909,7 +2909,7 @@ struct ContentBlockRendererView: View {
             }
             ZStack(alignment: infoPosition == "overlay_top" ? .top : .bottom) {
                 Group {
-                    // SPEC-495 §A — tier precedence, highest first. A host that registered its own
+                    // Tier precedence, highest first. A host that registered its own
                     // view still wins: an app already shipping a map must not end up running two
                     // engines just because AppDNA now bundles one.
                     if interactive, let factory = AppDNA.registeredMapViews[viewKey] {
@@ -3031,7 +3031,7 @@ struct ContentBlockRendererView: View {
         return out
     }
 
-    // MARK: - Custom View (SPEC-089d AC-026)
+    // MARK: - Custom View
 
     @ViewBuilder
     private func customViewBlock(_ block: ContentBlock) -> some View {
@@ -3281,13 +3281,13 @@ struct MediaGalleryPreviewRow: View {
 /// The real whitelist + binding pass. It lived as a `private` method on the View above, which made
 /// the WHITELIST untestable: a fixture could only call `resolveTemplateString` directly, proving the
 /// resolver handles a token while proving nothing about whether this pass applies it to a given key.
-/// Round-4 bug injection deleted the `label` line and the whole suite stayed green.
+/// Bug injection deleted the `label` line and the whole suite stayed green.
 /// Same reason `RequiredFieldGate` and `mergeFieldConfigOverrides` are free functions.
 func resolveBlockTemplates(
     _ block: ContentBlock,
     hookData: [String: Any]?,
     responses: [String: Any],
-    // SPEC-446 R4 — the LIVE values typed on the current step, addressable as `{{step.field_id}}`.
+    // The LIVE values typed on the current step, addressable as `{{step.field_id}}`.
     // resolveTemplateString has accepted a stepInputs map since the `step` root landed, but NO caller
     // ever passed one, so the console's "This Step (live)" picker group offered authors a namespace
     // that resolved to nothing on device. Declaring the parameter is not wiring it.
@@ -3302,7 +3302,7 @@ func resolveBlockTemplates(
             return block
         }
 
-        // AC-066: Resolve bindings map — override block properties from data context
+        // Resolve bindings map — override block properties from data context
         if let bindings = block.bindings {
             for (property, path) in bindings {
                 if let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil, stepInputs: stepInputs) {
@@ -3311,7 +3311,7 @@ func resolveBlockTemplates(
             }
         }
 
-        // AC-064: Resolve template strings in text fields
+        // Resolve template strings in text fields
         if let text = json["text"] as? String, text.contains("{{") {
             json["text"] = resolveTemplateString(text, hookData: hookData, responses: responses, stepInputs: stepInputs)
         }
@@ -3331,13 +3331,13 @@ func resolveBlockTemplates(
         // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
         // block referencing a prior-screen answer (e.g. "{{email}}", "{{word_count}}
         // words") resolves on device instead of rendering the literal token.
-        // NOT a `label` entry here, deliberately. SPEC-446 §3c originally claimed Android resolving
+        // NOT a `label` entry here, deliberately. An earlier note claimed Android resolving
         // block-level `label` and iOS not was a live parity bug; it is not. That field is a legacy
-        // RATING key, and SPEC-401-A R61 removed `?: block.label` from the renderers precisely so it
+        // RATING key, and a later fix removed `?: block.label` from the renderers precisely so it
         // stops reaching the screen — iOS never declaring it is the same decision, reached from the
         // other side. Writing json["label"] on iOS was a no-op that the JSON round-trip discarded on
         // decode, which is why deleting it left every test green. The REAL gap was option text, above.
-        // SPEC-446 — a sibling stat reading `{{step.<field_id>}}` must resolve on the FIRST frame.
+        // A sibling stat reading `{{step.<field_id>}}` must resolve on the FIRST frame.
         // The control seeds its authored default after composition, so on that first pass the id is
         // absent from `stepInputs`, the token does not resolve, and the suppression below then DROPS
         // the stat entirely: the live-value card the reporter asked for simply was not there until
@@ -3354,7 +3354,7 @@ func resolveBlockTemplates(
         }
         let stepInputs = effectiveStepInputs.isEmpty ? stepInputs : effectiveStepInputs
 
-        // SPEC-446 R4 — OPTION text. `{{var}}` in a select/image-tile option was resolved by NOTHING
+        // OPTION text. `{{var}}` in a select/image-tile option was resolved by NOTHING
         // on either platform: the whitelist only ever touched the block's own top-level `label`. The
         // console's variable picker is available wherever an author types, options included, so this
         // rendered a raw token on BOTH platforms rather than differing between them — which is why
@@ -3373,7 +3373,7 @@ func resolveBlockTemplates(
             }
             if optChanged { json["field_options"] = nextOpts }
         }
-        // SPEC-446 §2 — stats are an ARRAY OF DICTS nested inside field_config, so the resolver
+        // Stats are an ARRAY OF DICTS nested inside field_config, so the resolver
         // has to walk into it. Every other entry here is a flat `json["key"] as? String`.
         if var cfg = json["field_config"] as? [String: Any],
            let rawStats = cfg["summary_stats"] as? [[String: Any]] {
@@ -3388,7 +3388,7 @@ func resolveBlockTemplates(
                 }
                 return next
             }
-            // SPEC-446 AC — "no raw {{token}} can reach the screen from a stat". resolveTemplateString
+            // AC — "no raw {{token}} can reach the screen from a stat". resolveTemplateString
             // returns the LITERAL when a path misses and no `| fallback` was written, which is correct
             // for a headline (an author sees their typo) and wrong for a stat: it puts `{{responses.x}}`
             // in the big colored number on a summary card. Dropping the stat here rather than in the
@@ -3413,7 +3413,7 @@ func resolveBlockTemplates(
             json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses, stepInputs: stepInputs)
         }
 
-        // SPEC-452 — RECURSE into container children.
+        // RECURSE into container children.
         //
         // 🔴 Children never reached this resolver. `body` resolves each top-level block and then
         // hands it to `renderBlock`, but a container's children are rendered by `renderBlock(child)`
@@ -3467,7 +3467,7 @@ func blockContainsTemplates(_ block: ContentBlock) -> Bool {
         if let toggleLabel = block.toggle_label, toggleLabel.contains("{{") { return true }
         // RichText v2 — gate the resolve pass on rich_text markdown too.
         if let markdown = block.markdown_content, markdown.contains("{{") { return true }
-        // SPEC-446 R4 — the resolver handles OPTION text and the nested `field_config.summary_stats`,
+        // The resolver handles OPTION text and the nested `field_config.summary_stats`,
         // but this gate did not, so a block whose ONLY templates live there returned early and rendered
         // the raw token. That is the COMMON summary-screen shape: static headline, variables in the
         // stats. Android was missing the same two.
@@ -3485,7 +3485,7 @@ func blockContainsTemplates(_ block: ContentBlock) -> Bool {
                 }
             }
         }
-        // SPEC-452 — a CONTAINER whose own keys hold no tokens but whose CHILDREN do must not
+        // A CONTAINER whose own keys hold no tokens but whose CHILDREN do must not
         // short-circuit, or the recursion added to the resolver never runs. This is the same trap
         // the note above this function warns about: every key the resolver handles has to be
         // represented here, and the resolver now handles children.
@@ -3516,7 +3516,7 @@ struct UnsupportedBlockPlaceholder: View {
 }
 #endif
 
-/// SPEC-446 §3 — the control a Summary Screen stat can host.
+/// The control a Summary Screen stat can host.
 ///
 /// Kept as its own View, not inlined into `summaryScreenBlock`, because it owns writes to
 /// `inputValues` and a `@Binding` mutated inside a `ForEach` closure in a large `some View`
@@ -3621,7 +3621,7 @@ struct SummaryStatInput: View {
                 // it snaps to the two endpoints, so a stat authored with `step: 0` would let the user
                 // pick only the minimum or the maximum. Android reads the same input as continuous
                 // (Compose `steps = 0`), so the single-expression version was a silent divergence in
-                // the degenerate case round 14 introduced.
+                // the degenerate case.
                 if rawStep > 0 {
                     Slider(value: Binding(get: { current }, set: { write($0) }), in: lo...hi, step: stepV)
                         .accentColor(valueColor)
@@ -3645,7 +3645,7 @@ struct SummaryStatInput: View {
     }
 }
 
-// MARK: - Map URL composition (SPEC-451)
+// MARK: - Map URL composition
 //
 // File scope rather than methods on the renderer view, and `internal` rather than `private`, so the
 // shared-fixture runner drives the SAME code the renderer does. A test-only copy of a URL recipe
@@ -3719,7 +3719,7 @@ internal func mapCfg(_ block: ContentBlock, _ key: String) -> Any? {
     block.field_config?[key]?.value
 }
 
-/// SPEC-495 E1 — a map number, accepting the STRING the console actually publishes.
+/// A map number, accepting the STRING the console actually publishes.
 ///
 /// 🔴 EVERY NUMERIC MAP SETTING WAS BEING SILENTLY DROPPED. A published map block carries
 /// `map_height: "220"`, `map_zoom: "12"`, `marker_size: "28"`, `route_width: "4"` — strings. This
@@ -3795,7 +3795,7 @@ internal func formatCoord(_ v: Double) -> String {
 ///  3. `map_route_polyline` as authored — a fixed route pasted into the panel.
 ///  4. the stops, joined in order, which is a straight line between them and not a road route.
 internal func mapRoutePolyline(_ block: ContentBlock, rawResolved: Bool = false) -> String? {
-    // SPEC-496 §A1 — a raw-resolved block's `map_route_variable` is ALREADY resolved: use it as-is,
+    // A raw-resolved block's `map_route_variable` is ALREADY resolved: use it as-is,
     // no `.interpolated()` and no `{{` guard. Encoded polylines use ASCII 63–126, so a real host
     // polyline can contain `{{` and the guard below would throw it away.
     if rawResolved {
@@ -3815,7 +3815,7 @@ internal func mapRoutePolyline(_ block: ContentBlock, rawResolved: Bool = false)
     return (mapCfg(block, "map_route_polyline") as? String).flatMap { $0.isEmpty ? nil : $0 }
 }
 
-/// SPEC-495 §D — the Mapbox style this map draws with, after the two overrides.
+/// The Mapbox style this map draws with, after the two overrides.
 ///
 /// Precedence: an explicit Studio URL beats everything, then the theme (which only speaks when it is
 /// not `auto`), then the named style. A Studio URL arrives as `mapbox://styles/user/id` and the
@@ -3869,13 +3869,13 @@ internal func googleStyleJsonOf(_ block: ContentBlock) -> String? {
     return googleThemeJson(block)
 }
 
-/// SPEC-495 §A — which provider draws this map, defaulting to the one every published flow uses.
+/// Which provider draws this map, defaulting to the one every published flow uses.
 ///
 /// Pure, so the tier decision is asserted by a test and a shared fixture rather than inferred from
 /// a screenshot. An unknown value falls back to mapbox: a typo in a provider name must not blank
 /// the map. Mirrors Android `mapProviderOf`.
 /**
- * SPEC-495 §A — which engine draws this map.
+ * Which engine draws this map.
  *
  * 🔴 The APP's setting decides, not the block. The provider began as a per-map dropdown, which made
  * an author re-pick the same value on every step and let them choose an engine their app had no key
@@ -3896,7 +3896,7 @@ internal func mapProviderOf(_ block: ContentBlock) -> String {
     }
 }
 
-/// SPEC-495 §A — the static image URL for whichever provider the author chose.
+/// The static image URL for whichever provider the author chose.
 ///
 /// Returns nil when that provider has no key, which drops the render to tier 4 (the labelled
 /// surface). Tier 4 must stay reachable: a map with no key degrades to a caption, never a blank box.
@@ -3913,7 +3913,7 @@ internal func mapStaticURL(
         : mapboxStaticURL(block, token: token, width: width, height: height, rawResolved: rawResolved)
 }
 
-/// SPEC-495 §D — our style vocabulary mapped onto Google's four map types. Mirrors Android.
+/// Our style vocabulary mapped onto Google's four map types. Mirrors Android.
 internal func googleMapType(_ style: String?) -> String {
     switch style {
     case "satellite": return "satellite"
@@ -3923,7 +3923,7 @@ internal func googleMapType(_ style: String?) -> String {
     }
 }
 
-/// SPEC-495 §D — a hex colour for Google, which wants `0xRRGGBB` or `0xRRGGBBAA`.
+/// A hex colour for Google, which wants `0xRRGGBB` or `0xRRGGBBAA`.
 ///
 /// Opacity rides in the alpha byte because Google's static API has no opacity parameter, whereas
 /// Mapbox takes it as a path suffix. Same authored `route_opacity`, two grammars. Mirrors Android.
@@ -3936,7 +3936,7 @@ internal func googleHex(_ value: String?, _ fallback: String, _ opacity: Double)
     return rgb + String(format: "%02x", a)
 }
 
-/// SPEC-495 §D — Google styled-map JSON to repeated `style=` parameters.
+/// Google styled-map JSON to repeated `style=` parameters.
 ///
 /// Google's static API does not take the JSON array its own interactive SDK takes; it takes one
 /// `style=` parameter per rule. Converting here means an author can paste the SAME JSON they would
@@ -3962,7 +3962,7 @@ internal func googleStyleParams(_ json: String?) -> [String] {
     }
 }
 
-/// SPEC-495 §A/§D — the Google Static Maps URL, with the SAME semantics as the Mapbox builder.
+/// The Google Static Maps URL, with the SAME semantics as the Mapbox builder.
 ///
 /// Same route-then-markers ordering (pins over the line), the same two-stacked-paths casing, the
 /// same "one label character, only up to 9 stops" rule, the same fit behaviour. Two providers that

@@ -16,7 +16,7 @@ struct FullscreenView: View {
             VStack(spacing: 24) {
                 Spacer()
 
-                // SPEC-085: Lottie hero (takes priority over image)
+                // Lottie hero (takes priority over image)
                 if let lottieUrl = content.lottie_url {
                     LottieBlockView(block: LottieBlock(
                         lottie_url: lottieUrl, lottie_json: nil,
@@ -25,7 +25,7 @@ struct FullscreenView: View {
                         play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
                     ))
                 }
-                // SPEC-085: Rive hero
+                // Rive hero
                 else if let riveUrl = content.rive_url {
                     RiveBlockView(block: RiveBlock(
                         rive_url: riveUrl, artboard: nil,
@@ -34,7 +34,7 @@ struct FullscreenView: View {
                         inputs: nil, trigger_on_step_complete: nil
                     ))
                 }
-                // SPEC-085: Video hero
+                // Video hero
                 else if let videoUrl = content.video_url {
                     VideoBlockView(block: VideoBlock(
                         video_url: videoUrl,
@@ -58,7 +58,7 @@ struct FullscreenView: View {
                     }
                 }
 
-                // Title — SPEC-084: apply text_color
+                // Title: apply text_color
                 if let title = content.title {
                     Text(title)
                         .font(content.titleFont(default: .largeTitle.bold(), defaultSize: 34))
@@ -67,7 +67,7 @@ struct FullscreenView: View {
                         .padding(.horizontal, 32)
                 }
 
-                // Body — SPEC-084: apply text_color
+                // Body: apply text_color
                 if let body = content.body {
                     Text(body)
                         .font(content.bodyFont(default: .body, defaultSize: 17))
@@ -78,14 +78,14 @@ struct FullscreenView: View {
 
                 Spacer()
 
-                // CTA — SPEC-084: apply button_color, corner_radius
+                // CTA: apply button_color, corner_radius
                 if let ctaText = content.cta_text {
                     Button {
                         HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
                         onCTATap()
                     } label: {
                         HStack(spacing: 6) {
-                            // SPEC-085: CTA icon
+                            // CTA icon
                             if let icon = content.cta_icon {
                                 IconView(ref: icon, size: 18)
                             }
@@ -135,15 +135,15 @@ struct FullscreenView: View {
             }
             .padding(16)
 
-            // SPEC-085: Confetti overlay
+            // Confetti overlay
             if showConfetti, let effect = content.particle_effect {
                 ConfettiOverlay(effect: effect)
             }
         }
         .onAppear {
-            // SPEC-085: Haptic on appear
+            // Haptic on appear
             HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
-            // SPEC-085: Particle effect on appear
+            // Particle effect on appear
             if let effect = content.particle_effect, effect.trigger == "on_appear" {
                 showConfetti = true
             }

@@ -49,7 +49,7 @@ public struct AppDNAEnvironment: Codable, Equatable {
     }
 }
 
-/// AppDNAPushAction — one structured notification action button on a push payload (SPEC-070-A push section; matches push_payload/action_buttons_parse fixture).
+/// AppDNAPushAction — one structured notification action button on a push payload (matches the push_payload/action_buttons_parse fixture).
 public struct AppDNAPushAction: Codable, Equatable {
     /// Stable action identifier — registers the notification button and echoes back on tap.
     public let id: String
@@ -71,7 +71,7 @@ public struct AppDNAPushAction: Codable, Equatable {
     }
 }
 
-/// AppDNAPushPayload — a delivered push notification the SDK surfaces to the host app (SPEC-070-A push section; matches push_payload/action_buttons_parse fixture).
+/// AppDNAPushPayload — a delivered push notification the SDK surfaces to the host app (matches the push_payload/action_buttons_parse fixture).
 public struct AppDNAPushPayload: Codable, Equatable {
     /// Server-assigned push campaign/message id; echoed on push_received / push_tapped events.
     public let pushId: String

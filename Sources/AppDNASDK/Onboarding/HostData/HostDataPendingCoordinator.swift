@@ -1,6 +1,6 @@
 import Foundation
 
-/// SPEC-496 §B0 "Host data pending" — the normative state machine, one per flow host, tracking the
+/// "Host data pending" — the normative state machine, one per flow host, tracking the
 /// CURRENT step presentation (one arrival on a step; back-then-forward is a new presentation).
 ///
 /// - **Starts synchronously**: a presentation is pending from its first frame — before the delegate
@@ -14,7 +14,7 @@ import Foundation
 ///   when a later presentation superseded it. 🔴 It used to ride on `onFinish`, so leaving a step
 ///   before the delegate replied (the next step's `start` bumps the generation) meant
 ///   `onboarding_step_viewed` / `onOnboardingStepChanged` never fired for that step, on every flow,
-///   host data or not. Pre-SPEC-496 the step view fired after the await unconditionally.
+///   host data or not. Previously the step view fired after the await unconditionally.
 /// - **Cancelled before replying**: does NOT end pending; the call is re-fired ONCE as the latest
 ///   generation with a fresh deadline, and that call ends pending itself. A cancelled call fires
 ///   neither callback, so the re-fire is what counts the step view (exactly once).
@@ -35,7 +35,7 @@ final class HostDataPendingCoordinator: ObservableObject {
     private var generation = 0
     private var inFlight: InFlight?
     private var refiredPresentations: Set<Int> = []
-    /// SPEC-496 §5b C3 — "cached" is sampled ONCE per presentation, on its first `isPending`, and
+    /// "cached" is sampled ONCE per presentation, on its first `isPending`, and
     /// latched. Plain (not `@Published`): it is written during `body`. Not pruned, like
     /// `endedPresentations`: one entry per presentation of this flow presentation.
     ///
@@ -53,7 +53,7 @@ final class HostDataPendingCoordinator: ObservableObject {
         let onFinish: (StepConfigOverride?, Int) -> Void
         let onSettled: () -> Void
         let seqSource: (() -> Int)?
-        /// SPEC-496 §5b C3 — the flow-level `callSeq` this call drew at START.
+        /// The flow-level `callSeq` this call drew at START.
         let seq: Int
         var task: Task<Void, Never>?
         var cancelDeadline: (() -> Void)?
@@ -81,7 +81,7 @@ final class HostDataPendingCoordinator: ObservableObject {
         }
     }
 
-    /// §B0 "Applies" + "Starts synchronously" — pending iff the step can be pending (a delegate is set
+    /// "Applies" + "Starts synchronously" — pending iff the step can be pending (a delegate is set
     /// and its raw blocks reference `hook_data`), its override is not already cached, and this
     /// presentation has not ended its pending phase.
     /// `cached` is an autoclosure: it is evaluated only for a serial with no latch yet, so the
@@ -103,7 +103,7 @@ final class HostDataPendingCoordinator: ObservableObject {
     /// still the latest when it finishes. `onSettled` runs once when the call finishes (reply or
     /// deadline) WHETHER OR NOT it is still the latest — the step-view side effect — after `onFinish`.
     ///
-    /// SPEC-496 §5b C3 — `seq` draws the flow-level `callSeq` at the call's START (every re-fire draws
+    /// `seq` draws the flow-level `callSeq` at the call's START (every re-fire draws
     /// a fresh, larger value), and `onFinish` receives it beside the reply: the renderer records it as
     /// the step's `baseStamp`.
     func start(
@@ -148,7 +148,7 @@ final class HostDataPendingCoordinator: ObservableObject {
         f.onSettled()
     }
 
-    /// §B0 "Cancelled before replying" — cancel the in-flight call (e.g. its owner went away). A
+    /// "Cancelled before replying" — cancel the in-flight call (e.g. its owner went away). A
     /// cancellation before the reply does not end pending: the call is re-fired once, as the latest
     /// generation, with a fresh deadline.
     func cancelInFlight() {
@@ -166,7 +166,7 @@ final class HostDataPendingCoordinator: ObservableObject {
 /// Races an async producer against a deadline — a race between an unstructured `Task` and a
 /// continuation resumed EXACTLY ONCE by whichever side finishes first. Returns nil on expiry.
 ///
-/// 🔴 SPEC-496 §B0 — this used to be a task group that called `cancelAll()` and then implicitly
+/// 🔴 This used to be a task group that called `cancelAll()` and then implicitly
 /// awaited every child before returning, so a host that ignored cancellation held the step past its
 /// "3 s" timeout indefinitely. The losing producer is cancelled but never awaited.
 func withOverrideTimeout<T: Sendable>(

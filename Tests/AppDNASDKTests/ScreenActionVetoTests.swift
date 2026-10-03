@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-C D10 — `onScreenAction` returns Bool and a `false` reply must BLOCK the action. The
+/// `onScreenAction` returns Bool and a `false` reply must BLOCK the action. The
 /// action's only escape to the OS is `ScreenManager.urlOpener`; before it was injectable, a veto that
 /// silently opened the URL anyway was invisible outside a device.
 final class ScreenActionVetoTests: XCTestCase {

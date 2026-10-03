@@ -108,7 +108,6 @@ public struct LocationData: Codable, Equatable {
 
 /// Autocomplete location field for onboarding form steps.
 /// Debounces user input, calls backend proxy for suggestions, displays dropdown.
-/// @see SPEC-089
 struct LocationFieldView: View {
     let field: FormField
     @Binding var value: Any?

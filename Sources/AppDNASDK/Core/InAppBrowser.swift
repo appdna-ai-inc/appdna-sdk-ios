@@ -5,7 +5,7 @@ import UIKit
 /// Used for terms & conditions, privacy policy, and other legal links.
 enum InAppBrowser {
     static func present(url: URL) {
-        // SPEC-070-B PN row 18 (W11): every caller here passes a string straight from remote config.
+        // Every caller here passes a string straight from remote config.
         // Refuse anything that is not https or a scheme the host itself registered.
         guard URLSafety.isAllowed(url) else {
             Log.warning("InAppBrowser refused a config URL with scheme '\(url.scheme ?? "none")'")

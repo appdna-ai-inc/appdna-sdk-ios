@@ -10,7 +10,7 @@ struct TemplateContext {
     let deviceInfo: [String: String]
 }
 
-/// Shared template interpolation engine for all SDK modules (SPEC-088).
+/// Shared template interpolation engine for all SDK modules.
 /// Resolves `{{namespace.key}}` and `{{namespace.key | fallback}}` variables.
 final class TemplateEngine {
 
@@ -74,7 +74,7 @@ final class TemplateEngine {
         }
     }
 
-    /// SPEC-496 §A5 — resolve ONE token exactly as `interpolate` would (`resolved ?? fallback ?? ""`).
+    /// Resolve ONE token exactly as `interpolate` would (`resolved ?? fallback ?? ""`).
     ///
     /// The raw host-data pass owns every block string and makes `loc()` lookup-only, so a token whose
     /// root is NOT a block root (`device.*`, `computed.*`, `remote_config.*`, `input.*`, a bare name)

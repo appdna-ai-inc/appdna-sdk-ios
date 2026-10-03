@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Form step: renders native input controls for each FormField (SPEC-082).
+/// Form step: renders native input controls for each FormField.
 struct FormStepView: View {
     let config: StepConfig
     let onNext: ([String: Any]?) -> Void
@@ -182,7 +182,7 @@ struct FormStepView: View {
     // MARK: - Default values
 
     private func initializeDefaults() {
-        // SPEC-083: Apply fieldDefaults from StepConfigOverride first
+        // Apply fieldDefaults from StepConfigOverride first
         if let fieldDefaults = config.field_defaults {
             for (fieldId, val) in fieldDefaults {
                 if values[fieldId] == nil {
@@ -269,7 +269,7 @@ struct FormStepView: View {
     }
 
     /// Generic binding helper that drops the per-field error on any change.
-    /// Used by the SPEC-401-A renderer views which all need this same pattern.
+    /// Used by the renderer views which all need this same pattern.
     private func bindingFor(_ field: FormField) -> Binding<Any?> {
         Binding(
             get: { values[field.id] },
@@ -331,7 +331,7 @@ struct FormStepView: View {
 
     // MARK: - Date/Time
 
-    /// SPEC-401-A B2 P1 — parse min/max date config (ISO `yyyy-MM-dd`)
+    /// Parse min/max date config (ISO `yyyy-MM-dd`)
     /// into a `ClosedRange<Date>` and apply via SwiftUI's `in:` parameter.
     /// Mirrors Android `DatePickerDialog.datePicker.minDate/maxDate`.
     ///
@@ -478,7 +478,7 @@ struct FormStepView: View {
         .pickerStyle(.menu)
     }
 
-    // SPEC-419 — multi_select mirrors Android FormStepComposable.SelectField:
+    // multi_select mirrors Android FormStepComposable.SelectField:
     // value shape is [String] (List<String>), additions capped by max_selections.
     private func multiSelectField(_ field: FormField) -> some View {
         let options = field.options ?? []
@@ -525,7 +525,7 @@ struct FormStepView: View {
     // MARK: - Slider
 
     private func sliderField(_ field: FormField) -> some View {
-        // SPEC-419 pass-29 — clamp the ClosedRange (min<max, step>0); an inverted/degenerate config would trap Slider(in:).
+        // Clamp the ClosedRange (min<max, step>0); an inverted/degenerate config would trap Slider(in:).
         let step = { let s = field.config?.step ?? 1; return s > 0 ? s : 1 }()
         let minVal = min(field.config?.min_value ?? 0, field.config?.max_value ?? 100)
         let maxVal = max(field.config?.max_value ?? 100, minVal + step)
@@ -562,7 +562,7 @@ struct FormStepView: View {
             get: { values[field.id] as? Bool ?? false },
             set: { values[field.id] = $0 }
         )
-        // SPEC-401-A — `field.style.background_color` (or input_style.fill_color
+        // `field.style.background_color` (or input_style.fill_color
         // sub-key) tints the Toggle's on-track. Mirrors the Android Switch's
         // `checkedTrackColor`. Falls back to system tint if no style set.
         let inputStyle = field.style?.input_style?.value as? [String: Any]
@@ -576,7 +576,7 @@ struct FormStepView: View {
     // MARK: - Stepper
 
     private func stepperField(_ field: FormField) -> some View {
-        // SPEC-419 pass-29 — clamp the ClosedRange (min<max, step>0); an inverted/degenerate config would trap Stepper(in:).
+        // Clamp the ClosedRange (min<max, step>0); an inverted/degenerate config would trap Stepper(in:).
         let step = max(Int(field.config?.step ?? 1), 1)
         let minVal = min(Int(field.config?.min_value ?? 0), Int(field.config?.max_value ?? 100))
         let maxVal = max(Int(field.config?.max_value ?? 100), minVal + step)
@@ -640,7 +640,7 @@ struct FormStepView: View {
         }
 
         if errors.isEmpty {
-            // Round-22 — serialize each date/time field to a deterministic LOCAL-component format that
+            // Serialize each date/time field to a deterministic LOCAL-component format that
             // BOTH platforms produce identically (no UTC conversion → no local-vs-UTC divergence):
             //   date     → "yyyy-MM-dd"
             //   time     → "HH:mm"

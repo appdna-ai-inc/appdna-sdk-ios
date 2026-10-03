@@ -168,7 +168,7 @@ final class MessageConfigDecodingTests: XCTestCase {
         XCTAssertNil(content.blur_backdrop)
     }
 
-    // MARK: - SPEC-085 Rich media fields
+    // MARK: - Rich media fields
 
     func testDecodeRichMediaLottie() throws {
         let json = """

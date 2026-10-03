@@ -1,6 +1,6 @@
 import Foundation
 
-/// Represents a web subscription entitlement from Stripe web checkout (SPEC-024).
+/// Represents a web subscription entitlement from Stripe web checkout.
 public struct WebEntitlement {
     public let isActive: Bool
     public let planName: String?

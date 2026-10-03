@@ -45,7 +45,7 @@ public class PushNotificationHandler: NSObject, UNUserNotificationCenterDelegate
         )
     }
 
-    // SPEC-084: Register notification categories with action buttons
+    // Register notification categories with action buttons
     func registerActionCategories(from userInfo: [AnyHashable: Any]) {
         PushActionCategories.register(from: userInfo, slot: NotificationProxyBootstrap.categorySlot())
     }
@@ -111,7 +111,7 @@ enum PushPayloadParser {
             data = (data ?? [:]).merging([PushReply.dataKey: reply]) { _, new in new }
         }
 
-        // SPEC-088: Interpolate push title, body, and action button labels via TemplateEngine.
+        // Interpolate push title, body, and action button labels via TemplateEngine.
         let ctx = TemplateEngine.shared.buildContext()
 
         var actions: [PushAction] = []

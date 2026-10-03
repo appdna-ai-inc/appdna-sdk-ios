@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// SPEC-090: Interactive chat step renderer.
+/// Interactive chat step renderer.
 /// Renders a multi-turn chat UI with AI persona, webhooks, quick replies, and turn limits.
 struct ChatStepView: View {
     let step: OnboardingStep
@@ -24,7 +24,7 @@ struct ChatStepView: View {
     @State private var webhookData: [String: AnyCodable] = [:]
     @State private var startTime: Date = Date()
     @State private var showSoftLimitWarning: Bool = false
-    // R4 — chat input focus. A bare TextField in this bottom input bar wasn't
+    // Chat input focus. A bare TextField in this bottom input bar wasn't
     // reliably becoming first responder on tap, so the keyboard never opened.
     @FocusState private var inputFocused: Bool
     @State private var didRestore = false
@@ -106,7 +106,7 @@ struct ChatStepView: View {
             } else if turnsRemaining > 0 {
                 inputBar
             } else {
-                // R5/R6 — turn limit reached: show the completion CTA. Auto-complete
+                // Turn limit reached: show the completion CTA. Auto-complete
                 // only on a HARD limit; a soft limit lets the user tap Continue. (The
                 // old `|| !isHardLimit` on the inputBar branch kept the input showing
                 // forever for soft limits → max never honored + CTA never shown.)
@@ -500,7 +500,7 @@ struct ChatStepView: View {
 
             let (data, urlResponse) = try await URLSession.shared.data(for: urlRequest)
 
-            // SPEC-301: surface 4xx/5xx as chat_webhook_error instead of silently
+            // Surface 4xx/5xx as chat_webhook_error instead of silently
                             // decoding the error body as an empty ChatWebhookResponse.
             if let http = urlResponse as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 let bodyPreview = String(data: data, encoding: .utf8)?.prefix(500).description ?? ""
@@ -576,7 +576,7 @@ struct ChatStepView: View {
         }
 
         // Check if max turns reached.
-        // Round-17 — guard on `!isCompleted` (matches Android ChatStepComposable). Without it, a webhook
+        // Guard on `!isCompleted` (matches Android ChatStepComposable). Without it, a webhook
         // that returns force_complete on the FINAL allowed turn ran completeChat("ai_completed") above and
         // then fell through here to emit a SECOND chat_completed ("max_turns") + a second completion
         // bubble. `completeChat` sets isCompleted = true, so this now skips when already completed.

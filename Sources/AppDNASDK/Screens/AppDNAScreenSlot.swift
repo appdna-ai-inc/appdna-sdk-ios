@@ -31,7 +31,7 @@ public struct AppDNAScreenSlot: View {
     public var body: some View {
         Group {
             if !AppDNA.isConsentGranted() {
-                // AC-137: Slots render nothing when consent denied
+                // Slots render nothing when consent denied
                 EmptyView()
             } else if isLoading {
                 placeholderView
@@ -79,7 +79,7 @@ public struct AppDNAScreenSlot: View {
         let context = SectionContext(
             screenId: config.id ?? "",
             onAction: { action in
-                // Round-33 — consult the host onScreenAction veto (+ async wrapper) before performing
+                // Consult the host onScreenAction veto (+ async wrapper) before performing
                 // a slot action, matching Android AppDNAScreenSlot + the full-screen path. Previously
                 // slot actions bypassed the veto entirely, so a host returning false was ignored.
                 ScreenManager.shared.dispatchSlotAction(action, screenId: config.id ?? "") {
@@ -135,7 +135,7 @@ public struct AppDNAScreenSlot: View {
         switch action {
         case .dismiss:
             break // Can't dismiss inline content
-        // SPEC-070-B PN row 18 (W11): config-driven URLs — scheme-checked before they reach the OS.
+        // Config-driven URLs — scheme-checked before they reach the OS.
         case .openURL(let url):
             if let url = URLSafety.sanitized(url) { UIApplication.shared.open(url) }
         case .deepLink(let url):

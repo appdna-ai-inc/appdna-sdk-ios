@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B — `Screens/FlowManager.handleAction` used to route 4 of the 21 verbs the SDUI layer can
+/// `Screens/FlowManager.handleAction` used to route 4 of the 21 verbs the SDUI layer can
 /// dispatch (`next`/`back`/`dismiss`/`navigate`) and `break` on the rest, under the comment "Other
 /// actions handled by parent". There is no parent: `ScreenPresenter.presentFlow` wires
 /// `context.onAction` straight into it. So inside a multi-screen FLOW every other console-authored

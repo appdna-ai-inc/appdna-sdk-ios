@@ -1,8 +1,8 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-496 P1 implementation-audit ROUND 2 regressions (iOS): M1 nested sheet blocks resolve their
-/// own `sheet_step_paths`, m1 nested §B0-scoped Selects get vanished selections cleared, m2 Segmented
+/// Implementation-audit ROUND 2 regressions (iOS): M1 nested sheet blocks resolve their
+/// own `sheet_step_paths`, m1 nested host-data-scoped Selects get vanished selections cleared, m2 Segmented
 /// default-first when options arrive late, m3 resync never clobbers a non-string answer.
 @MainActor
 final class HostDataAuditRound2Tests: XCTestCase {
@@ -73,7 +73,7 @@ final class HostDataAuditRound2Tests: XCTestCase {
         XCTAssertEqual(OnboardingStepPipeline.applySheetStepPaths(plain, stepInputs: ["n": "7"]).children?.first?.text, "{{step.n}}")
     }
 
-    // MARK: - m1 — a nested §B0-scoped Select gets vanished selections cleared
+    // MARK: - m1 — a nested host-data-scoped Select gets vanished selections cleared
 
     func testClearVanishedSelectionsWalksContainerChildren() throws {
         let row = try block("""

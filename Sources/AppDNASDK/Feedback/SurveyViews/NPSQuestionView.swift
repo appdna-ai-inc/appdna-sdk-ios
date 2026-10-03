@@ -4,7 +4,7 @@ import SwiftUI
 struct NPSQuestionView: View {
     let question: SurveyQuestion
     @Binding var answer: SurveyAnswer?
-    // R89 — honor the survey theme's resolved colors. Selected score fill was hardcoded
+    // Honor the survey theme's resolved colors. Selected score fill was hardcoded
     // Color(hex:"#6366F1") with a `.white` label (white-on-white when accent is white);
     // unselected label was `.primary`. Defaults preserve prior behavior.
     var accentColor: Color = Color(hex: "#6366F1")

@@ -1,6 +1,6 @@
 import Foundation
 
-/// Codable structs matching SPEC-002 Firestore PaywallConfig schema.
+/// Codable structs matching Firestore PaywallConfig schema.
 struct PaywallConfig: Codable {
     let id: String?
     let name: String?
@@ -13,11 +13,11 @@ struct PaywallConfig: Codable {
     let placement: String?
     let placement_label: String?
     let version: Int?
-    // SPEC-084: Design tokens
+    // Design tokens
     let animation: AnimationConfig?
     let localizations: [String: [String: String]]?
     let default_locale: String?
-    // SPEC-085: Rich media
+    // Rich media
     let haptic: HapticConfig?
     let particle_effect: ParticleEffect?
     // Post-purchase actions
@@ -59,7 +59,7 @@ struct PaywallSection: Codable {
     let id: String?
     private let _data: PaywallSectionData?
     private let _config: PaywallSectionData?
-    // SPEC-084: Per-section styling
+    // Per-section styling
     let style: SectionStyleConfig?
     /// When true, this section fades out and collapses to 0 height as the user scrolls.
     let collapse_on_scroll: Bool?
@@ -115,15 +115,15 @@ struct PaywallSectionData: Codable {
     /// #651 — Restore's own fill + radius, the pair the CTA already has.
     let restoreBgColor: String?
     let restoreCornerRadius: Double?
-    /// SPEC-490 (#651 item 1) — the gap between the CTA button and the Restore link. Was a
+    /// The gap between the CTA button and the Restore link. Was a
     /// hardcoded `VStack(spacing: 8)` here, `Spacer(8.dp)` on Android and `mt-2` in the preview,
     /// with no way to author it. Unset keeps 8 on every surface.
     let restoreGap: CGFloat?
-    /// SPEC-492 (#651 item 4) — what the CTA and the restore link DO. Unset keeps today's
+    /// What the CTA and the restore link DO. Unset keeps today's
     /// behaviour exactly: the CTA purchases, the restore link restores.
     let ctaAction: String?
     let restoreAction: String?
-    /// SPEC-492 (#651 item 2) — additional buttons, rendered under the CTA in order.
+    /// Additional buttons, rendered under the CTA in order.
     let extraButtons: [PaywallExtraButton]?
     let restoreFontSize: Double?    // CTA section: restore link font size
 
@@ -143,7 +143,7 @@ struct PaywallSectionData: Codable {
     let authorRole: String?
     let avatarUrl: String?
 
-    // SPEC-085: Rich media in paywall sections
+    // Rich media in paywall sections
     let lottieUrl: String?
     let lottieLoop: Bool?
     let lottieSpeed: Double?
@@ -154,7 +154,7 @@ struct PaywallSectionData: Codable {
     let riveUrl: String?
     let riveStateMachine: String?
 
-    // SPEC-089d: Countdown section
+    // Countdown section
     let variant: String?           // digital | circular | flip | bar
     let durationSeconds: Int?
     let targetDatetime: String?
@@ -170,11 +170,11 @@ struct PaywallSectionData: Codable {
     let fontSize: CGFloat?
     let alignment: String?
 
-    // SPEC-089d: Legal section
+    // Legal section
     let color: String?
     let links: [PaywallLink]?
 
-    // SPEC-089d: Divider section
+    // Divider section
     let thickness: CGFloat?
     let lineStyle: String?         // solid | dashed | dotted
     let marginTop: CGFloat?
@@ -185,7 +185,7 @@ struct PaywallSectionData: Codable {
     let labelBgColor: String?
     let labelFontSize: CGFloat?
 
-    // SPEC-089d: Sticky footer section
+    // Sticky footer section
     let ctaText: String?
     let ctaBgColor: String?
     let ctaTextColor: String?
@@ -199,7 +199,7 @@ struct PaywallSectionData: Codable {
     let secondaryAction: String?   // restore | link
     let secondaryUrl: String?
     let legalText: String?
-    /// SPEC-487 (#648) — the sticky footer's Subtitle was drawn at a HARDCODED 10pt on both
+    /// The sticky footer's Subtitle was drawn at a HARDCODED 10pt on both
     /// natives and in the preview, honouring no authored size or colour. The console's
     /// "Subtitle Style" controls had been removed with a note to re-add them "once natives+preview
     /// support per-legal typography" — this is that support. Unset keeps 10pt / `.secondary`, so
@@ -209,7 +209,7 @@ struct PaywallSectionData: Codable {
     let blurBackground: Bool?
     let padding: CGFloat?
 
-    // SPEC-089d: Carousel section
+    // Carousel section
     let pages: [PaywallCarouselPage]?
     let autoScroll: Bool?
     let autoScrollIntervalMs: Int?
@@ -217,7 +217,7 @@ struct PaywallSectionData: Codable {
     let indicatorColor: String?
     let indicatorActiveColor: String?
 
-    // SPEC-089d: Timeline / Icon grid items (shared JSON key "items")
+    // Timeline / Icon grid items (shared JSON key "items")
     let items: [PaywallGenericItem]?
     let lineColor: String?
     let completedColor: String?
@@ -226,7 +226,7 @@ struct PaywallSectionData: Codable {
     let showLine: Bool?
     let compact: Bool?
 
-    // SPEC-089d: Icon grid / comparison table columns
+    // Icon grid / comparison table columns
     // Int for icon_grid (column count), [String] for comparison_table (column labels)
     let columns: AnyCodable?
     let iconSize: CGFloat?
@@ -248,7 +248,7 @@ struct PaywallSectionData: Codable {
     let iconBgSize: CGFloat?       // Circle diameter (default 32)
     let spacing: CGFloat?
 
-    // SPEC-089d: Comparison table section
+    // Comparison table section
     let tableColumns: [PaywallTableColumn]?
     let tableRows: [PaywallTableRow]?
     let checkColor: String?
@@ -256,13 +256,13 @@ struct PaywallSectionData: Codable {
     let highlightColor: String?
     let borderColor: String?
 
-    // SPEC-089d: Promo input section
+    // Promo input section
     let placeholder: String?
     let buttonText: String?
     let successText: String?
     let errorText: String?
 
-    // SPEC-089d: Toggle section
+    // Toggle section
     let label: String?
     let description: String?
     let defaultValue: Bool?
@@ -273,7 +273,7 @@ struct PaywallSectionData: Codable {
     let icon: String?
     let affectsPrice: Bool?
 
-    // SPEC-089d: Reviews carousel section
+    // Reviews carousel section
     let reviews: [PaywallReview]?
     let showRatingStars: Bool?
     let starColor: String?
@@ -328,11 +328,11 @@ struct PaywallSectionData: Codable {
     let selectedScale: CGFloat?
     /// Color of the struck-through original price (plans[].original_price_display).
     let strikethroughColor: String?
-    /// SPEC-438 (#548) — size of the struck original price, and the gap between it and the
+    /// Size of the struck original price, and the gap between it and the
     /// current price. Previously hardcoded, so authors had no control over either.
     let strikethroughFontSize: CGFloat?
     let strikethroughGap: CGFloat?
-    /// SPEC-438 (#548) — `inline` (default, unchanged) or `headline_stacked`: a large
+    /// `inline` (default, unchanged) or `headline_stacked`: a large
     /// current price with the struck was-price and the real charged total beneath it.
     let priceLayout: String?
 
@@ -513,7 +513,7 @@ struct PaywallPlanTrial: Codable {
     let label: String?
 }
 
-/// SPEC-438 (#544) — the plan subtitle rendered as a coloured pill rather than plain text.
+/// The plan subtitle rendered as a coloured pill rather than plain text.
 /// Authored on the product (Monetization → Products) and copied onto the plan when the
 /// product is selected, so one promotion is set once and every paywall inherits it.
 struct PaywallDescriptionBadge: Codable {
@@ -548,10 +548,10 @@ struct PaywallPlan: Codable, Identifiable {
     /// Struck-through "old" price shown beside `displayPrice`. Section-level
     /// `strikethrough_color` controls its color.
     let original_price_display: String?
-    /// SPEC-438 (#548) — the real charged total, shown under a per-period headline price
+    /// The real charged total, shown under a per-period headline price
     /// when the section's `price_layout` is `headline_stacked`. Authored on the product.
     let price_total_display: String?
-    /// SPEC-438 (#544) — render `description` as a coloured pill instead of plain text.
+    /// Render `description` as a coloured pill instead of plain text.
     let description_badge: PaywallDescriptionBadge?
     /// #588 — this plan's price colour. Beats the section's `elements.price` style and the
     /// selected/unselected text colour, because the whole point is to make ONE tier's price stand
@@ -574,7 +574,7 @@ struct PaywallPlan: Codable, Identifiable {
     /// Display price — try price_display first (Firestore), then price (legacy)
     var displayPrice: String { price_display ?? price ?? "" }
     /// Trial display — an authored `trial.label` wins verbatim; a bare
-    /// `trialDuration` ("7-day") is enriched to "7-day free trial" (Round-30:
+    /// `trialDuration` ("7-day") is enriched to "7-day free trial" (
     /// the " free trial" suffix used to live at the PlanCard render site only,
     /// so grid cards read "7-day free trial" while every other layout showed
     /// "7-day", and an authored label got a double "Free week free trial").
@@ -733,7 +733,7 @@ struct PaywallCTA: Codable {
     }
 }
 
-/// SPEC-492 (#651 item 2) — an extra button in the CTA section, beyond the CTA and the restore link.
+/// An extra button in the CTA section, beyond the CTA and the restore link.
 struct PaywallExtraButton: Codable, Identifiable {
     let text: String?
     /// purchase | restore | dismiss | link. `dismiss` leaves the paywall, which returns the user to
@@ -758,7 +758,7 @@ struct PaywallDismiss: Codable {
     private let _type: String?   // Legacy "type" fallback
     let delaySeconds: Int?
     let text: String?
-    /// SPEC-491 (#652) — placement, colour and size for the X / back chevron. Unset keeps the
+    /// Placement, colour and size for the X / back chevron. Unset keeps the
     /// previous hardcoded top-right, `.primary` and 16pt.
     private let _position: String?
     let color: String?
@@ -772,7 +772,7 @@ struct PaywallDismiss: Codable {
     /// Whether dismiss is allowed — defaults to true for backward compat.
     var isAllowed: Bool { allowed ?? true }
 
-    /// #652 (round 2) — the Back button is its OWN control, not a style of the close button. A
+    /// #652 — the Back button is its OWN control, not a style of the close button. A
     /// paywall can want both at once, each with its own placement, colour, size and delay.
     let back: PaywallBackButton?
 
@@ -785,7 +785,7 @@ struct PaywallDismiss: Codable {
     }
 }
 
-/// #652 (round 2) — the second dismissal affordance, configured independently of the close button.
+/// #652 — the second dismissal affordance, configured independently of the close button.
 struct PaywallBackButton: Codable {
     let enabled: Bool?
     /// `chevron` (default) | `arrow` | `text_link`.
@@ -830,14 +830,14 @@ struct PaywallBackground: Codable {
     let image_url: String?
     let image_fit: String?  // "cover", "contain", "fill"
     let overlay: String?    // hex color overlay
-    // SPEC-085: Video background
+    // Video background
     let video_url: String?
     let video_poster_url: String?
     let video_muted: Bool?
     let video_loop: Bool?
 }
 
-// MARK: - SPEC-089d: Codable sub-types for new paywall sections
+// MARK: - Codable sub-types for new paywall sections
 
 struct PaywallLink: Codable {
     let label: String?
@@ -909,7 +909,7 @@ public struct PaywallContext {
     public let placement: String
     public let experiment: String?
     public let variant: String?
-    /// SPEC-070-B PN row 4 (D-s) — arbitrary per-presentation attributes. Merged into the
+    /// Arbitrary per-presentation attributes. Merged into the
     /// `paywall_view` event's properties, so they are queryable in the warehouse alongside
     /// `paywall_id` and `placement`. Keys colliding with a reserved property are dropped and warned
     /// about, never silently overwritten.
@@ -995,7 +995,7 @@ public protocol AppDNAPaywallDelegate: AnyObject {
     /// original two-argument method — so every existing conformer keeps compiling and keeps working.
     func onPaywallPurchaseFailed(paywallId: String, error: Error, errorType: String, productId: String?)
     func onPaywallDismissed(paywallId: String)
-    /// AC-037: Validate a promo code entered by the user. Call the completion handler with `true` if valid, `false` otherwise.
+    /// Validate a promo code entered by the user. Call the completion handler with `true` if valid, `false` otherwise.
     func onPromoCodeSubmit(paywallId: String, code: String, completion: @escaping (Bool) -> Void)
     /// Post-purchase: SDK wants the host app to open a deep link URL.
     func onPostPurchaseDeepLink(paywallId: String, url: String)

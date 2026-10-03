@@ -93,12 +93,12 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         }
 
         let product = package.storeProduct
-        // SPEC-400 — fire onPurchaseCompleted to the host's
+        // Fire onPurchaseCompleted to the host's
         // AppDNABillingDelegate. The PurchasesDelegate.receivedUpdated
         // callback below also fires for entitlement changes, but is
         // not 1:1 with purchases (it fires on restore + cross-device
         // sync too) and only emits an analytics event, never the
-        // billing delegate. SPEC-400 single-source-of-truth: every
+        // billing delegate. Single-source-of-truth: every
         // purchase produces exactly one onPurchaseCompleted call from
         // the bridge that drove it.
         // Nil → the key is omitted downstream (`PurchaseSuccessEvents.properties` skips an empty id) —
@@ -147,14 +147,14 @@ final class RevenueCatBridge: NSObject, BillingBridgeProtocol {
         _ = appAccountToken
         let customerInfo = try await Purchases.shared.restorePurchases()
         let restoredIds = Self.activeProductIds(customerInfo)
-        // SPEC-400 — fire onRestoreCompleted.
+        // Fire onRestoreCompleted.
         await MainActor.run {
             AppDNA.billingDelegate?.onRestoreCompleted(restoredProducts: restoredIds)
         }
         return restoredIds
     }
 
-    /// SPEC-400 — single helper for the purchase-failure delegate fan-out.
+    /// Single helper for the purchase-failure delegate fan-out.
     private func fireBillingPurchaseFailed(productId: String, error: Error) async {
         await MainActor.run {
             AppDNA.billingDelegate?.onPurchaseFailed(productId: productId, error: error)

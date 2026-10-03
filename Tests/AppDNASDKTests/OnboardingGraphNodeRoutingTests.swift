@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B — next-step-rule targets that name a `permission_*` / `screen_*` / `flow_*` graph node,
+/// Next-step-rule targets that name a `permission_*` / `screen_*` / `flow_*` graph node,
 /// and the last-step rule-failure bailout event.
 ///
 /// THE BUGS:

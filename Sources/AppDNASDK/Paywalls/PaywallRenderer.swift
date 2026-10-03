@@ -6,17 +6,17 @@ struct PaywallRenderer: View {
     let onPlanSelected: (PaywallPlan, _ metadata: [String: Any]) -> Void
     let onRestore: () -> Void
     let onDismiss: (DismissReason) -> Void
-    /// AC-037: Callback for promo code validation. Returns true if code is valid, false otherwise.
+    /// Callback for promo code validation. Returns true if code is valid, false otherwise.
     var onPromoCodeSubmit: ((String, @escaping (Bool) -> Void) -> Void)? = nil
 
     @State private var selectedPlanId: String?
     @State private var showDismiss = false
-    /// #652 (round 2) — the Back button has its OWN delay, so it cannot ride on `showDismiss`.
+    /// #652 — the Back button has its OWN delay, so it cannot ride on `showDismiss`.
     @State private var showBack = false
     @State private var isPurchasing = false
     @State private var isDismissing = false
     @State private var dragOffset: CGFloat = 0
-    // SPEC-085: Particle effect state
+    // Particle effect state
     @State private var showConfetti = false
     // Post-purchase overlay state
     @State private var showSuccessOverlay = false
@@ -30,18 +30,18 @@ struct PaywallRenderer: View {
     /// full-screen cover and so lost a purchase-ended post, leaving the CTA spinning).
     @StateObject private var purchaseObservers = PaywallPurchaseObservers()
 
-    // SPEC-084: Localization helper + SPEC-088: Template variable interpolation
+    // Localization helper: Template variable interpolation
     private func loc(_ key: String, _ fallback: String) -> String {
         let localized = LocalizationEngine.resolve(key: key, localizations: config.localizations, defaultLocale: config.default_locale, fallback: fallback)
         return TemplateEngine.shared.interpolate(localized, context: templateContext)
     }
 
-    // SPEC-088: Cached template context (built once per render cycle)
+    // Cached template context (built once per render cycle)
     private var templateContext: TemplateContext {
         TemplateEngine.shared.buildContext()
     }
 
-    // SPEC-089d: Extract sticky_footer section if present
+    // Extract sticky_footer section if present
     private var stickyFooterSection: PaywallSection? {
         config.sections.first(where: { $0.type == "sticky_footer" })
     }
@@ -105,11 +105,11 @@ struct PaywallRenderer: View {
         return topBucket + midBucket + bottomBucket
     }
 
-    // SPEC-089d: Toggle state for toggle sections
+    // Toggle state for toggle sections
     @State private var toggleStates: [String: Bool] = [:]
     // Scroll offset for collapse-on-scroll sections
     @State private var scrollOffset: CGFloat = 0
-    // SPEC-089d: Promo input state
+    // Promo input state
     @State private var promoCode: String = ""
     @State private var promoState: PromoState = .idle
 
@@ -185,10 +185,10 @@ struct PaywallRenderer: View {
                             // #651 — Restore's own fill + radius.
                             bgColor: ctaSec.data?.restoreBgColor,
                             cornerRadius: ctaSec.data?.restoreCornerRadius.map { CGFloat($0) },
-                            // SPEC-492 (#651 item 4) — the restore link's action is authorable too; unset restores.
+                            // The restore link's action is authorable too; unset restores.
                             onRestore: { performButtonAction(ctaSec.data?.restoreAction, url: nil, default: "restore") }
                         )
-                        // SPEC-490 (#651 item 1) — the CTA↔Restore gap on the path where the restore link is
+                        // The CTA↔Restore gap on the path where the restore link is
                         // rendered OUTSIDE the CTA button. Hoisted into a typed local: inlining
                         // `ctaSec.data?.restoreGap ?? 8` here made the whole `body` exceed Swift's type-check
                         // budget ("unable to type-check this expression in reasonable time"), which is the same
@@ -201,7 +201,7 @@ struct PaywallRenderer: View {
                             CTAButton(
                                 cta: config.cta,
                                 isPurchasing: isPurchasing,
-                                // SPEC-492 (#651 item 4) — the CTA's action is authorable; unset still purchases.
+                                // The CTA's action is authorable; unset still purchases.
                                 onTap: { performButtonAction(ctaSec.data?.ctaAction, url: nil, default: "purchase") },
                                 loc: loc,
                                 sectionStyle: ctaSec.style,
@@ -215,7 +215,7 @@ struct PaywallRenderer: View {
                             )
                             .ctaAnimation(config.animation?.cta_animation)
                             .applyContainerStyle(ctaSec.style?.container)
-                            // SPEC-492 (#651 item 2) — extra buttons sit between the CTA and the restore link.
+                            // Extra buttons sit between the CTA and the restore link.
                             if let extras = ctaSec.data?.extraButtons, !extras.isEmpty {
                                 extraButtonsView(extras)
                             }
@@ -260,7 +260,7 @@ struct PaywallRenderer: View {
                         .padding(.top, 4)
                     }
 
-                    // SPEC-089d: Sticky footer pinned to bottom
+                    // Sticky footer pinned to bottom
                     if let footer = stickyFooterSection {
                         stickyFooterView(data: footer.data, style: footer.style)
                     }
@@ -270,7 +270,7 @@ struct PaywallRenderer: View {
             // Background as modifier — does NOT corrupt safe area (Apple HIG)
             .background { backgroundView.allowsHitTesting(false) }
 
-            // SPEC-085: Confetti/particle overlay
+            // Confetti/particle overlay
             if showConfetti, let effect = config.particle_effect {
                 ConfettiOverlay(effect: effect)
             }
@@ -327,7 +327,7 @@ struct PaywallRenderer: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // #652 (round 2) — the Back button, rendered INDEPENDENTLY of the close control.
+            // #652 — the Back button, rendered INDEPENDENTLY of the close control.
             //
             // The first pass made "back" a dismiss STYLE, so a paywall could have a chevron or an X
             // but never both, and the two shared one position/colour/size. They are two buttons.
@@ -338,7 +338,7 @@ struct PaywallRenderer: View {
             }
 
             // Dismiss control — show by default when config.dismiss is nil (not in Firestore).
-            // SPEC-419 — `delay_seconds > 0` REVEALS the dismiss after N seconds and must win
+            // `delay_seconds > 0` REVEALS the dismiss after N seconds and must win
             // even when allowed=false (the winback pattern: force engagement for N seconds, THEN
             // let the user leave). Only a paywall that is BOTH disallowed AND has no delayed
             // reveal is a true hard force-choice. `showDismiss` already flips true after the delay.
@@ -359,7 +359,7 @@ struct PaywallRenderer: View {
                         .padding(.bottom, 24)
                     }
                 case "back_button":
-                    // SPEC-491 (#652) — a chevron that LEAVES the paywall, which returns the user to
+                    // A chevron that LEAVES the paywall, which returns the user to
                     // whatever was presented before it (a previous paywall, an onboarding step, a
                     // screen module). On a single-view paywall that is the same operation as close;
                     // what differs is the GLYPH. Navigating between
@@ -390,7 +390,7 @@ struct PaywallRenderer: View {
             }
 
             // Handle dismiss delay — always show dismiss when config.dismiss is nil (default behavior)
-            // #652 (round 2) — the Back button's own delay, independent of the close button's.
+            // #652 — the Back button's own delay, independent of the close button's.
             let backDelay = config.dismiss?.back?.delaySeconds ?? 0
             if backDelay > 0 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(backDelay)) {
@@ -537,7 +537,7 @@ struct PaywallRenderer: View {
 
     // MARK: - Dismiss helpers
 
-    /// SPEC-492 (#651 item 2) — extra buttons under the CTA, in authored order.
+    /// Extra buttons under the CTA, in authored order.
     ///
     /// This is what lifts the "two buttons, one of them restore" cap: a second restore, a
     /// "Maybe later", or a terms link are all just entries here. `filled` draws a button, `text`
@@ -571,7 +571,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    /// SPEC-492 (#651 item 4) — the ONE place an authored button action is dispatched.
+    /// The ONE place an authored button action is dispatched.
     ///
     /// These are the four things a paywall can actually do. `dismiss` leaves the paywall, which
     /// returns the user to the previous screen — so "back" needs no separate action. `nil` falls
@@ -605,7 +605,7 @@ struct PaywallRenderer: View {
 
     private var dismissButton: some View { dismissGlyph("xmark") }
 
-    /// #652 (round 2) — the standalone Back control. Its own glyph, side, colour, size and delay.
+    /// #652 — the standalone Back control. Its own glyph, side, colour, size and delay.
     @ViewBuilder
     private func backAffordance(_ back: PaywallBackButton) -> some View {
         let glyphSize: CGFloat = back.size ?? 16
@@ -638,10 +638,10 @@ struct PaywallRenderer: View {
         }
     }
 
-    /// SPEC-491 (#652) — the back chevron. Same button, same dismissal; a different glyph.
+    /// The back chevron. Same button, same dismissal; a different glyph.
     private var backButton: some View { dismissGlyph("chevron.left") }
 
-    /// SPEC-491 (#652) — ONE builder for both, so an authored size, colour or position cannot be
+    /// ONE builder for both, so an authored size, colour or position cannot be
     /// applied to the X and forgotten on the chevron. Unset reproduces the previous hardcoded
     /// 16pt / `.primary` / 32×32 circle exactly.
     private func dismissGlyph(_ systemName: String) -> some View {
@@ -658,7 +658,7 @@ struct PaywallRenderer: View {
                 .clipShape(Circle())
         }
         .padding(16)
-        // SPEC-491 (#652) — the authored side. The enclosing ZStack is `.topTrailing`, so a
+        // The authored side. The enclosing ZStack is `.topTrailing`, so a
         // full-width frame with an explicit alignment is what lets the glyph move to the left.
         .frame(maxWidth: .infinity, alignment: (config.dismiss?.position ?? "top_right") == "top_left" ? .leading : .trailing)
         .transition(.opacity)
@@ -873,7 +873,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-084: Social proof with sub-types
+    // MARK: - Social proof with sub-types
 
     private func socialProofSection(data: PaywallSectionData?, style: SectionStyleConfig?) -> AnyView {
         switch data?.subType {
@@ -901,7 +901,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-084: Image section
+    // MARK: - Image section
 
     @ViewBuilder
     private func imageSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -922,7 +922,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-084: Testimonial section
+    // MARK: - Testimonial section
 
     private func testimonialSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
         let quoteTextStyle = style?.elements?["quote"]?.textStyle
@@ -1017,7 +1017,7 @@ struct PaywallRenderer: View {
         return (first + last).uppercased()
     }
 
-    // MARK: - SPEC-085: Lottie section
+    // MARK: - Lottie section
 
     @ViewBuilder
     private func lottieSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1040,7 +1040,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-085: Video section
+    // MARK: - Video section
 
     @ViewBuilder
     private func videoSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1061,7 +1061,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-085: Rive section
+    // MARK: - Rive section
 
     @ViewBuilder
     private func riveSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1081,14 +1081,14 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Countdown section (AC-028)
+    // MARK: - Countdown section
 
     @ViewBuilder
     private func countdownSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
         let duration = data?.durationSeconds ?? data?.countdownSeconds ?? 3600
         let valueTextStyle = style?.elements?["value"]?.textStyle
         let layout = data?.layout ?? "inline"
-        // Round-11 Finding 4 — prefer `label_text` (the countdown-specific console field) over the
+        // Prefer `label_text` (the countdown-specific console field) over the
         // generic `label`, matching Android (PaywallActivity: `label_text ?: label`). iOS had the
         // precedence inverted, so a section with both set rendered a different string per platform.
         let labelText = data?.labelText ?? data?.label
@@ -1096,7 +1096,7 @@ struct PaywallRenderer: View {
         VStack(spacing: 8) {
             // Label text (e.g. "Offer ends in")
             if let label = labelText {
-                // Round-23 — honor the authored `label_font_size` + `label_color` (both decoded but
+                // Honor the authored `label_font_size` + `label_color` (both decoded but
                 // ignored) with Android's exact defaults (14pt, semibold, #7F1D1D dark-red). iOS was
                 // hardcoded to `.caption`(~12pt)/medium/system-grey, so the label size was silently
                 // dropped and the default color differed on every countdown (grey vs dark-red) from Android.
@@ -1119,7 +1119,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Legal section (AC-029)
+    // MARK: - Legal section
 
     @ViewBuilder
     private func legalSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1186,7 +1186,7 @@ struct PaywallRenderer: View {
 
     /// The sticky footer's secondary action, resolved.
     ///
-    /// SPEC-070-B W11 — `internal static` so the test can drive the REAL code. The Button body above
+    /// `internal static` so the test can drive the REAL code. The Button body above
     /// is now a single call to this; deleting the `URLSafety` hop below turns that test red.
     ///
     /// 🔴 This used to be `URL(string: data.secondaryUrl)` → `UIApplication.shared.open(url)`,
@@ -1208,13 +1208,13 @@ struct PaywallRenderer: View {
         }
     }
 
-    /// SPEC-485 (#649) — forwards to the shared parser in `LegalMarkdownLinks.swift`, so the
+    /// Forwards to the shared parser in `LegalMarkdownLinks.swift`, so the
     /// Screens/Sections legal renderer uses the SAME one instead of a plain-Text copy.
     private func parseMarkdownLinks(_ text: String) -> AttributedString {
         legalMarkdownLinks(text)
     }
 
-    // MARK: - SPEC-089d: Divider section (AC-030)
+    // MARK: - Divider section
 
     @ViewBuilder
     private func dividerSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1265,7 +1265,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Sticky footer (AC-031)
+    // MARK: - Sticky footer
 
     @ViewBuilder
     private func stickyFooterView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1310,7 +1310,7 @@ struct PaywallRenderer: View {
 
             // Legal text
             if let legalText = data?.legalText {
-                // SPEC-487 (#648) — the size and colour are now authored. Unset keeps the previous
+                // The size and colour are now authored. Unset keeps the previous
                 // hardcoded 10pt / `.secondary`, so a published paywall is unchanged. This is what
                 // made #648 look like a Legal-section bug: the footer Subtitle was pinned at 10pt
                 // while the Legal SECTION honoured its authored size, so a 13pt legal paragraph
@@ -1336,7 +1336,7 @@ struct PaywallRenderer: View {
         .applyContainerStyle(style?.container)
     }
 
-    // MARK: - SPEC-089d: Card section (AC-032)
+    // MARK: - Card section
 
     @ViewBuilder
     private func cardSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1405,7 +1405,7 @@ struct PaywallRenderer: View {
         .overlay(RoundedRectangle(cornerRadius: radius).stroke(Color(hex: card.border_color ?? "#E5E7EB"), lineWidth: 1))
     }
 
-    // MARK: - SPEC-089d: Carousel section (AC-033)
+    // MARK: - Carousel section
 
     @ViewBuilder
     private func carouselSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1424,7 +1424,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Timeline section (AC-034)
+    // MARK: - Timeline section
 
     @ViewBuilder
     private func timelineSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1535,7 +1535,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Icon grid section (AC-035)
+    // MARK: - Icon grid section
 
     @ViewBuilder
     private func iconGridSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1591,7 +1591,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Comparison table section (AC-036)
+    // MARK: - Comparison table section
 
     private func comparisonTableSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
         // Column labels: prefer structured tableColumns, fall back to plain string array from AnyCodable columns
@@ -1690,10 +1690,10 @@ struct PaywallRenderer: View {
         )
     }
 
-    // MARK: - SPEC-089d: Promo input section (AC-037)
+    // MARK: - Promo input section
 
     /**
-     SPEC-070-B AC-30(b) — what a promo code submission resolves to. A REVENUE path.
+     What a promo code submission resolves to. A REVENUE path.
 
      🔴 The original: a paywall with NO delegate ran
 
@@ -1745,7 +1745,7 @@ struct PaywallRenderer: View {
                 .font(.subheadline)
 
             Button {
-                // AC-037: Submit promo code via delegate callback.
+                // Submit promo code via delegate callback.
                 //
                 // The decision itself lives in `resolvePromoSubmission` — see there. It is not inlined
                 // here because a decision inlined in a `Button` action inside a `@ViewBuilder` is
@@ -1789,7 +1789,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Toggle section (AC-038)
+    // MARK: - Toggle section
 
     @ViewBuilder
     private func toggleSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1827,7 +1827,7 @@ struct PaywallRenderer: View {
         }
     }
 
-    // MARK: - SPEC-089d: Reviews carousel section (AC-039)
+    // MARK: - Reviews carousel section
 
     @ViewBuilder
     private func reviewsCarouselSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
@@ -1848,7 +1848,7 @@ struct PaywallRenderer: View {
 
     // MARK: - Plans
 
-    // SPEC-084: Grid/carousel/stack plan layouts
+    // Grid/carousel/stack plan layouts
     private func plansSection(plans: [PaywallPlan], style: SectionStyleConfig? = nil) -> some View {
         // Gap 10: Read plan_display_style from section data first, then layout, then type
         let sectionData = config.sections.first(where: { $0.type == "plans" })?.data
@@ -2406,14 +2406,14 @@ struct PaywallRenderer: View {
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
         let allPlans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
         guard let plan = allPlans.first(where: { $0.id == planId }) else { return }
-        // SPEC-085: Haptic on CTA tap
+        // Haptic on CTA tap
         HapticEngine.triggerIfEnabled(config.haptic?.triggers?.on_button_tap, config: config.haptic)
-        // SPEC-085: Trigger particle effect on purchase
+        // Trigger particle effect on purchase
         if let effect = config.particle_effect, effect.trigger == "on_purchase" {
             showConfetti = true
         }
         isPurchasing = true
-        // AC-038: Include toggle states in purchase metadata
+        // Include toggle states in purchase metadata
         var metadata: [String: Any] = [:]
         if !toggleStates.isEmpty {
             metadata["toggle_states"] = toggleStates

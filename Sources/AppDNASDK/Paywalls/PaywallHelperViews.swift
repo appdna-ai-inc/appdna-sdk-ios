@@ -1,7 +1,7 @@
 import SwiftUI
 import AVKit
 
-// MARK: - Countdown timer (SPEC-084 social proof sub-type)
+// MARK: - Countdown timer (social proof sub-type)
 
 struct CountdownTimerView: View {
     let seconds: Int
@@ -122,7 +122,7 @@ extension Color {
     }
 }
 
-// MARK: - SPEC-085: Video background view
+// MARK: - Video background view
 
 struct VideoBackgroundView: View {
     let url: URL
@@ -165,7 +165,7 @@ struct VideoBackgroundView: View {
     }
 }
 
-// MARK: - SPEC-089d: Promo state enum
+// MARK: - Promo state enum
 
 enum PromoState: Equatable {
     case idle
@@ -174,7 +174,7 @@ enum PromoState: Equatable {
     case error
 }
 
-// MARK: - SPEC-089d: Line shape for dashed/dotted dividers
+// MARK: - Line shape for dashed/dotted dividers
 
 struct Line: Shape {
     func path(in rect: CGRect) -> Path {
@@ -185,7 +185,7 @@ struct Line: Shape {
     }
 }
 
-// MARK: - SPEC-089d: Carousel sub-view (AC-033)
+// MARK: - Carousel sub-view
 
 struct CarouselView: View {
     let pages: [PaywallCarouselPage]
@@ -266,7 +266,7 @@ struct CarouselView: View {
     }
 }
 
-// MARK: - SPEC-089d: Reviews carousel sub-view (AC-039)
+// MARK: - Reviews carousel sub-view
 
 struct ReviewsCarouselView: View {
     let reviews: [PaywallReview]

@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Shared condition evaluation utilities for SPEC-089c (SDUI engine prerequisite)
+// MARK: - Shared condition evaluation utilities (SDUI engine prerequisite)
 // Used by AudienceRuleEvaluator, UnifiedTriggerRules, and visibility conditions.
 
 internal enum ConditionEvaluator {

@@ -16,7 +16,7 @@ public struct IconReference: Codable {
         self.size = size
     }
 
-    // SPEC-205: Zod IconRefSchema accepts either a typed object OR a bare
+    // Zod IconRefSchema accepts either a typed object OR a bare
     // short-form string (SF Symbol name / emoji). Mirror that here so bare
     // strings from the console editor decode cleanly. An emoji is detected
     // by Unicode properties; anything else is treated as an SF Symbol.
@@ -43,7 +43,7 @@ public struct IconReference: Codable {
         self.size = try container.decodeIfPresent(Double.self, forKey: .size)
     }
 
-    /// SPEC-205: Symmetric encode. Bare string is only emitted when we have
+    /// Symmetric encode. Bare string is only emitted when we have
     /// BOTH a recognised short-form library and a name — any other shape
     /// (nil library, a custom library like "material", extra styling like
     /// color/size) encodes as a full object so re-decode preserves the

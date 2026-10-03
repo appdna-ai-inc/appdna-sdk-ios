@@ -2,12 +2,12 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- SPEC-070-B W13 / AC-31(b) — *"injecting a paywall/onboarding subsystem init failure leaves ANALYTICS
+ *"injecting a paywall/onboarding subsystem init failure leaves ANALYTICS
  WORKING: events still enqueue and land."*
 
  ## What was missing
 
- iOS has had `initSubsystem` wired into `configure()` for five subsystems since PN row 17. What it did
+ iOS has had `initSubsystem` wired into `configure()` for five subsystems since an earlier fix. What it did
  NOT have was a test that ran a `configure()` with a failure injected. `Spec070BNativeAdditionsTests`
  tests the helper IN ISOLATION — it calls `AppDNA.initSubsystem("paywall") { "built" }` and checks the
  return is nil and the error was reported. AC-31(b) rules on exactly that: *"AC-31(a) asserts only that
@@ -185,7 +185,7 @@ final class SubsystemInitIsolationTests: XCTestCase {
         XCTAssertEqual(ev?.event_name, "everything_broken_but_analytics")
     }
 
-    // MARK: - …and the failure is still surfaced (AC-31(a)), not swallowed by the isolation
+    // MARK: - …and the failure is still surfaced, not swallowed by the isolation
 
     func testTheFailureIsReportedAsDegradedRatherThanSwallowed() {
         final class Spy: AppDNAInitDelegate {

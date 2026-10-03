@@ -4,7 +4,7 @@ import SwiftUI
 struct HeaderSection: View {
     let data: PaywallSectionData?
     var loc: ((String, String) -> String)? = nil
-    /// SPEC-084: Per-section style with element overrides.
+    /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
 
     private var titleTextStyle: TextStyleConfig? {

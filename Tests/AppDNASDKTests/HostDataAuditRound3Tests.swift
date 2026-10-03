@@ -2,11 +2,11 @@ import XCTest
 import SwiftUI
 @testable import AppDNASDK
 
-/// SPEC-496 P1 implementation-audit ROUND 3 regressions (iOS):
+/// Implementation-audit ROUND 3 regressions (iOS):
 ///   - a carousel inside an option sheet had its pages' `sheet_step_paths` applied TWICE (the outer
 ///     renderer's recursive apply, then the nested page renderer's) → a user-typed `{{…}}` re-scanned;
 ///   - a consent-coloured CTA on a carousel page gated on `[page]` only, not the step's layered list.
-/// (The §B0 option-index remap after the hide rule is pinned by the shared fixture
+/// (The option-index remap after the hide rule is pinned by the shared fixture
 /// `template_engine/sheet_option_step_paths_after_hide`, run by the resolve_block driver.)
 @MainActor
 final class HostDataAuditRound3Tests: XCTestCase {
@@ -71,7 +71,7 @@ final class HostDataAuditRound3Tests: XCTestCase {
                                                   rawResolvedIds: view.rawResolvedIds).canAdvance)
     }
 
-    /// Audit round 4 — Screens/SDUI pass no gate list, so a carousel page keeps gating on itself (§A1: Screens
+    /// Audit — Screens/SDUI pass no gate list, so a carousel page keeps gating on itself (Screens
     /// unchanged in P1). The renderer forwards `gateBlocks` as-is; it must not substitute the section's blocks.
     func testCarouselInScreensKeepsPageOnlyGate() throws {
         let carousel = try block(#"{ "id": "car", "type": "carousel", "children": [ { "id": "t", "type": "text", "text": "x" } ] }"#)

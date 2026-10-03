@@ -57,14 +57,14 @@ struct SurveyContainerView: View {
     @State private var answers: [String: SurveyAnswer] = [:] // keyed by question_id
     @State private var visibleQuestions: [SurveyQuestion] = []
     @SwiftUI.Environment(\.dismiss) private var dismiss
-    // SPEC-205: Adapt survey styling to system dark/light mode.
+    // Adapt survey styling to system dark/light mode.
     @SwiftUI.Environment(\.colorScheme) private var colorScheme
-    // SPEC-085: Rich media state
+    // Rich media state
     @State private var showIntro = true
     @State private var showThankYou = false
     @State private var showConfetti = false
 
-    /// SPEC-205: Resolved theme for the current color scheme. In dark
+    /// Resolved theme for the current color scheme. In dark
     /// mode, any field set on theme.dark overrides theme.light;
     /// unset dark fields fall back to light (sparse overrides).
     private var theme: SurveyTheme? {
@@ -75,7 +75,7 @@ struct SurveyContainerView: View {
         Color(hex: theme?.background_color ?? (colorScheme == .dark ? "#1a1a1a" : "#FFFFFF"))
     }
 
-    /// SPEC-205: Background view honors a theme-level gradient when supplied
+    /// Background view honors a theme-level gradient when supplied
     /// (including when the dark variant provides one); otherwise falls back
     /// to the solid color. Safe-area handling is deliberately symmetric —
     /// both paths rely on the host container's padding so the gradient doesn't
@@ -89,7 +89,7 @@ struct SurveyContainerView: View {
         }
     }
 
-    /// SPEC-205: Button background honors theme.button_gradient when set.
+    /// Button background honors theme.button_gradient when set.
     @ViewBuilder
     private func buttonBackground(enabled: Bool) -> some View {
         if enabled, let gradient = theme?.button_gradient {
@@ -115,7 +115,7 @@ struct SurveyContainerView: View {
         Color(hex: theme?.button_text_color ?? "#FFFFFF")
     }
 
-    /// SPEC-084 + SPEC-205: Resolve font from theme. Honors question_font_size
+    /// Resolve font from theme. Honors question_font_size
     /// and font_weight when the (possibly dark-merged) theme supplies them.
     private var themeFont: Font? {
         let fontFamily = theme?.font_family
@@ -133,7 +133,7 @@ struct SurveyContainerView: View {
         return FontResolver.font(family: fontFamily, size: size, weight: weight)
     }
 
-    /// SPEC-205: text alignment honored when theme declares it.
+    /// Text alignment honored when theme declares it.
     private var themeTextAlignment: TextAlignment {
         switch theme?.text_align {
         case "left": return .leading
@@ -146,7 +146,7 @@ struct SurveyContainerView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 16) {
-                // SPEC-085: Intro Lottie animation
+                // Intro Lottie animation
                 if showIntro, let introUrl = theme?.intro_lottie_url {
                     LottieBlockView(block: LottieBlock(
                         lottie_url: introUrl, lottie_json: nil,
@@ -161,7 +161,7 @@ struct SurveyContainerView: View {
                     }
                 }
 
-                // SPEC-085: Thank-you screen with Lottie + confetti
+                // Thank-you screen with Lottie + confetti
                 if showThankYou {
                     VStack(spacing: 16) {
                         if let thankUrl = theme?.thankyou_lottie_url {
@@ -172,7 +172,7 @@ struct SurveyContainerView: View {
                                 play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
                             ))
                         }
-                        // SPEC-088: Interpolate thank-you text
+                        // Interpolate thank-you text
                         Text(TemplateEngine.shared.interpolate(
                             theme?.thank_you_text ?? "Thank you!",
                             context: TemplateEngine.shared.buildContext()
@@ -189,15 +189,15 @@ struct SurveyContainerView: View {
 
                     Spacer()
 
-                    // SPEC-085: Question-level image
+                    // Question-level image
                     if currentQuestionIndex < visibleQuestions.count,
                        let imageUrl = visibleQuestions[currentQuestionIndex].image_url {
                         MediaImageView(url: imageUrl, maxHeight: 140, cornerRadius: 8)
                             .padding(.horizontal)
                     }
 
-                    // Current question — SPEC-084: apply style engine + theme font
-                    // SPEC-205: honor theme.text_align.
+                    // Current question: apply style engine + theme font
+                    // Honor theme.text_align.
                     if currentQuestionIndex < visibleQuestions.count {
                         questionView(for: visibleQuestions[currentQuestionIndex])
                             .applyTextStyle(config.appearance?.question_text_style)
@@ -222,7 +222,7 @@ struct SurveyContainerView: View {
                         if currentQuestionIndex < visibleQuestions.count - 1 {
                             Button("Next") {
                                 advanceQuestion()
-                                // SPEC-085: Haptic on step advance
+                                // Haptic on step advance
                                 HapticEngine.triggerIfEnabled(
                                     theme?.haptic?.triggers?.on_step_advance,
                                     config: theme?.haptic
@@ -275,7 +275,7 @@ struct SurveyContainerView: View {
                 }
             }
 
-            // SPEC-085: Confetti overlay on completion
+            // Confetti overlay on completion
             if showConfetti, let effect = theme?.thankyou_particle_effect {
                 ConfettiOverlay(effect: effect)
             }
@@ -287,31 +287,31 @@ struct SurveyContainerView: View {
     @ViewBuilder
     func questionView(for question: SurveyQuestion) -> some View {
         let binding = answerBinding(for: question)
-        // SPEC-088: Interpolate question text, option text, and NPS labels
+        // Interpolate question text, option text, and NPS labels
         let q = interpolatedQuestion(question)
 
         switch q.type ?? "" {
         case "nps":
-            // R89 — thread the resolved theme colors so the selected score honors accent_color.
+            // Thread the resolved theme colors so the selected score honors accent_color.
             NPSQuestionView(question: q, answer: binding, accentColor: accentColor, buttonTextColor: buttonTextColor, textColor: textColor)
         case "csat":
             CSATQuestionView(question: q, answer: binding)
         case "rating":
-            // R89 — thread the resolved accent so filled rating icons honor accent_color.
+            // Thread the resolved accent so filled rating icons honor accent_color.
             RatingQuestionView(question: q, answer: binding, accentColor: accentColor)
         case "single_choice":
-            // SPEC-084: Gap #19 — pass option_style from appearance to option card views
-            // R89 — thread the resolved theme accent/text colors so the selected radio +
+            // Gap #19 — pass option_style from appearance to option card views
+            // Thread the resolved theme accent/text colors so the selected radio +
             // option label honor SurveyTheme.accent_color / text_color (console parity).
             SingleChoiceView(question: q, answer: binding, optionStyle: config.appearance?.option_style, accentColor: accentColor, textColor: textColor)
         case "multi_choice":
-            // SPEC-084: Gap #19 — pass option_style from appearance to option card views
-            // R89 — thread the resolved theme accent/text colors (console parity).
+            // Gap #19 — pass option_style from appearance to option card views
+            // Thread the resolved theme accent/text colors (console parity).
             MultiChoiceView(question: q, answer: binding, optionStyle: config.appearance?.option_style, accentColor: accentColor, textColor: textColor)
         case "free_text":
             FreeTextView(question: q, answer: binding)
         case "yes_no":
-            // R89 — thread the resolved theme colors so the selected button honors accent_color.
+            // Thread the resolved theme colors so the selected button honors accent_color.
             YesNoView(question: q, answer: binding, accentColor: accentColor, buttonTextColor: buttonTextColor, textColor: textColor)
         case "emoji_scale":
             EmojiScaleView(question: q, answer: binding)
@@ -320,7 +320,7 @@ struct SurveyContainerView: View {
         }
     }
 
-    /// SPEC-088: Create an interpolated copy of a survey question.
+    /// Create an interpolated copy of a survey question.
     private func interpolatedQuestion(_ question: SurveyQuestion) -> SurveyQuestion {
         let ctx = TemplateEngine.shared.buildContext()
         let e = TemplateEngine.shared
@@ -370,7 +370,7 @@ struct SurveyContainerView: View {
     }
 
     private func submitSurvey() {
-        // SPEC-085: Haptic on submit
+        // Haptic on submit
         HapticEngine.triggerIfEnabled(
             theme?.haptic?.triggers?.on_form_submit,
             config: theme?.haptic
@@ -378,7 +378,7 @@ struct SurveyContainerView: View {
 
         let allAnswers = visibleQuestions.compactMap { answers[$0.id ?? ""] }
 
-        // SPEC-085: Show thank-you animation + confetti if configured
+        // Show thank-you animation + confetti if configured
         if theme?.thankyou_lottie_url != nil || theme?.thankyou_particle_effect != nil {
             withAnimation { showThankYou = true }
             if theme?.thankyou_particle_effect != nil {
@@ -425,7 +425,7 @@ struct SurveyContainerView: View {
                 answers[qId] = newValue
                 // Track individual question answer
                 if let answer = newValue {
-                    // Round-26 — fire the on_option_select haptic like Android (SurveyActivity onAnswer).
+                    // Fire the on_option_select haptic like Android (SurveyActivity onAnswer).
                     // iOS never invoked this configurable survey trigger.
                     HapticEngine.triggerIfEnabled(theme?.haptic?.triggers?.on_option_select, config: theme?.haptic)
                     onQuestionAnswered?(config.name ?? "", question, answer)

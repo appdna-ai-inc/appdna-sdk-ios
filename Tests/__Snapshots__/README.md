@@ -2,15 +2,13 @@
 
 Committed PNG snapshots produced by `pointfreeco/swift-snapshot-testing` and reviewed during PR.
 
-See [SPEC-070-0 §3.4](../../../../.ai/specs/SPEC-070-0-2026-05-06-cross-platform-sdk-foundation.md) — visual snapshot harness.
-
 ## What lives here
 
 Snapshot files written by `assertSnapshot(of: view, as: .image)` calls inside iOS XCTest cases that exercise rendered SwiftUI surfaces. Each PNG is the reference output a renderer must match; PR diff tools render them inline so reviewers see pixel changes during code review.
 
 ## When to add a golden
 
-Add a new committed snapshot in the **same PR** that introduces or modifies a renderer surface. Per SPEC-070-0 §3.4, the initial set is 12 surfaces:
+Add a new committed snapshot in the **same PR** that introduces or modifies a renderer surface. The initial set is 12 surfaces:
 
 1. Paywall hero (light)
 2. Paywall hero (dark)

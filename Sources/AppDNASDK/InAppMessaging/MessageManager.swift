@@ -6,7 +6,7 @@ import SwiftUI
 final class MessageManager {
     private let remoteConfigManager: RemoteConfigManager
     private let eventTracker: EventTracker
-    /// SPEC-036-F §1.2 — consulted per-candidate (inside the present hook) for a
+    /// Consulted per-candidate (inside the present hook) for a
     /// running in-app-message experiment targeting the message being shown.
     private let experimentManager: ExperimentManager?
     private let frequencyTracker = MessageFrequencyTracker()
@@ -135,7 +135,7 @@ final class MessageManager {
     // MARK: - Presentation
 
     private func present(messageId: String, activeConfig: MessageConfig, triggerEvent: String) {
-        // SPEC-400 / SPEC-404 — the three synchronous suppression rules (already-presenting, SDK
+        // The three synchronous suppression rules (already-presenting, SDK
         // runtime-locked, host `shouldShowMessage` veto), consulted BEFORE any analytics tracking or
         // view construction so a suppressed message produces no `in_app_message_shown` event. The
         // gate now also runs ahead of the experiment resolution below, which records an exposure as a
@@ -147,7 +147,7 @@ final class MessageManager {
             delegate: AppDNA.inAppMessages.delegate
         ) else { return }
 
-        // SPEC-036-F §1.2 — experiment-aware presentation, attached inside the
+        // Experiment-aware presentation, attached inside the
         // candidate/present path (not a host present() call). A running in-app-
         // message experiment targeting this message + a treatment bucket renders
         // the treatment payload; control / non-bucketed / old-doc → active.
@@ -159,7 +159,7 @@ final class MessageManager {
             config = treatment
         }
 
-        // SPEC-070-C D10 — OPTIONAL async wrapper-veto. Awaited in ADDITION to
+        // OPTIONAL async wrapper-veto. Awaited in ADDITION to
         // the synchronous delegate veto above so a cross-platform wrapper host
         // (Flutter) that can only answer asynchronously (round-trip to Dart)
         // can still suppress a message. When nil (every native host), the
@@ -210,7 +210,7 @@ final class MessageManager {
             "trigger_event": triggerEvent,
         ])
 
-        // SPEC-400 — fire onMessageShown to the host's registered
+        // Fire onMessageShown to the host's registered
         // delegate alongside the existing analytics track.
         DispatchQueue.main.async {
             AppDNA.inAppMessages.delegate?.onMessageShown(messageId: messageId, trigger: triggerEvent)
@@ -224,7 +224,7 @@ final class MessageManager {
                     "message_id": messageId,
                     "cta_action": config.content?.cta_action?.type?.rawValue ?? "dismiss",
                 ])
-                // SPEC-400 — fire onMessageAction with action type + cta_action data.
+                // Fire onMessageAction with action type + cta_action data.
                 let ctaActionType = config.content?.cta_action?.type?.rawValue ?? "dismiss"
                 let ctaData: [String: Any]? = {
                     guard let cta = config.content?.cta_action, let url = cta.url else { return nil }
@@ -247,7 +247,7 @@ final class MessageManager {
                 ])
                 topVC.dismiss(animated: true) {
                     self?.isPresenting = false
-                    // SPEC-400 — fire onMessageDismissed.
+                    // Fire onMessageDismissed.
                     DispatchQueue.main.async {
                         AppDNA.inAppMessages.delegate?.onMessageDismissed(messageId: messageId)
                     }
@@ -328,7 +328,7 @@ final class MessageManager {
         case .dismiss, .unknown:
             break // dismiss handled by caller
         case .deep_link, .open_url:
-            // SPEC-070-B PN row 18 (W11): config-driven URL — scheme-checked before it reaches the OS.
+            // Config-driven URL — scheme-checked before it reaches the OS.
             if let urlString = action.url, let url = URLSafety.sanitized(urlString) {
                 DispatchQueue.main.async {
                     UIApplication.shared.open(url)
@@ -338,7 +338,7 @@ final class MessageManager {
     }
 }
 
-// MARK: - In-app message presentation gate (SPEC-400 / SPEC-404)
+// MARK: - In-app message presentation gate
 
 /// The synchronous "may this message be shown at all?" decision. Extracted from
 /// `MessageManager.present` because the three rules it folds together (already-presenting,

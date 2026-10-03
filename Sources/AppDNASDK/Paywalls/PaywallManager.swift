@@ -11,7 +11,7 @@ extension Notification.Name {
     static let paywallPurchaseEnded = Notification.Name("ai.appdna.paywallPurchaseEnded")
 }
 
-/// SPEC-401 Fix 1C — per-presentation guard that prevents double-dismiss
+/// Per-presentation guard that prevents double-dismiss
 /// races between the user tapping X (calls onDismiss) and the SDK's
 /// auto-dismiss-on-restore-success path. First caller flips the flag;
 /// subsequent callers no-op. Mirrors Android's `PaywallActivity.dispatchedDismiss`.
@@ -36,7 +36,7 @@ final class PaywallManager {
     /// `providerNotAvailable`, and never through a bridge captured from the torn-down configure.
     private let billingConfigured: () -> Bool
     private let eventTracker: EventTracker
-    /// SPEC-036-F §1.2 — consulted at present-time for a running paywall
+    /// Consulted at present-time for a running paywall
     /// experiment targeting the entity being shown.
     private let experimentManager: ExperimentManager?
 
@@ -124,11 +124,11 @@ final class PaywallManager {
             return
         }
 
-        // SPEC-036-F §1.2 — experiment-aware presentation. If a `running`
+        // Experiment-aware presentation. If a `running`
         // paywall experiment targets this entity and the user buckets into the
         // treatment, render the treatment `payload` config instead of the
         // active one. Control / non-bucketed / old-doc → render the active
-        // entity (cohort isolation §1.3 — treatment lives only in the doc).
+        // entity (cohort isolation — treatment lives only in the doc).
         var config = activeConfig
         if let experimentManager,
            case let .renderTreatment(_, _, payload) = experimentManager.resolveSurfacePresentation(surfaceType: "paywall", entityId: id),
@@ -137,7 +137,7 @@ final class PaywallManager {
             config = treatment
         }
 
-        // Track view event. SPEC-070-B PN row 4 (D-s): `customData` is merged in here — this is its
+        // Track view event. `customData` is merged in here — this is its
         // only consumer, and a parameter with no consumer is a parameter that does nothing.
         var viewProps: [String: Any] = [
             "paywall_id": id,
@@ -154,7 +154,7 @@ final class PaywallManager {
         }
         eventTracker.track(event: "paywall_view", properties: viewProps)
 
-        // SPEC-203 follow-up — prefetch remote images before presenting so
+        // Prefetch remote images before presenting so
         // the paywall renders fully loaded, no AsyncImage placeholder flash
         // on background / hero / plan icons / testimonial avatars / feature
         // images / CTA icons. Bounded by a short timeout so a slow CDN
@@ -163,7 +163,7 @@ final class PaywallManager {
         // (which populates from the now-warm URLCache, so second-paint
         // fills in instantly).
         let imageURLs = Self.collectImageURLs(from: config)
-        // SPEC-401 Fix 1C — shared dismiss guard for this presentation.
+        // Shared dismiss guard for this presentation.
         // Captured by both the onDismiss closure (user-tap X path) and the
         // auto-dismiss-on-restore-success path inside handleRestore. First
         // caller wins; the second is a no-op so dismiss never fires twice.
@@ -301,7 +301,7 @@ final class PaywallManager {
         }
 
         delegate?.onPaywallPurchaseStarted(paywallId: paywallId, productId: plan.productId ?? "")
-        // AC-038: Include toggle states and promo code in purchase event
+        // Include toggle states and promo code in purchase event
         var purchaseProps: [String: Any] = [
             "paywall_id": paywallId,
             "product_id": plan.productId ?? "",
@@ -338,7 +338,7 @@ final class PaywallManager {
                 // One snapshot pass after a subscription purchase (the right baseline
                 // for its first renewal).
                 if result.isSubscription { await AppDNA.reconcileSubscriptionStateNow() }
-                // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
+                // Refresh entitlements so onEntitlementsChanged fires after a paywall
                 // purchase too (matches Android + the direct billing.purchase path). Diff-guarded.
                 // Queued, not awaited: the success callback, the post-purchase action and the
                 // auto-dismiss must not wait on `/billing/entitlements` (`refreshInBackground`).
@@ -547,12 +547,12 @@ final class PaywallManager {
                     "paywall_id": paywallId,
                     "restored_count": restored.count,
                 ]))
-                // Round-34 — refresh entitlements so onEntitlementsChanged fires after a paywall
+                // Refresh entitlements so onEntitlementsChanged fires after a paywall
                 // restore too (matches Android + the direct restorePurchases path). Diff-guarded.
                 // Queued, not awaited: `onPaywallRestoreCompleted` and the auto-dismiss must not
                 // wait on `/billing/entitlements` (`refreshInBackground`).
                 AppDNA.billing.refreshInBackground()
-                // SPEC-401 Fix 1C — fire delegate forward FIRST so a host
+                // Fire delegate forward FIRST so a host
                 // that wants to handle dismiss itself can call dismiss
                 // synchronously inside the delegate body (its dismiss flips
                 // dispatchedDismiss before our auto-dismiss runs). Auto-
@@ -570,7 +570,7 @@ final class PaywallManager {
                     // restored array = "restore call worked but user has no
                     // entitlements to restore" — leave paywall up so user
                     // can either close manually or attempt a fresh purchase.
-                    // SPEC-401 R3 audit Lens A/B — clear the public
+                    // /B — clear the public
                     // `skipNextAutoDismissOnRestore` flag on EVERY restore
                     // terminal event (success-with-products, empty-success,
                     // and the failure path below) so the one-shot flag
@@ -581,7 +581,7 @@ final class PaywallManager {
 
                     guard !restored.isEmpty else { return }
                     guard !dismissGuard.dispatched else { return }
-                    // SPEC-401 R2 audit Lens B P0 — honor the public host
+                    // Honor the public host
                     // opt-out flag we just snapshot+cleared above. Hosts
                     // set this synchronously inside their
                     // `onPaywallRestoreCompleted` delegate body when they
@@ -617,7 +617,7 @@ final class PaywallManager {
                 DispatchQueue.main.async {
                     delegate?.onPaywallRestoreFailed(paywallId: paywallId, error: error)
                     Log.error("Restore failed: \(error.localizedDescription)")
-                    // SPEC-401 R3 audit Lens A — clear the one-shot
+                    // Clear the one-shot
                     // skipNextAutoDismissOnRestore flag on failure too,
                     // not just on success. Otherwise a host that set the
                     // flag for a restore that failed would carry the flag

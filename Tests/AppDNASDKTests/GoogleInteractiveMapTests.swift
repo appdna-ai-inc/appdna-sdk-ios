@@ -4,7 +4,7 @@ import GoogleMaps
 @testable import AppDNASDK
 
 /**
- SPEC-495 §A tier 2 — proof that the bundled interactive map is a REAL, LIVE map.
+ Tier 2 — proof that the bundled interactive map is a REAL, LIVE map.
 
  🔴 THIS IS THE TEST #671 NEEDED AND DID NOT HAVE.
 

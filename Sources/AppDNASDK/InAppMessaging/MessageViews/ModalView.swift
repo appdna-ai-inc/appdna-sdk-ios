@@ -10,7 +10,7 @@ struct ModalView: View {
 
     var body: some View {
         ZStack {
-            // Backdrop — SPEC-085: blur backdrop support
+            // Backdrop: blur backdrop support
             if let blurConfig = content.blur_backdrop {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -39,7 +39,7 @@ struct ModalView: View {
                 }
                 .padding(.trailing, -4)
 
-                // SPEC-085: Lottie hero (takes priority over image)
+                // Lottie hero (takes priority over image)
                 if let lottieUrl = content.lottie_url {
                     LottieBlockView(block: LottieBlock(
                         lottie_url: lottieUrl, lottie_json: nil,
@@ -48,7 +48,7 @@ struct ModalView: View {
                         play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
                     ))
                 }
-                // SPEC-085: Rive hero
+                // Rive hero
                 else if let riveUrl = content.rive_url {
                     RiveBlockView(block: RiveBlock(
                         rive_url: riveUrl, artboard: nil,
@@ -70,7 +70,7 @@ struct ModalView: View {
                     }
                 }
 
-                // Title — SPEC-084: apply text_color
+                // Title: apply text_color
                 if let title = content.title {
                     Text(title)
                         .font(content.titleFont(default: .title3.bold(), defaultSize: 20))
@@ -78,7 +78,7 @@ struct ModalView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // Body — SPEC-084: apply text_color
+                // Body: apply text_color
                 if let body = content.body {
                     Text(body)
                         .font(content.bodyFont(default: .body, defaultSize: 17))
@@ -86,14 +86,14 @@ struct ModalView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                // CTA button — SPEC-084: apply button_color, corner_radius
+                // CTA button: apply button_color, corner_radius
                 if let ctaText = content.cta_text {
                     Button {
                         HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
                         onCTATap()
                     } label: {
                         HStack(spacing: 6) {
-                            // SPEC-085: CTA icon
+                            // CTA icon
                             if let icon = content.cta_icon {
                                 IconView(ref: icon, size: 16)
                             }
@@ -137,15 +137,15 @@ struct ModalView: View {
             .applyBlurBackdrop(content.blur_backdrop)
             .padding(.horizontal, 32)
 
-            // SPEC-085: Confetti overlay
+            // Confetti overlay
             if showConfetti, let effect = content.particle_effect {
                 ConfettiOverlay(effect: effect)
             }
         }
         .onAppear {
-            // SPEC-085: Haptic on appear
+            // Haptic on appear
             HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
-            // SPEC-085: Particle effect on appear
+            // Particle effect on appear
             if let effect = content.particle_effect, effect.trigger == "on_appear" {
                 showConfetti = true
             }

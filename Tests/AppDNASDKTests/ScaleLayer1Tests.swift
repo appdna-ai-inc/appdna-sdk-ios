@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-067: Tests for SDK Scale Layer 1 optimizations.
+/// Tests for SDK Scale Layer 1 optimizations.
 final class ScaleLayer1Tests: XCTestCase {
 
     // MARK: - Deflate Compression

@@ -19,7 +19,7 @@ struct CTAButton: View {
     let isPurchasing: Bool
     let onTap: () -> Void
     var loc: ((String, String) -> String)? = nil
-    /// SPEC-084: Per-section style with element overrides.
+    /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
     /// CTA gradient (from section data)
     var ctaGradient: PaywallGradient? = nil
@@ -42,7 +42,7 @@ struct CTAButton: View {
     var restoreTextColor: String? = nil
     /// Direct font size override for the restore link
     var restoreFontSize: CGFloat? = nil
-    /// SPEC-490 (#651 item 1) — the CTA↔Restore gap. Unset keeps the previous hardcoded 8.
+    /// The CTA↔Restore gap. Unset keeps the previous hardcoded 8.
     var restoreGap: CGFloat? = nil
     /// #651 — Restore's own fill. Unset renders the plain link exactly as before.
     var restoreBgColor: String? = nil

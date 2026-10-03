@@ -3,7 +3,7 @@ import FirebaseFirestore
 import UIKit
 import SwiftUI
 
-/// SPEC-203 — listens for journey-triggered in-app messages at
+/// Listens for journey-triggered in-app messages at
 /// `orgs/{orgId}/apps/{appId}/users/{userId}/pending_messages` and
 /// renders them through the same `MessageRenderer` pipeline used for
 /// remote-config-driven messages, so a journey-delivered modal /
@@ -232,7 +232,7 @@ final class PendingMessageListener {
         case .dismiss, .unknown:
             break // dismiss handled by caller
         case .deep_link, .open_url:
-            // SPEC-070-B PN row 18 (W11): config-driven URL — scheme-checked before it reaches the OS.
+            // Config-driven URL — scheme-checked before it reaches the OS.
             if let urlString = action.url, let url = URLSafety.sanitized(urlString) {
                 DispatchQueue.main.async {
                     UIApplication.shared.open(url)

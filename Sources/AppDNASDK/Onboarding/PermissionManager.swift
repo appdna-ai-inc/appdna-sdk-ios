@@ -20,7 +20,7 @@ public enum PermissionStatus: String, Equatable {
     case unavailable
 }
 
-/// SPEC-421 — pure routing decision the renderer derives from a `PermissionStatus`.
+/// Pure routing decision the renderer derives from a `PermissionStatus`.
 /// Kept separate + pure so the status→action mapping is unit-testable without the OS.
 public enum PermissionRouteDecision: String, Equatable {
     /// Already granted: emit `permission_already_granted`, store `granted`, advance (no prompt).
@@ -33,7 +33,7 @@ public enum PermissionRouteDecision: String, Equatable {
     case prompt
 }
 
-/// SPEC-421 — async, per-type runtime permission manager for onboarding permission steps.
+/// Async, per-type runtime permission manager for onboarding permission steps.
 ///
 /// Two responsibilities:
 ///  1. `status(_:)` — read the current authorization (async where the API requires it).
@@ -255,7 +255,7 @@ public final class PermissionManager {
 
         case "photos":
             guard let raw = await runtime.requestPhotos() else { return false }
-            // `.limited` is treated as granted (SPEC-421).
+            // `.limited` is treated as granted.
             return Self.mapPhotos(raw) == .granted
 
         case "contacts":

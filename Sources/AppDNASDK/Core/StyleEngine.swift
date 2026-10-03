@@ -88,7 +88,7 @@ public struct ElementStyleConfig: Codable {
     public let padding: SpacingConfig?
     public let corner_radius: Double?
     public let opacity: Double?
-    /// SPEC-084: Per-element text style for inner text elements.
+    /// Per-element text style for inner text elements.
     public let textStyle: TextStyleConfig?
 
     enum CodingKeys: String, CodingKey {
@@ -223,7 +223,7 @@ extension View {
         let defaultRadius = CGFloat(s.corner_radius ?? 0)
         let border = s.border
 
-        // Per-corner radius support (SPEC-084)
+        // Per-corner radius support
         let hasPerCorner = border?.radius_top_left != nil || border?.radius_top_right != nil
             || border?.radius_bottom_left != nil || border?.radius_bottom_right != nil
 
@@ -273,8 +273,8 @@ extension View {
     }
 
     /// Apply ElementStyleConfig to an option card, or fall back to the default survey option border style.
-    /// SPEC-084: Gap #19 — used by SingleChoiceView and MultiChoiceView.
-    /// R89 — `accentColor` is the survey theme's resolved accent_color (threaded from the
+    /// Gap #19 — used by SingleChoiceView and MultiChoiceView.
+    /// `accentColor` is the survey theme's resolved accent_color (threaded from the
     /// choice view). Was `Color.accentColor` (the app-global SwiftUI tint), which ignored
     /// SurveyTheme.accent_color so the selected card border rendered the host brand indigo
     /// instead of the console-authored accent. Defaults to `.accentColor` for other callers.
@@ -461,7 +461,7 @@ enum StyleEngine {
         return UnitPoint(x: 0.5 + dx / 2, y: 0.5 + dy / 2)
     }
 
-    /// SPEC-205: Public helper to render a `GradientConfig` as a SwiftUI
+    /// Public helper to render a `GradientConfig` as a SwiftUI
     /// LinearGradient (radial treated as linear fallback — matches the
     /// internal BackgroundConfig path). Exposed so per-feature renderers
     /// (surveys, paywalls) can share the same conversion.

@@ -1,7 +1,7 @@
 import SwiftUI
 import MapKit
 import PhotosUI
-// MARK: - Rating Block View (SPEC-089d AC-019)
+// MARK: - Rating Block View
 
 /// Stateful star rating input rendered as an independent SwiftUI view.
 struct RatingBlockView: View {
@@ -52,7 +52,7 @@ struct RatingBlockView: View {
             selectedRating = block.default_rating ?? 0
         }
         .accessibilityElement(children: .combine)
-        // Round-29 — announce the half value when allow_half is on (matches Android TalkBack); was
+        // Announce the half value when allow_half is on (matches Android TalkBack); was
         // unconditional Int() so VoiceOver said "2 of 5 stars" for a 2.5 selection.
         .accessibilityValue(halfEnabled
             ? "\(String(format: "%.1f", selectedRating)) of \(maxStars) stars"
@@ -74,7 +74,7 @@ struct RatingBlockView: View {
     }
 }
 
-// MARK: - Countdown Timer Block View (SPEC-089d AC-018)
+// MARK: - Countdown Timer Block View
 
 /// Stateful countdown timer driven by `Timer.publish`.
 struct CountdownTimerBlockView: View {
@@ -92,7 +92,7 @@ struct CountdownTimerBlockView: View {
             if expired {
                 expiredView
             } else {
-                // SPEC-419 pass-15 #10 — honor timer_variant (digital | circular | flip | bar)
+                // Honor timer_variant (digital | circular | flip | bar)
                 switch block.timer_variant ?? "digital" {
                 case "circular": circularTimerView
                 case "flip": flipTimerView
@@ -166,7 +166,7 @@ struct CountdownTimerBlockView: View {
         return segs
     }
 
-    // SPEC-419 pass-15 #28 — default unit labels hrs/min/sec to match preview (was Hours/Min/Sec).
+    // Default unit labels hrs/min/sec to match preview (was Hours/Min/Sec).
     private var labelStrings: [String] {
         let lbls = block.labels
         let days = remainingSeconds / 86400
@@ -212,7 +212,7 @@ struct CountdownTimerBlockView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // SPEC-419 pass-15 #11 — digits use accent_color, unit labels use secondary grey (matches preview).
+    // Digits use accent_color, unit labels use secondary grey (matches preview).
     private func timerUnit(value: Int, label: String, fontSize: CGFloat, accent: Color) -> some View {
         VStack(spacing: 4) {
             Text(String(format: "%02d", value))
@@ -224,7 +224,7 @@ struct CountdownTimerBlockView: View {
         }
     }
 
-    // SPEC-419 pass-15 #10 — circular variant: 75% accent ring + joined digits in center.
+    // Circular variant: 75% accent ring + joined digits in center.
     private var circularTimerView: some View {
         let accentCol = accentColor
         return ZStack {
@@ -240,7 +240,7 @@ struct CountdownTimerBlockView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // SPEC-419 pass-15 #10 — flip variant: each segment in a tinted card, label below.
+    // Flip variant: each segment in a tinted card, label below.
     private var flipTimerView: some View {
         let accentCol = accentColor
         let lbls = labelStrings
@@ -262,7 +262,7 @@ struct CountdownTimerBlockView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // SPEC-419 pass-15 #10 — bar variant: time + "remaining" + shrinking accent bar.
+    // Bar variant: time + "remaining" + shrinking accent bar.
     private var barTimerView: some View {
         let accentCol = accentColor
         return VStack(spacing: 8) {
@@ -312,7 +312,7 @@ struct CountdownTimerBlockView: View {
     }
 }
 
-// MARK: - Animated Loading Block View (SPEC-089d AC-017)
+// MARK: - Animated Loading Block View
 
 /// Stateful animated loading / checklist block driven by sequential timers.
 struct AnimatedLoadingBlockView: View {
@@ -344,8 +344,8 @@ struct AnimatedLoadingBlockView: View {
             // Percentage is rendered inside each variant (circular ring center, linear bar, etc.)
             // to avoid duplicate display. See loadingVariantView for per-variant rendering.
 
-            // EPIC-3 — configurable loading message with independent position/size/color/align.
-            // SPEC-443 (#547) — when an explicit order is authored on the linear variant, the
+            // Configurable loading message with independent position/size/color/align.
+            // When an explicit order is authored on the linear variant, the
             // variant view places the message itself, so it must not also be drawn here.
             let orderOwnsMessage = (variant == "linear" && loadingOrder != nil)
             if let loadingMsg, loadingMsgPos == "above", !orderOwnsMessage {
@@ -365,7 +365,7 @@ struct AnimatedLoadingBlockView: View {
             }
         }
         .onAppear {
-            // EPIC-3 — static progress_value override (snapshot/preview): hold the value, no timer.
+            // Static progress_value override (snapshot/preview): hold the value, no timer.
             if let pv = block.progress_value {
                 overallProgress = CGFloat(pv > 1 ? pv / 100 : pv)
             } else {
@@ -378,7 +378,7 @@ struct AnimatedLoadingBlockView: View {
     }
 
     /// Type-erased loading variant to avoid @ViewBuilder switch in body.
-    /// SPEC-440 (#547) — per-sub-element sizing. Both were hardcoded, so the element's single
+    /// Per-sub-element sizing. Both were hardcoded, so the element's single
     /// size parameter scaled the bar and the item text together. Computed properties rather
     /// than locals in `body` because the variant builders below need them too.
     /// Read off `field_config`, NOT as top-level ContentBlock params: the Kotlin data class
@@ -395,7 +395,7 @@ struct AnimatedLoadingBlockView: View {
             ?? 14)
     }
 
-    /// SPEC-443 (#547) — explicit top-to-bottom order of the Loading element's sub-elements.
+    /// Explicit top-to-bottom order of the Loading element's sub-elements.
     /// The only control before this was "message above/below the indicator", which cannot
     /// express bar -> message -> items. Absent = today's arrangement, so existing flows are
     /// unchanged. Applies to the `linear` variant, the one with all three sub-elements.
@@ -456,7 +456,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "ring":
-            // EPIC-3 — large radial % ring ("loading N%"): big ring + prominent %.
+            // Large radial % ring ("loading N%"): big ring + prominent %.
             let ringProgress = block.progress_value.map { CGFloat($0 > 1 ? $0 / 100 : $0) } ?? overallProgress
             return AnyView(
                 ZStack {
@@ -475,7 +475,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "cog":
-            // EPIC-3 — cog/gear spinner (settings-style loader): thick ring + 8 flat teeth, rotating.
+            // cog/gear spinner (settings-style loader): thick ring + 8 flat teeth, rotating.
             return AnyView(
                 Canvas { ctx, size in
                     let cx = size.width / 2
@@ -503,7 +503,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "splash_bottom":
-            // EPIC-3 — splash-screen loader: a small spinner anchored to the BOTTOM of the area.
+            // Splash-screen loader: a small spinner anchored to the BOTTOM of the area.
             return AnyView(
                 VStack {
                     Spacer()
@@ -520,7 +520,7 @@ struct AnimatedLoadingBlockView: View {
             )
 
         case "linear":
-            // SPEC-443 (#547) — sub-elements drawn in the authored order. Default reproduces
+            // Sub-elements drawn in the authored order. Default reproduces
             // today's arrangement exactly (message above, or bar+items then message).
             let order = loadingOrder ?? (loadingMsgPosValue == "above"
                 ? ["message", "bar", "items"]
@@ -595,10 +595,10 @@ struct AnimatedLoadingBlockView: View {
                             .animation(.easeInOut(duration: 0.3), value: completedCount)
 
                             Text(item.label ?? "")
-                                // SPEC-440 (#547) — authored item text size; .subheadline (~15)
+                                // Authored item text size; .subheadline (~15)
                                 // was hardcoded, so items could not be sized independently.
                                 .font(.system(size: loadingItemSize))
-                                // SPEC-419 pass-14 #6/#7 — mirror the preview +
+                                // Mirror the preview +
                                 // Android label-color logic: the ACTIVE (current)
                                 // item uses accent_color ("Active Text Color"),
                                 // and authored text_color is honored for the
@@ -945,7 +945,7 @@ private struct ConstellationBackground: View {
     }
 }
 
-// MARK: - Circular Gauge Block View (SPEC-089d AC-022)
+// MARK: - Circular Gauge Block View
 
 // MARK: - Speedometer Arc Shape (precise geometry via Path.addArc)
 
@@ -1141,7 +1141,7 @@ struct CircularGaugeBlockView: View {
                 }
                 .frame(width: size, height: frameHeight)
             } else if variant == "linear" {
-                // SPEC-419 pass-15 #2 — horizontal bar gauge (mirrors preview linear variant):
+                // Horizontal bar gauge (mirrors preview linear variant):
                 // value-indicator triangle + label above, gradient bar, ticks 0/25/50/75/100 below.
                 let barHeight = max(8, size * 0.08)
                 let totalWidth = size * 1.2
@@ -1277,7 +1277,7 @@ struct CircularGaugeBlockView: View {
 
 }
 
-// MARK: - Date Wheel Picker Block View (SPEC-089d AC-023)
+// MARK: - Date Wheel Picker Block View
 
 /// Multi-column date picker using native iOS wheel picker style.
 struct DateWheelPickerBlockView: View {
@@ -1344,7 +1344,7 @@ struct DateWheelPickerBlockView: View {
             minDate = max(minDate, today)
         }
 
-        // SPEC-419 pass-24 — guard the ClosedRange: a descending min_date/max_date config, or
+        // Guard the ClosedRange: a descending min_date/max_date config, or
         // allow_past/allow_future pushing minDate past maxDate, would trap minDate...maxDate.
         return minDate...max(minDate, maxDate)
     }
@@ -1405,7 +1405,7 @@ struct DateWheelPickerBlockView: View {
         // and bleeds visually into the wheel when inherited. Kept strictly
         // picker-specific so an authored block_style.border doesn't surround
         // the wheel unless the author asks for it explicitly.
-        // SPEC-419 — the console writes the picker line color/stroke at top level
+        // The console writes the picker line color/stroke at top level
         // (wheel_line_color / wheel_line_stroke_width); honor those first, then the legacy
         // field_config picker_border_* keys.
         let pickerBorderColor = block.wheel_line_color
@@ -1442,7 +1442,7 @@ struct DateWheelPickerBlockView: View {
         let triggerTextColor: Color = triggerTextHex.map { Color(hex: $0) } ?? .primary
 
         VStack(spacing: 8) {
-            // SPEC-419 — block-level label (parity with preview/Android, which now render it).
+            // Block-level label (parity with preview/Android, which now render it).
             if let label = block.text, !label.isEmpty {
                 Text(label)
                     .font(.subheadline)
@@ -1795,7 +1795,7 @@ struct DateWheelPickerBlockView: View {
     }
 }
 
-// MARK: - Wheel Picker Block View (SPEC-089d AC-013)
+// MARK: - Wheel Picker Block View
 
 /// Numeric wheel picker for single-value selection.
 /// Preference key that reports scroll offset of the horizontal wheel
@@ -1809,11 +1809,11 @@ private struct WheelScrollOffsetKey: PreferenceKey {
 
 struct WheelPickerBlockView: View {
     let block: ContentBlock
-    /// SPEC-082 follow-up: previously this view had no binding to the
+    /// Previously this view had no binding to the
     /// onboarding response dict, so the user's spin was silently dropped.
     /// Now the selected number is persisted under `block.field_id`.
     @Binding var inputValues: [String: Any]
-    /// SPEC-419 STEP-2 — fires `("value_changed", baseValue)` on drag-END/commit (never per tick).
+    /// Fires `("value_changed", baseValue)` on drag-END/commit (never per tick).
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
 
     @State private var selectedIndex: Int = 0
@@ -1836,13 +1836,13 @@ struct WheelPickerBlockView: View {
     private let horizontalItemWidth: CGFloat = 60
 
     var body: some View {
-        // SPEC-420 — opt-in measurement mode. When `field_config.measurement_type`
+        // Opt-in measurement mode. When `field_config.measurement_type`
         // is present AND the units resolve to a usable set, render the measurement
         // wrapper (unit toggle + ruler/gauge/dial/wheel visual, base-owned persist).
         // Otherwise the legacy drum below renders UNCHANGED.
         if let mcfg = parseMeasurementConfig(block) {
             // The measurement wrapper fires the same ("value_changed", base) interaction the legacy
-            // drum does — routing `onInteract` through was the missing half of the EPIC-11 seam.
+            // drum does — routing `onInteract` through was the missing half of the seam.
             MeasurementWheelBlockView(block: block, config: mcfg, inputValues: $inputValues, onInteract: onInteract)
         } else {
             legacyBody
@@ -1852,14 +1852,14 @@ struct WheelPickerBlockView: View {
     @ViewBuilder
     private var legacyBody: some View {
         let minVal = block.min_value ?? 0
-        // SPEC-419 — the editor writes `max_value`/`default_value`; natives canonical keys are
+        // The editor writes `max_value`/`default_value`; natives canonical keys are
         // `max_value_picker`/`default_picker_value`. Read the picker key first, fall back to the
         // editor key so authored ranges/defaults aren't silently lost on-device.
         let maxVal = block.max_value_picker ?? block.max_value ?? 100
         let step = { let s = block.step_value ?? 1; return s > 0 ? s : 1 }()  // clamp >0 — a 0/negative step makes the value-gen loop non-terminating
         let defaultVal = block.default_picker_value ?? block.default_value ?? minVal
         let unitStr = block.unit ?? ""
-        // SPEC-419 — accept the editor's prefix/suffix alongside before/after (prefix == before).
+        // Accept the editor's prefix/suffix alongside before/after (prefix == before).
         let unitPos = block.unit_position ?? "after"
         let highlightCol = Color(hex: block.highlight_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
 
@@ -2073,7 +2073,7 @@ struct WheelPickerBlockView: View {
             inputValues[fieldId] = v
             baseValue = String(v)
         }
-        // SPEC-419 STEP-2 — fire ONLY on a real user commit (not the pristine onAppear auto-persist),
+        // Fire ONLY on a real user commit (not the pristine onAppear auto-persist),
         // so the delegate sees drag-END/commit and never a per-tick storm.
         if hasUserInteracted {
             onInteract(block.id, "value_changed", baseValue)
@@ -2081,7 +2081,7 @@ struct WheelPickerBlockView: View {
     }
 }
 
-// MARK: - Pulsing Avatar Block View (SPEC-089d AC-014)
+// MARK: - Pulsing Avatar Block View
 
 /// Avatar image with animated pulsing ring effects.
 struct PulsingAvatarBlockView: View {
@@ -2092,7 +2092,7 @@ struct PulsingAvatarBlockView: View {
     var body: some View {
         let avatarSize = CGFloat(block.icon_size ?? block.height ?? 80)
         let pulseCol = Color(hex: block.pulse_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        let ringCount = max(1, block.pulse_ring_count ?? 3)  // SPEC-419 pass-23 — guard ForEach(0..<ringCount) trap on negative + pulseDuration/ringCount div-by-zero
+        let ringCount = max(1, block.pulse_ring_count ?? 3)  // Guard ForEach(0..<ringCount) trap on negative + pulseDuration/ringCount div-by-zero
         let pulseDuration = block.pulse_speed ?? 1.5
         let borderW = CGFloat(block.border_width ?? 0)
         let borderCol = Color(hex: block.border_color ?? "#FFFFFF")
@@ -2196,7 +2196,7 @@ struct PulsingAvatarBlockView: View {
     }
 }
 
-// MARK: - Star Background Block View (SPEC-089d AC-027)
+// MARK: - Star Background Block View
 
 /// Animated star/particle background using Canvas + TimelineView.
 struct StarBackgroundBlockView: View {
@@ -2206,9 +2206,9 @@ struct StarBackgroundBlockView: View {
     @State private var isActive = true
 
     var body: some View {
-        // SPEC-419 pass-15 #8/#9/#25 — editor authors particle_color/particle_opacity/particle_speed; fall back to legacy native keys.
+        // Editor authors particle_color/particle_opacity/particle_speed; fall back to legacy native keys.
         let color = Color(hex: block.particle_color ?? block.active_color ?? block.text_color ?? "#FFFFFF")
-        // SPEC-419 pass-15 #27 — secondary_color tints 1/3 of particles (matches editor + preview)
+        // secondary_color tints 1/3 of particles (matches editor + preview)
         let secondaryColor = block.secondary_color.map { Color(hex: $0) } ?? color
         // Device QA (2026-08-03): particle_type was decoded but the Canvas always drew a
         // circle, so stars/sparkles/snow all looked identical. Render the actual shape.
@@ -2233,7 +2233,7 @@ struct StarBackgroundBlockView: View {
         }()
         let rawMinSize = CGFloat(block.size_range?.first ?? 1)
         let rawMaxSize = CGFloat(block.size_range?.last ?? 3)
-        // SPEC-419 pass-23 — guard CGFloat.random(in: minSize...maxSize) against a descending size_range (e.g. [5,2])
+        // Guard CGFloat.random(in: minSize...maxSize) against a descending size_range (e.g. [5,2])
         let minSize = min(rawMinSize, rawMaxSize)
         let maxSize = max(rawMinSize, rawMaxSize)
         let isFullscreen = block.fullscreen ?? false
@@ -2250,7 +2250,7 @@ struct StarBackgroundBlockView: View {
                     )
                     context.opacity = particle.opacity * opacity
                     // Device QA (2026-08-04): multicolor confetti cycles the palette; otherwise every
-                    // 3rd particle uses secondary_color (SPEC-419 pass-15 #27).
+                    // 3rd particle uses secondary_color.
                     let fillColor = useMulticolor
                         ? Self.confettiPalette[i % Self.confettiPalette.count]
                         : (i % 3 == 0 ? secondaryColor : color)
@@ -2338,7 +2338,7 @@ struct StarBackgroundBlockView: View {
     }
 }
 
-// MARK: - Pricing Card Block View (SPEC-089d)
+// MARK: - Pricing Card Block View
 
 /// Renders pricing plan cards in stack or side-by-side layout.
 struct PricingCardBlockView: View {
@@ -2423,7 +2423,7 @@ struct PricingCardBlockView: View {
     }
 }
 
-// MARK: - Pulsing Avatar shape helpers (SPEC-085 image_shape)
+// MARK: - Pulsing Avatar shape helpers (image_shape)
 
 /// Clip the avatar image per the configured shape. Circle is the legacy
 /// default; "square" skips clipping; "rounded" uses cornerRadius.
@@ -2468,7 +2468,7 @@ private struct AvatarShapeBorder: ViewModifier {
     }
 }
 
-/// EPIC-8 — swipeable carousel: each child block is a page. Uses a GeometryReader + offset
+/// Swipeable carousel: each child block is a page. Uses a GeometryReader + offset
 /// pager (snapshot-reliable, unlike TabView's UIPageViewController) with a custom dot indicator
 /// (colors via field_config) tracking the page. Parity with Android's HorizontalPager + dots.
 struct CarouselBlockView: View {
@@ -2476,17 +2476,17 @@ struct CarouselBlockView: View {
     let onAction: (_ action: String, _ actionValue: String?) -> Void
     @Binding var toggleValues: [String: Bool]
     @Binding var inputValues: [String: Any]
-    /// SPEC-496 §A4 — the step's ONE layered block list, handed down so a consent-coloured CTA on a
+    /// The step's ONE layered block list, handed down so a consent-coloured CTA on a
     /// page gates on the WHOLE step's required fields, not just `[page]`. Nil → the page itself.
     var gateBlocks: [ContentBlock]? = nil
-    /// SPEC-496 §A1 — the parent renderer's raw-resolved ids (markers honoured by the gate).
+    /// The parent renderer's raw-resolved ids (markers honoured by the gate).
     var rawResolvedIds: Set<String> = []
     @State private var selection = 0
-    /// SPEC-496 — set by the parent renderer on a raw-resolved carousel.
+    /// Set by the parent renderer on a raw-resolved carousel.
     @SwiftUI.Environment(\.appdnaRawResolved) private var rawResolved: Bool
 
     var body: some View {
-        // SPEC-496 §A3 — a page whose `empty_state.mode == hidden` is not a page (no blank slide, no dot).
+        // A page whose `empty_state.mode == hidden` is not a page (no blank slide, no dot).
         let pages = (block.children ?? block.stack_children ?? []).filter {
             !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolved)
         }
@@ -2498,7 +2498,7 @@ struct CarouselBlockView: View {
             GeometryReader { geo in
                 HStack(spacing: 0) {
                     ForEach(Array(pages.enumerated()), id: \.offset) { _, page in
-                        // SPEC-496 §5b C5.1 — no `onInteract` here, and none is needed for
+                        // No `onInteract` here, and none is needed for
                         // `refresh_step`: a page's buttons reach the step through the inherited
                         // `\.appdnaStepInteraction` environment (proof: device row D7 + review).
                         ContentBlockRendererView(blocks: [page], onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,

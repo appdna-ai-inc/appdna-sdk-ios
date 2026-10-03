@@ -179,7 +179,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
     }
 
     func testAnUnresolvedValueKeepsTheCardWhenTheLabelStillSaysSomething() {
-        // The #660 regression: SPEC-446 dropped the whole card, so a booking summary lost rows
+        // The #660 regression: a change dropped the whole card, so a booking summary lost rows
         // wholesale when one key was missing from the host payload.
         let stat: [String: Any] = ["label": "Region", "value": "{{hook_data.region.name}}"]
         let out = sanitizeSummaryStat(stat)

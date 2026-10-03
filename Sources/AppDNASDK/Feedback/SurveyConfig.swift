@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Firestore schema types for surveys (SPEC-023)
+// MARK: - Firestore schema types for surveys
 
 /// Root config from Firestore `/config/surveys`.
 struct SurveyRoot: Codable {
@@ -39,7 +39,7 @@ public struct SurveyQuestion: Codable {
     private let _options: [SurveyQuestionOption]?  // Legacy flat format
     public let emoji_config: EmojiConfig?
     public let free_text_config: FreeTextConfig?
-    // SPEC-085: Question-level image
+    // Question-level image
     public let image_url: String?
 
     /// Resolved options — prefer choice_config.options, fall back to flat options
@@ -148,13 +148,13 @@ public struct ScoreRange: Codable {
 /// Survey appearance settings.
 public struct SurveyAppearance: Codable {
     public let presentation: String? // "bottom_sheet", "modal", "fullscreen"
-    /// SPEC-205: supports both legacy flat SurveyTheme AND `{ light, dark }`
+    /// Supports both legacy flat SurveyTheme AND `{ light, dark }`
     /// via ThemeSet's back-compat decoder. Callers resolve via
     /// `theme?.resolved(for: colorScheme)` at render time.
     public let theme: ThemeSet<SurveyTheme>?
     public let dismiss_allowed: Bool?
     public let show_progress: Bool?
-    // SPEC-084: Style engine integration
+    // Style engine integration
     public let question_text_style: TextStyleConfig?
     public let option_style: ElementStyleConfig?
     public let corner_radius: Int?
@@ -178,15 +178,15 @@ public struct SurveyTheme: Codable, SparseMergeable {
     public let button_color: String?
     public let button_text_color: String?
     public let font_family: String?
-    // SPEC-085: Rich media in surveys
+    // Rich media in surveys
     public let intro_lottie_url: String?
     public let thankyou_lottie_url: String?
     public let thankyou_particle_effect: ParticleEffect?
     public let blur_backdrop: BlurConfig?
     public let haptic: HapticConfig?
-    // SPEC-088: Configurable thank-you text for interpolation
+    // Configurable thank-you text for interpolation
     public let thank_you_text: String?
-    // SPEC-205: Gradients + typography (previously authored by console but
+    // Gradients + typography (previously authored by console but
     // silently ignored by the SDK — see audit). Now decoded + merged so the
     // dark variant can override any of them.
     public let gradient: GradientConfig?
@@ -233,7 +233,7 @@ public struct SurveyTheme: Codable, SparseMergeable {
         self.font_weight = font_weight
     }
 
-    /// SPEC-205: sparse-merge self (overrides) onto baseline. Any field
+    /// Sparse-merge self (overrides) onto baseline. Any field
     /// set on self wins; otherwise fall back to the baseline value.
     public func merged(onto baseline: SurveyTheme) -> SurveyTheme {
         SurveyTheme(

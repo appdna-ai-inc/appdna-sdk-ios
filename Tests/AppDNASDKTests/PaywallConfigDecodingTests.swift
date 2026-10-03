@@ -256,7 +256,7 @@ final class PaywallConfigDecodingTests: XCTestCase {
         XCTAssertEqual(bg.value, "#1a1a2e")
     }
 
-    // MARK: - SPEC-089d Section Types
+    // MARK: - Section Types
 
     // 1. Guarantee section
     func testDecodeGuaranteeSection() throws {
@@ -1096,7 +1096,7 @@ final class PaywallConfigDecodingTests: XCTestCase {
         XCTAssertEqual(bg.video_poster_url, "https://example.com/poster.jpg")
     }
 
-    // 30. Full config with SPEC-089d sections
+    // 30. Full config with sections
     func testDecodeFullConfigWithSpec089dSections() throws {
         let json = """
         {

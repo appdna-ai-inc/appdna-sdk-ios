@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-070-B B3 — `onPaywallPurchaseFailed` now carries `productId`.
+/// `onPaywallPurchaseFailed` now carries `productId`.
 ///
 /// THE BUG: a paywall selling two products reported "a purchase failed" and the host had no way to
 /// tell WHICH — it could not retry the right product, attribute the failure, or price-test. The

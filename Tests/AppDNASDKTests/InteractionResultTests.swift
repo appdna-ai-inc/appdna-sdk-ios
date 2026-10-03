@@ -1,8 +1,8 @@
 import XCTest
 @testable import AppDNASDK
 
-/// SPEC-419 EPIC-11 — pure logic of the interactive-state-contract result application.
-/// SPEC-496 §5b C10 "Native unit tests" — the interaction data layer (`effective` / `apply`), the
+/// Pure logic of the interactive-state-contract result application.
+/// "Native unit tests" — the interaction data layer (`effective` / `apply`), the
 /// pending-coordinator "cached" latch and the `InteractionCoordinator` seam.
 final class InteractionResultTests: XCTestCase {
 
@@ -35,7 +35,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertNil(applied.inputValuePatches)
     }
 
-    // MARK: - SPEC-496 §5b C2 / C4.1 — pass-through fields
+    // MARK: - pass-through fields
 
     func testAppliedInteractionPassesDataContextAndRawPatchesThrough() {
         let result = ElementInteractionResult(inputValuePatches: ["x": 1], dataContext: ["recommendations": ["a"]])
@@ -91,7 +91,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertNil(ElementInteractionResult.minimumBridgeTimeout(action: "confirmed"))
     }
 
-    // MARK: - §5b C3 — effective / apply
+    // MARK: - effective / apply
 
     private func entry(_ v: Any?, _ stamp: Int) -> HostDataLayerEntry {
         HostDataLayerEntry(kind: v.map { HostDataLayerEntry.Kind.value($0) } ?? .removed, stamp: stamp)
@@ -182,7 +182,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertNil(store.effectiveHookData(stepId: "s", fallbackBase: nil))
     }
 
-    // MARK: - §5b C3 — "cached" is latched per presentation
+    // MARK: - "cached" is latched per presentation
 
     func testPendingCoordinatorLatchesCachedPerPresentation() {
         let c = HostDataPendingCoordinator(schedule: { _, _ in {} })
@@ -200,7 +200,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertEqual(got, 41, "the value drawn at the call's START")
     }
 
-    // MARK: - §5b C5 — InteractionCoordinator
+    // MARK: - InteractionCoordinator
 
     private final class ManualClock {
         var timers: [(due: Int, fire: () -> Void, id: Int)] = []
@@ -359,7 +359,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertEqual(replies, 0, "a late advance never runs")
     }
 
-    // MARK: - Audit round 1 minors
+    // MARK: - Audit minors
 
     func testStaleFireReadsTheLiveBase() {
         // A fold run through an OLD router copy (whose copied `configOverride` is nil) must still see the
