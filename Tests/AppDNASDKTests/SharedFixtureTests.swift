@@ -485,6 +485,7 @@ final class SharedFixtureTests: XCTestCase {
         case "compose_map_url":                runComposeMapUrl(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
+        case "report_paying_user":             runReportPayingUser(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)
         case "get_variant":                    runGetVariant(fixture, harness)
         case "receive_push":                   await runReceivePush(fixture, harness)
@@ -2019,6 +2020,33 @@ final class SharedFixtureTests: XCTestCase {
         defer { EventEnvelopeBuilder.timeZoneProvider = savedProvider }
 
         AppDNA.track(event: name, properties: props)
+        AppDNA.drainSDKQueueForTesting()
+    }
+
+    // MARK: - Driver: report_paying_user
+    //
+    // The PUBLIC `AppDNA.reportPayingUser`, through the real `track` path (which
+    // strips host-forgeable markers), with the harness tracker installed as the SDK's.
+    //
+    // What this pins is the PROPERTY SHAPE the billing pipeline depends on: `source: "host"`
+    // always, `price` in MAJOR units converted from the cents the API takes, and the optional
+    // fields present only when supplied. There is deliberately no user id to pass — the SDK
+    // attaches the identity it already holds, because an API accepting an arbitrary id would let a
+    // host inflate or deflate its own bill.
+
+    private func runReportPayingUser(_ f: Fixture, _ h: Harness) {
+        let action = f.action.raw
+        let previous = AppDNA.eventTrackerForTesting
+        AppDNA.installEventTrackerForTest(h.tracker)
+        defer { AppDNA.installEventTrackerForTest(previous) }
+
+        AppDNA.reportPayingUser(
+            productId: action["productId"]?.stringValue,
+            // `doubleValue` is the harness's only numeric accessor; a cents figure is an integer by
+            // definition, so the conversion is exact for every value a fixture may carry.
+            priceCents: action["priceCents"]?.doubleValue.map { Int($0) },
+            currency: action["currency"]?.stringValue
+        )
         AppDNA.drainSDKQueueForTesting()
     }
 

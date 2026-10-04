@@ -676,8 +676,9 @@ struct AnimatedLoadingBlockView: View {
 // MARK: - Orbiting Icons Loader View
 
 /// Radial loader: a central dot/image with N icons orbiting around it on a ring.
-/// Each icon has its own background color and image/emoji. Used for "Aligning the
-/// stars" style screens (Astro Future, SynergyChart).
+/// Each icon has its own background color and image/emoji. Used for the "preparing your
+/// personalised result" style of onboarding screen, where a short wait is given something to
+/// look at while a profile is assembled.
 ///
 /// Configuration (all via `block.field_config`):
 ///   - `orbit_radius` (Double)     — radius of the orbit circle, default 80

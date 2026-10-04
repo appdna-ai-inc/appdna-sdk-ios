@@ -14,7 +14,7 @@ import FirebaseFirestore
 public final class AppDNA: @unchecked Sendable {
 
     /// SDK version string.
-    public static let sdkVersion = "1.0.82"
+    public static let sdkVersion = "1.0.83"
 
     /// Firestore instance used by the SDK.
     /// Uses a secondary Firebase app ("appdna") if GoogleService-Info-AppDNA.plist is found,
@@ -777,7 +777,7 @@ public final class AppDNA: @unchecked Sendable {
 
     /// Report that the current user is a paying user this month.
     ///
-    /// SPEC-500 — the meter can only see what the SDK sells. A host that bills outside our paywall
+    /// The paying-user meter can only see what the SDK sells. A host that bills outside our paywall
     /// (a server-side subscription, a web checkout, a seat sold by a salesperson) meters at zero
     /// without this, however much the customer actually pays.
     ///
@@ -804,7 +804,7 @@ public final class AppDNA: @unchecked Sendable {
         if let productId { props["product_id"] = productId }
         if let priceCents { props["price"] = Double(priceCents) / 100.0 }
         if let currency { props["currency"] = currency }
-        track(event: "paying_user_reported", properties: props)
+        AppDNA.track(event: "paying_user_reported", properties: props)
     }
 
     /// Track a custom event.
