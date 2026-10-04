@@ -775,6 +775,38 @@ public final class AppDNA: @unchecked Sendable {
 
     // MARK: - Public API: Events
 
+    /// Report that the current user is a paying user this month.
+    ///
+    /// SPEC-500 — the meter can only see what the SDK sells. A host that bills outside our paywall
+    /// (a server-side subscription, a web checkout, a seat sold by a salesperson) meters at zero
+    /// without this, however much the customer actually pays.
+    ///
+    /// 🔴 NO USER-ID PARAMETER. The identity attached is the one the SDK already holds, from
+    /// `identify()` or the anonymous id. An API that accepted an arbitrary id would let a host
+    /// inflate or deflate its own bill, and nothing downstream could tell an honest assertion from
+    /// an invented one.
+    ///
+    /// **Call it whenever the user is in a paid state — do not try to track the transition.** The
+    /// meter counts distinct users per month, so calling this on every launch costs nothing and
+    /// misses nothing, whereas detecting "became paid" is a thing hosts get wrong.
+    ///
+    /// `productId`, `priceCents` and `currency` are analytics only. MTPU is a COUNT; they never
+    /// affect the bill.
+    ///
+    /// A no-op before `configure()`: an assertion made before the SDK knows which app it belongs to
+    /// cannot be attributed to one, and a silently buffered bill is worse than a missed one.
+    public static func reportPayingUser(productId: String? = nil, priceCents: Int? = nil, currency: String? = nil) {
+        guard shared.eventTracker != nil else {
+            Log.debug("reportPayingUser ignored: SDK not configured yet")
+            return
+        }
+        var props: [String: Any] = ["source": "host"]
+        if let productId { props["product_id"] = productId }
+        if let priceCents { props["price"] = Double(priceCents) / 100.0 }
+        if let currency { props["currency"] = currency }
+        track(event: "paying_user_reported", properties: props)
+    }
+
     /// Track a custom event.
     public static func track(event: String, properties: [String: Any]? = nil) {
         // `emitted_by` marks the SDK's OWN billing events and `_appdna_origin` is
