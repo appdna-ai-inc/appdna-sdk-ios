@@ -290,7 +290,20 @@ final class BootstrapRecoveryTests: XCTestCase {
         AppDNA.onReady { ready = true }
         waitUntil("ready") { ready }
         AppDNA.drainSDKQueueForTesting()
-        idle(1.0)
+        /*
+         * 🔴 A FIXED `idle(1.0)` IS A GUESS ABOUT A RUNNER, NOT A CONDITION.
+         *
+         * Tearing down a refused bootstrap is asynchronous, and on a saturated CI runner it does not
+         * land within a second: this test failed on the assertion below having taken 61.6 s, while
+         * the same commit ran it in 2.4 s on a Mac. Nothing was wrong with the SDK — the test simply
+         * looked too early, and reported it as "a retry loop for a refused key".
+         *
+         * Waiting for the condition cannot weaken what this proves. A retry loop would keep making
+         * requests, so giving it MORE time can only raise `plan.count`, which is the assertion that
+         * actually guards against retrying; and a loop that never settles still fails, on the bound.
+         */
+        waitUntil("the refused bootstrap settled") { AppDNA.bootstrapRecoveryForTesting == nil }
+        idle(0.5)   // and a moment more, so a stray retry would be counted rather than missed
         XCTAssertEqual(plan.count, 1, "a refused key was retried")
         XCTAssertNil(AppDNA.bootstrapRecoveryForTesting, "a retry loop for a refused key")
     }
