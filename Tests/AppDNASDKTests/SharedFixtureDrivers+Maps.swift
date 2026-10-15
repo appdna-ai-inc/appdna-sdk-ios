@@ -46,10 +46,37 @@ extension SharedFixtureTests {
         case "parse_window_date":         runParseWindowDate(f, h)
         case "countdown_initial_seconds": runCountdownInitialSeconds(f, h)
         case "form_date_bounds":          runFormDateBounds(f, h)
+        // #772 — WHICH copy of content_blocks the real decoder resolves, per step shape.
+        case "resolve_content_blocks":    runResolveContentBlocks(f, h)
         default:
             return false
         }
         return true
+    }
+
+    /**
+     #772 — which copy of `content_blocks` the REAL step decoder resolves, per step shape.
+
+     The `layout_empty_falls_through_to_root` case is the one that diverged: this side has always
+     fallen back on EMPTY (`if (decoded.content_blocks ?? []).isEmpty`), Android only on absent, so
+     one published document rendered a step on iOS and blank on Android. The fixture asserts both
+     runners agree, which is the only thing that keeps them agreeing.
+     */
+    private static func runResolveContentBlocks(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_content_blocks needs action.cases")
+            return
+        }
+        h.state["resolved"] = cases.map { c -> [String: Any] in
+            let name = c.objectValue?["name"]?.stringValue ?? ""
+            guard let stepRaw = c.objectValue?["step"],
+                  let data = try? JSONEncoder().encode(stepRaw),
+                  let step = try? JSONDecoder().decode(OnboardingStep.self, from: data) else {
+                XCTFail("[\(f.id)] resolve_content_blocks case \(name): step did not decode")
+                return ["name": name, "ids": [String]()]
+            }
+            return ["name": name, "ids": (step.config.content_blocks ?? []).map { $0.id ?? "" }]
+        }
     }
 
     private static func pairs(_ points: [(lat: Double, lng: Double)]) -> [[Double]] {
