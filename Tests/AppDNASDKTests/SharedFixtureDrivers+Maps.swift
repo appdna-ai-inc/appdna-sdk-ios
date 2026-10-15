@@ -62,14 +62,16 @@ extension SharedFixtureTests {
      one published document rendered a step on iOS and blank on Android. The fixture asserts both
      runners agree, which is the only thing that keeps them agreeing.
      */
-    private static func runResolveContentBlocks(_ f: Fixture, _ h: Harness) {
+    private func runResolveContentBlocks(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_content_blocks needs action.cases")
             return
         }
         h.state["resolved"] = cases.map { c -> [String: Any] in
             let name = c.objectValue?["name"]?.stringValue ?? ""
-            guard let stepRaw = c.objectValue?["step"],
+            // `.host` keeps the fixture's int/double/bool/string kinds; HostJSON is what the SDK
+            // itself encodes raw blocks through, so this is the same round trip production takes.
+            guard let stepRaw = c.objectValue?["step"]?.host,
                   let data = try? JSONEncoder().encode(stepRaw),
                   let step = try? JSONDecoder().decode(OnboardingStep.self, from: data) else {
                 XCTFail("[\(f.id)] resolve_content_blocks case \(name): step did not decode")
