@@ -24,6 +24,16 @@ final class LoopbackHTTPServer: @unchecked Sendable {
         var status: Int
         var headers: [String: String]
         var body: String
+        /// #857 — raw bytes instead of `body`, so a test can serve a gzip-encoded answer the way a
+        /// CDN does. `body` is still used when this is nil, so every existing caller is unchanged.
+        var bodyData: Data?
+
+        init(status: Int, headers: [String: String], body: String, bodyData: Data? = nil) {
+            self.status = status
+            self.headers = headers
+            self.body = body
+            self.bodyData = bodyData
+        }
     }
 
     let port: UInt16
@@ -31,12 +41,16 @@ final class LoopbackHTTPServer: @unchecked Sendable {
     private let lock = NSLock()
     private var _requests: [String] = []
     private var _bodies: [(label: String, body: Data)] = []
+    /// #857 — every request's raw header block, so a test can assert what the client advertised.
+    private var _heads: [String] = []
     private let respond: @Sendable (String) -> Answer
 
     var requests: [String] { lock.lock(); defer { lock.unlock() }; return _requests }
     func count(_ prefix: String) -> Int { requests.filter { $0.hasPrefix(prefix) }.count }
     /// Every request's body as sent, with its "METHOD path" label.
     var bodies: [(label: String, body: Data)] { lock.lock(); defer { lock.unlock() }; return _bodies }
+    /// Every request's header block, in order.
+    var heads: [String] { lock.lock(); defer { lock.unlock() }; return _heads }
 
     init?(respond: @escaping @Sendable (String) -> Answer) {
         self.respond = respond
@@ -104,9 +118,9 @@ final class LoopbackHTTPServer: @unchecked Sendable {
         let label = parts.count >= 2 ? "\(parts[0]) \(parts[1])" : requestLine
         let bodyStart = (headerEnd ?? 0) + 4
         let body = data.count >= bodyStart ? Data(data[bodyStart..<min(data.count, bodyStart + contentLength)]) : Data()
-        lock.lock(); _requests.append(label); _bodies.append((label, body)); lock.unlock()
+        lock.lock(); _requests.append(label); _bodies.append((label, body)); _heads.append(head); lock.unlock()
         let answer = respond(label)
-        let payload = Array(answer.body.utf8)
+        let payload = answer.bodyData.map { Array($0) } ?? Array(answer.body.utf8)
         var reply = "HTTP/1.1 \(answer.status) X\r\n"
         for (k, v) in answer.headers { reply += "\(k): \(v)\r\n" }
         reply += "Content-Length: \(payload.count)\r\nConnection: close\r\n\r\n"

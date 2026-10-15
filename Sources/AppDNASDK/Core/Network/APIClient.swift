@@ -346,8 +346,23 @@ final class APIClient {
         // SDK identity headers (parity with Android's SdkIdentityInterceptor).
         request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
         request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
-        // Request compressed responses from server
-        request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
+        /*
+         * #857 — `gzip` ONLY. We must not advertise an encoding we cannot decode.
+         *
+         * This said `gzip, deflate`, mirroring Android, where the same line was worse than useless:
+         * setting `Accept-Encoding` by hand stops OkHttp decompressing at all, so every gzip answer
+         * arrived as raw bytes. URLSession does NOT share that behaviour — measured on the simulator
+         * against a loopback server serving a real gzip member, a hand-set header and all: the body
+         * parses (`GzipResponseDecodingTests.testAGzipAnswerIsDecoded`). So gzip on iOS was never
+         * broken.
+         *
+         * `deflate` was, latently. Nothing in URLSession decodes a RAW deflate body, so a server
+         * taking us at our word would send an encoding this client cannot read — the same silent
+         * "bootstrap failed, using cached config" ending Android had, waiting for a server that
+         * prefers deflate. Offering only what we decode removes the trap without changing anything
+         * that works today.
+         */
+        request.setValue("gzip", forHTTPHeaderField: "Accept-Encoding")
 
         if endpoint.method == "POST" {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
