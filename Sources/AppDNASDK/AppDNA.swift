@@ -532,6 +532,27 @@ public final class AppDNA: @unchecked Sendable {
     }
     /// Test-only: the ready flag and the org id of the bootstrap that was applied, read on `queue`.
     internal static var isReadyForTesting: Bool { shared.queue.sync { shared.isReady } }
+
+    /// Whether the SDK has finished configuring — the same condition `onReady` fires on, readable
+    /// synchronously.
+    ///
+    /// ⚠️ This is "the bootstrap has settled and the managers are wired", NOT "the remote config has
+    /// arrived". The remote fetch is STARTED by configure and not awaited, so a flow that exists
+    /// only server-side can still be absent just after this turns true; `remoteConfig.onChanged` is
+    /// what fires for fetched values. What it does guarantee is that any BUNDLED config has been
+    /// loaded, because that happens before this flips.
+    ///
+    /// 🔴 #855 — this exists because a host could not tell two very different answers apart.
+    /// `present` returns `false` both when a flow does not exist and when the SDK simply has not
+    /// loaded its config yet, and on a COLD FIRST LAUNCH that second window is long: measured at
+    /// ~3s on an iPhone simulator and ~20-25s on a Pixel-class Android emulator, because configure
+    /// reaches its config load only after a cold init and a bootstrap round trip. On every later
+    /// launch the cached config is already on disk and the window closes before a user can reach a
+    /// button, which is why this only ever looks like a first-launch bug.
+    ///
+    /// A host with a button a user can press during that window should check this and retry,
+    /// rather than treat `false` as "that flow is gone".
+    public static var isReady: Bool { shared.queue.sync { shared.isReady } }
     internal static var bootstrapOrgIdForTesting: String? { shared.queue.sync { shared.bootstrapData?.orgId } }
     /// Test reader: the event queue of the current configure.
     internal static var eventQueueForTesting: EventQueue? { shared.queue.sync { shared.eventQueue } }

@@ -235,7 +235,32 @@ final class RemoteConfigManager {
 
     /// Load config from the bundled appdna-config.json embedded in the app binary.
     /// Only populates empty caches — remote and cached data take priority.
+    /// #856 — the sections `loadBundledConfig` actually reads; a bundle with none of them is inert.
+    static let recognisedBundleKeys = [
+        "paywalls", "onboarding", "experiments", "surveys", "messages",
+        "remote_config", "feature_flags", "screen_index", "brand",
+    ]
+
     func loadBundledConfig(_ json: [String: Any]) {
+        /*
+         * #856 — SAY SO WHEN A BUNDLE CONTAINS NOTHING WE RECOGNISE.
+         *
+         * Every section below is optional, so a bundle with none of them parsed silently and the
+         * SDK carried on with no config at all: valid JSON, right size, right place, and it does
+         * nothing. That silence is what turned a wrong console snippet into a day of guessing —
+         * the snippet saved the RAW API response, whose keys sit under `.data.content`, so every
+         * key this looks for was one level too deep and not one line was logged.
+         */
+        if !Self.recognisedBundleKeys.contains(where: { json[$0] != nil }) {
+            let present = json.keys.sorted().joined(separator: ", ")
+            Log.warning(
+                "Bundled config has none of the sections the SDK reads "
+                    + "(\(Self.recognisedBundleKeys.joined(separator: ", "))). Top-level keys present: "
+                    + "\(present.isEmpty ? "(none)" : present). "
+                    + "If this came from /api/v1/sdk/config-bundle, the response is an envelope — "
+                    + "save `.data.content + {bundle_version}`, not the raw body."
+            )
+        }
         queue.sync {
             // Paywalls
             if self.paywalls.isEmpty, let data = json["paywalls"] as? [String: Any], !data.isEmpty {

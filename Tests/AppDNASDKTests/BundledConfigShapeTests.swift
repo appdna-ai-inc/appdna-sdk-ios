@@ -82,4 +82,47 @@ final class BundledConfigShapeTests: XCTestCase {
                         "the loader unwraps flags now — the server could go back to wrapped entries")
         XCTAssertNil(flags.getValue(flag: "k_bool") as? Bool)
     }
+
+    // MARK: - #856 — a bundle the SDK cannot read must say so
+
+    /*
+     * Every section above is optional, so a bundle carrying none of them parsed in silence and the
+     * SDK carried on with no config at all: valid JSON, right size, right place, and inert.
+     *
+     * 🔴 That silence is the defect, not the wrong bundle. The console's CI/CD snippet saved the
+     * RAW response from `/api/v1/sdk/config-bundle`, whose payload sits under `.data.content`, so
+     * every key the loader looks for was one level too deep. Measured on an Android device,
+     * airplane mode, fresh install each time: the raw-response asset gave `presentOnboarding →
+     * false` at T+95s while `.data.content + {bundle_version}` gave `true` at T+40s — and not one
+     * line was logged to tell the two apart. Mirrors `BundledConfigShapeTest` on Android.
+     */
+    private func logs(loading json: [String: Any]) -> String {
+        var captured: [String] = []
+        Log.testSink = { captured.append($0) }
+        defer { Log.testSink = nil }
+        _ = load(json)
+        return captured.joined(separator: "\n")
+    }
+
+    func testABundleWithNoRecognisedSectionWarnsAndNamesTheLikelyCause() {
+        // Exactly what the wrong snippet produced: the envelope rather than its content.
+        let raw: [String: Any] = ["data": ["content": ["onboarding": [:]]], "bundle_version": 7]
+        let out = logs(loading: raw)
+        XCTAssertTrue(out.contains("none of the sections"),
+                      "a bundle the SDK cannot read must warn — logs were:\n\(out)")
+        XCTAssertTrue(out.contains("data"), "the warning must name the keys that WERE present")
+        XCTAssertTrue(out.contains(".data.content"), "the warning must name the likely cause")
+    }
+
+    func testACorrectBundleStaysQuiet() {
+        // The guard must not cry wolf, or it becomes a line people learn to scroll past.
+        let out = logs(loading: ["onboarding": [:], "bundle_version": 7])
+        XCTAssertFalse(out.contains("none of the sections"),
+                       "a correct bundle must NOT warn — logs were:\n\(out)")
+    }
+
+    func testAnEmptyBundleWarnsToo() {
+        XCTAssertTrue(logs(loading: [:]).contains("none of the sections"))
+    }
 }
+
