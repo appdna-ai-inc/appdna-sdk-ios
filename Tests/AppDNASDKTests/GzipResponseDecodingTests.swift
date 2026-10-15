@@ -1,6 +1,6 @@
 // GzipResponseDecodingTests.swift
 //
-// SPEC-502 #857 — does a gzip-encoded answer reach the JSON parser DECODED on iOS?
+// #857 — does a gzip-encoded answer reach the JSON parser DECODED on iOS?
 //
 // The Android SDK set `Accept-Encoding: gzip, deflate` by hand, which is exactly what stops OkHttp
 // decompressing: its transparent path runs ONLY when OkHttp added the header itself. Every gzip
