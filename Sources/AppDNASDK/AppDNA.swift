@@ -1055,13 +1055,35 @@ public final class AppDNA: @unchecked Sendable {
         // onboarding delegate in JS. The delegate was there; native just never saw it.
         let resolved = delegate ?? AppDNA.onboarding.delegate
 
+        /*
+         * #855 — THE NOT-READY CASE IS ANSWERED HERE, BECAUSE THE MANAGER DOES NOT EXIST YET.
+         *
+         * 🔴 Found by a device run, not by a test. `onboardingFlowManager` is assigned in
+         * `initializeManagers`, which runs at the END of the bootstrap — so before the SDK is
+         * ready this was `nil?.present(...) ?? false`: a silent `false`, with no log at all. The
+         * honest-vs-misleading branch added to `OnboardingFlowManager.present` therefore could
+         * NEVER run in exactly the case it exists for. Measured on an iPhone simulator with a
+         * blackhole base URL to hold the window open: 20 calls, 17 of them logging NOTHING.
+         *
+         * A test that builds an `OnboardingFlowManager` directly cannot see this — the manager it
+         * constructs always exists. Only the real entry point has the nil.
+         */
+        guard let manager = shared.onboardingFlowManager else {
+            Log.warning(
+                "Onboarding flow \(flowId ?? "active") was NOT looked up: the SDK is still "
+                    + "configuring. This is not a missing flow — wait for AppDNA.onReady() (or "
+                    + "check AppDNA.isReady) and present again."
+            )
+            return false
+        }
+
         var result = false
         // Must present on main thread
         if Thread.isMainThread {
-            result = shared.onboardingFlowManager?.present(flowId: flowId, from: vc, delegate: resolved) ?? false
+            result = manager.present(flowId: flowId, from: vc, delegate: resolved)
         } else {
             DispatchQueue.main.sync {
-                result = shared.onboardingFlowManager?.present(flowId: flowId, from: vc, delegate: resolved) ?? false
+                result = manager.present(flowId: flowId, from: vc, delegate: resolved)
             }
         }
         return result

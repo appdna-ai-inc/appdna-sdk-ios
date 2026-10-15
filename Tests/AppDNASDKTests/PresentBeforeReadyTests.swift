@@ -64,4 +64,39 @@ final class PresentBeforeReadyTests: XCTestCase {
         // A host that already handles `false` must keep working unchanged.
         XCTAssertFalse(manager().present(flowId: "some-flow-id", from: UIViewController(), delegate: nil))
     }
+
+    /*
+     * 🔴 THE CASE THE REST OF THIS FILE COULD NOT SEE.
+     *
+     * Every test above builds an `OnboardingFlowManager` directly, so the manager always exists.
+     * At the REAL entry point it does not: `shared.onboardingFlowManager` is assigned at the end
+     * of the bootstrap, and before that `AppDNA.presentOnboarding` was
+     * `nil?.present(...) ?? false` — a silent `false` with no log at all. The honest-vs-misleading
+     * branch added to the manager therefore could never run in the one case it exists for.
+     *
+     * Found by a device run, not by a test: 20 calls on an iPhone simulator held before ready with
+     * a blackhole base URL, 17 of them logging NOTHING. Android did not have the hole — it already
+     * logged on its nil-manager branch — which is why only one platform looked correct.
+     *
+     * This asserts the entry point itself, on an SDK that was never configured, which is the state
+     * a unit test CAN reach.
+     */
+    func testPresentOnboardingLogsWhenTheManagerDoesNotExistYet() {
+        var captured: [String] = []
+        Log.testSink = { captured.append($0) }
+        defer { Log.testSink = nil }
+
+        // Never configured in this process ⇒ `shared.onboardingFlowManager` is nil.
+        XCTAssertFalse(AppDNA.isReady, "precondition: the SDK must not be ready for this to test anything")
+        let shown = AppDNA.presentOnboarding(flowId: "some-flow-id", from: UIViewController(), delegate: nil)
+
+        let logs = captured.joined(separator: "\n")
+        XCTAssertFalse(shown, "nothing can be presented before the managers are wired")
+        XCTAssertTrue(logs.contains("was NOT looked up"),
+                      "a silent false is the defect — the caller must be told WHY. Logs were:\n\(logs)")
+        XCTAssertFalse(logs.contains("Onboarding flow not found"),
+                       "it has not looked anything up yet")
+        XCTAssertTrue(logs.contains("onReady"), "it must name what to wait for")
+    }
 }
+
