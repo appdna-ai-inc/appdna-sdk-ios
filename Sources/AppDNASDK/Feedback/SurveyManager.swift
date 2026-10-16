@@ -249,6 +249,35 @@ final class SurveyManager {
         // Android sends `sentiment.name.lowercase()` — "positive" / "negative" / "neutral".
         let sentimentName = sentiment.analyticsName
 
+        /*
+         #897 — A STORE REVIEW PROMPT IS NEVER CONDITIONED ON THE ANSWER.
+
+         The sentiment branch above is the right shape for every OTHER follow-up: a feedback form
+         for unhappy users and a thank-you for happy ones are ordinary product decisions. A store
+         review is not, and both stores say so in almost the same words.
+
+           Apple   don't ask the customer a question before, or while, presenting the rating
+                   prompt, and don't filter who sees it by how they answered
+           Google  "Don't ask the user any questions before presenting the rating button or card,
+                   including questions about their opinion"
+
+         `on_positive: {action: "prompt_review"}` is exactly that filter, and three production
+         surveys were authored that way — because the console invited it. So if ANY branch asks for
+         a review, every respondent who finishes the survey is eligible and the OS quota decides
+         the rest. The respondent's own branch still runs below, unchanged.
+
+         Mirrors Android `SurveyManager.kt` executeFollowUp.
+         */
+        let anyBranchAsksForReview = [actions.on_positive, actions.on_negative, actions.on_neutral]
+            .contains { $0?.action == "prompt_review" }
+        if anyBranchAsksForReview && followUp.action != "prompt_review" {
+            ReviewPromptManager.shared.triggerReview()
+            eventTracker.track(event: surveyFollowUpReviewEvent, properties: [
+                "survey_id": surveyId,
+                "sentiment": sentimentName,
+            ])
+        }
+
         switch followUp.action ?? "" {
         case "prompt_review":
             // Native review prompt first; the event lets the host handle the case where the OS

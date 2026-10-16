@@ -29,33 +29,21 @@ final class ReviewPromptManager {
         return true
     }
 
-    // MARK: - Two-step review prompt
+    /*
+     #897 — `triggerTwoStepReview` WAS HERE, AND IT IS NOT COMING BACK.
 
-    /// Present "Do you enjoy [App]?" → yes → native review, no → decline event.
-    func triggerTwoStepReview(appName: String? = nil) {
-        guard canShowReviewPrompt() else { return }
-        let name = appName ?? Bundle.main.displayName ?? "this app"
+     It presented a UIAlertController titled "Enjoying <app>?" with "Yes! 😊" / "Not really", and
+     called `SKStoreReviewController.requestReview` only on "Yes". That is review gating. Apple's
+     ratings rules forbid asking the customer a question before or while presenting the prompt,
+     and forbid filtering who sees it by how they answered; Google's In-App Review guidelines say
+     the same thing for the Play side.
 
-        DispatchQueue.main.async { [weak self] in
-            let alert = UIAlertController(
-                title: "Enjoying \(name)?",
-                message: "We'd love to hear your feedback!",
-                preferredStyle: .alert
-            )
+     Nothing called it — which is exactly why it survived: dead code that is a policy violation
+     waiting for a caller. `triggerReview` is the only way in, it prompts everyone it is asked to
+     prompt, and the OS quota decides the rest.
 
-            alert.addAction(UIAlertAction(title: "Yes! \u{1F60A}", style: .default) { _ in
-                AppDNA.track(event: "review_prompt_accepted", properties: nil)
-                self?.requestNativeReview()
-            })
-
-            alert.addAction(UIAlertAction(title: "Not really", style: .cancel) { _ in
-                AppDNA.track(event: "review_prompt_declined", properties: nil)
-            })
-
-            self?.presentAlert(alert)
-            AppDNA.track(event: "review_prompt_shown", properties: ["prompt_type": "two_step"])
-        }
-    }
+     `scripts/__tests__/sdk-review-prompt-is-not-gated.test.ts` keeps it deleted.
+     */
 
     // MARK: - Direct native review prompt
 
@@ -82,21 +70,6 @@ final class ReviewPromptManager {
         }
     }
 
-    private func presentAlert(_ alert: UIAlertController) {
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first,
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-            return
-        }
-
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
-        }
-
-        topVC.present(alert, animated: true)
-    }
 }
 
 // MARK: - Bundle helper
