@@ -742,14 +742,7 @@ struct PaywallRenderer: View {
      `switch section.type` arm is attributed to that section by `check:authorability`, and the
      header has no `dismiss` field of its own.
      */
-    private var headerCloseInset: CGFloat {
-        let dismissStyle = config.dismiss?.style ?? "x_button"
-        let neverDismissable = !(config.dismiss?.isAllowed ?? true) && (config.dismiss?.delaySeconds ?? 0) <= 0
-        let reservesTopCorner = !neverDismissable && dismissStyle != "text_link" && dismissStyle != "swipe_down"
-        guard reservesTopCorner else { return 0 }
-        let glyphSize: CGFloat = config.dismiss?.size ?? 16
-        return 16 + glyphSize * 2
-    }
+    private var headerCloseInset: CGFloat { PaywallHeaderInset.resolve(config.dismiss) }
 
     private func sectionContent(for section: PaywallSection) -> AnyView {
         switch section.type {
@@ -2710,5 +2703,34 @@ private struct PaywallScrollOffsetPrefKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/**
+ #895 — the dismiss control's footprint, as a value both platforms can be held to.
+
+ #881 computed this inline on each platform and pinned it with a SOURCE gate: a gate that reads
+ the arithmetic cannot tell you the two renderers agree, only that they contain similar text. They
+ did not agree — this side reserved space for a `swipe` dismiss and Android did not, so one
+ authored paywall wrapped its title differently on each platform and nothing said so.
+
+ One function, driven by the `paywall_header_close_inset` fixture on both platforms.
+
+ `swipe` and `swipe_down` are the same control under two spellings (the legacy `type` used
+ `swipe`), and it is a capsule at the top CENTRE; `text_link` sits at the bottom. Neither steals
+ width from a centred title, so neither reserves. A delayed reveal reserves from the START, or the
+ title reflows the moment the button appears.
+ */
+enum PaywallHeaderInset {
+    /// The horizontal padding a centred header title needs on BOTH sides, in points.
+    static func resolve(_ dismiss: PaywallDismiss?) -> CGFloat {
+        let style = dismiss?.style ?? "x_button"
+        let neverDismissable = !(dismiss?.isAllowed ?? true) && (dismiss?.delaySeconds ?? 0) <= 0
+        let reservesTopCorner = !neverDismissable
+            && style != "text_link" && style != "swipe" && style != "swipe_down"
+        guard reservesTopCorner else { return 0 }
+        let glyphSize: CGFloat = dismiss?.size ?? 16
+        // Mirrors the control itself: `.padding(16)` + `.frame(width: glyphSize * 2)`.
+        return 16 + glyphSize * 2
     }
 }

@@ -31,10 +31,40 @@ extension SharedFixtureTests {
         case "parse_colour": runParseColour(f, h)
         case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
+        case "paywall_header_close_inset": runHeaderCloseInset(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: paywall_header_close_inset
+
+    /**
+     #895 — the header's reserved footprint, through the REAL `PaywallHeaderInset.resolve`.
+
+     A `null` case means no `dismiss` object at all, which is the common authored shape and the one
+     that must still reserve: absent means dismissable.
+     */
+    private func runHeaderCloseInset(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] paywall_header_close_inset needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let raw = c.objectValue?["value"]
+            if raw == nil || raw?.foundation is NSNull {
+                return Double(PaywallHeaderInset.resolve(nil))
+            }
+            guard let dict = raw?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let dismiss = try? JSONDecoder().decode(PaywallDismiss.self, from: data) else {
+                XCTFail("[\(f.id)] a dismiss case did not decode")
+                return NSNull()
+            }
+            return Double(PaywallHeaderInset.resolve(dismiss))
+        }
     }
 
     // MARK: resolve_shadow
