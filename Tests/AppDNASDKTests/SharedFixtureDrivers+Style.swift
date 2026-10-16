@@ -30,10 +30,40 @@ extension SharedFixtureTests {
         switch f.action.kind {
         case "parse_colour": runParseColour(f, h)
         case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
+        case "resolve_shadow": runResolveShadow(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: resolve_shadow
+
+    /**
+     #886 — the four values a shadow draws with, through the REAL `StyleEngine.resolveShadow`.
+
+     `[colorArgbHex, radius, dx, dy]`, or null when the shadow does not draw at all.
+     */
+    private func runResolveShadow(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_shadow needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            // `.foundation`, NOT `.host`: the latter converts to the SDK's HostJSON, and handing
+            // that to JSONSerialization raises an Obj-C exception that `try?` cannot catch — the
+            // whole test binary died rather than failing one fixture. Decoding is used instead of a
+            // memberwise init because `ShadowStyleConfig`'s is internal to the SDK module.
+            guard let raw = c.objectValue?["value"]?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(raw),
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let cfg = try? JSONDecoder().decode(ShadowStyleConfig.self, from: data) else {
+                XCTFail("[\(f.id)] resolve_shadow case did not decode")
+                return NSNull()
+            }
+            guard let r = StyleEngine.resolveShadow(cfg) else { return NSNull() }
+            return [r.colorArgb, r.radius, r.dx, r.dy] as [Any]
+        }
     }
 
     // MARK: unfold_blockquotes

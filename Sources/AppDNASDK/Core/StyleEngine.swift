@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Config types for design tokens
 
@@ -222,6 +223,9 @@ extension View {
         guard let s = style else { return AnyView(self) }
         let defaultRadius = CGFloat(s.corner_radius ?? 0)
         let border = s.border
+        // #886 — through the seam, so the fixture that holds the two platforms to one answer
+        // drives the SAME resolution the screen does. Resolved once; read by both branches.
+        let sh = StyleEngine.resolveShadow(s.shadow)
 
         // Per-corner radius support
         let hasPerCorner = border?.radius_top_left != nil || border?.radius_top_right != nil
@@ -245,10 +249,10 @@ extension View {
                         lineWidth: CGFloat(border?.width ?? 0)
                     ))
                     .shadow(
-                        color: Color(hex: s.shadow?.color ?? "transparent"),
-                        radius: CGFloat(s.shadow?.blur ?? 0) / 2,
-                        x: CGFloat(s.shadow?.x ?? 0),
-                        y: CGFloat(s.shadow?.y ?? 0)
+                        color: sh?.color ?? .clear,
+                        radius: sh?.radius ?? 0,
+                        x: sh?.dx ?? 0,
+                        y: sh?.dy ?? 0
                     )
                     .opacity(s.opacity ?? 1.0)
             )
@@ -262,10 +266,10 @@ extension View {
                         lineWidth: CGFloat(border?.width ?? 0)
                     ))
                     .shadow(
-                        color: Color(hex: s.shadow?.color ?? "transparent"),
-                        radius: CGFloat(s.shadow?.blur ?? 0) / 2,
-                        x: CGFloat(s.shadow?.x ?? 0),
-                        y: CGFloat(s.shadow?.y ?? 0)
+                        color: sh?.color ?? .clear,
+                        radius: sh?.radius ?? 0,
+                        x: sh?.dx ?? 0,
+                        y: sh?.dy ?? 0
                     )
                     .opacity(s.opacity ?? 1.0)
             )
@@ -317,6 +321,58 @@ extension View {
 }
 
 // MARK: - Background rendering
+
+private extension String {
+    /// `#AARRGGBB` (the comparable spelling) back to the `#RRGGBBAA` `Color(hex:)` parses.
+    func argbToRgbaHex() -> String {
+        let h = dropFirst()
+        guard h.count == 8 else { return self }
+        let a = h.prefix(2), rgb = h.dropFirst(2)
+        return "#\(rgb)\(a)"
+    }
+}
+
+struct ResolvedShadow: Equatable {
+    let colorArgb: String   // "#AARRGGBB", the one spelling both platforms can compare
+    let radius: Double
+    let dx: Double
+    let dy: Double
+
+    /// The same colour as `.shadow(color:)` takes it. `colorArgb` is the spelling the fixture
+    /// compares across platforms; this is the spelling SwiftUI draws.
+    var color: Color { Color(hex: colorArgb.argbToRgbaHex()) }
+}
+
+/**
+ #886 — the four values a shadow really draws with, or nil when it draws nothing.
+
+ A SEAM rather than inline arithmetic, so a shared fixture can drive the REAL resolution on both
+ platforms. Android used to pass only `blur` to `Modifier.shadow` as an elevation — no colour, no
+ offset — so an authored soft grey shadow and a hard black one came out identical and a zero-alpha
+ shadow still drew, while this side honoured all four. 508 occurrences across 30 production flows.
+
+ `spread` is accepted and IGNORED on both platforms, deliberately: SwiftUI has no spread, and
+ honouring it on one side would re-create the divergence this removes.
+ */
+extension StyleEngine {
+    static func resolveShadow(_ shadow: ShadowStyleConfig?) -> ResolvedShadow? {
+        guard let s = shadow else { return nil }
+        let color = Color(hex: s.color ?? "transparent")
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a), a > 0 else { return nil }
+        let argb = String(
+            format: "#%02X%02X%02X%02X",
+            Int((a * 255).rounded()), Int((r * 255).rounded()),
+            Int((g * 255).rounded()), Int((b * 255).rounded())
+        )
+        return ResolvedShadow(
+            colorArgb: argb,
+            radius: Double(s.blur ?? 0) / 2,
+            dx: Double(s.x ?? 0),
+            dy: Double(s.y ?? 0)
+        )
+    }
+}
 
 enum StyleEngine {
     @ViewBuilder

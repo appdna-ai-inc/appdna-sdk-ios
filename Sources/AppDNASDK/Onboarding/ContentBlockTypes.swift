@@ -135,7 +135,20 @@ public struct BlockGradientStyle: Codable {
 struct BlockStyleModifier: ViewModifier {
     let style: BlockStyle?
 
+    /**
+     #886 — a block's authored shadow through `StyleEngine.resolveShadow`, the ONE seam that says
+     what an authored shadow means. `BlockShadowStyle` is the block spelling of the same five
+     fields `ShadowStyleConfig` carries, so it converts rather than re-deciding.
+     */
+    static func resolved(_ style: BlockStyle?) -> ResolvedShadow? {
+        guard let sh = style?.shadow else { return nil }
+        return StyleEngine.resolveShadow(ShadowStyleConfig(
+            x: sh.x, y: sh.y, blur: sh.blur, spread: sh.spread, color: sh.color
+        ))
+    }
+
     func body(content: Content) -> some View {
+        let resolvedShadow = Self.resolved(style)
         if let s = style {
             content
                 // Inner padding
@@ -154,12 +167,15 @@ struct BlockStyleModifier: ViewModifier {
                             style: borderStrokeStyle(s)
                         )
                 )
-                // Shadow
+                // Shadow — #886, through `StyleEngine.resolveShadow`: the same seam the paywall
+                // container styling uses and the same seam the shared fixture drives, so a block
+                // and a section cannot disagree about what an authored shadow means. The values are
+                // unchanged on this side; Android was the half that dropped colour and offset.
                 .shadow(
-                    color: Color(hex: s.shadow?.color ?? "transparent"),
-                    radius: CGFloat(s.shadow?.blur ?? 0) / 2,
-                    x: CGFloat(s.shadow?.x ?? 0),
-                    y: CGFloat(s.shadow?.y ?? 0)
+                    color: resolvedShadow?.color ?? .clear,
+                    radius: CGFloat(resolvedShadow?.radius ?? 0),
+                    x: CGFloat(resolvedShadow?.dx ?? 0),
+                    y: CGFloat(resolvedShadow?.dy ?? 0)
                 )
                 // Opacity
                 .opacity(s.opacity ?? 1.0)

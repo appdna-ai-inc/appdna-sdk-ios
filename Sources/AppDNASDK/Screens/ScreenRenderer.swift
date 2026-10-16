@@ -224,6 +224,12 @@ extension View {
     func applySectionStyle(_ style: SectionStyle?) -> some View {
         if let s = style {
             let radius = CGFloat(s.border_radius ?? 0)
+            // #886 — through `StyleEngine.resolveShadow`, the ONE seam that says what an authored
+            // shadow means, so this surface cannot drift from a block or a paywall section. The
+            // screens `ShadowConfig` is the screens spelling of the same five fields.
+            let resolvedShadow = StyleEngine.resolveShadow(s.shadow.map {
+                ShadowStyleConfig(x: $0.x, y: $0.y, blur: $0.blur, spread: $0.spread, color: $0.color)
+            })
             self
                 .padding(.top, CGFloat(s.margin_top ?? 0))
                 .padding(.bottom, CGFloat(s.margin_bottom ?? 0))
@@ -236,10 +242,10 @@ extension View {
                         )
                 )
                 .shadow(
-                    color: Color(hex: s.shadow?.color ?? "transparent"),
-                    radius: CGFloat(s.shadow?.blur ?? 0) / 2,
-                    x: CGFloat(s.shadow?.x ?? 0),
-                    y: CGFloat(s.shadow?.y ?? 0)
+                    color: resolvedShadow?.color ?? .clear,
+                    radius: CGFloat(resolvedShadow?.radius ?? 0),
+                    x: CGFloat(resolvedShadow?.dx ?? 0),
+                    y: CGFloat(resolvedShadow?.dy ?? 0)
                 )
                 .padding(.top, CGFloat(s.padding_top ?? 0))
                 .padding(.trailing, CGFloat(s.padding_right ?? 0))
