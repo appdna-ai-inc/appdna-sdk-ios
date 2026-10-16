@@ -31,8 +31,8 @@ extension SharedFixtureTests {
         case "parse_colour": runParseColour(f, h)
         case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
-        case "paywall_header_close_inset": runHeaderCloseInset(f, h)
-        case "paywall_default_text_colour": runDefaultTextColour(f, h)
+        case "resolve_header_inset": runHeaderCloseInset(f, h)
+        case "resolve_default_text_colour": runDefaultTextColour(f, h)
         default:
             return false
         }
@@ -47,7 +47,7 @@ extension SharedFixtureTests {
      */
     private func runDefaultTextColour(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
-            XCTFail("[\(f.id)] paywall_default_text_colour needs action.cases")
+            XCTFail("[\(f.id)] resolve_default_text_colour needs action.cases")
             return
         }
         h.state["results"] = cases.map { c -> Any in
@@ -66,7 +66,7 @@ extension SharedFixtureTests {
      */
     private func runHeaderCloseInset(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
-            XCTFail("[\(f.id)] paywall_header_close_inset needs action.cases")
+            XCTFail("[\(f.id)] resolve_header_inset needs action.cases")
             return
         }
         h.state["results"] = cases.map { c -> Any in
