@@ -63,6 +63,16 @@ struct PaywallSection: Codable {
     let style: SectionStyleConfig?
     /// When true, this section fades out and collapses to 0 height as the user scrolls.
     let collapse_on_scroll: Bool?
+    /**
+     #884 — which zone this section lives in: "body" (scrolls) or "bottom" (pinned with the CTA).
+
+     Until now only the `cta` section, and a `legal` placed after it, could be pinned — so a
+     paywall's plan tiles scrolled away while the button that buys them stayed. On a short screen
+     that leaves the user choosing between options they cannot see.
+
+     Absent means "body", so every paywall written before this renders exactly as it did.
+     */
+    let zone: String?
 
     /// Non-optional accessor defaulting to "unknown" when Firestore omits the field.
     var type: String { _type ?? "unknown" }
@@ -77,6 +87,7 @@ struct PaywallSection: Codable {
         case _config = "config"
         case style
         case collapse_on_scroll
+        case zone
     }
 }
 

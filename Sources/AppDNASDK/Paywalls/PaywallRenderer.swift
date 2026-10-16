@@ -81,6 +81,32 @@ struct PaywallRenderer: View {
             .map { $0.element }
     }
 
+    /**
+     #884 — sections an author pinned to the bottom zone.
+
+     > Owner, 2026-10-16: *"don't you think this whole section should be tied to low zone not to
+     > top to look better in therms of UI/UX?"* — about the plan tiles.
+
+     Before this only the `cta` section (and a `legal` placed after it) could be pinned, so the
+     plans scrolled away while the button that buys them stayed. A section authored
+     `zone: "bottom"` now joins the pinned group, in authored order, ABOVE the CTA — choose, then
+     confirm, which is the order a reader expects.
+
+     The CTA and `sticky_footer` are excluded because they are pinned by their own rules already;
+     adding them here would render them twice.
+     */
+    private var bottomZoneSections: [PaywallSection] {
+        config.sections.filter {
+            $0.zone == "bottom" && $0.type != "cta" && $0.type != "sticky_footer"
+                && !pinnedFooterLegalIds.contains($0.id ?? "")
+        }
+    }
+
+    /// IDs of the sections pinned by `zone: "bottom"`, to exclude them from the scroll body.
+    private var bottomZoneIds: Set<String> {
+        Set(bottomZoneSections.map { $0.id ?? "" })
+    }
+
     /// IDs of legal sections that have been moved to the pinned footer —
     /// used to exclude them from the scrollable content so they don't render twice.
     private var pinnedFooterLegalIds: Set<String> {
@@ -137,7 +163,9 @@ struct PaywallRenderer: View {
                         // section array are pinned INSIDE the bottom inset
                         // below the CTA, so skip them here too.
                         let isPinnedLegal = section.type == "legal" && pinnedFooterLegalIds.contains(section.id ?? "")
-                        if section.type != "cta" && section.type != "sticky_footer" && !isPinnedLegal {
+                        // #884 — a section pinned to the bottom zone renders there, not here.
+                        let isBottomZone = bottomZoneIds.contains(section.id ?? "") && section.zone == "bottom"
+                        if section.type != "cta" && section.type != "sticky_footer" && !isPinnedLegal && !isBottomZone {
                             let shouldCollapse = section.collapse_on_scroll == true
                             let collapseProgress = shouldCollapse ? min(max(scrollOffset / 50, 0), 1) : 0
 
@@ -162,6 +190,12 @@ struct PaywallRenderer: View {
             .safeAreaInset(edge: .bottom) {
                 // Bottom-pinned CTA + sticky footer (Apple HIG pattern)
                 VStack(spacing: 0) {
+                    // #884 — the authored bottom-zone sections, above the CTA, in authored order.
+                    ForEach(Array(bottomZoneSections.enumerated()), id: \.offset) { _, pinned in
+                        sectionView(for: pinned)
+                            .padding(.horizontal, config.layout?.padding ?? 20)
+                            .padding(.bottom, config.layout?.spacing ?? 16)
+                    }
                     // CTA section from layout — pinned to bottom, outside scroll
                     if let ctaSec = ctaSection {
                         let topLevelText = config.cta?.text
