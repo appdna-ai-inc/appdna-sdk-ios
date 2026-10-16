@@ -2206,9 +2206,38 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Rich Text
 
+    /**
+     Turn a markdown blockquote into the italic syntax the parser already renders.
+
+     #893 — both platforms parse the same documented subset (`**bold**`, `*italic*`,
+     `[link](url)`, `++underline++`) and NEITHER knows a blockquote, so a `>` reached the screen
+     verbatim: a generated testimonial rendered as `> "I always quit after missing a day…"`,
+     chevron and all, on a social-proof screen. Seen on a device.
+
+     🔴 Converting rather than teaching the parsers a new rule, and that is the point: `*…*` is
+     already supported on both, already styled the same on both, and already covered by whatever
+     tests those paths have. A second blockquote implementation in two languages is two things
+     that can drift — the shape of #885 and #891, and not worth repeating for a chevron.
+
+     A line already containing `*` is left exactly as it is: wrapping it would nest emphasis
+     markers and the parser would make a worse mess than the one being fixed. Mirrors Android
+     `ContentBlockRenderer.unfoldBlockquotes`.
+     */
+    static func unfoldBlockquotes(_ markdown: String) -> String {
+        guard markdown.contains(">") else { return markdown } // fast path — most content has none
+        return markdown.components(separatedBy: "\n").map { line -> String in
+            let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+            guard trimmed.hasPrefix(">") else { return line }
+            let body = trimmed.dropFirst().drop(while: { $0 == " " || $0 == "\t" })
+            if body.isEmpty || body.contains("*") { return String(body) }
+            return "*\(body)*"
+        }.joined(separator: "\n")
+    }
+
     private func richTextBlock(_ block: ContentBlock) -> some View {
         let rawContent = block.markdown_content ?? block.text ?? ""
-        let content = loc?("block.\(block.id).content", rawContent) ?? rawContent  // localize like Android (block.<id>.content)
+        let localised = loc?("block.\(block.id).content", rawContent) ?? rawContent  // localize like Android (block.<id>.content)
+        let content = ContentBlockRendererView.unfoldBlockquotes(localised)
         let isLegal = block.rich_text_variant == "legal"
         let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Mirror Android + preview: rich_text resolves its font/color/decorations/

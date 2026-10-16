@@ -3,6 +3,8 @@
 // iOS driver for the styling fixture kinds. Dispatched from `SharedFixtureTests.drive`'s default
 // branch. Every value asserted is produced by a REAL SDK symbol:
 //
+//   unfold_blockquotes  REAL: `ContentBlockRendererView.unfoldBlockquotes`, the rich_text
+//                       renderer's blockquote pass (#893).
 //   parse_colour   REAL: `Color(hex:)` in Paywalls/PaywallHelperViews.swift — the SDK's only colour
 //                  parser on this platform, read back through UIColor so the fixture can compare
 //                  0-255 channels against Android's.
@@ -27,10 +29,33 @@ extension SharedFixtureTests {
     func driveStyle(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "parse_colour": runParseColour(f, h)
+        case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: unfold_blockquotes
+
+    /**
+     #893 — a blockquote becomes the italic syntax both parsers already render.
+
+     Drives the REAL `unfoldBlockquotes` the rich_text renderer calls, so the two platforms are
+     held to one answer for a chevron that used to reach the screen verbatim.
+     */
+    private func runUnfoldBlockquotes(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] unfold_blockquotes needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let value = c.objectValue?["value"]?.stringValue else {
+                XCTFail("[\(f.id)] unfold_blockquotes case without a string value")
+                return NSNull()
+            }
+            return ContentBlockRendererView.unfoldBlockquotes(value)
+        }
     }
 
     // MARK: parse_colour
