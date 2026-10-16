@@ -497,10 +497,12 @@ final class SharedFixtureTests: XCTestCase {
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         default:
             // The new kinds are driven from one file per area, each returning `true` for
-            // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift.
+            // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift,
+            // +Style.swift.
             if await driveSpec497Billing(fixture, harness) { return }
             if await driveSpec497Push(fixture, harness) { return }
             if await driveSpec497Maps(fixture, harness) { return }
+            if await driveStyle(fixture, harness) { return }
             XCTFail("""
             [\(fixture.id)] no iOS driver for action.kind='\(fixture.action.kind)'.
             Add a driver that calls REAL SDK code for this kind, or remove 'ios' from the fixture's

@@ -75,6 +75,24 @@ extension Color {
             return
         }
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        /*
+         * #885 — a string that is not pure hex is not a colour.
+         *
+         * The line above only trims the ENDS, so what reaches `case 6` is any six-character
+         * alphanumeric run — and a CSS colour NAME of exactly six letters is one: `orange`,
+         * `purple`, `yellow`, `silver`, `maroon`, `indigo`, `violet`, `salmon`, `tomato`. The
+         * Scanner stops at the first non-hex character, leaves `int` at 0, and `case 6` renders it
+         * **opaque black**. Android's `StyleEngine.parseColor` throws on the same input and returns
+         * transparent, so one authored word gave a black screen on one platform and a see-through
+         * one on the other.
+         *
+         * `rgba(…)` escaped this only by landing on a length the switch rejects. This makes the
+         * answer a rule instead of an accident, for every spelling.
+         */
+        guard !hex.isEmpty, hex.allSatisfy({ $0.isHexDigit }) else {
+            self = Color.clear
+            return
+        }
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
         let r, g, b, a: UInt64
@@ -102,6 +120,9 @@ extension Color {
         let lowered = hex.lowercased().trimmingCharacters(in: .whitespaces)
         if lowered == "transparent" || lowered == "clear" { return false }
         let clean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        // #885 — same guard as `Color(hex:)`: a non-hex string is not a light colour, it is not a
+        // colour at all. Without it `orange` scanned as 0 and reported "dark" with confidence.
+        guard !clean.isEmpty, clean.allSatisfy({ $0.isHexDigit }) else { return false }
         var int: UInt64 = 0
         Scanner(string: clean).scanHexInt64(&int)
         let r, g, b: Double
