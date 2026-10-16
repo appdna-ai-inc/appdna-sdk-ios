@@ -64,9 +64,17 @@ final class ReviewPromptManager {
      user does next; neither store reports it, by design.
      */
     func openStoreListing(appStoreId: String?) {
-        guard let id = appStoreId?.trimmingCharacters(in: .whitespaces), !id.isEmpty,
-              let url = URL(string: "https://apps.apple.com/app/id\(id)?action=write-review") else {
-            Log.warning("[Review] a rate_app button needs the numeric App Store ID in action_value")
+        // The id is the ONLY config-driven part of this URL, and an App Store id is numeric — so it
+        // is checked as numeric rather than interpolated into a URL on trust, and the result still
+        // goes through the one scheme allowlist. Android's equivalent was opening a hand-built
+        // `Intent(ACTION_VIEW, Uri.parse(…))`, which its own call-site gate caught; the two
+        // platforms now both route a store URL the same way.
+        let id = (appStoreId ?? "").trimmingCharacters(in: .whitespaces)
+        guard !id.isEmpty, id.allSatisfy({ $0.isNumber }) else {
+            Log.warning("[Review] a rate_app button needs the NUMERIC App Store ID in action_value")
+            return
+        }
+        guard let url = URLSafety.sanitized("https://apps.apple.com/app/id\(id)?action=write-review") else {
             return
         }
         DispatchQueue.main.async {
