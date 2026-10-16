@@ -6,6 +6,20 @@ struct HeaderSection: View {
     var loc: ((String, String) -> String)? = nil
     /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
+    /**
+     #881 — the width the floating dismiss control occupies in the top corner, reserved on BOTH
+     sides so centred text stays centred.
+
+     The header title is centred across the full width and the dismiss control is an overlay with
+     nothing holding space for it, so a title whose first line reaches the edge runs under it. On a
+     device, two different generated paywalls both put the ✕ on the word "going". It is a
+     generated-content problem meeting a hand-authored default: the prompt asks for an outcome-led
+     headline, so a generated title is a full sentence where a hand-authored one is a few words.
+
+     Passed in rather than read here, because this view does not see `config.dismiss` — and the
+     caller resolves it with the same arithmetic the control is laid out with.
+     */
+    var closeInset: CGFloat = 0
 
     private var titleTextStyle: TextStyleConfig? {
         data?.title_style ?? sectionStyle?.elements?["title"]?.textStyle
@@ -68,5 +82,6 @@ struct HeaderSection: View {
         }
         .padding(.top, 40)
         .padding(.horizontal)
+        .padding(.horizontal, closeInset)
     }
 }

@@ -691,7 +691,23 @@ struct PaywallRenderer: View {
     private func sectionContent(for section: PaywallSection) -> AnyView {
         switch section.type {
         case "header":
-            return AnyView(HeaderSection(data: section.data, loc: loc, sectionStyle: section.style)
+            /*
+             #881 — reserve the dismiss control's footprint on both sides of the header.
+
+             The gate and the arithmetic mirror the control exactly (`neverDismissable` above, and
+             `.padding(16)` + `frame(width: glyphSize * 2)` on `dismissButton`), so the inset and
+             the button can never disagree about whether there is something up there. A delayed
+             reveal still reserves from the start — otherwise the title reflows the moment the
+             button appears. `text_link` sits at the bottom and `swipe_down` is a capsule at the
+             top CENTRE, so neither steals width from a centred title.
+             */
+            let dismissStyle = config.dismiss?.style ?? "x_button"
+            let neverDismissable = !(config.dismiss?.isAllowed ?? true) && (config.dismiss?.delaySeconds ?? 0) <= 0
+            let reservesTopCorner = !neverDismissable && dismissStyle != "text_link" && dismissStyle != "swipe_down"
+            let glyphSize: CGFloat = config.dismiss?.size ?? 16
+            let closeInset: CGFloat = reservesTopCorner ? 16 + glyphSize * 2 : 0
+            return AnyView(HeaderSection(data: section.data, loc: loc, sectionStyle: section.style,
+                                         closeInset: closeInset)
                 .applyContainerStyle(section.style?.container))
         case "features":
             return AnyView(FeatureList(
