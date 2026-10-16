@@ -645,6 +645,17 @@ struct OnboardingFlowHost: View {
             // delegate replied, host data or not. The index is the one the step was viewed at.
             onSettled: {
                 onStepViewed(step.id, stepIndex)
+                /*
+                 #896 — ask StoreKit for a review as the step APPEARS, never from a tap.
+
+                 Beside `onStepViewed` because that is the "this step was really seen" moment, and
+                 it fires exactly once per view even when the user has already moved on. The
+                 manager is itself rate-limited (3 a year, 90 days apart) on top of Apple's own
+                 quota, and reports nothing about the outcome — Apple will not say.
+                 */
+                if step.request_store_review == true {
+                    ReviewPromptManager.shared.triggerReview()
+                }
             },
             onFinish: { override, seq in
                 // Latest generation only. A reply is applied only if the user is STILL on this step.
@@ -1957,6 +1968,19 @@ struct OnboardingStepRouter: View {
                 }
             }
             // Don't advance — user will return from in-app browser
+        case "rate_app":
+            /*
+             #896 — a button that takes the user to the App Store to leave a review.
+
+             🔴 It opens the REVIEW PAGE; it does not ask StoreKit for the in-place sheet. Apple's
+             rule is explicit — don't call the review prompt in response to a user action — and a
+             tap is exactly that. The sheet is asked for when a step APPEARS
+             (`step.request_store_review`), which is a moment in a flow rather than a request.
+
+             `action_value` carries the numeric App Store ID, which the SDK cannot derive from the
+             bundle. No auto-advance, for the same reason `link` does not: the user leaves the app.
+             */
+            ReviewPromptManager.shared.openStoreListing(appStoreId: actionValue)
         case PendingCompletionRoute.actionName:
             // Record the destination and advance exactly like `next` — same required-field gate,
             // same step data, same next-step rules. `OnboardingCompletion` opens it once the flow

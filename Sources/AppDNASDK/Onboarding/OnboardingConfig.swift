@@ -170,6 +170,18 @@ public struct OnboardingStep: Codable, Identifiable {
     public let hide_progress: Bool?
     /// When true, the back button is hidden on this step (the step still counts toward total progress).
     public let hide_back: Bool?
+    /**
+     #896 — when true, the SDK asks StoreKit for a review prompt as this step APPEARS.
+
+     🔴 On the step, not on a button, and that is store policy rather than taste: Apple's rule is
+     to not call the review prompt in response to a user action, and a tap is exactly that.
+     Arriving at a step is a moment in a flow. A button that takes the user to the store page is
+     the other half and is allowed — `action: "rate_app"`.
+
+     The OS decides whether anything appears (at most 3 prompts per 365 days) and reports nothing
+     about the outcome, deliberately, so an app cannot condition on it. Nothing of ours is drawn.
+     */
+    public let request_store_review: Bool?
 
     /// The step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
     ///
@@ -181,6 +193,7 @@ public struct OnboardingStep: Codable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
+        case request_store_review
         case raw_content_blocks
     }
 
@@ -193,7 +206,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// step's `layout` object (verified against `OnboardingFlowConfigSyncService.mapStepsForFirestore`,
     /// which never hoists `layout.*` to the step root). Read them from `layout` with a step-root
     /// fallback for any older/hand-written config.
-    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back }
+    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -205,12 +218,18 @@ public struct OnboardingStep: Codable, Identifiable {
         // Step-root first (legacy path), then the layout object where the console actually writes them.
         let rootHideProgress = try c.decodeIfPresent(Bool.self, forKey: .hide_progress)
         let rootHideBack = try c.decodeIfPresent(Bool.self, forKey: .hide_back)
+        // #896 — same root-then-layout ladder as the two flags above, for the same reason: the
+        // console has published per-step flags inside `layout` before.
+        let rootRequestReview = try c.decodeIfPresent(Bool.self, forKey: .request_store_review)
         var layoutHideProgress: Bool? = nil
         var layoutHideBack: Bool? = nil
         if let layoutFlags = try? c.nestedContainer(keyedBy: LayoutFlagKeys.self, forKey: .layout) {
             layoutHideProgress = try? layoutFlags.decodeIfPresent(Bool.self, forKey: .hide_progress)
             layoutHideBack = try? layoutFlags.decodeIfPresent(Bool.self, forKey: .hide_back)
         }
+        self.request_store_review = rootRequestReview
+            ?? (try? c.nestedContainer(keyedBy: LayoutFlagKeys.self, forKey: .layout))
+                .flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .request_store_review) }
         self.hide_progress = rootHideProgress ?? layoutHideProgress
         self.hide_back = rootHideBack ?? layoutHideBack
         // Read next_step_rules from step level, but also check layout.next_step_rules
@@ -279,7 +298,7 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
-    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil) {
+    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil) {
         self.rawContentBlocks = nil
         self.id = id
         self.name = name
@@ -288,6 +307,7 @@ public struct OnboardingStep: Codable, Identifiable {
         self.hook = hook
         self.hide_progress = hide_progress
         self.hide_back = hide_back
+        self.request_store_review = request_store_review
         self.next_step_rules = next_step_rules
     }
 

@@ -45,6 +45,41 @@ final class ReviewPromptManager {
      `scripts/__tests__/sdk-review-prompt-is-not-gated.test.ts` keeps it deleted.
      */
 
+    // MARK: - Store listing
+
+    /**
+     Open the app's App Store review page, where the user can leave a review themselves.
+
+     #896 — this is the OTHER half of asking for a review, and the halves are not interchangeable.
+     `triggerReview` asks StoreKit for the in-place sheet and MUST NOT be called in response to a
+     tap — Apple names that rule explicitly. Opening the review page from a button the user chose
+     IS allowed, because no system prompt is invoked: the user asked to go to the store.
+
+     `?action=write-review` is Apple's own parameter for landing on the review composer rather
+     than the listing, which is why the iOS half can be more precise than the Android one (Play
+     has no equivalent deep link).
+
+     The numeric App Store ID is not something the SDK can derive — it is not in the bundle — so
+     the caller supplies it from the button's `action_value`. Nothing is recorded about what the
+     user does next; neither store reports it, by design.
+     */
+    func openStoreListing(appStoreId: String?) {
+        guard let id = appStoreId?.trimmingCharacters(in: .whitespaces), !id.isEmpty,
+              let url = URL(string: "https://apps.apple.com/app/id\(id)?action=write-review") else {
+            Log.warning("[Review] a rate_app button needs the numeric App Store ID in action_value")
+            return
+        }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url) { opened in
+                if opened {
+                    AppDNA.track(event: "store_listing_opened", properties: ["app_store_id": id])
+                } else {
+                    Log.warning("[Review] the App Store could not be opened for id \(id)")
+                }
+            }
+        }
+    }
+
     // MARK: - Direct native review prompt
 
     /// Trigger native SKStoreReviewController immediately.
