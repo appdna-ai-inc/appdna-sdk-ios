@@ -32,10 +32,28 @@ extension SharedFixtureTests {
         case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
         case "paywall_header_close_inset": runHeaderCloseInset(f, h)
+        case "paywall_default_text_colour": runDefaultTextColour(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: paywall_default_text_colour
+
+    /**
+     #891 — the colour a paywall gives text nobody authored, through the REAL
+     `PaywallTextDefaults.readableHex`.
+     */
+    private func runDefaultTextColour(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] paywall_default_text_colour needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let bg = c.objectValue?["value"]?.stringValue
+            return PaywallTextDefaults.readableHex(on: bg)
+        }
     }
 
     // MARK: paywall_header_close_inset

@@ -20,6 +20,16 @@ struct HeaderSection: View {
      caller resolves it with the same arithmetic the control is laid out with.
      */
     var closeInset: CGFloat = 0
+    /**
+     #891 — the background this header is drawn on, so an unauthored title colour is readable on
+     it. It used `.primary`: black in light appearance, white in dark, on a paywall that forces no
+     colour scheme — so a dark-backgrounded paywall opened on a light-appearance phone drew a black
+     title on it, and the words were gone.
+     */
+    // `@SwiftUI.Environment`, qualified: the SDK exports its own `enum Environment`
+    // (Configuration.swift) which shadows the property wrapper and fails to compile as
+    // "enum 'Environment' cannot be used as an attribute".
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var backgroundHex: String?
 
     private var titleTextStyle: TextStyleConfig? {
         data?.title_style ?? sectionStyle?.elements?["title"]?.textStyle
@@ -60,7 +70,7 @@ struct HeaderSection: View {
                 } else {
                     Text(loc?("section-header.title", title) ?? title)
                         .font(.title.bold())
-                        .foregroundColor(.primary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: backgroundHex))
                         .multilineTextAlignment(.center)
                 }
             }

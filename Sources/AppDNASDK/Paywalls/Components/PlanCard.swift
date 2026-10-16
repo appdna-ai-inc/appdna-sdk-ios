@@ -12,6 +12,11 @@ struct PlanCard: View {
     var sectionStyle: SectionStyleConfig? = nil
     /// Gap 11: Card/badge styling from section data.
     var cardStyle: PlanCardStyle = PlanCardStyle()
+    /// #891 — the page this tile sits on, for the unselected text default.
+    // `@SwiftUI.Environment`, qualified: the SDK exports its own `enum Environment`
+    // (Configuration.swift) which shadows the property wrapper and fails to compile as
+    // "enum 'Environment' cannot be used as an attribute".
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
     private var showIcon: Bool { cardStyle.showIcon }
     private var showImage: Bool { cardStyle.showImage }
     private var showSubtitle: Bool { cardStyle.showSubtitle }
@@ -57,8 +62,25 @@ struct PlanCard: View {
         }
         return Color.gray.opacity(0.3)
     }
-    /// Text color for UNSELECTED state — falls back to .primary (default dark).
-    private var unselectedTextColor: Color { .primary }
+    /**
+     #891 — the unselected tile's text, read off the TILE rather than off the phone.
+
+     It was `.primary`: a system colour, black in light appearance and white in dark, on a paywall
+     that forces no colour scheme. A dark-backgrounded paywall opened on a light-appearance phone
+     therefore drew black text on a dark tile, while the same document on Android drew white and
+     read fine. The author could not see the setting that decided it.
+
+     The tile is `unselected_bg_color`, or white at 10% over the page — so the colour the eye
+     actually sees is the composite, and that is what the text is judged against.
+     */
+    private var unselectedTextColor: Color {
+        let tile = PaywallTextDefaults.composite(
+            cardStyle.unselectedBgColor ?? PaywallTextDefaults.light,
+            over: pageBackgroundHex,
+            alpha: cardStyle.unselectedBgColor == nil ? 0.1 : 1.0,
+        )
+        return PaywallTextDefaults.readable(on: tile)
+    }
     /// Resolved text color for the current selection state.
     private var effectiveTextColor: Color {
         if isSelected, let sel = selectedTextColor { return sel }

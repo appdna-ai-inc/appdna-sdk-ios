@@ -140,6 +140,14 @@ struct PaywallRenderer: View {
     @State private var promoState: PromoState = .idle
 
     var body: some View {
+        // #891 — the page's background travels down the hierarchy, so every default text colour is
+        // chosen against the surface it is drawn on. Through the ENVIRONMENT rather than a
+        // parameter: `PlanCard` alone has five call sites, and five places to forget one is how
+        // the screens surface lost its styling in #904.
+        content.environment(\.paywallBackgroundHex, pageBackgroundHex)
+    }
+
+    private var content: some View {
         ZStack(alignment: .topTrailing) {
             // Scrollable content with pinned bottom CTA
             ScrollView(showsIndicators: false) {
@@ -743,6 +751,18 @@ struct PaywallRenderer: View {
      header has no `dismiss` field of its own.
      */
     private var headerCloseInset: CGFloat { PaywallHeaderInset.resolve(config.dismiss) }
+
+    /**
+     #891 — the page's own background, so text nobody authored can be read against IT rather than
+     against the phone's appearance setting. `value` and `color` are the two spellings Firestore
+     has used; a gradient or an image yields nil and the default falls back to light-on-dark, which
+     is what this surface has always assumed for those.
+     */
+    private var pageBackgroundHex: String? {
+        let bg = config.layout?.background
+        guard (bg?.type ?? "color") == "color" else { return nil }
+        return bg?.value ?? bg?.color
+    }
 
     private func sectionContent(for section: PaywallSection) -> AnyView {
         switch section.type {
@@ -2732,5 +2752,17 @@ enum PaywallHeaderInset {
         let glyphSize: CGFloat = dismiss?.size ?? 16
         // Mirrors the control itself: `.padding(16)` + `.frame(width: glyphSize * 2)`.
         return 16 + glyphSize * 2
+    }
+}
+
+/// #891 — the paywall's own background colour, for any view choosing a default text colour.
+private struct PaywallBackgroundHexKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    var paywallBackgroundHex: String? {
+        get { self[PaywallBackgroundHexKey.self] }
+        set { self[PaywallBackgroundHexKey.self] = newValue }
     }
 }
