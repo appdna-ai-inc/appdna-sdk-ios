@@ -99,6 +99,34 @@ public struct ElementStyleConfig: Codable {
     }
 }
 
+extension ElementStyleConfig {
+    /**
+     #910 — the same container minus its background, for a site that has ALREADY drawn it.
+
+     The CTA button resolves its fill from `element_style.background.color` and paints it itself,
+     with its own corner radius. Handing the whole container to `applyElementStyle` as well would
+     paint that colour a second time, behind the button, clipped to a DIFFERENT radius — a halo
+     round every authored CTA. So the background is dropped and the rest (border, shadow, padding,
+     radius, opacity) is applied.
+
+     Returns nil when the background was all the author asked for: an empty container still wraps,
+     and wrapping a view that asked for nothing moves layout.
+     */
+    var withoutBackground: ElementStyleConfig? {
+        guard border != nil || shadow != nil || padding != nil
+                || corner_radius != nil || opacity != nil else { return nil }
+        return ElementStyleConfig(
+            background: nil,
+            border: border,
+            shadow: shadow,
+            padding: padding,
+            corner_radius: corner_radius,
+            opacity: opacity,
+            textStyle: textStyle
+        )
+    }
+}
+
 /// Per-section margin (top/bottom/left/right in points).
 public struct SpacingMargin: Codable {
     public let top: Double?

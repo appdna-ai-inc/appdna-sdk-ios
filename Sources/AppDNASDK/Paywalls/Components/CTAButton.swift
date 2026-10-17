@@ -79,6 +79,25 @@ struct CTAButton: View {
         sectionStyle?.elements?["restore_text"]?.textStyle
     }
 
+    /// `@SwiftUI.Environment`, qualified: the SDK exports its own `enum Environment`
+    /// (Configuration.swift) which shadows the property wrapper.
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var backgroundHex: String?
+
+    /**
+     #910 — the restore link's default colour, from the BACKGROUND rather than from the theme.
+
+     `.secondary` is a system colour: grey in light appearance, and it does not know what the
+     paywall is painted. Android's default was `white @ 60%`, which on the light paywall this was
+     walked against drew white-on-white — the link was in the view tree, had its authored border,
+     and was invisible. Two platforms, two different wrong answers to the same question.
+
+     So both take #891's answer: the shared WCAG ladder the console and both SDKs agree on, kept at
+     60% so an unauthored restore link still reads as secondary to the CTA.
+     */
+    private var restoreDefaultColor: Color {
+        PaywallTextDefaults.readable(on: backgroundHex).opacity(0.6)
+    }
+
     @ViewBuilder
     private var subscribeButton: some View {
         Button(action: onTap) {
@@ -115,6 +134,9 @@ struct CTAButton: View {
             )
         }
         .disabled(isPurchasing)
+        // #910 — the rest of the button's authored container. Its background is already resolved
+        // into `buttonBgColor` and painted above, so only the other halves are applied here.
+        .applyElementStyle(buttonContainer?.withoutBackground)
         .padding(.horizontal)
     }
 
@@ -160,12 +182,14 @@ struct CTAButton: View {
                 } else {
                     Text(text)
                         .font(directFont)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(restoreDefaultColor)
                         .padding(.vertical, 6)
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
                 }
               })
+              // #910 — the restore link's authored container.
+              .applyElementStyle(sectionStyle?.elements?["restore_text"]?.container)
             }
         }
     }
@@ -192,6 +216,13 @@ struct RestoreLinkView: View {
     var textColor: String? = nil
     var fontSize: CGFloat? = nil
     var style: TextStyleConfig? = nil
+    /// #910 — the `restore_text` element's container half. This view is the SECOND renderer of the
+    /// restore link (CTAButton has the other), and the console has ONE control for both, so a
+    /// container wired to only one of them is invisible on whichever layout the host happens to
+    /// take — the same defect #905 and #910 each hit on a duplicated render site.
+    var elementStyle: ElementStyleConfig? = nil
+    /// #910 — same default as `CTAButton.restoreDefaultColor`; the console has ONE control.
+    var backgroundHex: String? = nil
     /// #651 — Restore's own fill + radius, the pair the CTA already has. Unset = the plain link.
     var bgColor: String? = nil
     var cornerRadius: CGFloat? = nil
@@ -233,12 +264,13 @@ struct RestoreLinkView: View {
                 } else {
                     Text(text)
                         .font(directFont)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: backgroundHex).opacity(0.6))
                         .padding(.vertical, 6)
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
                 }
               })
+              .applyElementStyle(elementStyle)
             }
         }
     }

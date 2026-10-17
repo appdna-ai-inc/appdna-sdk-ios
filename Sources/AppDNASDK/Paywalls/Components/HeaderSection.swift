@@ -38,6 +38,12 @@ struct HeaderSection: View {
         data?.subtitle_style ?? sectionStyle?.elements?["subtitle"]?.textStyle
     }
 
+    /// #910 — an element's authored container, by key. Every element that offers a text style
+    /// offers a container beside it in the same console panel, so the two are read the same way.
+    private func elementStyle(_ key: String) -> ElementStyleConfig? {
+        sectionStyle?.elements?[key]?.container
+    }
+
     /// Horizontal alignment for the header graphic: leading | center (default) | trailing.
     private var imageAlignment: Alignment {
         switch data?.imageAlignment {
@@ -63,7 +69,8 @@ struct HeaderSection: View {
                 .frame(maxWidth: .infinity, alignment: imageAlignment)
             }
 
-            if let title = data?.title {
+            // #910 — the title's authored container style, applied to the whole branch.
+            Group { if let title = data?.title {
                 if let ts = titleTextStyle {
                     Text(loc?("section-header.title", title) ?? title)
                         .applyTextStyle(ts)
@@ -73,9 +80,12 @@ struct HeaderSection: View {
                         .foregroundColor(PaywallTextDefaults.readable(on: backgroundHex))
                         .multilineTextAlignment(.center)
                 }
-            }
+            } }
+            .applyElementStyle(elementStyle("title"))
 
-            if let subtitle = data?.subtitle {
+            // #910 — the subtitle's authored container, applied to the whole branch exactly as
+            // the title's is.
+            Group { if let subtitle = data?.subtitle {
                 if let ts = subtitleTextStyle {
                     Text(loc?("section-header.subtitle", subtitle) ?? subtitle)
                         .applyTextStyle(ts)
@@ -88,7 +98,8 @@ struct HeaderSection: View {
                         .foregroundColor(Color(hex: "#6B7280"))
                         .multilineTextAlignment(.center)
                 }
-            }
+            } }
+            .applyElementStyle(elementStyle("subtitle"))
         }
         .padding(.top, 40)
         .padding(.horizontal)

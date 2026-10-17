@@ -22,14 +22,19 @@ struct SocialProof: View {
                     }
 
                     if let count = data?.reviewCount {
-                        if let ts = valueTextStyle {
-                            Text("(\(formatCount(count)))")
-                                .applyTextStyle(ts)
-                        } else {
-                            Text("(\(formatCount(count)))")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                        // #910 — the `value` element's container, beside the text style it
+                        // already honoured.
+                        Group {
+                            if let ts = valueTextStyle {
+                                Text("(\(formatCount(count)))")
+                                    .applyTextStyle(ts)
+                            } else {
+                                Text("(\(formatCount(count)))")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
                         }
+                        .applyElementStyle(sectionStyle?.elements?["value"]?.container)
                     }
                 }
             }

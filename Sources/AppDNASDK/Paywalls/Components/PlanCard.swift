@@ -186,15 +186,19 @@ struct PlanCard: View {
                             // Render `trialLabel` verbatim; the " free trial"
                             // suffix for duration-only trials now lives in the computed
                             // property (PaywallConfig.swift) so every layout + Android match.
-                            if let ts = trialTextStyle {
-                                Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
-                                    .applyTextStyle(ts)
-                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
-                            } else {
-                                Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
-                                    .font(.caption)
-                                    .foregroundColor(isSelected ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+                            Group {
+                                if let ts = trialTextStyle {
+                                    Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
+                                        .applyTextStyle(ts)
+                                        .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                } else {
+                                    Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
+                                        .font(.caption)
+                                        .foregroundColor(isSelected ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+                                }
                             }
+                            // #910 — the trial label's authored container.
+                            .applyElementStyle(elementStyle("trial_label"))
                         }
 
                         // Subtitle below price (default position) or below name
@@ -225,9 +229,24 @@ struct PlanCard: View {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 9, weight: .bold))
                                             .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
-                                        Text(feat)
-                                            .font(.caption2)
-                                            .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : .secondary)
+                                        // #910 — `featureTextStyle` was RESOLVED and never
+                                        // applied: the console's Style tab offers a per-plan
+                                        // feature text style, the DTO decoded it, and the view
+                                        // drew a hardcoded `.caption2`. A computed property that
+                                        // nothing reads is not a compile error in Swift, so this
+                                        // sat here silently. Its container goes on beside it.
+                                        Group {
+                                            if let ts = featureTextStyle {
+                                                Text(feat)
+                                                    .applyTextStyle(ts)
+                                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : nil)
+                                            } else {
+                                                Text(feat)
+                                                    .font(.caption2)
+                                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : .secondary)
+                                            }
+                                        }
+                                        .applyElementStyle(elementStyle("feature"))
                                     }
                                 }
                             }

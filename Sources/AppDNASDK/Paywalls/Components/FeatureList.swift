@@ -97,15 +97,24 @@ struct FeatureList: View {
         }
     }
 
+    /// #910 — the item's authored container style, from `item_text` or its `item` alias, exactly
+    /// as the text style resolves.
+    private var itemElementStyle: ElementStyleConfig? {
+        sectionStyle?.elements?["item_text"]?.container ?? sectionStyle?.elements?["item"]?.container
+    }
+
     @ViewBuilder
     private func itemText(_ text: String) -> some View {
-        if let ts = itemTextStyle {
-            Text(text).applyTextStyle(ts)
-        } else if let hex = itemTextColorOverride, !hex.isEmpty {
-            Text(text).font(.body).foregroundColor(Color(hex: hex))
-        } else {
-            Text(text).font(.body).foregroundColor(.primary)
+        Group {
+            if let ts = itemTextStyle {
+                Text(text).applyTextStyle(ts)
+            } else if let hex = itemTextColorOverride, !hex.isEmpty {
+                Text(text).font(.body).foregroundColor(Color(hex: hex))
+            } else {
+                Text(text).font(.body).foregroundColor(.primary)
+            }
         }
+        .applyElementStyle(itemElementStyle)
     }
 
     @ViewBuilder
@@ -176,16 +185,21 @@ struct FeatureList: View {
             }
         }
 
-        if let bgHex = iconBgColor {
-            ZStack {
-                Circle()
-                    .fill(Color(hex: bgHex).opacity(iconBgOpacity))
-                    .frame(width: iconBgSize, height: iconBgSize)
+        // #910 — the icon's authored container, applied to whichever of the two shapes is drawn.
+        // The authored circle background stays its own thing: an author can have both.
+        Group {
+            if let bgHex = iconBgColor {
+                ZStack {
+                    Circle()
+                        .fill(Color(hex: bgHex).opacity(iconBgOpacity))
+                        .frame(width: iconBgSize, height: iconBgSize)
+                    icon
+                }
+                .frame(width: iconBgSize, height: iconBgSize)
+            } else {
                 icon
             }
-            .frame(width: iconBgSize, height: iconBgSize)
-        } else {
-            icon
         }
+        .applyElementStyle(sectionStyle?.elements?["icon"]?.container)
     }
 }

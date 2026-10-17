@@ -271,6 +271,9 @@ struct PaywallRenderer: View {
                             textColor: ctaSec.data?.restoreTextColor,
                             fontSize: ctaSec.data?.restoreFontSize.map { CGFloat($0) },
                             style: ctaSec.style?.elements?["restore_text"]?.textStyle,
+                            // #910 — and its container half, so both restore renderers agree.
+                            elementStyle: ctaSec.style?.elements?["restore_text"]?.container,
+                            backgroundHex: pageBackgroundHex,
                             // #651 — Restore's own fill + radius.
                             bgColor: ctaSec.data?.restoreBgColor,
                             cornerRadius: ctaSec.data?.restoreCornerRadius.map { CGFloat($0) },
@@ -1258,14 +1261,30 @@ struct PaywallRenderer: View {
             }
         }()
 
+        // #910 — the `text` element, which the console's Style tab offers for this section and
+        // neither half of which was read: not the text style, not the container. An author styling
+        // the legal paragraph got nothing at all.
+        let textElementStyle = style?.elements?["text"]?.textStyle
+        let textElementContainer = style?.elements?["text"]?.container
+
         VStack(spacing: 8) {
             if let text = data?.text {
                 // Parse markdown-style links: [text](url)
-                Text(parseMarkdownLinks(text))
-                    .font(.system(size: size))
-                    .foregroundColor(textColor)
-                    .multilineTextAlignment(textAlignment)
-                    .tint(linkColor)
+                Group {
+                    if let ts = textElementStyle {
+                        Text(parseMarkdownLinks(text))
+                            .applyTextStyle(ts)
+                            .multilineTextAlignment(textAlignment)
+                            .tint(linkColor)
+                    } else {
+                        Text(parseMarkdownLinks(text))
+                            .font(.system(size: size))
+                            .foregroundColor(textColor)
+                            .multilineTextAlignment(textAlignment)
+                            .tint(linkColor)
+                    }
+                }
+                .applyElementStyle(textElementContainer)
             }
 
             if let links = data?.links, !links.isEmpty {
@@ -1967,6 +1986,9 @@ struct PaywallRenderer: View {
                 // #905 — `elements[…]` is a SectionElementConfig now; the card wants the
                 // container half of it, from either spelling.
                 cardStyle: style?.elements?["card"]?.container,
+                // #910 — the other two elements' containers, from the same panel.
+                textElementStyle: style?.elements?["text"]?.container,
+                authorElementStyle: style?.elements?["author"]?.container,
                 loc: loc
             )
         }

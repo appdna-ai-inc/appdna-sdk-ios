@@ -298,6 +298,10 @@ struct ReviewsCarouselView: View {
     let textStyle: TextStyleConfig?
     let authorStyle: TextStyleConfig?
     let cardStyle: ElementStyleConfig?
+    /// #910 — the container halves of the same two elements. `card` already had one; the console
+    /// offers an ElementStylePanel for `text` and `author` too, and neither was read.
+    var textElementStyle: ElementStyleConfig? = nil
+    var authorElementStyle: ElementStyleConfig? = nil
     let loc: (String, String) -> String
 
     @State private var currentReview = 0
@@ -320,17 +324,20 @@ struct ReviewsCarouselView: View {
                         }
 
                         // Quote text
-                        if let ts = textStyle {
-                            Text("\u{201C}\(review.text ?? "")\u{201D}")
-                                .applyTextStyle(ts)
-                                .multilineTextAlignment(.center)
-                        } else {
-                            Text("\u{201C}\(review.text ?? "")\u{201D}")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .italic()
+                        Group {
+                            if let ts = textStyle {
+                                Text("\u{201C}\(review.text ?? "")\u{201D}")
+                                    .applyTextStyle(ts)
+                                    .multilineTextAlignment(.center)
+                            } else {
+                                Text("\u{201C}\(review.text ?? "")\u{201D}")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .italic()
+                            }
                         }
+                        .applyElementStyle(textElementStyle)
 
                         // Author
                         HStack(spacing: 8) {
@@ -363,13 +370,16 @@ struct ReviewsCarouselView: View {
                                     )
                             }
 
-                            if let as_ = authorStyle {
-                                Text(review.author ?? "").applyTextStyle(as_)
-                            } else {
-                                Text(review.author ?? "")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundColor(.secondary)
+                            Group {
+                                if let as_ = authorStyle {
+                                    Text(review.author ?? "").applyTextStyle(as_)
+                                } else {
+                                    Text(review.author ?? "")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundColor(.secondary)
+                                }
                             }
+                            .applyElementStyle(authorElementStyle)
 
                             if let date = review.date {
                                 Text(date)

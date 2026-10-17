@@ -219,7 +219,26 @@ final class SurfaceSnapshotTests: XCTestCase {
             "type": "stack",
             "background": { "type": "color", "value": "#FFFFFF" },
             "sections": [
-              { "id": "h", "type": "header", "config": { "title": "Per-element styles" } },
+              { "id": "h", "type": "header",
+                "config": { "title": "Per-element styles", "subtitle": "A subtitle" },
+                "style": { "elements": {
+                  "title": { "element_style": { "border": { "color": "#7C3AED", "width": 2, "radius": 8 },
+                                                "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } },
+                  "subtitle": { "element_style": { "border": { "color": "#DB2777", "width": 2, "radius": 8 },
+                                                   "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } }
+                } } },
+              { "id": "f", "type": "features", "config": { "items": [{ "title": "A feature row" }] },
+                "style": { "elements": {
+                  "item_text": { "element_style": { "border": { "color": "#0EA5E9", "width": 2, "radius": 8 },
+                                                    "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } },
+                  "icon": { "element_style": { "border": { "color": "#CA8A04", "width": 2, "radius": 8 },
+                                               "padding": { "top": 2, "bottom": 2, "left": 2, "right": 2 } } }
+                } } },
+              { "id": "lg", "type": "legal", "config": { "text": "Terms apply" },
+                "style": { "elements": {
+                  "text": { "element_style": { "border": { "color": "#0891B2", "width": 2, "radius": 8 },
+                                               "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } }
+                } } },
               { "id": "p", "type": "plans", "config": {},
                 "style": { "elements": {
                   "label": { "element_style": { "border": { "color": "#16A34A", "width": 2, "radius": 8 },
@@ -227,7 +246,13 @@ final class SurfaceSnapshotTests: XCTestCase {
                   "price": { "element_style": { "border": { "color": "#EF4444", "width": 2, "radius": 8 },
                                                 "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } }
                 } } },
-              { "id": "c", "type": "cta", "config": {} }
+              { "id": "c", "type": "cta",
+                "config": { "show_restore": true, "restore_text": "Restore" },
+                "style": { "elements": {
+                  "button": { "element_style": { "border": { "color": "#F97316", "width": 3, "radius": 14 } } },
+                  "restore_text": { "element_style": { "border": { "color": "#65A30D", "width": 2, "radius": 8 },
+                                                       "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } }
+                } } }
             ]
           },
           "plans": [
@@ -252,6 +277,23 @@ final class SurfaceSnapshotTests: XCTestCase {
                       "no green pixel — the label's authored border did not draw")
         XCTAssertTrue(try frameContains("element_styles", colour: "#EF4444"),
                       "no red pixel — the price's authored border did not draw")
+        // #910 — the header and feature elements, which were text-style-only until now.
+        XCTAssertTrue(try frameContains("element_styles", colour: "#7C3AED"),
+                      "no violet pixel — the header title's authored border did not draw")
+        XCTAssertTrue(try frameContains("element_styles", colour: "#0EA5E9"),
+                      "no blue pixel — the feature row's authored border did not draw")
+        // #910 — the rest of the elements the issue names. Each colour is distinct so a frame
+        // cannot pass by drawing one border twice.
+        for (colour, what) in [
+            ("#DB2777", "the header subtitle"),
+            ("#CA8A04", "the feature icon"),
+            ("#0891B2", "the legal text"),
+            ("#F97316", "the CTA button"),
+            ("#65A30D", "the restore link"),
+        ] {
+            XCTAssertTrue(try frameContains("element_styles", colour: colour),
+                          "no \(colour) pixel — \(what)'s authored border did not draw")
+        }
     }
 
     /// #891 — the unselected plan tile, whose text colour is a SYSTEM colour on this platform, in
