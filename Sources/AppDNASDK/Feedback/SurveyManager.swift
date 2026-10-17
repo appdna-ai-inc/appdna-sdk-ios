@@ -348,6 +348,61 @@ final class SurveyManager {
      one more run loop. Ten tries at 100ms is a second, comfortably longer than a sheet dismissal
      and short enough that a user who tapped "bad" is still looking at the screen.
      */
+    /*
+     #920 — A FORM THAT IS TAKEN AWAY IS NOT A FORM THE USER DISMISSED.
+
+     #901 fixed the presentation: the form lands on the controller underneath, which is staying.
+     The reverse was left open — a form that is UP when its presenter goes away for a reason of the
+     host's own (a window torn down, a root view controller swapped, a deep link replacing the
+     stack). UIKit takes the alert down with its presenter and nothing is recorded, so
+     `feedback_form_dismissed` under-counts and the two outcomes are indistinguishable in analytics:
+     a user who read the form and closed it, and a user who never saw it at all.
+
+     Android gets this from its activity lifecycle. iOS has no equivalent for an alert presented
+     from a framework, so the presenter's DEALLOCATION is the signal — observed by attaching an
+     object whose own `deinit` fires when the controller is released.
+
+     🔴 THE EVENT IS THE FIX. UIKit already removes the alert from the screen; what was missing was
+     anybody knowing it had happened. Measured: a red control that deletes the dismissal below
+     leaves the UI test green, and a red control that deletes the latch fails two unit tests.
+
+     🔴 Everything here is weak or one-shot. The SDK must never keep a host's controller alive, and
+     the event must fire exactly once: `feedbackFormResolved` is set by Submit, by Cancel, and by
+     this path, whichever happens first.
+    */
+    private weak var feedbackFormAlert: UIAlertController?
+    /// `true` means "no form is outstanding", which is the state before one is ever shown.
+    var feedbackFormResolved = true
+
+    /// Fires its closure when the object it is attached to is deallocated.
+    ///
+    /// Internal rather than private so a test can prove the mechanism without a window: driving the
+    /// real `present(_:animated:)` in a hostless test target HANGS — there is no active window
+    /// scene, so the transition never completes — which is why `FeedbackFormPresenterTests` tests
+    /// the DECISION rather than the presentation. Same reasoning here.
+    final class PresenterReleaseObserver {
+        private let onRelease: () -> Void
+        init(_ onRelease: @escaping () -> Void) { self.onRelease = onRelease }
+        // swiftlint:disable:next implicit_deinit
+        deinit { onRelease() }
+    }
+
+    private nonisolated(unsafe) static var presenterObserverKey: UInt8 = 0
+
+    /// Attach `observer` to `owner` so it is released when `owner` is. Internal for the test above.
+    static func observeRelease(of owner: AnyObject, _ observer: PresenterReleaseObserver) {
+        objc_setAssociatedObject(
+            owner, &presenterObserverKey, observer, .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+    }
+
+    /// Record that the form has ended, once, with WHY. Internal so a test can prove "once".
+    func resolveFeedbackForm(reason: String) {
+        guard !feedbackFormResolved else { return }
+        feedbackFormResolved = true
+        eventTracker.track(event: "feedback_form_dismissed", properties: ["reason": reason])
+    }
+
     private static let feedbackFormRetries = 10
     private static let feedbackFormRetryDelay: TimeInterval = 0.1
 
@@ -387,13 +442,46 @@ final class SurveyManager {
             }
             alert.addAction(UIAlertAction(title: "Submit", style: .default) { [weak self] _ in
                 let feedback = alert.textFields?.first?.text ?? ""
+                // Submitting ENDS the form, so the orphan path below must not also fire for it.
+                self?.feedbackFormResolved = true
                 self?.eventTracker.track(event: "feedback_form_submitted", properties: [
                     "feedback": feedback,
                 ])
             })
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-                self?.eventTracker.track(event: "feedback_form_dismissed", properties: nil)
+                // #920 — the reason is new; `user` is what every form dismissed before this change
+                // was, so a reader of old data can treat an absent reason as this one.
+                self?.resolveFeedbackForm(reason: "user")
             })
+
+            self.feedbackFormAlert = alert
+            self.feedbackFormResolved = false
+            /*
+             #920 — when the PRESENTER is released, the alert goes with it and the user never
+             answered. Attached to the controller rather than observed globally, so it cannot
+             outlive what it is about, and holding only `[weak self]` so the SDK is not kept alive
+             by a host's view controller either.
+             */
+            let observer = PresenterReleaseObserver { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    /*
+                     🔴 DEFENSIVE, AND MEASURED TO BE SO. Removing this line leaves
+                     `testAFormIsTakenDownWithItsPresenter` GREEN: UIKit already tears an alert down
+                     when the controller that presented it is released, which is the common path and
+                     was never the defect. Stated here because the obvious reading of this line is
+                     that it is what makes the test pass, and a reader who believes that will delete
+                     the EVENT below as redundant.
+                     What this covers is the case UIKit does not: an alert retained elsewhere whose
+                     presenter has gone. It targets the ALERT rather than `presentingViewController`,
+                     which is nil by this point for exactly the reason the observer fired.
+                    */
+                    self.feedbackFormAlert?.dismiss(animated: false)
+                    self.feedbackFormAlert = nil
+                    self.resolveFeedbackForm(reason: "presenter_released")
+                }
+            }
+            Self.observeRelease(of: topVC, observer)
             topVC.present(alert, animated: true)
         }
     }

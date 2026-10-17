@@ -60,4 +60,68 @@ final class SurveyFeedbackFormUITests: XCTestCase {
         alert.buttons["Submit"].tap()
         XCTAssertFalse(alert.exists, "submitting must dismiss the form")
     }
+
+    /**
+     #920 — A FORM THAT IS TAKEN AWAY GOES, AND IS RECORDED AS TAKEN AWAY.
+
+     The test above proves the form appears. This proves the other half: when the host tears its
+     presentation stack down — a window rebuilt, a root view controller swapped, a deep link
+     replacing the stack — the form goes with it instead of outliving the context it belongs to.
+
+     The swap is driven by backgrounding the app and bringing it back, which is deterministic and
+     test-controlled, rather than by a timer this test would have to race.
+
+     🔴 What is asserted here is the OBSERVABLE half: the alert is gone and the host is alive. The
+     `feedback_form_dismissed` event with `reason: "presenter_released"` is asserted in
+     `OrphanedFeedbackFormTests`, because a UI test has no access to the SDK's event tracker — the
+     two together are the claim.
+     */
+    func testAFormIsTakenDownWithItsPresenter() throws {
+        guard let apiKey, let surveyId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-appdnaApiKey", apiKey,
+            "-appdnaSurvey", surveyId,
+            // 🔴 A VALUE, not a bare flag: `Launch.arg` reads UserDefaults, which only
+            // parses `-key value` pairs — a valueless flag is silently dropped, and the
+            // swap simply never armed.
+            "-appdnaSwapRootOnForeground", "1",
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 15))
+
+        var presented = false
+        for _ in 0..<12 where !presented {
+            app.buttons["host.survey"].tap()
+            presented = app.buttons["survey.rating.1"].waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(presented, "the survey never presented — config did not arrive")
+
+        app.buttons["survey.rating.1"].tap()
+        XCTAssertTrue(app.buttons["survey.submit"].waitForExistence(timeout: 5))
+        app.buttons["survey.submit"].tap()
+
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "the feedback form must be up before it can be orphaned")
+
+        // Take the presenter away, the way a host would.
+        XCUIDevice.shared.press(.home)
+        app.activate()
+
+        // 🔴 Assert the HARNESS first. Without this, "the alert is gone" and "the swap never ran"
+        // are the same green, and "the alert is still there" blames the SDK for a test that did
+        // nothing — which is exactly what the first run of this test did.
+        XCTAssertTrue(
+            app.staticTexts["host.swappedRoot"].waitForExistence(timeout: 20),
+            "the host did not swap its root view controller, so nothing below is about the SDK",
+        )
+        XCTAssertFalse(
+            alert.waitForExistence(timeout: 3),
+            "the form must NOT outlive the controller that presented it",
+        )
+        XCTAssertEqual(app.state, .runningForeground, "and the host must survive losing it")
+    }
 }

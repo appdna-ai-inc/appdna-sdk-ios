@@ -58,6 +58,10 @@ enum Launch {
          the authored price, and the log had nothing in it either way, which is indistinguishable
          from the code never running.
         */
+        #if DEBUG
+        armRootSwapIfAsked()
+        #endif
+
         if let lvl = arg("appdnaLogLevel") {
             switch lvl.lowercased() {
             case "debug": AppDNA.setLogLevel(.debug)
@@ -70,6 +74,61 @@ enum Launch {
         }
         NSLog("AppDNA-E2E host configured env=sandbox key=\(key.prefix(8))…")
     }
+
+    /*
+     #920 — TEAR THE PRESENTATION STACK DOWN WHILE A FORM IS UP.
+
+     The defect is a feedback form orphaned when its presenter goes away for a reason of the host's
+     own. Reproducing it needs a host that does exactly that, deterministically, at a moment a test
+     controls — so the swap is triggered by the app being BACKGROUNDED and brought back, which a UI
+     test can drive precisely (`XCUIDevice.press(.home)` then `activate()`), rather than by a timer
+     a test has to race.
+
+     Debug-only and opt-in: `-appdnaSwapRootOnForeground`.
+    */
+    #if DEBUG
+    private static var swapObserver: NSObjectProtocol?
+    private static var backgroundObserver: NSObjectProtocol?
+
+    static func armRootSwapIfAsked() {
+        guard arg("appdnaSwapRootOnForeground") != nil, swapObserver == nil else { return }
+        /*
+         🔴 THE SIGNAL IS A BACKGROUNDING, not an activation count.
+
+         Counting activations was wrong twice over: from zero it missed the first one (so a genuine
+         return looked like launch), and seeded from the current state it fired on the SECOND
+         activation SwiftUI raises during its own launch sequence — the host swapped its root half
+         a second after starting, `host.title` never appeared, and the test failed before it
+         reached anything about the SDK.
+
+         `didEnterBackground` happens exactly once per trip to the home screen and never during
+         launch, so it is the unambiguous edge.
+        */
+        NSLog("AppDNA-E2E root swap armed")
+        var wasBackgrounded = false
+        backgroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main
+        ) { _ in wasBackgrounded = true }
+        swapObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            guard wasBackgrounded else { return }
+            wasBackgrounded = false
+            guard let window = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene }).first?
+                .windows.first(where: { $0.isKeyWindow }) else { return }
+            NSLog("AppDNA-E2E swapping the root view controller")
+            // A LABEL, not a bare controller: an empty `UIViewController`'s view does not surface
+            // as a queryable element, so a test could not tell "the swap did not run" from "the
+            // swap ran and the alert survived" — which is the whole question.
+            let replacement = UIHostingController(
+                rootView: Text("swapped").accessibilityIdentifier("host.swappedRoot")
+            )
+            window.rootViewController = replacement
+        }
+    }
+
+    #endif
 
     /// Present a surface without a tap, after giving the SDK time to fetch its config.
     static func autoPresentIfAsked() {
