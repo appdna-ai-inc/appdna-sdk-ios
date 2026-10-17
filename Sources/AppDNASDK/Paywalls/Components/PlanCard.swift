@@ -61,6 +61,45 @@ struct PlanCard: View {
     private var selectedBg: Color? {
         cardStyle.selectedBgColor.map { Color(hex: $0) }
     }
+
+    /**
+     #909 — the tile an UNAUTHORED selected plan is painted, and the one place the two platforms
+     disagreed about what a plan tile IS.
+
+     This side fell back to the UNSELECTED colour (`isSelected ? (selectedBg ?? unselBg) : unselBg`),
+     so with nothing authored the selected and unselected tiles were identical. Android falls back
+     to the brand accent at 10% over the page, and so does the server's contrast repair — its own
+     log reads `plans.selected_text_color (renderer default, white)->#111827 on #EBF3FE`, and
+     #EBF3FE is exactly that tint over white.
+
+     🔴 Two out of three agreeing is what made it dangerous. The repair computes
+     `selected_text_color` against the tint, THEN replaces `unselected_bg_color` with #111827 when
+     white text fails on it — and because this platform used the unselected colour for the selected
+     tile, the selected text became #111827 on a #111827 tile. Measured on a simulator: the whole
+     tile band held 5 distinct colours against 325 in the unselected one beside it, which is what
+     text at a contrast ratio of 1:1 looks like. The label and the price were simply not there.
+
+     Falling back to the tint here makes the renderer, the other platform and the repair agree, and
+     an authored `selected_bg_color` still wins over all of it.
+     */
+    private var selectedTint: Color {
+        let accent = AppDNA.brandAccentHex ?? "#6366F1"
+        /*
+         * 🔴 The fallback matters as much as the composite. With a known page this returns the
+         * OPAQUE hex the repair assumes (#EBF3FE for the default indigo over white), so the text
+         * colour it chose is judged against the same colour the eye sees.
+         *
+         * With NO page — a PlanCard rendered on its own, which is exactly what the visual snapshot
+         * tests do — `composite` cannot resolve and the first version of this fell back to the
+         * SOLID accent. The snapshot caught it: a card that had been a faint tint came back a block
+         * of indigo. Android has always used `brandAccentColor().copy(alpha = 0.1f)`, an alpha
+         * colour over whatever is beneath it, so that is the fallback here too.
+         */
+        if let composite = PaywallTextDefaults.composite(accent, over: pageBackgroundHex, alpha: 0.1) {
+            return Color(hex: composite)
+        }
+        return Color(hex: accent).opacity(0.1)
+    }
     /// Text color applied to plan name / price / subtitle when the card is selected.
     /// Lets you do "white text on a solid green selected card" without overriding
     /// each element's style manually.
@@ -286,7 +325,9 @@ struct PlanCard: View {
                         // recedes on dark backgrounds and lets the selected card + its border stand out,
                         // matching Android + the console preview. Explicit unselected_bg_color still wins.
                         let unselBg = cardStyle.unselectedBgColor.map { Color(hex: $0) } ?? Color.white.opacity(0.1)
-                        return isSelected ? (selectedBg ?? unselBg) : unselBg
+                        // #909 — an unauthored SELECTED tile is the accent tint, not the unselected
+                        // colour. See `selectedTint`.
+                        return isSelected ? (selectedBg ?? selectedTint) : unselBg
                     }())
             )
             .overlay(
@@ -363,6 +404,37 @@ struct PlanCard: View {
         plan.price_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
     }
 
+    /**
+     #913 — the billing period, drawn SMALL beside the price.
+
+     `periodTextStyle` was declared on this view and read by nothing: the period was folded into
+     `displayPrice` here while Android rendered `plan.period` at five sites, so one document gave
+     two different screens. Nothing could author it either — `PlanSchema` had no `period` and 0 of
+     81 production plans carried one — so this ships with its console control and its schema field
+     (Rule 8), and every existing paywall is unchanged because every existing paywall leaves it
+     empty.
+
+     Deliberately NOT appended to `displayPrice`: an author who writes "$9.99/mo" in the price and
+     leaves this empty keeps exactly what they have, and one who wants the period styled smaller
+     moves it here.
+     */
+    @ViewBuilder
+    private var periodView: some View {
+        if let period = plan.period, !period.isEmpty {
+            Group {
+                if let ts = periodTextStyle {
+                    Text(loc?("plan.\(planIndex).period", period) ?? period).applyTextStyle(ts)
+                } else {
+                    Text(loc?("plan.\(planIndex).period", period) ?? period)
+                        .font(.caption)
+                        .foregroundColor(isSelected && selectedTextColor != nil
+                            ? effectiveTextColor.opacity(0.7) : .secondary)
+                }
+            }
+            .applyElementStyle(elementStyle("period"))
+        }
+    }
+
     @ViewBuilder
     private var currentPriceView: some View {
         Group {
@@ -387,7 +459,12 @@ struct PlanCard: View {
     private var priceBlockView: some View {
         if (cardStyle.priceLayout ?? "inline") == "headline_stacked" {
             VStack(alignment: .leading, spacing: 2) {
-                currentPriceView
+                // #913 — the period rides WITH the price on both layouts, baseline-aligned so a
+                // small "/month" sits on the price's baseline rather than centred against it.
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    currentPriceView
+                    periodView
+                }
                 if plan.original_price_display?.isEmpty == false || plan.price_total_display?.isEmpty == false {
                     HStack(spacing: strikeGap) {
                         if let original = plan.original_price_display, !original.isEmpty {
@@ -408,7 +485,10 @@ struct PlanCard: View {
                 if let original = plan.original_price_display, !original.isEmpty {
                     struckPriceView(original)
                 }
-                currentPriceView
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    currentPriceView
+                    periodView
+                }
             }
         }
     }

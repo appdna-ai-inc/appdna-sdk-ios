@@ -36,6 +36,7 @@ extension SharedFixtureTests {
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
         case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
         case "resolve_element_container": runElementContainer(f, h)
+        case "resolve_plan_period": runPlanPeriod(f, h)
         default:
             return false
         }
@@ -70,6 +71,34 @@ extension SharedFixtureTests {
                 SharedFixtureTests.orNull(container.opacity),
                 SharedFixtureTests.orNull(container.padding?.top),
             ] as [Any]
+        }
+    }
+
+    // MARK: resolve_plan_period
+
+    /**
+     #913 — a plan's billing period, through the REAL `PaywallPlan` decode.
+
+     The field was on both DTOs and readable by neither surface that matters: this platform
+     declared `periodTextStyle` and never drew it, so a period authored anywhere showed on Android
+     and nowhere here. An empty string resolves to nil, because both renderers treat it as absent
+     rather than drawing a blank label against the price.
+     */
+    private func runPlanPeriod(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_plan_period needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let dict = c.objectValue?["value"]?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let plan = try? JSONDecoder().decode(PaywallPlan.self, from: data) else {
+                XCTFail("[\(f.id)] a plan did not decode")
+                return NSNull()
+            }
+            guard let period = plan.period, !period.isEmpty else { return NSNull() }
+            return period
         }
     }
 

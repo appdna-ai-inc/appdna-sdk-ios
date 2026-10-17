@@ -41,6 +41,15 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample
         GENERATE_INFOPLIST_FILE: NO
         TARGETED_DEVICE_FAMILY: "1"
+        # A StoreKit configuration makes the SIMULATOR serve real-shaped products with no App Store
+        # Connect account — the only way to ask "does the paywall show the STORE's price, or the
+        # one an author typed?" without shipping to a customer. Priced deliberately differently
+        # from anything a test paywall authors, so the two can never be confused.
+        #
+        # 🔴 Folded into THIS block rather than added as a second `settings:` on the target. YAML
+        # takes the later duplicate key, so a second block would have silently discarded the bundle
+        # identifier above — and the build would have succeeded, under the wrong id.
+        STOREKIT_CONFIGURATION: AppDNAHost/Products.storekit
     dependencies:
       - package: AppDNASDK
         product: AppDNASDK
