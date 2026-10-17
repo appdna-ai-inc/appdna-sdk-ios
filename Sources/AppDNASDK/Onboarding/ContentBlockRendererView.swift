@@ -2207,7 +2207,7 @@ struct ContentBlockRendererView: View {
     // MARK: - Rich Text
 
     /**
-     Turn a markdown blockquote into the italic syntax the parser already renders.
+     Fold markdown the parsers do NOT know into the subset they do.
 
      #893 — both platforms parse the same documented subset (`**bold**`, `*italic*`,
      `[link](url)`, `++underline++`) and NEITHER knows a blockquote, so a `>` reached the screen
@@ -2221,23 +2221,57 @@ struct ContentBlockRendererView: View {
 
      A line already containing `*` is left exactly as it is: wrapping it would nest emphasis
      markers and the parser would make a worse mess than the one being fixed. Mirrors Android
-     `ContentBlockRenderer.unfoldBlockquotes`.
+     `ContentBlockRenderer.normaliseMarkdown`.
      */
-    static func unfoldBlockquotes(_ markdown: String) -> String {
-        guard markdown.contains(">") else { return markdown } // fast path — most content has none
-        return markdown.components(separatedBy: "\n").map { line -> String in
-            let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
-            guard trimmed.hasPrefix(">") else { return line }
-            let body = trimmed.dropFirst().drop(while: { $0 == " " || $0 == "\t" })
-            if body.isEmpty || body.contains("*") { return String(body) }
-            return "*\(body)*"
-        }.joined(separator: "\n")
+    static func normaliseMarkdown(_ markdown: String) -> String {
+        // Fast path — most content carries none of the markers this pass folds.
+        guard markdown.contains(where: { ">#-*+`|".contains($0) }) else { return markdown }
+
+        var out: [String] = []
+        for line in markdown.components(separatedBy: "\n") {
+            let trimmed = String(line.drop(while: { $0 == " " || $0 == "\t" }))
+
+            // A table's separator row carries no words at all.
+            if trimmed.hasPrefix("|"), trimmed.contains("-"),
+               trimmed.allSatisfy({ "|-: ".contains($0) }) { continue }
+
+            var body: String
+            if trimmed.hasPrefix(">") {
+                let q = String(trimmed.dropFirst()).drop(while: { $0 == " " || $0 == "\t" })
+                body = (q.isEmpty || q.contains("*")) ? String(q) : "*\(q)*"
+            } else if let h = Self.strip(trimmed, pattern: "^#{1,6}[ \t]+") {
+                body = (h.isEmpty || h.contains("*")) ? h : "**\(h)**"
+            } else if let item = Self.strip(trimmed, pattern: "^[-*+][ \t]+") {
+                body = "\u{2022} " + item
+            } else if trimmed.hasPrefix("|") {
+                body = trimmed.trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                    .components(separatedBy: "|")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .joined(separator: " \u{00B7} ")
+            } else {
+                body = line
+            }
+
+            // Inline code anywhere on the line: keep the word, drop the ticks.
+            if body.contains("`") {
+                body = body.replacingOccurrences(
+                    of: "`([^`]*)`", with: "$1", options: .regularExpression)
+            }
+            out.append(body)
+        }
+        return out.joined(separator: "\n")
+    }
+
+    /// The line with `pattern` removed, or nil when it does not match.
+    private static func strip(_ line: String, pattern: String) -> String? {
+        guard let r = line.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(line[r.upperBound...])
     }
 
     private func richTextBlock(_ block: ContentBlock) -> some View {
         let rawContent = block.markdown_content ?? block.text ?? ""
         let localised = loc?("block.\(block.id).content", rawContent) ?? rawContent  // localize like Android (block.<id>.content)
-        let content = ContentBlockRendererView.unfoldBlockquotes(localised)
+        let content = ContentBlockRendererView.normaliseMarkdown(localised)
         let isLegal = block.rich_text_variant == "legal"
         let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Mirror Android + preview: rich_text resolves its font/color/decorations/

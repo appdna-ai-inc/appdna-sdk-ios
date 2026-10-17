@@ -3,7 +3,7 @@
 // iOS driver for the styling fixture kinds. Dispatched from `SharedFixtureTests.drive`'s default
 // branch. Every value asserted is produced by a REAL SDK symbol:
 //
-//   unfold_blockquotes  REAL: `ContentBlockRendererView.unfoldBlockquotes`, the rich_text
+//   unfold_blockquotes  REAL: `ContentBlockRendererView.normaliseMarkdown`, the rich_text
 //                       renderer's blockquote pass (#893).
 //   parse_colour   REAL: `Color(hex:)` in Paywalls/PaywallHelperViews.swift — the SDK's only colour
 //                  parser on this platform, read back through UIColor so the fixture can compare
@@ -30,6 +30,7 @@ extension SharedFixtureTests {
         switch f.action.kind {
         case "parse_colour": runParseColour(f, h)
         case "unfold_blockquotes": runUnfoldBlockquotes(f, h)
+        case "normalise_markdown": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
         case "resolve_header_inset": runHeaderCloseInset(f, h)
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
@@ -119,7 +120,7 @@ extension SharedFixtureTests {
     /**
      #893 — a blockquote becomes the italic syntax both parsers already render.
 
-     Drives the REAL `unfoldBlockquotes` the rich_text renderer calls, so the two platforms are
+     Drives the REAL `normaliseMarkdown` the rich_text renderer calls, so the two platforms are
      held to one answer for a chevron that used to reach the screen verbatim.
      */
     private func runUnfoldBlockquotes(_ f: Fixture, _ h: Harness) {
@@ -132,7 +133,7 @@ extension SharedFixtureTests {
                 XCTFail("[\(f.id)] unfold_blockquotes case without a string value")
                 return NSNull()
             }
-            return ContentBlockRendererView.unfoldBlockquotes(value)
+            return ContentBlockRendererView.normaliseMarkdown(value)
         }
     }
 
