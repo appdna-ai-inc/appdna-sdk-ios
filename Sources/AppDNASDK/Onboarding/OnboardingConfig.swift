@@ -34,12 +34,12 @@ public struct OnboardingFlowConfig: Codable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
-        self.name = try c.decodeIfPresent(String.self, forKey: .name)
-        self.version = try c.decodeIfPresent(Int.self, forKey: .version)
+        self.id = c.lenient(String.self, .id) ?? UUID().uuidString
+        self.name = c.lenient(String.self, .name)
+        self.version = c.lenient(Int.self, .version)
         self._steps = try c.decodeIfPresent([OnboardingStep].self, forKey: ._steps)
         self._settings = try c.decodeIfPresent(OnboardingSettings.self, forKey: ._settings)
-        self.status = try c.decodeIfPresent(String.self, forKey: .status)
+        self.status = c.lenient(String.self, .status)
         self.graph_layout = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_layout)
         self.graph_nodes = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_nodes)
         self.audience_rules = try c.decodeIfPresent(AnyCodable.self, forKey: .audience_rules)
@@ -119,20 +119,20 @@ public struct OnboardingSettings: Codable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.show_progress = try c.decodeIfPresent(Bool.self, forKey: .show_progress) ?? true
-        self.allow_back = try c.decodeIfPresent(Bool.self, forKey: .allow_back) ?? true
-        self.skip_to_step = try c.decodeIfPresent(String.self, forKey: .skip_to_step)
-        self.progress_style = try c.decodeIfPresent(String.self, forKey: .progress_style)
-        self.progress_color = try c.decodeIfPresent(String.self, forKey: .progress_color)
-        self.progress_track_color = try c.decodeIfPresent(String.self, forKey: .progress_track_color)
-        self.progress_height = try c.decodeIfPresent(CGFloat.self, forKey: .progress_height)
+        self.show_progress = c.lenient(Bool.self, .show_progress) ?? true
+        self.allow_back = c.lenient(Bool.self, .allow_back) ?? true
+        self.skip_to_step = c.lenient(String.self, .skip_to_step)
+        self.progress_style = c.lenient(String.self, .progress_style)
+        self.progress_color = c.lenient(String.self, .progress_color)
+        self.progress_track_color = c.lenient(String.self, .progress_track_color)
+        self.progress_height = c.lenient(CGFloat.self, .progress_height)
         self.progress_gradient_colors = try c.decodeIfPresent([String].self, forKey: .progress_gradient_colors)
-        self.progress_skip_label = try c.decodeIfPresent(String.self, forKey: .progress_skip_label)
-        self.progress_flash_color = try c.decodeIfPresent(String.self, forKey: .progress_flash_color)
+        self.progress_skip_label = c.lenient(String.self, .progress_skip_label)
+        self.progress_flash_color = c.lenient(String.self, .progress_flash_color)
         self.back_button_style = try c.decodeIfPresent(BackButtonStyle.self, forKey: .back_button_style)
-        self.dismiss_allowed = try c.decodeIfPresent(Bool.self, forKey: .dismiss_allowed)
-        self.content_padding = try c.decodeIfPresent(CGFloat.self, forKey: .content_padding)
-        self.block_spacing = try c.decodeIfPresent(CGFloat.self, forKey: .block_spacing)
+        self.dismiss_allowed = c.lenient(Bool.self, .dismiss_allowed)
+        self.content_padding = c.lenient(CGFloat.self, .content_padding)
+        self.block_spacing = c.lenient(CGFloat.self, .block_spacing)
         self.haptic = try c.decodeIfPresent(HapticConfig.self, forKey: .haptic)
     }
 
@@ -230,17 +230,17 @@ public struct OnboardingStep: Codable, Identifiable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let stepId = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        let stepId = c.lenient(String.self, .id) ?? UUID().uuidString
         self.id = stepId
-        self.name = try c.decodeIfPresent(String.self, forKey: .name)
+        self.name = c.lenient(String.self, .name)
         self.type = try c.decodeIfPresent(StepType.self, forKey: .type) ?? .custom
         self.hook = try c.decodeIfPresent(StepHookConfig.self, forKey: .hook)
         // Step-root first (legacy path), then the layout object where the console actually writes them.
-        let rootHideProgress = try c.decodeIfPresent(Bool.self, forKey: .hide_progress)
-        let rootHideBack = try c.decodeIfPresent(Bool.self, forKey: .hide_back)
+        let rootHideProgress = c.lenient(Bool.self, .hide_progress)
+        let rootHideBack = c.lenient(Bool.self, .hide_back)
         // #896 — same root-then-layout ladder as the two flags above, for the same reason: the
         // console has published per-step flags inside `layout` before.
-        let rootRequestReview = try c.decodeIfPresent(Bool.self, forKey: .request_store_review)
+        let rootRequestReview = c.lenient(Bool.self, .request_store_review)
         var layoutHideProgress: Bool? = nil
         var layoutHideBack: Bool? = nil
         if let layoutFlags = try? c.nestedContainer(keyedBy: LayoutFlagKeys.self, forKey: .layout) {
@@ -289,7 +289,8 @@ public struct OnboardingStep: Codable, Identifiable {
         let rawSourceKey: CodingKeys = ((try? c.decodeNil(forKey: .config)) == false) ? .config : .layout
         var rawBlocks: [HostJSON]? = (try? c.decodeIfPresent(RawBlocksOnly.self, forKey: rawSourceKey))?.content_blocks
         if (decoded.content_blocks ?? []).isEmpty {
-            if let stepBlocks = try c.decodeIfPresent([ContentBlock].self, forKey: .content_blocks), !stepBlocks.isEmpty {
+            // #919 — the step-root copy, element by element.
+            if let stepBlocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "step[\(stepId)].content_blocks"), !stepBlocks.isEmpty {
                 decoded.content_blocks = stepBlocks
                 rawBlocks = try? c.decodeIfPresent([HostJSON].self, forKey: .content_blocks)
             }
@@ -308,7 +309,7 @@ public struct OnboardingStep: Codable, Identifiable {
         if let rawBlocks, !rawBlocks.isEmpty {
             let stamped = rawBlocks.enumerated().map { HostDataResolver.stampBlockIds($1, stepId: stepId, blockIndex: $0) }
             if let data = try? JSONEncoder().encode(stamped),
-               let typed = try? JSONDecoder().decode([ContentBlock].self, from: data) {
+               let typed = try? JSONDecoder().decodeLenientArray(ContentBlock.self, from: data, in: "step[\(stepId)].stamped_blocks") {
                 decoded.content_blocks = typed
                 stampedRaw = stamped
             }
@@ -464,33 +465,34 @@ public struct StepConfig: Codable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        title = try c.decodeIfPresent(String.self, forKey: .title)
-        subtitle = try c.decodeIfPresent(String.self, forKey: .subtitle)
-        image_url = try c.decodeIfPresent(String.self, forKey: .image_url)
-        cta_text = try c.decodeIfPresent(String.self, forKey: .cta_text)
-        skip_enabled = try c.decodeIfPresent(Bool.self, forKey: .skip_enabled)
+        title = c.lenient(String.self, .title)
+        subtitle = c.lenient(String.self, .subtitle)
+        image_url = c.lenient(String.self, .image_url)
+        cta_text = c.lenient(String.self, .cta_text)
+        skip_enabled = c.lenient(Bool.self, .skip_enabled)
         options = try c.decodeIfPresent([QuestionOption].self, forKey: .options)
         selection_mode = try c.decodeIfPresent(SelectionMode.self, forKey: .selection_mode)
         items = try c.decodeIfPresent([ValuePropItem].self, forKey: .items)
         layout = try c.decodeIfPresent([String: AnyCodable].self, forKey: .layout)
         fields = try c.decodeIfPresent([FormField].self, forKey: .fields)
-        validation_mode = try c.decodeIfPresent(String.self, forKey: .validation_mode)
+        validation_mode = c.lenient(String.self, .validation_mode)
         field_defaults = nil  // Never from JSON; only set via applyOverrides
         chat_config = try c.decodeIfPresent(ChatConfig.self, forKey: .chat_config)
-        content_blocks = try c.decodeIfPresent([ContentBlock].self, forKey: .content_blocks)
-        layout_variant = try c.decodeIfPresent(String.self, forKey: .layout_variant)
+        // #919 — the `config`/`layout` copy, which is the one the device prefers.
+        content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "stepConfig.content_blocks")
+        layout_variant = c.lenient(String.self, .layout_variant)
         background = try c.decodeIfPresent(BackgroundStyleConfig.self, forKey: .background)
         text_style = try c.decodeIfPresent(TextStyleConfig.self, forKey: .text_style)
         element_style = try c.decodeIfPresent(ElementStyleConfig.self, forKey: .element_style)
         animation = try c.decodeIfPresent(AnimationConfig.self, forKey: .animation)
         localizations = try c.decodeIfPresent([String: [String: String]].self, forKey: .localizations)
-        default_locale = try c.decodeIfPresent(String.self, forKey: .default_locale)
+        default_locale = c.lenient(String.self, .default_locale)
         next_step_rules = try c.decodeIfPresent([NextStepRule].self, forKey: .next_step_rules)
-        progress_color = try c.decodeIfPresent(String.self, forKey: .progress_color)
+        progress_color = c.lenient(String.self, .progress_color)
         // Decoded from the SAME top-level container as content_blocks (console siblings).
-        permission_type = try c.decodeIfPresent(String.self, forKey: .permission_type)
-        show_settings_fallback_on_denied = try c.decodeIfPresent(Bool.self, forKey: .show_settings_fallback_on_denied)
-        settings_fallback_label = try c.decodeIfPresent(String.self, forKey: .settings_fallback_label)
+        permission_type = c.lenient(String.self, .permission_type)
+        show_settings_fallback_on_denied = c.lenient(Bool.self, .show_settings_fallback_on_denied)
+        settings_fallback_label = c.lenient(String.self, .settings_fallback_label)
     }
 
     // Public memberwise init used by applyOverrides and default construction
@@ -710,11 +712,11 @@ public struct FormField: Codable, Identifiable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try c.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        self.id = c.lenient(String.self, .id) ?? UUID().uuidString
         self.type = try c.decodeIfPresent(FormFieldType.self, forKey: .type) ?? .text
-        self.label = try c.decodeIfPresent(String.self, forKey: .label) ?? ""
-        self.placeholder = try c.decodeIfPresent(String.self, forKey: .placeholder)
-        self.required = try c.decodeIfPresent(Bool.self, forKey: .required) ?? false
+        self.label = c.lenient(String.self, .label) ?? ""
+        self.placeholder = c.lenient(String.self, .placeholder)
+        self.required = c.lenient(Bool.self, .required) ?? false
         // Decoded from the same key as `config`; `try?` so a shape the typed struct rejects costs
         // the raw copy only, never the field.
         self.config_raw = try? c.decodeIfPresent([String: AnyCodable].self, forKey: .config)

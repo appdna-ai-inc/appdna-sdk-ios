@@ -39,6 +39,7 @@ extension SharedFixtureTests {
         case "resolve_plan_period": runPlanPeriod(f, h)
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_store_price": runStorePrice(f, h)
+        case "parse_blocks_leniently": runLenientBlocks(f, h)
         default:
             return false
         }
@@ -101,6 +102,50 @@ extension SharedFixtureTests {
             }
             guard let period = plan.period, !period.isEmpty else { return NSNull() }
             return period
+        }
+    }
+
+    // MARK: parse_blocks_leniently
+
+    /**
+     #919 — a wrongly-typed field must not delete its block, and an undecodable element must not
+     truncate the ones after it. Through the REAL `[ContentBlock]` decode, the lenient one.
+
+     Before this the array decode THREW on the first bad element, which failed the step, then the
+     flow, and the SDK dropped the whole document — so the honest assertion is the surviving ids,
+     because "it did not throw" is only half of what changed.
+     */
+    private func runLenientBlocks(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] parse_blocks_leniently needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let raw = c.objectValue?["value"]?.foundation as? [Any] else {
+                XCTFail("[\(f.id)] a case had no value array")
+                return [] as [Any]
+            }
+            // Wrapped in a container keyed exactly as a step is, so the path under test is the one
+            // production takes — not a bare array decode that happens to behave the same.
+            let wrapper: [String: Any] = ["content_blocks": raw]
+            guard JSONSerialization.isValidJSONObject(wrapper),
+                  let data = try? JSONSerialization.data(withJSONObject: wrapper) else {
+                XCTFail("[\(f.id)] a case did not serialise")
+                return [] as [Any]
+            }
+            struct Holder: Decodable {
+                let content_blocks: [ContentBlock]?
+                enum CodingKeys: String, CodingKey { case content_blocks }
+                init(from decoder: Decoder) throws {
+                    let c = try decoder.container(keyedBy: CodingKeys.self)
+                    content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "fixture")
+                }
+            }
+            guard let holder = try? JSONDecoder().decode(Holder.self, from: data) else {
+                XCTFail("[\(f.id)] the lenient decode THREW — which is the defect itself")
+                return [] as [Any]
+            }
+            return (holder.content_blocks ?? []).map { $0.id ?? "" } as [Any]
         }
     }
 

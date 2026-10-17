@@ -23,7 +23,8 @@ internal enum ContentBlocksSectionRenderer: SectionRenderer {
         guard let blocksData = data["blocks"]?.value else { return [] }
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: blocksData)
-            return try JSONDecoder().decode([ContentBlock].self, from: jsonData)
+            // #919 — a bad block costs that block, not the section.
+            return try JSONDecoder().decodeLenientArray(ContentBlock.self, from: jsonData, in: "screen.section.content_blocks")
         } catch {
             print("[SDUI] Failed to parse content blocks: \(error)")
             return []
@@ -178,7 +179,8 @@ internal enum HeroSectionRenderer: SectionRenderer {
     private static func parseOverlayBlocks(_ data: Any) -> [ContentBlock] {
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: data)
-            return try JSONDecoder().decode([ContentBlock].self, from: jsonData)
+            // #919 — a bad block costs that block, not the section.
+            return try JSONDecoder().decodeLenientArray(ContentBlock.self, from: jsonData, in: "screen.section.content_blocks")
         } catch {
             return []
         }

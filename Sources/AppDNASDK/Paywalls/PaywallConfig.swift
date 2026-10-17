@@ -45,7 +45,8 @@ struct PaywallLayout: Codable {
     let spacing: CGFloat?
     let padding: CGFloat?
     let footer_padding: CGFloat?  // Bottom padding for CTA/footer zone (default 8)
-    let sections: [PaywallSection]?
+    // #919 — a section with a bad field costs that section, not the whole paywall.
+    @LenientArray var sections: [PaywallSection]?
     let background: PaywallBackground?
     let global_style: AnyCodable?
     /// One of 12 plan display styles: vertical_stack, horizontal_scroll, radio_list, pill_selector,
@@ -187,7 +188,11 @@ struct PaywallSectionData: Codable {
 
     // Divider section
     let thickness: CGFloat?
-    let lineStyle: String?         // solid | dashed | dotted
+    /// A DIVIDER's line style, and it maps from the bare key `style` — which the console also
+    /// uses for a per-element style MAP on header / features / plans / legal sections. #919: four
+    /// sections of one ACTIVE paywall threw here and iOS dropped the whole paywall; Android read
+    /// null and rendered. Lenient now: an object yields nil and the divider takes its default.
+    @LenientScalar var lineStyle: String?         // solid | dashed | dotted
     let marginTop: CGFloat?
     let marginBottom: CGFloat?
     let marginHorizontal: CGFloat?
@@ -660,27 +665,27 @@ struct PaywallPlan: Codable, Identifiable {
     /// scalar instead of discarding the paywall; every other field keeps its strict type.
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        self._id = try c.decodeIfPresent(String.self, forKey: ._id)
-        self.productId = try c.decodeIfPresent(String.self, forKey: .productId)
-        self.name = try c.decodeIfPresent(String.self, forKey: .name)
-        self.label = try c.decodeIfPresent(String.self, forKey: .label)
+        self._id = c.lenient(String.self, ._id)
+        self.productId = c.lenient(String.self, .productId)
+        self.name = c.lenient(String.self, .name)
+        self.label = c.lenient(String.self, .label)
         self.price = PaywallPlan.looseString(c, .price)
         self.price_display = PaywallPlan.looseString(c, .price_display)
         // #923 — absent means "ask the store", so only an explicit `false` opts out.
         self.use_store_price = try? c.decodeIfPresent(Bool.self, forKey: .use_store_price)
         self.resolvedStorePrice = nil
-        self.period = try c.decodeIfPresent(String.self, forKey: .period)
-        self.badge = try c.decodeIfPresent(String.self, forKey: .badge)
+        self.period = c.lenient(String.self, .period)
+        self.badge = c.lenient(String.self, .badge)
         self.trialDuration = PaywallPlan.looseString(c, .trialDuration)
         self.trial = try c.decodeIfPresent(PaywallPlanTrial.self, forKey: .trial)
-        self.isDefault = try c.decodeIfPresent(Bool.self, forKey: .isDefault)
-        self.sort_order = try c.decodeIfPresent(Int.self, forKey: .sort_order)
-        self.description = try c.decodeIfPresent(String.self, forKey: .description)
+        self.isDefault = c.lenient(Bool.self, .isDefault)
+        self.sort_order = c.lenient(Int.self, .sort_order)
+        self.description = c.lenient(String.self, .description)
         self.features = try c.decodeIfPresent([String].self, forKey: .features)
-        self.savings_text = try c.decodeIfPresent(String.self, forKey: .savings_text)
-        self.cta_text = try c.decodeIfPresent(String.self, forKey: .cta_text)
-        self.icon = try c.decodeIfPresent(String.self, forKey: .icon)
-        self.image_url = try c.decodeIfPresent(String.self, forKey: .image_url)
+        self.savings_text = c.lenient(String.self, .savings_text)
+        self.cta_text = c.lenient(String.self, .cta_text)
+        self.icon = c.lenient(String.self, .icon)
+        self.image_url = c.lenient(String.self, .image_url)
         // Loose-decode so a numeric anchor price (e.g. 19.99) can't nil the whole paywall.
         self.original_price_display = PaywallPlan.looseString(c, .original_price_display)
         self.price_total_display = PaywallPlan.looseString(c, .price_total_display)
@@ -760,13 +765,13 @@ struct PaywallCTA: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        text = try container.decodeIfPresent(String.self, forKey: .text)
-        bg_color = try container.decodeIfPresent(String.self, forKey: .bg_color)
-        text_color = try container.decodeIfPresent(String.self, forKey: .text_color)
-        corner_radius = try container.decodeIfPresent(Double.self, forKey: .corner_radius)
-        height = try container.decodeIfPresent(Double.self, forKey: .height)
-        font_size = try container.decodeIfPresent(Double.self, forKey: .font_size)
-        padding_vertical = try container.decodeIfPresent(Double.self, forKey: .padding_vertical)
+        text = container.lenient(String.self, .text)
+        bg_color = container.lenient(String.self, .bg_color)
+        text_color = container.lenient(String.self, .text_color)
+        corner_radius = container.lenient(Double.self, .corner_radius)
+        height = container.lenient(Double.self, .height)
+        font_size = container.lenient(Double.self, .font_size)
+        padding_vertical = container.lenient(Double.self, .padding_vertical)
         // Try decoding style as object first, then as string (ignore string variant)
         styleObj = try? container.decodeIfPresent(PaywallCTAStyle.self, forKey: .styleObj)
     }

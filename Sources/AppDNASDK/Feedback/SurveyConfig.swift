@@ -12,7 +12,8 @@ struct SurveyRoot: Codable {
 public struct SurveyConfig: Codable {
     public let name: String?
     public let survey_type: String? // "nps", "csat", "custom"
-    public let questions: [SurveyQuestion]?
+    /// #936 — a question that cannot decode costs that question, not the survey.
+    @LenientArray public var questions: [SurveyQuestion]?
     public let trigger_rules: SurveyTriggerRules?
     public let appearance: SurveyAppearance?
     public let follow_up_actions: SurveyFollowUpActions?
@@ -21,7 +22,8 @@ public struct SurveyConfig: Codable {
 /// A single survey question.
 /// Choice config wrapper — Firestore nests options inside choice_config
 public struct ChoiceConfig: Codable {
-    public let options: [SurveyQuestionOption]?
+    /// #936 — one malformed option costs that option.
+    @LenientArray public var options: [SurveyQuestionOption]?
 }
 
 public struct SurveyQuestion: Codable {
@@ -36,7 +38,16 @@ public struct SurveyQuestion: Codable {
     public let csat_config: CSATConfig?
     public let rating_config: RatingConfig?
     public let choice_config: ChoiceConfig?     // Firestore format
-    private let _options: [SurveyQuestionOption]?  // Legacy flat format
+    /*
+     #936 — THE FIELD THAT DROPPED A WHOLE SURVEY.
+
+     It maps from the bare key `options`, and a stored survey on dev holds a DICTIONARY there. iOS
+     threw, which failed the question, which failed the survey, and the SDK dropped the whole
+     document and carried on — so the survey did not exist on iPhone and did exist on Android,
+     which reads `as? List<*>` and gets null. Same shape as #919's two, in a surface #919 did not
+     reach. Lenient now: a dictionary yields nil and `choice_config.options` answers instead.
+    */
+    @LenientArray private var _options: [SurveyQuestionOption]?  // Legacy flat format
     public let emoji_config: EmojiConfig?
     public let free_text_config: FreeTextConfig?
     // Question-level image
@@ -161,13 +172,13 @@ public struct SurveyAppearance: Codable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        presentation = try container.decodeIfPresent(String.self, forKey: .presentation) ?? "modal"
+        presentation = container.lenient(String.self, .presentation) ?? "modal"
         theme = try container.decodeIfPresent(ThemeSet<SurveyTheme>.self, forKey: .theme)
-        dismiss_allowed = try container.decodeIfPresent(Bool.self, forKey: .dismiss_allowed) ?? true
-        show_progress = try container.decodeIfPresent(Bool.self, forKey: .show_progress) ?? false
+        dismiss_allowed = container.lenient(Bool.self, .dismiss_allowed) ?? true
+        show_progress = container.lenient(Bool.self, .show_progress) ?? false
         question_text_style = try container.decodeIfPresent(TextStyleConfig.self, forKey: .question_text_style)
         option_style = try container.decodeIfPresent(ElementStyleConfig.self, forKey: .option_style)
-        corner_radius = try container.decodeIfPresent(Int.self, forKey: .corner_radius)
+        corner_radius = container.lenient(Int.self, .corner_radius)
     }
 }
 
