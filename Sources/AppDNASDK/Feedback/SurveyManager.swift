@@ -311,19 +311,71 @@ final class SurveyManager {
         }
     }
 
-    private func presentFeedbackForm(message: String?) {
+    /**
+     #901 — the controller a feedback form can ACTUALLY be presented on.
+
+     The old walk took the topmost presented controller unconditionally. At the moment this runs
+     the topmost one is the survey sheet, mid-dismissal — and UIKit does not leak the way Android
+     did, it logs `Attempt to present … which is already presenting / being dismissed` and does
+     **nothing**. So the form silently never appeared, on the branch a user takes when they have
+     just said the experience was bad: the branch least likely to be exercised and the one where
+     being asked nothing further matters most.
+
+     The rule is Android's, in UIKit terms (`SurveyManager.kt` — prefer un-paused and alive, fall
+     back to any ALIVE one): walk the presentation chain and stop ABOVE anything that is being
+     dismissed, landing on the controller underneath, which is where a post-survey form belongs.
+
+     `static` and taking its root as a parameter so a test can drive it with a real controller
+     hierarchy instead of a simulator and a finger.
+     */
+    static func presentableController(from root: UIViewController) -> UIViewController {
+        var current = root
+        // `isBeingDismissed` is the one that matters here, but a controller whose own view has
+        // already gone cannot present either.
+        while let presented = current.presentedViewController,
+              !presented.isBeingDismissed,
+              presented.viewIfLoaded?.window != nil || presented.isViewLoaded == false {
+            current = presented
+        }
+        return current
+    }
+
+    /**
+     #901 — how many times to come back and look, and how long to wait between.
+
+     Deferring once is not enough: `isBeingDismissed` is false again the instant the transition
+     ends, but the PRESENTER is still busy until its `presentedViewController` clears, and that is
+     one more run loop. Ten tries at 100ms is a second, comfortably longer than a sheet dismissal
+     and short enough that a user who tapped "bad" is still looking at the screen.
+     */
+    private static let feedbackFormRetries = 10
+    private static let feedbackFormRetryDelay: TimeInterval = 0.1
+
+    private func presentFeedbackForm(message: String?, attempt: Int = 0) {
         DispatchQueue.main.async {
             guard let windowScene = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .first,
-                  var rootVC = windowScene.windows
+                  let rootVC = windowScene.windows
                 .first(where: { $0.isKeyWindow })?
                 .rootViewController else { return }
 
-            while let presented = rootVC.presentedViewController {
-                rootVC = presented
+            let topVC = Self.presentableController(from: rootVC)
+
+            // Still finishing a dismissal: the chosen controller is correct but cannot present
+            // until its own `presentedViewController` has gone. Come back rather than fire into a
+            // warning and vanish.
+            if topVC.presentedViewController != nil {
+                guard attempt < Self.feedbackFormRetries else {
+                    Log.warning("Feedback form skipped: \(type(of: topVC)) still presenting after "
+                                + "\(Self.feedbackFormRetries) attempts")
+                    return
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.feedbackFormRetryDelay) {
+                    self.presentFeedbackForm(message: message, attempt: attempt + 1)
+                }
+                return
             }
-            let topVC = rootVC
 
             let alert = UIAlertController(
                 title: message ?? "We'd love your feedback",
