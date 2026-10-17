@@ -4,8 +4,8 @@ import Foundation
 struct PaywallConfig: Codable {
     let id: String?
     let name: String?
-    let layout: PaywallLayout?
-    private let _sections: [PaywallSection]?
+    var layout: PaywallLayout?
+    private var _sections: [PaywallSection]?
     var plans: [PaywallPlan]?
     let cta: PaywallCTA?
     let dismiss: PaywallDismiss?
@@ -38,6 +38,41 @@ struct PaywallConfig: Codable {
     var sections: [PaywallSection] {
         _sections ?? layout?.sections ?? []
     }
+
+    /**
+     #923 — a copy with the STORE's price on every plan, wherever that plan lives.
+
+     The root `plans` array, the top-level `sections`, and `layout.sections` are three places a
+     paywall's plans can be written, and the renderer reads whichever is present. Applying to one
+     of them is the same as applying to none on a document that used another — which is exactly
+     what the first version did, and what `StorePriceRenderTests` caught by comparing what the
+     view actually drew.
+
+     An empty map returns `self` untouched: a failed or timed-out lookup must change nothing.
+     */
+    func applyingStorePrices(_ prices: [String: String]) -> PaywallConfig {
+        guard !prices.isEmpty else { return self }
+        func priced(_ list: [PaywallPlan]?) -> [PaywallPlan]? {
+            list?.map { plan in
+                var copy = plan
+                copy.resolvedStorePrice = plan.productId.flatMap { prices[$0] }
+                return copy
+            }
+        }
+        func priced(_ list: [PaywallSection]?) -> [PaywallSection]? {
+            list?.map { section in
+                guard section.type == "plans", let plans = section.data?.plans else { return section }
+                var copy = section
+                copy.setPlans(priced(plans))
+                return copy
+            }
+        }
+        var out = self
+        out.plans = priced(plans)
+        out._sections = priced(_sections)
+        out.layout?.sections = priced(layout?.sections)
+        return out
+    }
 }
 
 struct PaywallLayout: Codable {
@@ -58,8 +93,8 @@ struct PaywallLayout: Codable {
 struct PaywallSection: Codable {
     let _type: String?
     let id: String?
-    private let _data: PaywallSectionData?
-    private let _config: PaywallSectionData?
+    private var _data: PaywallSectionData?
+    private var _config: PaywallSectionData?
     // Per-section styling
     let style: SectionStyleConfig?
     /// When true, this section fades out and collapses to 0 height as the user scrolls.
@@ -80,6 +115,19 @@ struct PaywallSection: Codable {
 
     /// Section data — server writes as "config", SDK historically used "data". Accept both.
     var data: PaywallSectionData? { _data ?? _config }
+
+    /// #923 — replace this section's plans, in whichever of the two keys carries them.
+    ///
+    /// 🔴 A paywall's plans live in `layout.sections[].config.plans`, not at the document root, and
+    /// the renderer reads them from there (`config.sections.first(type: "plans")?.data?.plans ??
+    /// config.plans`). The first version of the store-price substitution mapped ONLY the root
+    /// array, so on every real paywall the lookup ran, resolved, and reached nothing. It took
+    /// rendering the view and comparing pixels to see it — the fixture and the live-StoreKit test
+    /// both passed throughout, because neither of them draws.
+    mutating func setPlans(_ newPlans: [PaywallPlan]?) {
+        if _data != nil { _data?.plans = newPlans }
+        if _config != nil { _config?.plans = newPlans }
+    }
 
     enum CodingKeys: String, CodingKey {
         case _type = "type"

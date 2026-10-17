@@ -238,13 +238,8 @@ final class PaywallManager {
         }
         group.notify(queue: .main) { [weak self] in
             guard let self else { return }
-            if !storePrices.isEmpty {
-                config.plans = config.plans?.map { plan in
-                    var copy = plan
-                    copy.resolvedStorePrice = plan.productId.flatMap { storePrices[$0] }
-                    return copy
-                }
-            }
+            // Every place plans live, not only the root array — see `applyingStorePrices`.
+            config = config.applyingStorePrices(storePrices)
             var props = viewProps
             let sources = (config.plans ?? []).map { $0.priceSource }
             if !sources.isEmpty {
