@@ -1,0 +1,72 @@
+# XcodeGen spec for the iOS host app — #908.
+#
+# SPM cannot build a runnable .app, and XCUITest needs an application target to attach to, so the
+# host lives in a GENERATED Xcode project rather than a committed one: an .xcodeproj is a large
+# binary-ish blob that nobody can review in a diff, and this file is eleven lines that anybody can.
+#
+#     xcodegen generate --spec HostApp/project.yml --project HostApp
+#
+# The SDK is a LOCAL package reference, so a branch build is what runs — the whole point.
+name: AppDNAHost
+options:
+  bundleIdPrefix: ai.appdna
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+packages:
+  AppDNASDK:
+    path: ".."
+targets:
+  AppDNAHost:
+    type: application
+    platform: iOS
+    sources: [AppDNAHost]
+    info:
+      path: AppDNAHost/Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: AppDNA Host
+        # Honoured only in a debuggable build (APIBaseURL.infoPlistKey). Patched at RUN time by
+        # `scripts/sdk-host-ios.ts`, never committed with a real value — this directory is mirrored
+        # to the public SDK repo.
+        AppDNABaseURLOverride: "$(APPDNA_BASE_URL_OVERRIDE)"
+    settings:
+      base:
+        # The Firebase project already has an iOS app registered for exactly this purpose
+        # (`ai.appdna.appdnaSdkExample`), so the host reuses it rather than registering another —
+        # and never borrows a CUSTOMER's app id, which would also pollute their Installations
+        # metrics. The SDK looks for `GoogleService-Info-AppDNA.plist` in the main bundle; that
+        # file carries the project's client API key and is written into the built .app at RUN time
+        # by `scripts/sdk-host-ios.ts`, never committed — this directory is a public mirror.
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - package: AppDNASDK
+        product: AppDNASDK
+  AppDNAHostUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [AppDNAHostUITests]
+    settings:
+      base:
+        # A UI-test bundle is code-signed and so needs an Info.plist. The app target brings its own
+        # (it carries the base-URL override key); this one has nothing to say, so Xcode generates
+        # it. Without this the build fails at the SIGNING step with a message about the Info.plist,
+        # which reads like a missing file rather than a missing setting.
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.uitests
+        TEST_TARGET_NAME: AppDNAHost
+    dependencies:
+      - target: AppDNAHost
+schemes:
+  AppDNAHost:
+    build:
+      targets:
+        AppDNAHost: all
+        AppDNAHostUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [AppDNAHostUITests]
