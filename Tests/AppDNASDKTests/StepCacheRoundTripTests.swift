@@ -113,4 +113,84 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertNil(after.wait_for_host)
         XCTAssertNil(after.hide_back)
     }
+
+    // MARK: - #944: the LADDER, through the production writer
+
+    /**
+     🔴 WRITTEN TO `layout`, READ BACK FROM THE ROOT — the asymmetry the tests above do not touch.
+
+     Five flags are decoded root-first and then from `layout`, because `updateNodeData` (the flow
+     editor's only writer) puts every Logic-panel flag into `data.stepConfig`, which
+     `buildStepsFromGraph` ships as the step's `layout`. The tests above write and read the ROOT.
+     A cached step takes the OTHER rung on the way in and the root on the way out, so the two
+     halves of the ladder are only connected on this path — and `encode(to:)` emits no `layout`
+     object at all, which means the layout rung has exactly one chance to be read.
+
+     This drives the real writer: `RemoteConfigManager.cacheAllFetchedConfigs()` encodes the parsed
+     flow, a second manager decodes it back with the real `parseOnboarding(fromCache:)`, and
+     `__cache_marker` — a key no DTO declares, so the typed encode cannot carry it — is how the
+     test knows the asynchronous write landed rather than sleeping and hoping.
+     */
+    func testFlagsAuthoredONLYInLayoutSurviveTheProductionCache() throws {
+        let flow: [String: Any] = [
+            "__cache_marker": "raw",
+            "id": "f_ladder",
+            "name": "Ladder",
+            "steps": [[
+                "id": "s_ladder",
+                "type": "splash",
+                // NOTHING at the step root. Every flag is one rung down, where the console writes it.
+                "layout": [
+                    "content_blocks": [["id": "b1", "type": "heading", "text": "Only in layout"]],
+                    "hide_progress": false,
+                    "hide_back": true,
+                    "request_store_review": true,
+                    "auto_advance_seconds": 2.5,
+                    "wait_for_host": false,
+                ],
+            ]],
+        ]
+
+        let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.test.\(UUID().uuidString)")
+        cache.storeOnboarding(try JSONSerialization.data(
+            withJSONObject: ["active_flow_id": "f_ladder", "flows": ["f_ladder": flow]]))
+
+        let first = RemoteConfigManager(firestorePath: nil, configCache: cache, configTTL: 3600)
+        let before = try XCTUnwrap(first.getOnboardingFlow(id: "f_ladder")?.steps.first,
+                                   "the seeded flow did not parse")
+        // The layout rung must have been read on the way IN, or the round trip below is vacuous.
+        XCTAssertEqual(before.hide_back, true, "layout.hide_back")
+        XCTAssertEqual(before.hide_progress, false, "layout.hide_progress")
+        XCTAssertEqual(before.request_store_review, true, "layout.request_store_review")
+        XCTAssertEqual(before.auto_advance_seconds, 2.5, "layout.auto_advance_seconds")
+        XCTAssertEqual(before.wait_for_host, false, "layout.wait_for_host")
+
+        first.cacheAllFetchedConfigs()
+
+        // Assert the HARNESS first: without this, "the flags match" and "the re-cache never ran,
+        // and we read the raw document twice" are the same green.
+        let deadline = Date().addingTimeInterval(5)
+        var rewritten = false
+        while Date() < deadline {
+            if let d = cache.loadOnboarding(),
+               !String(decoding: d, as: UTF8.self).contains("__cache_marker") {
+                rewritten = true
+                break
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertTrue(rewritten, "the production re-cache never wrote — nothing below is a round trip")
+
+        let second = RemoteConfigManager(firestorePath: nil, configCache: cache, configTTL: 3600)
+        let after = try XCTUnwrap(second.getOnboardingFlow(id: "f_ladder")?.steps.first,
+                                  "the re-cached flow did not parse back")
+
+        XCTAssertEqual(after.hide_back, before.hide_back, "hide_back lost its layout rung")
+        XCTAssertEqual(after.hide_progress, before.hide_progress, "hide_progress lost its layout rung")
+        XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
+        XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
+        XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
+        XCTAssertEqual(after.config.content_blocks?.first?.text, "Only in layout",
+                       "and the content that rode in the same layout object")
+    }
 }

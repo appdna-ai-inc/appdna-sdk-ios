@@ -827,7 +827,14 @@ final class RemoteConfigManager {
     /// Re-serialize in-memory configs to disk cache in mega-doc format.
     /// Called after all Firestore fetches complete so the disk cache is always
     /// fresh, regardless of whether configs came from per-item docs or mega-doc.
-    private func cacheAllFetchedConfigs() {
+    ///
+    /// 🔴 `internal`, not `private`, so a test can drive THIS writer rather than a copy of it
+    /// (#944). Its only production caller is the fetch completion above, which needs a live
+    /// Firestore — so for as long as this was private, the encoder that writes every cached
+    /// paywall, flow, survey and message had no test that could reach it, and #928's lost
+    /// `request_store_review` is what that costs. Not exported: the SDK's public surface is the
+    /// `AppDNA` facade, and `internal` stops at the module boundary.
+    func cacheAllFetchedConfigs() {
         queue.async {
             let encoder = JSONEncoder()
 
