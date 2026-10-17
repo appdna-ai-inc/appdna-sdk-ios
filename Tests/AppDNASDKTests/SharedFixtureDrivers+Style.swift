@@ -37,6 +37,7 @@ extension SharedFixtureTests {
         case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
         case "resolve_element_container": runElementContainer(f, h)
         case "resolve_plan_period": runPlanPeriod(f, h)
+        case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         default:
             return false
         }
@@ -99,6 +100,40 @@ extension SharedFixtureTests {
             }
             guard let period = plan.period, !period.isEmpty else { return NSNull() }
             return period
+        }
+    }
+
+    // MARK: resolve_step_auto_advance
+
+    /**
+     #921 — whether a step advances by itself, through the REAL `OnboardingStep` DECODE and the
+     real policy, not the policy alone.
+
+     Decoding the step is the load-bearing half: the console writes these two fields inside the
+     step's `layout`, so a reader that takes the policy a hand-built struct and skips the decode
+     would pass while every authored splash screen sat there forever. The cases feed the step JSON
+     exactly as published.
+     */
+    private func runStepAutoAdvance(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_step_auto_advance needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard var dict = c.objectValue?["value"]?.foundation as? [String: Any] else {
+                XCTFail("[\(f.id)] a case had no value object")
+                return NSNull()
+            }
+            dict["id"] = dict["id"] ?? "fixture_step"
+            dict["type"] = dict["type"] ?? "splash"
+            guard JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let step = try? JSONDecoder().decode(OnboardingStep.self, from: data) else {
+                XCTFail("[\(f.id)] a step did not decode")
+                return NSNull()
+            }
+            guard let delay = StepAutoAdvance.delaySeconds(for: step) else { return NSNull() }
+            return delay
         }
     }
 

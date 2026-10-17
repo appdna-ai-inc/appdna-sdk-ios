@@ -183,6 +183,25 @@ public struct OnboardingStep: Codable, Identifiable {
      */
     public let request_store_review: Bool?
 
+    /**
+     #921 — the step advances by itself after this many seconds.
+
+     A splash screen and a step with a forgotten button are the same shape on the wire; this is one
+     of the two fields that tell them apart. `StepAutoAdvance` holds the precedence (and
+     `wait_for_host` below wins over this) and the bounds.
+     */
+    public let auto_advance_seconds: Double?
+
+    /**
+     #921 — the step is DECLARED host-driven: it holds until the app calls
+     ``AppDNA/advanceOnboardingStep()``, and never times out.
+
+     Carries no rendering of its own. What it buys is that the console's publish warning and the
+     platform's dead-end probe can skip the step honestly instead of being told to ignore two step
+     ids, and that a leftover `auto_advance_seconds` cannot cut the app's loading short.
+     */
+    public let wait_for_host: Bool?
+
     /// The step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
     ///
     /// The typed model drops what the raw host-data pass needs (`data_templates`, a token in a typed
@@ -194,6 +213,7 @@ public struct OnboardingStep: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
         case request_store_review
+        case auto_advance_seconds, wait_for_host
         case raw_content_blocks
     }
 
@@ -206,7 +226,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// step's `layout` object (verified against `OnboardingFlowConfigSyncService.mapStepsForFirestore`,
     /// which never hoists `layout.*` to the step root). Read them from `layout` with a step-root
     /// fallback for any older/hand-written config.
-    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review }
+    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review, auto_advance_seconds, wait_for_host }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -232,6 +252,20 @@ public struct OnboardingStep: Codable, Identifiable {
                 .flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .request_store_review) }
         self.hide_progress = rootHideProgress ?? layoutHideProgress
         self.hide_back = rootHideBack ?? layoutHideBack
+        /*
+         #921 — the SAME root-then-layout ladder, and here it is the ONLY path that works.
+         `updateNodeData` (the flow editor's only writer) puts every Logic-panel flag into
+         `data.stepConfig`, which `buildStepsFromGraph` ships as the step's `layout` — so a timer
+         an author sets arrives INSIDE `layout`. The builder also hoists these two to the step root
+         for a freshly-saved flow, so both places are live and the root wins.
+
+         `Double`, not `Int`: the console accepts 0.5s and a JSON number does not say which it is.
+         */
+        let layoutFlags = try? c.nestedContainer(keyedBy: LayoutFlagKeys.self, forKey: .layout)
+        self.auto_advance_seconds = (try? c.decodeIfPresent(Double.self, forKey: .auto_advance_seconds))
+            ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Double.self, forKey: .auto_advance_seconds) })
+        self.wait_for_host = (try? c.decodeIfPresent(Bool.self, forKey: .wait_for_host))
+            ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .wait_for_host) })
         // Read next_step_rules from step level, but also check layout.next_step_rules
         // which may have richer conditions from the Logic panel
         let stepRules = try c.decodeIfPresent([NextStepRule].self, forKey: .next_step_rules)
@@ -293,12 +327,21 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(hook, forKey: .hook)
         try c.encodeIfPresent(hide_progress, forKey: .hide_progress)
         try c.encodeIfPresent(hide_back, forKey: .hide_back)
+        /*
+         🔴 `request_store_review` was NOT encoded, and this encoder is the SDK's own onboarding
+         cache. So a flow that asked for a review prompt lost the request on the next COLD START —
+         the step rendered identically and simply never asked. Found while adding the two fields
+         below, which would have had the same hole (#928).
+         */
+        try c.encodeIfPresent(request_store_review, forKey: .request_store_review)
+        try c.encodeIfPresent(auto_advance_seconds, forKey: .auto_advance_seconds)
+        try c.encodeIfPresent(wait_for_host, forKey: .wait_for_host)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
         // Verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
-    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil) {
+    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil, auto_advance_seconds: Double? = nil, wait_for_host: Bool? = nil) {
         self.rawContentBlocks = nil
         self.id = id
         self.name = name
@@ -308,6 +351,8 @@ public struct OnboardingStep: Codable, Identifiable {
         self.hide_progress = hide_progress
         self.hide_back = hide_back
         self.request_store_review = request_store_review
+        self.auto_advance_seconds = auto_advance_seconds
+        self.wait_for_host = wait_for_host
         self.next_step_rules = next_step_rules
     }
 

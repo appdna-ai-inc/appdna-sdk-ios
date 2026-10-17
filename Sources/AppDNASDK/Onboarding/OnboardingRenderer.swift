@@ -41,6 +41,8 @@ struct OnboardingFlowHost: View {
     /// arrival on a step; back-then-forward is a new one). Bumped wherever `currentIndex` changes, in
     /// the same transaction, so the new step's first frame is already pending.
     @StateObject private var hostDataCoordinator = HostDataPendingCoordinator()
+    /// #921 — the pending step-level auto-advance, cancelled when the step changes or the flow goes.
+    @State private var autoAdvance = StepAutoAdvanceTimer()
     @State private var presentationSerial = 0
     /// The per-step interaction data layer, its stamps, the flow-level
     /// `callSeq`, the current presentation and one `InteractionCoordinator` per presentation. The SAME
@@ -175,6 +177,10 @@ struct OnboardingFlowHost: View {
                 .frame(maxHeight: .infinity)
                 .onAppear {
                     handleStepAppear(step: step)
+                }
+                .onDisappear {
+                    // The flow being dismissed must not advance a screen nobody is looking at.
+                    autoAdvance.cancel()
                 }
                 // The step content view above is re-created per step via `.id(currentIndex)`, but this
                 // container ZStack is NOT — its `.onAppear` fires only once (first step) and again only
@@ -609,6 +615,28 @@ struct OnboardingFlowHost: View {
     }
 
     private func handleStepAppear(step: OnboardingStep) {
+        /*
+         #921 — a step that advances by itself, scheduled as it appears.
+
+         Before the pending host-data call rather than after, so the timer a splash declares is not
+         hostage to a delegate that never replies — the whole point of the field is a screen that
+         leaves on its own. `schedule` replaces any previous item, so arriving at a second step
+         cancels the first step's advance; `.onDisappear` cancels on dismissal.
+
+         🔴 The fire guard is the step IDENTITY, not just the index. A rule can route back to an
+         earlier step, so an index can repeat while the presentation moves on; advancing on a stale
+         timer would skip the step the user is actually on.
+         */
+        autoAdvance.cancel()
+        if let delay = StepAutoAdvance.delaySeconds(for: step) {
+            let serialAtSchedule = presentationSerial
+            autoAdvance.schedule(after: delay) {
+                guard presentationSerial == serialAtSchedule,
+                      currentIndex < flow.steps.count,
+                      flow.steps[currentIndex].id == step.id else { return }
+                advanceOrComplete()
+            }
+        }
         // 🔴 BOUNDED. This `await` used to have no timeout at all, which was mostly harmless
         // while few hosts did real work in this hook — every host is now asked to FETCH
         // DATA here, so a customer awaiting their own backend on a bad connection, with no
