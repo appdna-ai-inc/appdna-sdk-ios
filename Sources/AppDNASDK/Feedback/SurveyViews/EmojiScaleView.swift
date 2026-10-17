@@ -24,6 +24,7 @@ struct EmojiScaleView: View {
                     Button(emoji) {
                         answer = SurveyAnswer(question_id: question.id ?? "", answer: emoji)
                     }
+                    .accessibilityIdentifier("survey.emoji.\(emoji)")
                     .font(.system(size: 36))
                     .scaleEffect(selectedEmoji == emoji ? 1.3 : 1.0)
                     .animation(.spring(response: 0.3), value: selectedEmoji)

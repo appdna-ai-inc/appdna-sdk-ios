@@ -48,6 +48,7 @@ struct SingleChoiceView: View {
                     // Thread the survey accent so the selected card border honors accent_color.
                     .applyContainerStyleOrDefault(optionStyle, isSelected: selectedId == option.id, accentColor: accentColor)
                 }
+                .accessibilityIdentifier("survey.choice.\(option.id ?? "")")
             }
         }
     }

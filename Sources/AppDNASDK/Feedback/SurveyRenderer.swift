@@ -214,6 +214,7 @@ struct SurveyContainerView: View {
                             Button("Back") {
                                 currentQuestionIndex -= 1
                             }
+                            .accessibilityIdentifier("survey.back")
                             .foregroundColor(accentColor)
                         }
 
@@ -228,6 +229,7 @@ struct SurveyContainerView: View {
                                     config: theme?.haptic
                                 )
                             }
+                            .accessibilityIdentifier("survey.next")
                             .padding(.horizontal, 24)
                             .padding(.vertical, 10)
                             .background(buttonBackground(enabled: canAdvance))
@@ -238,6 +240,7 @@ struct SurveyContainerView: View {
                             Button("Submit") {
                                 submitSurvey()
                             }
+                            .accessibilityIdentifier("survey.submit")
                             .padding(.horizontal, 24)
                             .padding(.vertical, 10)
                             .background(buttonBackground(enabled: canAdvance))
@@ -254,6 +257,7 @@ struct SurveyContainerView: View {
                             dismiss()
                             completion(.dismissed(answeredCount: answered))
                         }
+                        .accessibilityIdentifier("survey.dismiss")
                         .foregroundColor(.secondary)
                         .font(.footnote)
                     }

@@ -34,6 +34,7 @@ struct FreeTextView: View {
                 }
 
                 TextEditor(text: $text)
+                    .accessibilityIdentifier("survey.freetext")
                     .focused($isFocused)
                     .scrollContentBackground(.hidden)
                     .frame(minHeight: 100, maxHeight: 200)

@@ -34,6 +34,7 @@ struct YesNoView: View {
                         .foregroundColor(selectedValue == "yes" ? buttonTextColor : textColor)
                         .cornerRadius(10)
                 }
+                .accessibilityIdentifier("survey.yes")
 
                 Button {
                     answer = SurveyAnswer(question_id: question.id ?? "", answer: "no")
@@ -46,6 +47,7 @@ struct YesNoView: View {
                         .foregroundColor(selectedValue == "no" ? .white : .primary)
                         .cornerRadius(10)
                 }
+                .accessibilityIdentifier("survey.no")
             }
         }
     }

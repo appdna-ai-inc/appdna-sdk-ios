@@ -27,6 +27,7 @@ struct NPSQuestionView: View {
                     Button("\(score)") {
                         answer = SurveyAnswer(question_id: question.id ?? "", answer: score)
                     }
+                    .accessibilityIdentifier("survey.nps.\(score)")
                     .frame(width: 30, height: 40)
                     .background(selectedScore == score ? accentColor : Color.gray.opacity(0.1))
                     .foregroundColor(selectedScore == score ? buttonTextColor : textColor)

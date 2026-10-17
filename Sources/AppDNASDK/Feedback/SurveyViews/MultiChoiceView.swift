@@ -47,6 +47,7 @@ struct MultiChoiceView: View {
                     // Thread the survey accent so the selected card border honors accent_color.
                     .applyContainerStyleOrDefault(optionStyle, isSelected: selectedIds.contains(option.id ?? ""), accentColor: accentColor)
                 }
+                .accessibilityIdentifier("survey.choice.\(option.id ?? "")")
             }
         }
     }
