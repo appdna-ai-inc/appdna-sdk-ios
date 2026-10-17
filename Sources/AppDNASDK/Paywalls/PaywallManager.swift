@@ -152,7 +152,16 @@ final class PaywallManager {
                 viewProps[key] = value
             }
         }
-        eventTracker.track(event: "paywall_view", properties: viewProps)
+        /*
+         #923 — the view event fires AFTER the store lookup, not before, so it describes the
+         screen the user actually saw. It carries `price_source` per plan: `store`, or one of
+         `authored_opt_out` / `authored_no_product` / `authored_lookup_failed`. That is what
+         answers "why is my paywall showing the old price" — without it the question has no answer
+         in the data at all, and the three authored reasons are indistinguishable from outside.
+
+         The delay is the lookup's own bound (1.5s) and no more, and the event still fires exactly
+         once per presentation.
+        */
 
         // Prefetch remote images before presenting so
         // the paywall renders fully loaded, no AsyncImage placeholder flash
@@ -200,12 +209,50 @@ final class PaywallManager {
             }
         }
 
-        if imageURLs.isEmpty {
-            buildAndPresent()
-        } else {
-            ImagePreloader.prefetch(urls: imageURLs, timeout: 1.5) {
-                DispatchQueue.main.async { buildAndPresent() }
+        /*
+         #923 — ASK THE STORE WHAT THESE PRODUCTS COST, before the screen is built.
+
+         Until this, `price_display` was a free-text field and the only thing a user ever saw: a
+         price change in App Store Connect did not reach the paywall, so the store charged the new
+         price while the screen showed the old one, in the author's currency whatever the user's
+         own was. `PriceResolver` could do the lookup all along and had no callers.
+
+         🔴 IN PARALLEL WITH THE IMAGE PREFETCH, on the same 1.5s budget, so it costs no extra
+         latency. Both bound themselves and both always finish; whichever is slower decides when
+         the paywall appears, exactly as the prefetch alone decided before. A product the store
+         does not know, a lookup that throws and a lookup that outlives the deadline are the same
+         outcome — absent — and every plan then falls back to its authored price.
+         */
+        let productIds = (config.plans ?? []).compactMap { $0.productId }
+        let group = DispatchGroup()
+        var storePrices: [String: String] = [:]
+
+        group.enter()
+        StorePriceLookup.prices(for: productIds, timeout: 1.5) { prices in
+            storePrices = prices
+            group.leave()
+        }
+        if !imageURLs.isEmpty {
+            group.enter()
+            ImagePreloader.prefetch(urls: imageURLs, timeout: 1.5) { group.leave() }
+        }
+        group.notify(queue: .main) { [weak self] in
+            guard let self else { return }
+            if !storePrices.isEmpty {
+                config.plans = config.plans?.map { plan in
+                    var copy = plan
+                    copy.resolvedStorePrice = plan.productId.flatMap { storePrices[$0] }
+                    return copy
+                }
             }
+            var props = viewProps
+            let sources = (config.plans ?? []).map { $0.priceSource }
+            if !sources.isEmpty {
+                props["price_source"] = sources.joined(separator: ",")
+                props["store_prices_resolved"] = sources.filter { $0 == "store" }.count
+            }
+            self.eventTracker.track(event: "paywall_view", properties: props)
+            buildAndPresent()
         }
     }
 

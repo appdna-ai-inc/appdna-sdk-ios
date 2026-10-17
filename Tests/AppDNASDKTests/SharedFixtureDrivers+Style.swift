@@ -38,6 +38,7 @@ extension SharedFixtureTests {
         case "resolve_element_container": runElementContainer(f, h)
         case "resolve_plan_period": runPlanPeriod(f, h)
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
+        case "resolve_store_price": runStorePrice(f, h)
         default:
             return false
         }
@@ -100,6 +101,37 @@ extension SharedFixtureTests {
             }
             guard let period = plan.period, !period.isEmpty else { return NSNull() }
             return period
+        }
+    }
+
+    // MARK: resolve_store_price
+
+    /**
+     #923 — whether a plan shows the STORE's price or the one an author typed, through the REAL
+     policy both renderers call.
+
+     The authored string is the FALLBACK on every failure path, so most cases here are failures:
+     an absent `store_price` stands for a lookup that threw, timed out, or returned no such
+     product, and the renderer cannot tell those apart — nor should it, since the answer is the
+     same.
+     */
+    private func runStorePrice(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_store_price needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any] else {
+                XCTFail("[\(f.id)] a case had no value object")
+                return NSNull()
+            }
+            let out = StorePriceSubstitution.resolve(
+                authoredPrice: v["authored_price"] as? String,
+                productId: v["product_id"] as? String,
+                useStorePrice: v["use_store_price"] as? Bool,
+                storePrice: v["store_price"] as? String
+            )
+            return [out.priceDisplay, out.source] as [Any]
         }
     }
 

@@ -6,7 +6,7 @@ struct PaywallConfig: Codable {
     let name: String?
     let layout: PaywallLayout?
     private let _sections: [PaywallSection]?
-    let plans: [PaywallPlan]?
+    var plans: [PaywallPlan]?
     let cta: PaywallCTA?
     let dismiss: PaywallDismiss?
     let background: PaywallBackground?
@@ -107,7 +107,7 @@ struct PaywallSectionData: Codable {
     let features: [String]?
 
     // Plans
-    let plans: [PaywallPlan]?
+    var plans: [PaywallPlan]?
 
     // CTA
     let cta: PaywallCTA?
@@ -545,6 +545,25 @@ struct PaywallPlan: Codable, Identifiable {
     let price: String?
     let price_display: String?
     let period: String?
+    /**
+     #923 — whether this plan's price comes from the STORE or from `price_display`.
+
+     🔴 The DEFAULT IS THE STORE, so this is an opt-OUT and `nil` means "ask". It exists for a plan
+     that deliberately shows a marketing price — a struck-through "was $19.99", a price the app
+     subsidises, a plan with no store product behind it — and `false` wins even over a store that
+     answered.
+     */
+    let use_store_price: Bool?
+    /**
+     #923 — the store's localized price for this plan's product, filled in by the PRESENTER just
+     before the screen is built, or nil when the lookup failed, timed out or did not know the
+     product.
+
+     A `var` that is never decoded, rather than a rebuilt struct: `PaywallPlan` has thirty fields
+     and a field-by-field rebuild is how `StepConfigOverrideMerger` silently deleted `chat_config`.
+     Read only through `displayPrice`, so every render site on every layout follows at once.
+     */
+    var resolvedStorePrice: String?
     let badge: String?
     private let trialDuration: String?   // Legacy: "trial_duration" string
     let trial: PaywallPlanTrial?         // New: {duration_days, label} object
@@ -583,7 +602,30 @@ struct PaywallPlan: Codable, Identifiable {
     /// Display name — try label first (Firestore), then name (legacy)
     var displayName: String { label ?? name ?? "" }
     /// Display price — try price_display first (Firestore), then price (legacy)
-    var displayPrice: String { price_display ?? price ?? "" }
+    /// Display price — the STORE's, falling back to what the author typed (#923).
+    ///
+    /// Every layout reads this one property, which is why the substitution lives here rather than
+    /// at the eight render sites that would each have had to remember it.
+    var displayPrice: String {
+        StorePriceSubstitution.resolve(
+            authoredPrice: price_display ?? price,
+            productId: productId,
+            useStorePrice: use_store_price,
+            storePrice: resolvedStorePrice
+        ).priceDisplay
+    }
+
+    /// Where `displayPrice` came from — `store`, or one of the three authored reasons (#923).
+    /// Reported with `paywall_view` so a customer asking why their paywall shows the old price has
+    /// an answer in the data rather than a guess.
+    var priceSource: String {
+        StorePriceSubstitution.resolve(
+            authoredPrice: price_display ?? price,
+            productId: productId,
+            useStorePrice: use_store_price,
+            storePrice: resolvedStorePrice
+        ).source
+    }
     /// Trial display — an authored `trial.label` wins verbatim; a bare
     /// `trialDuration` ("7-day") is enriched to "7-day free trial" (
     /// the " free trial" suffix used to live at the PlanCard render site only,
@@ -595,6 +637,7 @@ struct PaywallPlan: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case _id = "id"
         case name, label, price, period, badge, price_display, sort_order
+        case use_store_price
         case trial, description, features, savings_text, cta_text, icon, image_url
         case original_price_display
         case price_total_display
@@ -623,6 +666,9 @@ struct PaywallPlan: Codable, Identifiable {
         self.label = try c.decodeIfPresent(String.self, forKey: .label)
         self.price = PaywallPlan.looseString(c, .price)
         self.price_display = PaywallPlan.looseString(c, .price_display)
+        // #923 — absent means "ask the store", so only an explicit `false` opts out.
+        self.use_store_price = try? c.decodeIfPresent(Bool.self, forKey: .use_store_price)
+        self.resolvedStorePrice = nil
         self.period = try c.decodeIfPresent(String.self, forKey: .period)
         self.badge = try c.decodeIfPresent(String.self, forKey: .badge)
         self.trialDuration = PaywallPlan.looseString(c, .trialDuration)

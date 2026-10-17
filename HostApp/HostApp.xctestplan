@@ -1,0 +1,26 @@
+{
+  "configurations" : [
+    {
+      "id" : "A3F1C0DE-0000-4000-8000-000000000001",
+      "name" : "Configuration 1",
+      "options" : {
+
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "storeKitConfigurationFileReference" : {
+      "identifier" : "container:AppDNAHost\/Products.storekit"
+    }
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:AppDNAHost.xcodeproj",
+        "identifier" : "AppDNAHostUITests",
+        "name" : "AppDNAHostUITests"
+      }
+    }
+  ],
+  "version" : 1
+}

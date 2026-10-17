@@ -46,6 +46,14 @@ targets:
         # one an author typed?" without shipping to a customer. Priced deliberately differently
         # from anything a test paywall authors, so the two can never be confused.
         #
+        # 🔴 THIS SETTING ONLY COPIES THE FILE INTO THE BUNDLE. It does NOT switch the simulator's
+        # store over to it — that is a SCHEME option, `storeKitConfiguration` under `run:` and
+        # `test:` below, which is what Xcode writes when you pick a configuration in the Run
+        # dialog. Without those two lines the catalogue ships inside the .app and nothing reads it:
+        # the SDK asks StoreKit for its products, gets an empty answer, falls back to the authored
+        # price, and the screen looks exactly as it did before the feature existed. Measured on
+        # #923 — "the store knows none of 2 product(s)" with the file sitting in the bundle.
+        #
         # 🔴 Folded into THIS block rather than added as a second `settings:` on the target. YAML
         # takes the later duplicate key, so a second block would have silently discarded the bundle
         # identifier above — and the build would have succeeded, under the wrong id.
@@ -76,6 +84,17 @@ schemes:
         AppDNAHostUITests: [test]
     run:
       config: Debug
+      # The line that actually switches the simulator's store over (see the build setting above).
+      storeKitConfiguration: AppDNAHost/Products.storekit
     test:
       config: Debug
+      # 🔴 THE TEST ACTION NEEDS A TEST PLAN, not this key. XcodeGen accepts
+      # `storeKitConfiguration:` here and writes it into `<LaunchAction>` only, so a UI test ran
+      # against an EMPTY store: the host's own `Product.products(for:)` probe reported `store:0`
+      # with the catalogue sitting in the bundle and the scheme referencing it for Run. A test plan
+      # is the mechanism Apple documents for this, and `xcodebuild` refuses `-testPlan` unless the
+      # scheme declares one — which is what `testPlans:` below does.
+      testPlans:
+        - path: HostApp.xctestplan
+          defaultPlan: true
       targets: [AppDNAHostUITests]

@@ -51,6 +51,23 @@ enum Launch {
         // better state to debug than an app that quietly did nothing at launch.
         let key = arg("appdnaApiKey") ?? "appdna_sandbox_demo_key"
         AppDNA.configure(apiKey: key, environment: .sandbox)
+        /*
+         `-appdnaLogLevel info` (or debug). The SDK defaults to `.warning`, so every `Log.info` is
+         SUPPRESSED — including the lines that say which branch a decision took. That cost a cycle
+         on #923: the store-price lookup logs its three failure modes at info, the paywall rendered
+         the authored price, and the log had nothing in it either way, which is indistinguishable
+         from the code never running.
+        */
+        if let lvl = arg("appdnaLogLevel") {
+            switch lvl.lowercased() {
+            case "debug": AppDNA.setLogLevel(.debug)
+            case "info": AppDNA.setLogLevel(.info)
+            case "error": AppDNA.setLogLevel(.error)
+            case "none": AppDNA.setLogLevel(.none)
+            default: AppDNA.setLogLevel(.warning)
+            }
+            NSLog("AppDNA-E2E log level \(lvl)")
+        }
         NSLog("AppDNA-E2E host configured env=sandbox key=\(key.prefix(8))…")
     }
 
