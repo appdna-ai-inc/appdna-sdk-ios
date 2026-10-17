@@ -1055,6 +1055,13 @@ struct PaywallRenderer: View {
         let quoteTextStyle = style?.elements?["quote"]?.textStyle
         let authorNameTextStyle = style?.elements?["author_name"]?.textStyle
         let authorRoleTextStyle = style?.elements?["author_role"]?.textStyle
+        // #913 — and their containers, from the ElementStylePanel the console shows beside each
+        // TextStylePanel. Resolved once: `author_name` is drawn at TWO sites below, the card/quote
+        // layouts and the `minimal` one, and wiring only the first is how #905 and #910 each
+        // reached a device with an authored border that drew nowhere.
+        let quoteElementStyle = style?.elements?["quote"]?.container
+        let authorNameElementStyle = style?.elements?["author_name"]?.container
+        let authorRoleElementStyle = style?.elements?["author_role"]?.container
         let layout = data?.layout ?? "quote"
 
         let content = VStack(spacing: 12) {
@@ -1065,16 +1072,19 @@ struct PaywallRenderer: View {
                     .foregroundColor(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
             }
 
-            if let ts = quoteTextStyle {
-                Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
-                    .applyTextStyle(ts)
-            } else {
-                Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
-                    .italic()
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(.secondary)
-                    .font(layout == "minimal" ? .caption : .body)
+            Group {
+                if let ts = quoteTextStyle {
+                    Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
+                        .applyTextStyle(ts)
+                } else {
+                    Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
+                        .italic()
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.secondary)
+                        .font(layout == "minimal" ? .caption : .body)
+                }
             }
+            .applyElementStyle(quoteElementStyle)
 
             if layout != "minimal" {
                 HStack(spacing: 12) {
@@ -1098,28 +1108,39 @@ struct PaywallRenderer: View {
                     }
 
                     VStack(alignment: .leading, spacing: 2) {
-                        if let name = data?.authorName {
+                        Group { if let name = data?.authorName {
                             let interpolatedName = loc("testimonial.author_name", name)
                             if let ts = authorNameTextStyle {
                                 Text(interpolatedName).applyTextStyle(ts)
                             } else {
                                 Text(interpolatedName).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
                             }
-                        }
-                        if let role = data?.authorRole {
+                        } }
+                        .applyElementStyle(authorNameElementStyle)
+                        Group { if let role = data?.authorRole {
                             let interpolatedRole = loc("testimonial.author_role", role)
                             if let ts = authorRoleTextStyle {
                                 Text(interpolatedRole).applyTextStyle(ts)
                             } else {
                                 Text(interpolatedRole).font(.caption).foregroundColor(.secondary)
                             }
-                        }
+                        } }
+                        .applyElementStyle(authorRoleElementStyle)
                     }
                 }
             } else if let name = data?.authorName {
-                // Minimal: just author name inline
-                Text("— \(loc("testimonial.author_name", name))")
-                    .font(.caption.weight(.medium)).foregroundColor(.secondary)
+                // Minimal: just author name inline. #913 — the SECOND site this element is drawn
+                // at, and it honours the same text style and container as the card layouts: the
+                // console has one control, and a host sees whichever layout it authored.
+                Group {
+                    if let ts = authorNameTextStyle {
+                        Text("— \(loc("testimonial.author_name", name))").applyTextStyle(ts)
+                    } else {
+                        Text("— \(loc("testimonial.author_name", name))")
+                            .font(.caption.weight(.medium)).foregroundColor(.secondary)
+                    }
+                }
+                .applyElementStyle(authorNameElementStyle)
             }
         }
         .padding(layout == "card" ? 16 : 0)
@@ -1706,7 +1727,9 @@ struct PaywallRenderer: View {
                         }
                     }
 
-                    if let label = item.label ?? item.title {
+                    // #913 — the icon grid's two text elements, each with the container the
+                    // console's ElementStylePanel writes beside its text style.
+                    Group { if let label = item.label ?? item.title {
                         let ts = style?.elements?["title"]?.textStyle
                         if let ts = ts {
                             Text(label).applyTextStyle(ts)
@@ -1716,9 +1739,10 @@ struct PaywallRenderer: View {
                                 .foregroundColor(.primary)
                                 .multilineTextAlignment(.center)
                         }
-                    }
+                    } }
+                    .applyElementStyle(style?.elements?["title"]?.container)
 
-                    if let desc = item.description ?? item.subtitle {
+                    Group { if let desc = item.description ?? item.subtitle {
                         let ds = style?.elements?["description"]?.textStyle
                         if let ds = ds {
                             Text(desc).applyTextStyle(ds)
@@ -1728,7 +1752,8 @@ struct PaywallRenderer: View {
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
                         }
-                    }
+                    } }
+                    .applyElementStyle(style?.elements?["description"]?.container)
                 }
             }
         }

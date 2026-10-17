@@ -296,6 +296,69 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
     }
 
+    /**
+     #913 — the four elements #910 left container-less: the testimonial's `quote`, `author_name` and
+     `author_role`, and the icon grid's `description` (with its `title` beside it).
+
+     A SECOND frame rather than more sections on the first: a paywall tall enough to carry both sets
+     scrolls, and a colour that is below the fold is a colour this test cannot see. Each border is a
+     distinct colour so the frame cannot pass by drawing one of them twice.
+     */
+    func testPerElementStyles_testimonialAndIconGrid() throws {
+        let json = """
+        {
+          "id": "snap_element_styles_sections",
+          "name": "Section elements",
+          "layout": {
+            "type": "stack",
+            "background": { "type": "color", "value": "#FFFFFF" },
+            "sections": [
+              { "id": "t", "type": "testimonial",
+                "config": { "layout": "card", "quote": "A quoted line",
+                            "author_name": "A Name", "author_role": "A Role" },
+                "style": { "elements": {
+                  "quote": { "element_style": { "border": { "color": "#2563EB", "width": 2, "radius": 8 },
+                                                "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } },
+                  "author_name": { "element_style": { "border": { "color": "#059669", "width": 2, "radius": 8 },
+                                                      "padding": { "top": 2, "bottom": 2, "left": 6, "right": 6 } } },
+                  "author_role": { "element_style": { "border": { "color": "#B91C1C", "width": 2, "radius": 8 },
+                                                      "padding": { "top": 2, "bottom": 2, "left": 6, "right": 6 } } }
+                } } },
+              { "id": "g", "type": "icon_grid",
+                "config": { "columns": 1,
+                            "items": [{ "icon": "star", "label": "A label", "description": "A description" }] },
+                "style": { "elements": {
+                  "title": { "element_style": { "border": { "color": "#9333EA", "width": 2, "radius": 8 },
+                                                "padding": { "top": 2, "bottom": 2, "left": 6, "right": 6 } } },
+                  "description": { "element_style": { "border": { "color": "#C2410C", "width": 2, "radius": 8 },
+                                                      "padding": { "top": 2, "bottom": 2, "left": 6, "right": 6 } } }
+                } } }
+            ]
+          },
+          "plans": [],
+          "cta": { "text": "Continue" },
+          "dismiss": { "allowed": true, "style": "x_button" }
+        }
+        """
+        let config = try paywall(json)
+        let testimonial = config.sections.first { $0.type == "testimonial" }
+        XCTAssertNotNil(
+            testimonial?.style?.elements?["quote"]?.container?.border?.color,
+            "the element style did not decode — the DTO is back to dropping it",
+        )
+        try write(render(config), named: "element_styles_sections")
+        for (colour, what) in [
+            ("#2563EB", "the testimonial quote"),
+            ("#059669", "the author name"),
+            ("#B91C1C", "the author role"),
+            ("#9333EA", "the icon-grid title"),
+            ("#C2410C", "the icon-grid description"),
+        ] {
+            XCTAssertTrue(try frameContains("element_styles_sections", colour: colour),
+                          "no \(colour) pixel — \(what)'s authored border did not draw")
+        }
+    }
+
     /// #891 — the unselected plan tile, whose text colour is a SYSTEM colour on this platform, in
     /// both appearances. The frame is the evidence: light and dark must both stay readable.
     func testPlanTilesInBothAppearances() throws {
