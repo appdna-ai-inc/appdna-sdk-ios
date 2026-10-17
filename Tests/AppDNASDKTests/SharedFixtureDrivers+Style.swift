@@ -34,10 +34,32 @@ extension SharedFixtureTests {
         case "resolve_shadow": runResolveShadow(f, h)
         case "resolve_header_inset": runHeaderCloseInset(f, h)
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
+        case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: bottom_zone_overflows
+
+    /**
+     #903 — whether a pinned bottom zone is too tall to stay pinned, through the REAL
+     `PaywallBottomZone.overflows`. Values are `[pinnedPx, viewportPx]`.
+     */
+    private func runBottomZoneOverflows(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] bottom_zone_overflows needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let pair = c.objectValue?["value"]?.arrayValue, pair.count == 2,
+                  let pinned = pair[0].doubleValue, let viewport = pair[1].doubleValue else {
+                XCTFail("[\(f.id)] a case is not [pinnedPx, viewportPx]")
+                return NSNull()
+            }
+            return PaywallBottomZone.overflows(pinned: pinned, viewport: viewport)
+        }
     }
 
     // MARK: paywall_default_text_colour

@@ -10,6 +10,10 @@ struct PaywallRenderer: View {
     var onPromoCodeSubmit: ((String, @escaping (Bool) -> Void) -> Void)? = nil
 
     @State private var selectedPlanId: String?
+    /// #903 — the pinned group's measured height, the viewport's, and the latched verdict.
+    @State private var pinnedZoneHeight: CGFloat = 0
+    @State private var paywallViewportHeight: CGFloat = 0
+    @State private var bottomZoneOverflowed = false
     @State private var showDismiss = false
     /// #652 — the Back button has its OWN delay, so it cannot ride on `showDismiss`.
     @State private var showBack = false
@@ -95,10 +99,40 @@ struct PaywallRenderer: View {
      The CTA and `sticky_footer` are excluded because they are pinned by their own rules already;
      adding them here would render them twice.
      */
-    private var bottomZoneSections: [PaywallSection] {
+    private var authoredBottomZoneSections: [PaywallSection] {
         config.sections.filter {
             $0.zone == "bottom" && $0.type != "cta" && $0.type != "sticky_footer"
                 && !pinnedFooterLegalIds.contains($0.id ?? "")
+        }
+    }
+
+    /**
+     #903 — the pinned group, capped against the viewport.
+
+     Pinning the plans and the CTA is what the zone is for; pinning the header, the features and a
+     table as well turns the body into a sliver, which is #884's defect arriving from the other
+     direction. Past `PaywallBottomZone.maxFraction` everything except the CTA goes back to the
+     body in its authored position — degrade, never clip, because a group that hides the button is
+     worse than a scrolling one.
+
+     🔴 LATCHED in `bottomZoneOverflowed`, because the decision feeds back into what it measures:
+     unpinning shrinks the group below the threshold, which would re-pin it, which would exceed the
+     threshold again. The first full measurement decides and the decision holds.
+     */
+    private var bottomZoneSections: [PaywallSection] {
+        bottomZoneOverflowed ? [] : authoredBottomZoneSections
+    }
+
+    /// #903 — record the pinned group's height and latch the verdict once it is known.
+    private func recordPinnedHeight(_ geo: GeometryProxy) {
+        // The reader is a zero-height probe at the TOP of the group, so the group's height is the
+        // distance from it to the bottom of the window.
+        let frame = geo.frame(in: .global)
+        let height = max(0, paywallViewportHeight - frame.minY)
+        pinnedZoneHeight = height
+        if !bottomZoneOverflowed,
+           PaywallBottomZone.overflows(pinned: Double(height), viewport: Double(paywallViewportHeight)) {
+            bottomZoneOverflowed = true
         }
     }
 
@@ -144,7 +178,13 @@ struct PaywallRenderer: View {
         // chosen against the surface it is drawn on. Through the ENVIRONMENT rather than a
         // parameter: `PlanCard` alone has five call sites, and five places to forget one is how
         // the screens surface lost its styling in #904.
-        content.environment(\.paywallBackgroundHex, pageBackgroundHex)
+        content
+            .environment(\.paywallBackgroundHex, pageBackgroundHex)
+            // #903 — the viewport the pinned-zone cap is measured against.
+            .background(GeometryReader { geo in
+                Color.clear.onAppear { paywallViewportHeight = geo.size.height }
+                    .onChange(of: geo.size.height) { paywallViewportHeight = $0 }
+            })
     }
 
     private var content: some View {
@@ -198,6 +238,13 @@ struct PaywallRenderer: View {
             .safeAreaInset(edge: .bottom) {
                 // Bottom-pinned CTA + sticky footer (Apple HIG pattern)
                 VStack(spacing: 0) {
+                    // #903 — measure this group and latch the verdict. The reader sits INSIDE the
+                    // group so it measures what is pinned, including the CTA, which is what the
+                    // user actually loses body height to.
+                    Color.clear.frame(height: 0).background(GeometryReader { geo in
+                        Color.clear.onAppear { recordPinnedHeight(geo) }
+                            .onChange(of: geo.frame(in: .global).minY) { _ in recordPinnedHeight(geo) }
+                    })
                     // #884 — the authored bottom-zone sections, above the CTA, in authored order.
                     ForEach(Array(bottomZoneSections.enumerated()), id: \.offset) { _, pinned in
                         sectionView(for: pinned)
