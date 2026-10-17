@@ -117,10 +117,52 @@ public struct SectionPositionConfig: Codable {
     public let horizontal_offset: Double?
 }
 
+/**
+ One entry under `style.elements` — what the CONSOLE writes there.
+
+ #905 — this used to be an `ElementStyleConfig`, i.e. the SDK modelled an element entry AS the
+ style, with `text_style` nested inside it. The console writes the other shape: a `text_style` AND
+ an `element_style` side by side, because its editor offers a TextStylePanel and an
+ ElementStylePanel per element. So the whole container half — border, radius, padding, opacity,
+ shadow — landed on a key the DTO did not have and was dropped silently on both platforms, while
+ the console kept offering the controls.
+
+ Both spellings decode now: `element_style` as the console writes it, and the flattened fields for
+ any payload that puts them on the entry itself.
+ */
+public struct SectionElementConfig: Codable {
+    public let textStyle: TextStyleConfig?
+    public let elementStyle: ElementStyleConfig?
+    public let background: BackgroundStyleConfig?
+    public let border: BorderStyleConfig?
+    public let shadow: ShadowStyleConfig?
+    public let padding: SpacingConfig?
+    public let corner_radius: Double?
+    public let opacity: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case textStyle = "text_style"
+        case elementStyle = "element_style"
+        case background, border, shadow, padding, opacity
+        case corner_radius
+    }
+
+    /// The container style this element asks for, from either spelling, or nil when it asks for none.
+    public var container: ElementStyleConfig? {
+        if let elementStyle { return elementStyle }
+        guard background != nil || border != nil || shadow != nil || padding != nil
+            || corner_radius != nil || opacity != nil else { return nil }
+        return ElementStyleConfig(
+            background: background, border: border, shadow: shadow, padding: padding,
+            corner_radius: corner_radius, opacity: opacity, textStyle: nil,
+        )
+    }
+}
+
 /// Section-level style (container + per-element overrides + margin).
 public struct SectionStyleConfig: Codable {
     public let container: ElementStyleConfig?
-    public let elements: [String: ElementStyleConfig]?
+    public let elements: [String: SectionElementConfig]?
     public let margin: SpacingMargin?
     public let position: SectionPositionConfig?
 }
@@ -371,6 +413,25 @@ extension StyleEngine {
             dx: Double(s.x ?? 0),
             dy: Double(s.y ?? 0)
         )
+    }
+}
+
+extension View {
+    /**
+     #905 — apply a per-element container style, or nothing at all.
+
+     `applyContainerStyle` always wraps (padding, clip, overlay, shadow, opacity), which is right
+     for a SECTION container that always exists and wrong for an element that usually asks for
+     nothing: wrapping every price and badge in an AnyView would change layout on every paywall
+     ever published. So absence stays absent.
+     */
+    @ViewBuilder
+    func applyElementStyle(_ style: ElementStyleConfig?) -> some View {
+        if let style {
+            self.applyContainerStyle(style)
+        } else {
+            self
+        }
     }
 }
 

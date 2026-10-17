@@ -35,10 +35,42 @@ extension SharedFixtureTests {
         case "resolve_header_inset": runHeaderCloseInset(f, h)
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
         case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
+        case "resolve_element_container": runElementContainer(f, h)
         default:
             return false
         }
         return true
+    }
+
+    // MARK: resolve_element_container
+
+    /**
+     #905 — the per-element container style, through the REAL DTO: the entry decodes as
+     `SectionElementConfig` and resolves through `container`, which is what the renderer reads.
+     */
+    private func runElementContainer(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_element_container needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let dict = c.objectValue?["value"]?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let entry = try? JSONDecoder().decode(SectionElementConfig.self, from: data) else {
+                XCTFail("[\(f.id)] an element entry did not decode")
+                return NSNull()
+            }
+            guard let container = entry.container else { return NSNull() }
+            return [
+                SharedFixtureTests.orNull(container.border?.color),
+                SharedFixtureTests.orNull(container.border?.width),
+                SharedFixtureTests.orNull(container.border?.radius),
+                SharedFixtureTests.orNull(container.corner_radius),
+                SharedFixtureTests.orNull(container.opacity),
+                SharedFixtureTests.orNull(container.padding?.top),
+            ] as [Any]
+        }
     }
 
     // MARK: bottom_zone_overflows

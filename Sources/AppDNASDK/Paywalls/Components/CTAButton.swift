@@ -51,14 +51,16 @@ struct CTAButton: View {
     /// Restore action
     var onRestore: (() -> Void)? = nil
 
-    private var buttonElement: ElementStyleConfig? {
+    private var buttonElement: SectionElementConfig? {
         sectionStyle?.elements?["button"]
     }
     private var buttonTextStyle: TextStyleConfig? {
         buttonElement?.textStyle
     }
+    /// #905 — the button's container half, from either spelling (`element_style` or flattened).
+    private var buttonContainer: ElementStyleConfig? { buttonElement?.container }
     private var buttonBgColor: Color {
-        if let hex = buttonElement?.background?.color {
+        if let hex = buttonContainer?.background?.color {
             return Color(hex: hex)
         }
         return Color(hex: cta?.resolvedBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))

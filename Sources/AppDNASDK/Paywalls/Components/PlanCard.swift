@@ -23,6 +23,19 @@ struct PlanCard: View {
     private var showFeatures: Bool { cardStyle.showFeatures }
     private var showSavings: Bool { cardStyle.showSavings }
 
+    /**
+     #905 — the CONTAINER style an element asks for, which the console has always offered and
+     neither platform read.
+
+     Its editor gives every element a TextStylePanel and an ElementStylePanel; the second writes
+     `element_style` with a border, a radius, padding, an opacity or a shadow, and the SDK's DTO
+     had nowhere to put it. `applyContainerStyle` is the same function a SECTION container uses, so
+     an element and its section are styled by one implementation.
+     */
+    private func elementStyle(_ key: String) -> ElementStyleConfig? {
+        sectionStyle?.elements?[key]?.container
+    }
+
     private var planNameTextStyle: TextStyleConfig? {
         sectionStyle?.elements?["plan_name"]?.textStyle ?? sectionStyle?.elements?["label"]?.textStyle
     }
@@ -141,15 +154,19 @@ struct PlanCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         // Row 1: Name + inline badge
                         HStack(spacing: 8) {
-                            if let ts = planNameTextStyle {
-                                Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
-                                    .applyTextStyle(ts)
-                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
-                            } else {
-                                Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
-                                    .font(.headline)
-                                    .foregroundColor(effectiveTextColor)
+                            Group {
+                                if let ts = planNameTextStyle {
+                                    Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
+                                        .applyTextStyle(ts)
+                                        .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                } else {
+                                    Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
+                                        .font(.headline)
+                                        .foregroundColor(effectiveTextColor)
+                                }
                             }
+                            // #905 — `plan_name` falls back to `label`, exactly as its text style does.
+                            .applyElementStyle(elementStyle("plan_name") ?? elementStyle("label"))
 
                             if let badge = plan.badge, badgePositionValue == "inline" {
                                 badgeView(badge)
@@ -329,15 +346,18 @@ struct PlanCard: View {
 
     @ViewBuilder
     private var currentPriceView: some View {
-        if let ts = priceTextStyle {
-            Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
-                .applyTextStyle(ts)
-                .foregroundColor(planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
-        } else {
-            Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
-                .font(.subheadline.bold())
-                .foregroundColor(planPriceColor ?? effectiveTextColor)
+        Group {
+            if let ts = priceTextStyle {
+                Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
+                    .applyTextStyle(ts)
+                    .foregroundColor(planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
+            } else {
+                Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
+                    .font(.subheadline.bold())
+                    .foregroundColor(planPriceColor ?? effectiveTextColor)
+            }
         }
+        .applyElementStyle(elementStyle("price"))
     }
 
     /// `headline_stacked` mirrors the console preview: the current price large on its own
@@ -490,6 +510,9 @@ struct PlanCard: View {
                 badgeShape(shape)
                     .stroke(borderCol, lineWidth: borderW)
             )
+            // #905 — the badge's authored container style, applied OUTSIDE its own chrome so an
+            // authored border or padding surrounds the badge rather than replacing it.
+            .applyElementStyle(elementStyle("badge"))
         }
     }
 

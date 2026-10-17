@@ -1964,7 +1964,9 @@ struct PaywallRenderer: View {
                 starColor: data?.starColor ?? "#FBBF24",
                 textStyle: style?.elements?["text"]?.textStyle,
                 authorStyle: style?.elements?["author"]?.textStyle,
-                cardStyle: style?.elements?["card"],
+                // #905 — `elements[…]` is a SectionElementConfig now; the card wants the
+                // container half of it, from either spelling.
+                cardStyle: style?.elements?["card"]?.container,
                 loc: loc
             )
         }

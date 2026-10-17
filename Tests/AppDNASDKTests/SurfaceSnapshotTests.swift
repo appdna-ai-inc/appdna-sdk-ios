@@ -207,6 +207,53 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
     }
 
+    /// #905 — a per-element container style, which the console has always offered and neither
+    /// platform read. A green border round the plan label and a red one round the price is a
+    /// deliberately unsubtle choice: the frame has to show whether it arrived at all.
+    func testPerElementStyles() throws {
+        let json = """
+        {
+          "id": "snap_element_styles",
+          "name": "Per-element styles",
+          "layout": {
+            "type": "stack",
+            "background": { "type": "color", "value": "#FFFFFF" },
+            "sections": [
+              { "id": "h", "type": "header", "config": { "title": "Per-element styles" } },
+              { "id": "p", "type": "plans", "config": {},
+                "style": { "elements": {
+                  "label": { "element_style": { "border": { "color": "#16A34A", "width": 2, "radius": 8 },
+                                                "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } },
+                  "price": { "element_style": { "border": { "color": "#EF4444", "width": 2, "radius": 8 },
+                                                "padding": { "top": 4, "bottom": 4, "left": 8, "right": 8 } } }
+                } } },
+              { "id": "c", "type": "cta", "config": {} }
+            ]
+          },
+          "plans": [
+            { "id": "annual", "product_id": "premium_annual", "label": "Annual",
+              "price_display": "39.99/year", "is_default": true, "sort_order": 0 },
+            { "id": "monthly", "product_id": "premium_monthly", "label": "Monthly",
+              "price_display": "6.99/month", "is_default": false, "sort_order": 1 }
+          ],
+          "cta": { "text": "Continue" },
+          "dismiss": { "allowed": true, "style": "x_button" }
+        }
+        """
+        let config = try paywall(json)
+        let plans = config.sections.first { $0.type == "plans" }
+        XCTAssertNotNil(
+            plans?.style?.elements?["label"]?.container?.border?.color,
+            "the element style did not decode — the DTO is back to dropping it",
+        )
+        try write(render(config), named: "element_styles")
+        // The authored border colours have to be IN the frame, or it arrived nowhere.
+        XCTAssertTrue(try frameContains("element_styles", colour: "#16A34A"),
+                      "no green pixel — the label's authored border did not draw")
+        XCTAssertTrue(try frameContains("element_styles", colour: "#EF4444"),
+                      "no red pixel — the price's authored border did not draw")
+    }
+
     /// #891 — the unselected plan tile, whose text colour is a SYSTEM colour on this platform, in
     /// both appearances. The frame is the evidence: light and dark must both stay readable.
     func testPlanTilesInBothAppearances() throws {
