@@ -1776,20 +1776,12 @@ struct PaywallRenderer: View {
     // MARK: - Comparison table section
 
     private func comparisonTableSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
-        // Column labels: prefer structured tableColumns, fall back to plain string array from AnyCodable columns
-        let structuredCols = data?.tableColumns ?? []
-        let columnLabels: [String]
-        let columnHighlights: [Bool]
-        if !structuredCols.isEmpty {
-            columnLabels = structuredCols.map { $0.label ?? "" }
-            columnHighlights = structuredCols.map { $0.highlighted ?? false }
-        } else if let colStrings = data?.columns?.value as? [String] {
-            columnLabels = colStrings
-            columnHighlights = Array(repeating: false, count: colStrings.count)
-        } else {
-            columnLabels = []
-            columnHighlights = []
-        }
+        let resolved = PaywallTableColumns.resolve(
+            structured: data?.tableColumns,
+            fallback: data?.columns?.value,
+        )
+        let columnLabels = resolved.labels
+        let columnHighlights = resolved.highlights
         let rows = data?.tableRows ?? []
         let checkClr = Color(hex: data?.checkColor ?? "#22C55E")
         let crossClr = Color(hex: data?.crossColor ?? "#D1D5DB")

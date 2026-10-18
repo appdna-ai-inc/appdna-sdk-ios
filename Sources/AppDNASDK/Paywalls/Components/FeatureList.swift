@@ -84,26 +84,26 @@ struct FeatureList: View {
     }
 
     var body: some View {
-        if columns > 1, let items = richItems, !items.isEmpty {
-            // Multi-column grid
-            let gridColumns = Array(repeating: GridItem(.flexible(), spacing: gap), count: columns)
-            LazyVGrid(columns: gridColumns, spacing: gap) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    richItemRow(item)
-                }
-            }
-            .padding(.horizontal)
-        } else if let items = richItems, !items.isEmpty {
-            // Single column rich items
-            VStack(alignment: .leading, spacing: gap) {
-                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    richItemRow(item)
-                }
-            }
-            .padding(.horizontal)
-        } else {
-            // Plain string features (legacy)
-            VStack(alignment: .leading, spacing: gap) {
+        /*
+         🔴 BOTH keys are drawn, and this used to be an `if/else` that drew only one.
+
+         A `features` section may carry the plain `features` string array, the structured `items`
+         array, or both. Android has rendered both, deliberately, since #591 — its own comment gives
+         the reason: "Both keys can be present on an older document, and rendering only one of them
+         would trade this bug for its mirror image." iOS drew `items` when present and SILENTLY
+         DROPPED every plain string beside them, so the same published document showed N+M rows on
+         Android and M on iOS.
+
+         The console only writes `items` today and older documents only carry `features`, so the
+         two agree on everything authored through it — which is precisely why nobody saw this. It is
+         a document carrying both (an older save, or a generated one) that diverges, and on that
+         document iOS was the platform losing content an author had set.
+
+         Plain strings first: they are the older key, so they are the rows that were already on the
+         screen before `items` was added to the same section.
+         */
+        VStack(alignment: .leading, spacing: gap) {
+            if !features.isEmpty {
                 ForEach(features, id: \.self) { feature in
                     HStack(spacing: 12) {
                         featureIcon()
@@ -111,8 +111,24 @@ struct FeatureList: View {
                     }
                 }
             }
-            .padding(.horizontal)
+            if let items = richItems, !items.isEmpty {
+                if columns > 1 {
+                    // Multi-column grid
+                    let gridColumns = Array(repeating: GridItem(.flexible(), spacing: gap), count: columns)
+                    LazyVGrid(columns: gridColumns, spacing: gap) {
+                        ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                            richItemRow(item)
+                        }
+                    }
+                } else {
+                    // Single column rich items
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                        richItemRow(item)
+                    }
+                }
+            }
         }
+        .padding(.horizontal)
     }
 
     /// #910 — the item's authored container style, from `item_text` or its `item` alias, exactly
