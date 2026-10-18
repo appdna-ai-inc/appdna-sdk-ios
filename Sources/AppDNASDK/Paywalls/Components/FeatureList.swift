@@ -3,6 +3,24 @@ import SwiftUI
 /// Checkmark feature list for paywalls.
 /// Supports plain string features and rich structured items with icons, images, and excluded state.
 struct FeatureList: View {
+    /**
+     #947 — the page this list is drawn on, so a colour nobody authored follows the DOCUMENT
+     rather than the phone.
+
+     `.primary` and `.secondary` are system colours: black in light appearance, white in dark. A
+     paywall forces no colour scheme, so a document that sets a dark page and is opened on a
+     light-appearance phone asked for black text on a dark background — and the other way round.
+     Measured, by rendering this section on both pages in both appearances:
+
+         white page, dark appearance    0 ink of 1,131,840 px
+         dark page,  light appearance   0 ink of 1,131,840 px
+
+     Zero. The feature list — the reason most paywalls exist — was not on the screen for any user
+     whose phone setting disagreed with the author's background. #891 fixed exactly this for the
+     plan tiles and the header; this is the same defect in the sections it did not reach.
+     */
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
+
     let features: [String]
     var richItems: [PaywallGenericItem]? = nil
     var columns: Int = 1
@@ -111,7 +129,8 @@ struct FeatureList: View {
             } else if let hex = itemTextColorOverride, !hex.isEmpty {
                 Text(text).font(.body).foregroundColor(Color(hex: hex))
             } else {
-                Text(text).font(.body).foregroundColor(.primary)
+                // #947 — off the PAGE, not off the phone. See the note on `pageBackgroundHex`.
+                Text(text).font(.body).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
             }
         }
         .applyElementStyle(itemElementStyle)
@@ -133,7 +152,10 @@ struct FeatureList: View {
                     Text(subtitle)
                         .font(.system(size: subtitleFontSize ?? 12))
                         .foregroundColor(
-                            subtitleColorOverride.flatMap { $0.isEmpty ? nil : Color(hex: $0) } ?? .secondary
+                            // #947 — the subtitle's `.secondary` had the same problem as the
+                            // title's `.primary`; 70% of the page's ink is this repo's `secondary`.
+                            subtitleColorOverride.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
+                                ?? PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)
                         )
                         .fixedSize(horizontal: false, vertical: true)
                 }

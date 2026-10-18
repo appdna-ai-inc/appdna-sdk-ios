@@ -282,7 +282,11 @@ struct PlanCard: View {
                                             } else {
                                                 Text(feat)
                                                     .font(.caption2)
-                                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : .secondary)
+                                                    // #947 — `.secondary` follows the PHONE; the page
+                                                    // is in the document. See `pageBackgroundHex`.
+                                                    .foregroundColor(isSelected && selectedTextColor != nil
+                                                                     ? effectiveTextColor.opacity(0.85)
+                                                                     : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                             }
                                         }
                                         .applyElementStyle(elementStyle("feature"))
@@ -298,7 +302,10 @@ struct PlanCard: View {
                     if showIcon, let iconName = plan.icon, !iconName.isEmpty {
                         Image(systemName: iconName)
                             .font(.title3)
-                            .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : .secondary)
+                            // #947 — the plan icon, off the page rather than off the phone.
+                            .foregroundColor(isSelected && selectedTextColor != nil
+                                             ? effectiveTextColor
+                                             : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             .padding(.trailing, 4)
                     }
 
@@ -428,7 +435,7 @@ struct PlanCard: View {
                     Text(loc?("plan.\(planIndex).period", period) ?? period)
                         .font(.caption)
                         .foregroundColor(isSelected && selectedTextColor != nil
-                            ? effectiveTextColor.opacity(0.7) : .secondary)
+                            ? effectiveTextColor.opacity(0.7) : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                 }
             }
             .applyElementStyle(elementStyle("period"))
@@ -519,7 +526,7 @@ struct PlanCard: View {
                 .font(plan.subtitle_font_size.map { Font.system(size: $0) } ?? .caption)
                 .foregroundColor(
                     plan.subtitle_color.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
-                        ?? (isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : .secondary)
+                        ?? (isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.8) : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                 )
                 .multilineTextAlignment(subtitleAlignment)
                 .frame(maxWidth: .infinity, alignment: subtitleFrameAlignment)

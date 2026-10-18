@@ -4,6 +4,12 @@ import AVKit
 // MARK: - Countdown timer (social proof sub-type)
 
 struct CountdownTimerView: View {
+    /// #947 — the page, so a colour nobody authored follows the DOCUMENT rather than the phone.
+    /// `.primary` and `.secondary` are black in light appearance and white in dark, and a paywall
+    /// forces no colour scheme — so this view drew differently for two users looking at the same
+    /// published document. Measured as pixels that change between the two appearances.
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
+
     let seconds: Int
     var valueTextStyle: TextStyleConfig? = nil
     @State private var remaining: Int
@@ -22,9 +28,9 @@ struct CountdownTimerView: View {
 
         HStack(spacing: 4) {
             timeUnit(hours, label: "h")
-            Text(":").foregroundColor(.secondary)
+            Text(":").foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
             timeUnit(minutes, label: "m")
-            Text(":").foregroundColor(.secondary)
+            Text(":").foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
             timeUnit(secs, label: "s")
         }
         .onAppear {
@@ -51,11 +57,11 @@ struct CountdownTimerView: View {
             } else {
                 Text(String(format: "%02d", value))
                     .font(.title2.monospacedDigit().bold())
-                    .foregroundColor(.primary)
+                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
             }
             Text(label)
                 .font(.caption2)
-                .foregroundColor(.secondary)
+                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
         }
         .frame(minWidth: 40)
         .padding(.vertical, 6)
@@ -209,12 +215,21 @@ struct Line: Shape {
 // MARK: - Carousel sub-view
 
 struct CarouselView: View {
+    /// #947 — the page, so a colour nobody authored follows the DOCUMENT rather than the phone.
+    /// `.primary` and `.secondary` are black in light appearance and white in dark, and a paywall
+    /// forces no colour scheme — so this view drew differently for two users looking at the same
+    /// published document. Measured as pixels that change between the two appearances.
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
+
     let pages: [PaywallCarouselPage]
     let config: PaywallConfig
     let autoScroll: Bool
     let autoScrollIntervalMs: Int
     let showIndicators: Bool
     let indicatorColor: String
+    /// #947 — whether `indicatorColor` came from the document. An authored colour is drawn as
+    /// authored; a resolved default is drawn at `subtleAlpha`, matching Android.
+    var hasAuthoredIndicatorColor: Bool = false
     let indicatorActiveColor: String
     let height: CGFloat?
     let loc: (String, String) -> String
@@ -233,12 +248,12 @@ struct CarouselView: View {
                                 if let title = child.data?.title {
                                     Text(title)
                                         .font(.headline)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 }
                                 if let subtitle = child.data?.subtitle {
                                     Text(subtitle)
                                         .font(.subheadline)
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 }
                                 if let imageUrl = child.data?.imageUrl, let url = URL(string: imageUrl) {
                                     BundledAsyncImage(url: url) { image in
@@ -263,10 +278,17 @@ struct CarouselView: View {
             if showIndicators {
                 HStack(spacing: 6) {
                     ForEach(0..<pages.count, id: \.self) { idx in
+                        /*
+                         #947 — the inactive dot at `subtleAlpha`, which is what Android draws
+                         (#938). Both defaults now resolve from the PAGE, so the same published
+                         document shows the same two greys on either platform; an authored
+                         `indicator_color` is still taken at full strength.
+                        */
                         Circle()
                             .fill(idx == currentPage
                                   ? Color(hex: indicatorActiveColor)
-                                  : Color(hex: indicatorColor))
+                                  : Color(hex: indicatorColor)
+                                      .opacity(hasAuthoredIndicatorColor ? 1.0 : PaywallTextDefaults.subtleAlpha))
                             .frame(width: 8, height: 8)
                     }
                 }
@@ -340,7 +362,7 @@ struct ReviewsCarouselView: View {
                             } else {
                                 Text("\u{201C}\(review.text ?? "")\u{201D}")
                                     .font(.subheadline)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                     .multilineTextAlignment(.center)
                                     .italic()
                             }
@@ -384,7 +406,7 @@ struct ReviewsCarouselView: View {
                                 } else {
                                     Text(review.author ?? "")
                                         .font(.caption.weight(.medium))
-                                        .foregroundColor(.secondary)
+                                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 }
                             }
                             .applyElementStyle(authorElementStyle)
@@ -392,7 +414,7 @@ struct ReviewsCarouselView: View {
                             if let date = review.date {
                                 Text(date)
                                     .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
                         }
                     }

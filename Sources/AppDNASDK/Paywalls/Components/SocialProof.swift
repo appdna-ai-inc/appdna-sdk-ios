@@ -2,6 +2,12 @@ import SwiftUI
 
 /// Star rating and review count display.
 struct SocialProof: View {
+    /// #947 — the page this sits on, so `.secondary` stops following the phone. Same reason as
+    /// `FeatureList`: a system colour is black in light appearance and white in dark, and a paywall
+    /// forces no colour scheme, so the review count vanished for anyone whose phone disagreed with
+    /// the author's background. Measured as 1,557 pixels changing between the two appearances.
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
+
     let data: PaywallSectionData?
     var loc: ((String, String) -> String)? = nil
     /// Per-section style with element overrides.
@@ -31,7 +37,9 @@ struct SocialProof: View {
                             } else {
                                 Text("(\(formatCount(count)))")
                                     .font(.caption)
-                                    .foregroundColor(.secondary)
+                                    // #947 — off the page, not off the phone.
+                                    .foregroundColor(
+                                        PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
                         }
                         .applyElementStyle(sectionStyle?.elements?["value"]?.container)

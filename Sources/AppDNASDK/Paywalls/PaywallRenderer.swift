@@ -446,7 +446,7 @@ struct PaywallRenderer: View {
                         } label: {
                             Text(loc("dismiss.text", config.dismiss?.text ?? "No thanks"))
                                 .font(.subheadline)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         }
                         .padding(.bottom, 24)
                     }
@@ -644,7 +644,7 @@ struct PaywallRenderer: View {
                 if (button.style ?? "filled") == "text" {
                     Text(loc("cta.extra.\(button.id)", button.text ?? ""))
                         .font(.system(size: size, weight: .medium))
-                        .foregroundColor(button.text_color.map { Color(hex: $0) } ?? .secondary)
+                        .foregroundColor(button.text_color.map { Color(hex: $0) } ?? PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 } else {
@@ -701,7 +701,7 @@ struct PaywallRenderer: View {
     @ViewBuilder
     private func backAffordance(_ back: PaywallBackButton) -> some View {
         let glyphSize: CGFloat = back.size ?? 16
-        let glyphColor: Color = back.color.map { Color(hex: $0) } ?? .primary
+        let glyphColor: Color = back.color.map { Color(hex: $0) } ?? PaywallTextDefaults.readable(on: pageBackgroundHex)
         switch back.resolvedStyle {
         case "text_link":
             VStack {
@@ -738,7 +738,7 @@ struct PaywallRenderer: View {
     /// 16pt / `.primary` / 32×32 circle exactly.
     private func dismissGlyph(_ systemName: String) -> some View {
         let glyphSize: CGFloat = config.dismiss?.size ?? 16
-        let glyphColor: Color = config.dismiss?.color.map { Color(hex: $0) } ?? .primary
+        let glyphColor: Color = config.dismiss?.color.map { Color(hex: $0) } ?? PaywallTextDefaults.readable(on: pageBackgroundHex)
         return Button {
             triggerDismiss()
         } label: {
@@ -975,7 +975,7 @@ struct PaywallRenderer: View {
                     } else {
                         Text(loc("guarantee.title", title))
                             .font(.subheadline.weight(.semibold))
-                            .foregroundColor(.primary)
+                            .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                     }
                 }
 
@@ -989,7 +989,7 @@ struct PaywallRenderer: View {
                     } else {
                         Text(loc("guarantee.description", desc))
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -1080,7 +1080,7 @@ struct PaywallRenderer: View {
                     Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
                         .italic()
                         .multilineTextAlignment(.center)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         .font(layout == "minimal" ? .caption : .body)
                 }
             }
@@ -1113,7 +1113,7 @@ struct PaywallRenderer: View {
                             if let ts = authorNameTextStyle {
                                 Text(interpolatedName).applyTextStyle(ts)
                             } else {
-                                Text(interpolatedName).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+                                Text(interpolatedName).font(.subheadline.weight(.semibold)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                             }
                         } }
                         .applyElementStyle(authorNameElementStyle)
@@ -1122,7 +1122,7 @@ struct PaywallRenderer: View {
                             if let ts = authorRoleTextStyle {
                                 Text(interpolatedRole).applyTextStyle(ts)
                             } else {
-                                Text(interpolatedRole).font(.caption).foregroundColor(.secondary)
+                                Text(interpolatedRole).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
                         } }
                         .applyElementStyle(authorRoleElementStyle)
@@ -1137,7 +1137,7 @@ struct PaywallRenderer: View {
                         Text("— \(loc("testimonial.author_name", name))").applyTextStyle(ts)
                     } else {
                         Text("— \(loc("testimonial.author_name", name))")
-                            .font(.caption.weight(.medium)).foregroundColor(.secondary)
+                            .font(.caption.weight(.medium)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                     }
                 }
                 .applyElementStyle(authorNameElementStyle)
@@ -1468,7 +1468,7 @@ struct PaywallRenderer: View {
                 } label: {
                     Text(loc("sticky_footer.secondary", secondaryText))
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                 }
             }
 
@@ -1481,7 +1481,7 @@ struct PaywallRenderer: View {
                 // genuinely rendered larger than this line — which the author had sized to 16.
                 Text(loc("sticky_footer.legal", legalText))
                     .font(.system(size: data?.legalFontSize ?? 10))
-                    .foregroundColor(data?.legalTextColor.map { Color(hex: $0) } ?? .secondary)
+                    .foregroundColor(data?.legalTextColor.map { Color(hex: $0) } ?? PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                     .multilineTextAlignment(.center)
             }
         }
@@ -1521,13 +1521,13 @@ struct PaywallRenderer: View {
             // Single card (legacy)
             VStack(alignment: .leading, spacing: 12) {
                 if let title = data?.title {
-                    Text(loc("card.title", title)).font(.headline).foregroundColor(.primary)
+                    Text(loc("card.title", title)).font(.headline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                 }
                 if let subtitle = data?.subtitle {
-                    Text(loc("card.subtitle", subtitle)).font(.subheadline).foregroundColor(.secondary)
+                    Text(loc("card.subtitle", subtitle)).font(.subheadline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                 }
                 if let text = data?.text {
-                    Text(loc("card.body", text)).font(.body).foregroundColor(.secondary)
+                    Text(loc("card.body", text)).font(.body).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                 }
             }
             .padding(data?.padding ?? 16)
@@ -1580,8 +1580,17 @@ struct PaywallRenderer: View {
                 autoScroll: data?.autoScroll ?? false,
                 autoScrollIntervalMs: data?.autoScrollIntervalMs ?? 3000,
                 showIndicators: data?.showIndicators ?? true,
-                indicatorColor: data?.indicatorColor ?? "#666666",
-                indicatorActiveColor: data?.indicatorActiveColor ?? "#FFFFFF",
+                // #947 — the inactive indicator. `#666666` reads on both pages so it was never a
+                // defect, but Android resolves this from the page (#938) and two SDKs drawing a
+                // different grey for the same unauthored field is the divergence #946 asked to
+                // close. Same function, same answer, on both.
+                indicatorColor: data?.indicatorColor
+                    ?? PaywallTextDefaults.readableHex(on: pageBackgroundHex),
+                hasAuthoredIndicatorColor: data?.indicatorColor != nil,
+                // #947 — the ACTIVE indicator, read off the page. White over a white page is one
+                // dot's worth of nothing, and Android's equivalent was fixed in #938.
+                indicatorActiveColor: data?.indicatorActiveColor
+                    ?? PaywallTextDefaults.readableHex(on: pageBackgroundHex),
                 height: data?.height,
                 loc: loc
             )
@@ -1616,7 +1625,7 @@ struct PaywallRenderer: View {
                                 ZStack {
                                     Circle().fill(statusColor).frame(width: 24, height: 24)
                                     if item.status == "completed" {
-                                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(.primary)
+                                        Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                     }
                                 }
                                 if index < items.count - 1 && showLine {
@@ -1624,7 +1633,7 @@ struct PaywallRenderer: View {
                                 }
                             }
                             if let title = item.title {
-                                Text(title).font(.caption.weight(.semibold)).foregroundColor(.primary).multilineTextAlignment(.center)
+                                Text(title).font(.caption.weight(.semibold)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex)).multilineTextAlignment(.center)
                             }
                         }
                         .frame(width: 80)
@@ -1634,7 +1643,12 @@ struct PaywallRenderer: View {
             }
         } else {
         // Vertical timeline (default)
-        let connectorColor = Color(hex: data?.lineColor ?? style?.elements?["connector"]?.textStyle?.color ?? "#FFFFFF")
+        // #947 — the timeline's rail, read off the page. It was white, so on a light paywall the
+        // steps floated with nothing joining them.
+        let connectorColor = Color(
+            hex: data?.lineColor
+                ?? style?.elements?["connector"]?.textStyle?.color
+                ?? PaywallTextDefaults.readableHex(on: pageBackgroundHex))
         let titleFontSize = CGFloat(data?.fontSize ?? 14)
         let itemSpacing: CGFloat = isCompact ? 12 : 20
 
@@ -1736,7 +1750,7 @@ struct PaywallRenderer: View {
                         } else {
                             Text(label)
                                 .font(.caption.weight(.medium))
-                                .foregroundColor(.primary)
+                                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 .multilineTextAlignment(.center)
                         }
                     } }
@@ -1749,7 +1763,7 @@ struct PaywallRenderer: View {
                         } else {
                             Text(desc)
                                 .font(.caption2)
-                                .foregroundColor(.secondary)
+                                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 .multilineTextAlignment(.center)
                         }
                     } }
@@ -1789,14 +1803,14 @@ struct PaywallRenderer: View {
                 // Feature column header
                 Text("Feature")
                     .font(.caption.weight(.bold))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
 
                 ForEach(Array(columnLabels.enumerated()), id: \.offset) { colIdx, label in
                     Text(label)
                         .font(.caption.weight(.bold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
                         .background(colIdx < columnHighlights.count && columnHighlights[colIdx] ? highlightClr.opacity(0.15) : Color.clear)
@@ -1811,7 +1825,7 @@ struct PaywallRenderer: View {
                 HStack(spacing: 0) {
                     Text(row.feature ?? "")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8)
 
@@ -1833,7 +1847,7 @@ struct PaywallRenderer: View {
                             default:
                                 Text(value)
                                     .font(.caption)
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -1909,7 +1923,7 @@ struct PaywallRenderer: View {
                 .padding(.vertical, 10)
                 .background(Color(hex: "#F9FAFB"))
                 .cornerRadius(8)
-                .foregroundColor(.primary)
+                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                 .font(.subheadline)
 
             Button {
@@ -1932,7 +1946,7 @@ struct PaywallRenderer: View {
                 } else {
                     Text(loc("promo.button", data?.buttonText ?? "Apply"))
                         .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                 }
             }
             .padding(.horizontal, 16)
@@ -1978,11 +1992,23 @@ struct PaywallRenderer: View {
                 if let label = data?.label {
                     Text(loc("toggle.label", label))
                         .font(.subheadline.weight(.medium))
-                        .foregroundColor(Color(hex: data?.labelColorVal ?? "#FFFFFF"))
+                        /*
+                         🔴 #947 — this default was the literal `"#FFFFFF"`, which over a white
+                         page is a label that is not on the screen. It is the one site on this
+                         surface the appearance-drift probe could NOT see: a fixed hex does not
+                         change with the phone, so it scored zero drift while being invisible.
+                         Two different defects, two different measurements — the other is the
+                         light-page ink count Android's sweep uses (#946).
+                        */
+                        .foregroundColor(
+                            data?.labelColorVal.map { Color(hex: $0) }
+                                ?? PaywallTextDefaults.readable(on: pageBackgroundHex))
                 }
                 if let desc = data?.description {
                     Text(loc("toggle.description", desc))
                         .font(.caption)
+                        // #947 — `#9CA3AF` reads on both pages, so only the authored path changes
+                        // here: it is a real mid-grey rather than an assumption about the backdrop.
                         .foregroundColor(Color(hex: data?.descriptionColor ?? "#9CA3AF"))
                 }
             }
@@ -2040,7 +2066,7 @@ struct PaywallRenderer: View {
                     onRestore()
                 }
                 .font(.caption)
-                .foregroundColor(.secondary)
+                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
             }
         }
     }
@@ -2117,16 +2143,16 @@ struct PaywallRenderer: View {
                     Button { selectPlan(plan.id) } label: {
                         HStack(spacing: 12) {
                             Image(systemName: selectedPlanId == plan.id ? "largecircle.fill.circle" : "circle")
-                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : .secondary)
+                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 .font(.title3)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(loc("plan.\(index).name", plan.displayName))
                                     .font(.subheadline.weight(.medium))
-                                    .foregroundColor(.primary)
+                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 HStack(spacing: 4) {
-                                    Text(loc("plan.\(index).price", plan.displayPrice)).font(.caption.bold()).foregroundColor(.primary)
+                                    Text(loc("plan.\(index).price", plan.displayPrice)).font(.caption.bold()).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                     if let period = plan.period {
-                                        Text("/ \(period)").font(.caption).foregroundColor(.secondary)
+                                        Text("/ \(period)").font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                     }
                                 }
                             }
@@ -2164,7 +2190,7 @@ struct PaywallRenderer: View {
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .foregroundColor(selectedPlanId == plan.id ? .white : .primary)
+                            .foregroundColor(selectedPlanId == plan.id ? .white : PaywallTextDefaults.readable(on: pageBackgroundHex))
                             .background(
                                 Capsule().fill(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.clear)
                             )
@@ -2194,7 +2220,7 @@ struct PaywallRenderer: View {
                     HStack(spacing: 4) {
                         Text(loc("plan.\(idx).price", selected.displayPrice)).font(.title3.bold())
                         if let period = selected.period {
-                            Text("/ \(period)").font(.subheadline).foregroundColor(.secondary)
+                            Text("/ \(period)").font(.subheadline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         }
                     }
                 }
@@ -2209,14 +2235,14 @@ struct PaywallRenderer: View {
                         VStack(spacing: 4) {
                             Text(loc("plan.\(index).name", plan.displayName))
                                 .font(.caption.weight(.semibold))
-                                .foregroundColor(.primary)
+                                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                             Text(loc("plan.\(index).price", plan.displayPrice))
                                 .font(.subheadline.bold())
-                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : .primary)
+                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : PaywallTextDefaults.readable(on: pageBackgroundHex))
                             if let period = plan.period {
                                 Text("/ \(period)")
                                     .font(.caption2)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
                         }
                         .frame(maxWidth: .infinity)
@@ -2267,11 +2293,11 @@ struct PaywallRenderer: View {
                                 HStack {
                                     Text(loc("plan.\(index).name", plan.displayName))
                                         .font(.headline)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                     Spacer()
                                     Text(loc("plan.\(index).price", plan.displayPrice))
                                         .font(.headline)
-                                        .foregroundColor(.primary)
+                                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 }
                                 // Badge
                                 if let badge = plan.badge, !badge.isEmpty {
@@ -2285,7 +2311,7 @@ struct PaywallRenderer: View {
                                 }
                                 // Description
                                 if let desc = plan.description, !desc.isEmpty {
-                                    Text(desc).font(.caption).foregroundColor(.secondary)
+                                    Text(desc).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 }
                             }
                             .padding(16)
@@ -2318,7 +2344,7 @@ struct PaywallRenderer: View {
                         Button { selectPlan(plan.id) } label: {
                             Text(plan.displayName)
                                 .font(.caption.bold())
-                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : .primary)
+                                .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                         }
@@ -2329,9 +2355,9 @@ struct PaywallRenderer: View {
                 .background(Color.gray.opacity(0.05))
                 // Price row
                 HStack(spacing: 0) {
-                    Text("Price").font(.caption).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
+                    Text("Price").font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
                     ForEach(plans, id: \.id) { plan in
-                        Text(plan.displayPrice).font(.caption.bold()).foregroundColor(.primary).frame(maxWidth: .infinity)
+                        Text(plan.displayPrice).font(.caption.bold()).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex)).frame(maxWidth: .infinity)
                     }
                 }
                 .padding(.vertical, 6)
@@ -2339,7 +2365,7 @@ struct PaywallRenderer: View {
                 // Feature rows
                 ForEach(compFeatures, id: \.self) { feature in
                     HStack(spacing: 0) {
-                        Text(feature).font(.caption).foregroundColor(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
+                        Text(feature).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
                         ForEach(plans, id: \.id) { _ in
                             Image(systemName: "checkmark").font(.caption.bold()).foregroundColor(Color(hex: "#22C55E")).frame(maxWidth: .infinity)
                         }
@@ -2384,7 +2410,7 @@ struct PaywallRenderer: View {
                         }
                         Text(plan.displayName)
                             .font(labelStyle?.font_size.map { .system(size: CGFloat($0), weight: .bold) } ?? .title2.bold())
-                            .foregroundColor(labelStyle?.color.map { Color(hex: $0) } ?? .primary)
+                            .foregroundColor(labelStyle?.color.map { Color(hex: $0) } ?? PaywallTextDefaults.readable(on: pageBackgroundHex))
                         Text(plan.displayPrice)
                             .font(priceStyle?.font_size.map { .system(size: CGFloat($0), weight: .bold) } ?? .title.bold())
                             .foregroundColor(priceStyle?.color.map { Color(hex: $0) } ?? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
@@ -2394,14 +2420,14 @@ struct PaywallRenderer: View {
                                 .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
                         }
                         if let desc = plan.description, !desc.isEmpty {
-                            Text(desc).font(.subheadline).foregroundColor(.secondary).multilineTextAlignment(.center)
+                            Text(desc).font(.subheadline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)).multilineTextAlignment(.center)
                         }
                         if let features = plan.features, !features.isEmpty {
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(features, id: \.self) { f in
                                     HStack(spacing: 6) {
                                         Image(systemName: "checkmark.circle.fill").font(.caption).foregroundColor(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
-                                        Text(f).font(.caption).foregroundColor(.secondary)
+                                        Text(f).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                     }
                                 }
                             }
@@ -2455,15 +2481,15 @@ struct PaywallRenderer: View {
                                     Text(trial.uppercased()).font(.caption2.bold())
                                         .foregroundColor(Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                                 }
-                                Text(plan.displayName).font(.headline).foregroundColor(.primary)
-                                Text(plan.displayPrice).font(.title3.bold()).foregroundColor(.primary)
+                                Text(plan.displayName).font(.headline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
+                                Text(plan.displayPrice).font(.title3.bold()).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 if let badge = plan.badge, !badge.isEmpty {
                                     Text(badge).font(.caption2.bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                         .padding(.horizontal, 10).padding(.vertical, 4)
                                         .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
                                 }
                                 if let desc = plan.description, !desc.isEmpty {
-                                    Text(desc).font(.caption).foregroundColor(.secondary)
+                                    Text(desc).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                 }
                             }
                             .padding(20)
@@ -2495,9 +2521,9 @@ struct PaywallRenderer: View {
                                     .font(.caption.bold())
                                     .foregroundColor(Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                                     .frame(width: 16)
-                                Text(plan.displayName).font(.subheadline.weight(.semibold)).foregroundColor(.primary)
+                                Text(plan.displayName).font(.subheadline.weight(.semibold)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 Spacer()
-                                Text(plan.displayPrice).font(.subheadline.bold()).foregroundColor(.primary)
+                                Text(plan.displayPrice).font(.subheadline.bold()).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 if let badge = plan.badge, !badge.isEmpty {
                                     Text(badge).font(.system(size: 9).bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                         .padding(.horizontal, 6).padding(.vertical, 2)
@@ -2516,7 +2542,7 @@ struct PaywallRenderer: View {
                                         }
                                     }
                                     if let desc = plan.description, !desc.isEmpty {
-                                        Text(desc).font(.caption).foregroundColor(.secondary)
+                                        Text(desc).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                     }
                                     if let savings = plan.savings_text, !savings.isEmpty {
                                         Text(savings).font(.caption.bold()).foregroundColor(Color(hex: "#22C55E"))
@@ -2525,7 +2551,7 @@ struct PaywallRenderer: View {
                                         ForEach(features, id: \.self) { f in
                                             HStack(spacing: 4) {
                                                 Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
-                                                Text(f).font(.caption).foregroundColor(.secondary)
+                                                Text(f).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                             }
                                         }
                                     }
