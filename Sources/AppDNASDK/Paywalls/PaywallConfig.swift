@@ -685,7 +685,21 @@ struct PaywallPlan: Codable, Identifiable {
     /// so grid cards read "7-day free trial" while every other layout showed
     /// "7-day", and an authored label got a double "Free week free trial").
     /// Now centralised so all layouts + Android render the identical string.
-    var trialLabel: String? { trial?.label ?? trialDuration.map { "\($0) free trial" } }
+    /**
+     #933 — an ISO duration in `trial_duration` is PHRASED rather than printed raw.
+
+     `trial_duration` is author-supplied text, and the two stores express a trial period as an ISO
+     duration (`P7D`, `P1W`). A config that carries the store's own spelling — an import, a
+     hand-edited document or a generator, the same route #959's numeric price arrived by — rendered
+     literally as **"P7D free trial"**. `BillingPeriodPhrase` turns that into "7 days free trial";
+     anything it cannot parse is printed exactly as authored, so "7-day" is untouched.
+    */
+    var trialLabel: String? {
+        if let label = trial?.label { return label }
+        guard let d = trialDuration else { return nil }
+        let phrased = BillingPeriodPhrase.duration(d, locale: Locale.current.identifier) ?? d
+        return "\(phrased) free trial"
+    }
 
     enum CodingKeys: String, CodingKey {
         case _id = "id"
