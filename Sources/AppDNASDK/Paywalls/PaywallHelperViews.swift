@@ -304,6 +304,14 @@ struct ReviewsCarouselView: View {
     var authorElementStyle: ElementStyleConfig? = nil
     let loc: (String, String) -> String
 
+    /// #938 — the page this carousel is drawn on, so a dot nobody authored can be read off it.
+    ///
+    /// Taken from the environment rather than added as a parameter: the renderer already publishes
+    /// it (`PaywallRenderer.swift:182`) and every call site keeps working untouched. Spelled
+    /// `@SwiftUI.Environment` with an explicit type, as `PlanCard`, `HeaderSection` and `CTAButton`
+    /// all are — the SDK has an `Environment` of its own and the bare attribute resolves to that.
+    @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
+
     @State private var currentReview = 0
     @State private var autoScrollTimer: Timer?
 
@@ -407,8 +415,21 @@ struct ReviewsCarouselView: View {
             // Page dots
             HStack(spacing: 6) {
                 ForEach(0..<reviews.count, id: \.self) { idx in
+                    /*
+                     * #938 — a dot nobody authored, READ OFF THE PAGE.
+                     *
+                     * This was `Color.white` and `Color.white.opacity(0.3)`. Over a WHITE page that
+                     * is no dots at all, so a reader had no way to tell how many reviews there
+                     * were or which one they were on. Android carried the identical constant and
+                     * now resolves it the same way (#938).
+                     *
+                     * Byte-identical on a dark page: `readable` returns `#FFFFFF` wherever white
+                     * passes AA, so a dark paywall draws exactly what it drew before.
+                     */
                     Circle()
-                        .fill(idx == currentReview ? Color.white : Color.white.opacity(0.3))
+                        .fill(idx == currentReview
+                              ? PaywallTextDefaults.readable(on: pageBackgroundHex)
+                              : PaywallTextDefaults.subtle(on: pageBackgroundHex))
                         .frame(width: 6, height: 6)
                 }
             }

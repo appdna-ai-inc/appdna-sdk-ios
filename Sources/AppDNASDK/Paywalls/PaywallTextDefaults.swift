@@ -37,6 +37,30 @@ enum PaywallTextDefaults {
         Color(hex: readableHex(on: background))
     }
 
+    /// #938 — the alpha a DECORATIVE control takes when nobody authored its colour.
+    ///
+    /// An unselected pager dot and a carousel's inactive indicator are meant to be present without
+    /// competing. 30% is the figure `PlanCard.unselectedBorder` settled on, so the two agree.
+    static let subtleAlpha: Double = 0.3
+
+    /**
+     #938 — a decorative control's colour, READ OFF THE PAGE instead of assumed.
+
+     `PaywallHelperViews`' unselected review dot was `Color.white.opacity(0.3)`, which over a WHITE
+     page is nothing: a carousel on a light paywall showed one dot and no others, so the reader had
+     no way to know how many reviews there were. Android carried the identical constant in three
+     places (#938), which is why the fix is the same function on both sides.
+
+     🔴 ON A DARK PAGE THIS IS BYTE-IDENTICAL TO THE OLD CONSTANT. `readable(on:)` returns
+     `#FFFFFF` for any page dark enough for white to pass AA, so the result is `Color.white` at the
+     same 30% — which is what makes this safe to change at all. A default that moved pixels on
+     live paywalls would be worse than the inconsistency it fixes; this one moves pixels only
+     where the old value drew nothing.
+     */
+    static func subtle(on background: String?) -> Color {
+        readable(on: background).opacity(subtleAlpha)
+    }
+
     /// A translucent tile over a page: what the eye actually sees, so the text is judged on THAT.
     static func composite(_ foreground: String?, over background: String?, alpha: Double) -> String? {
         guard let fg = foreground, let bg = background,
