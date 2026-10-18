@@ -19,6 +19,27 @@ struct SocialProof: View {
 
     var body: some View {
         VStack(spacing: 8) {
+            /*
+             #954 — the caption, above the stars.
+
+             `data.text` decoded, travelled and was drawn by the `countdown` and `trial_badge`
+             branches and by NOTHING in this one, so an author could write "Loved by 12,000
+             runners", see it in the console preview, publish it, and have no device draw it. One
+             saved section on dev carried `text` and nothing else, and rendered blank for exactly
+             this reason. Above the stars because that is the reading order of the pattern and
+             where the countdown branch puts its own label.
+             */
+            if let caption = data?.text, !caption.isEmpty {
+                Text(loc?("social_proof.text", caption) ?? caption)
+                    .applyTextStyleOrDefault(
+                        sectionStyle?.elements?["text"]?.textStyle,
+                        font: .caption,
+                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8)
+                    )
+                    .multilineTextAlignment(.center)
+                    .applyElementStyle(sectionStyle?.elements?["text"]?.container)
+            }
+
             if let rating = data?.rating {
                 HStack(spacing: 4) {
                     ForEach(0..<5, id: \.self) { index in
@@ -48,12 +69,40 @@ struct SocialProof: View {
             }
 
             if let testimonial = data?.testimonial {
+                /*
+                 🔴 #947's defect, one line further down than #947 looked. This was
+                 `.foregroundColor(.white.opacity(0.8))` — a colour that follows nothing, so the
+                 quote vanished on any light page, exactly as the review count did until #947 took
+                 it off the phone and put it on the page. The two `.font` modifiers were the other
+                 half: `.callout` was dead, overridden by `.subheadline.italic()` below it.
+                 */
                 Text("\"\(loc?("social_proof.testimonial", testimonial) ?? testimonial)\"")
-                    .font(.callout)
-                    .foregroundColor(.white.opacity(0.8))
+                    .applyTextStyleOrDefault(
+                        sectionStyle?.elements?["testimonial"]?.textStyle,
+                        font: .subheadline.italic(),
+                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8)
+                    )
                     .multilineTextAlignment(.center)
-                    .font(.subheadline.italic())
                     .padding(.horizontal)
+                    .applyElementStyle(sectionStyle?.elements?["testimonial"]?.container)
+
+                /*
+                 #955 — the attribution, which the generator writes and this section could not
+                 draw. 12 of 22 saved sections on dev carry an `author`, because the paywall prompt
+                 asked for one; the field decoded as `author_name` and reached no view. The
+                 `testimonial` SECTION has drawn it all along, which is what makes this a gap
+                 rather than a feature: the same content rendered two ways depending on which
+                 section type an author happened to pick.
+                 */
+                if let author = data?.authorName, !author.isEmpty {
+                    Text("\u{2014} \(loc?("social_proof.author_name", author) ?? author)")
+                        .applyTextStyleOrDefault(
+                            sectionStyle?.elements?["author_name"]?.textStyle,
+                            font: .caption,
+                            color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.6)
+                        )
+                        .applyElementStyle(sectionStyle?.elements?["author_name"]?.container)
+                }
             }
         }
     }

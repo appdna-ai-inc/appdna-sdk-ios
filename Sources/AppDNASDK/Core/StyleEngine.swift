@@ -259,6 +259,24 @@ extension View {
         }
     }
 
+    /**
+     An authored `TextStyleConfig` when there is one, and a named default when there is not.
+
+     #954 — every social-proof element was repeating this four-line `if let ts = … { } else { }`
+     dance, and the one that did NOT repeat it correctly is how the testimonial ended up with a
+     hardcoded `.white.opacity(0.8)` that vanished on a light page — #947's defect, one line below
+     where #947 looked. One helper, so the fallback is written once and is visibly a fallback.
+     */
+    func applyTextStyleOrDefault(_ style: TextStyleConfig?, font: Font, color: Color) -> some View {
+        Group {
+            if let style {
+                self.applyTextStyle(style)
+            } else {
+                self.font(font).foregroundColor(color)
+            }
+        }
+    }
+
     /// Apply only the NON-FONT parts of a TextStyleConfig.
     ///
     /// `applyTextStyle` is `extension View` so its inner `.font(font)` uses
