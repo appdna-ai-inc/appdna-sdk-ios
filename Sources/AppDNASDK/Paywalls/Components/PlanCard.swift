@@ -427,7 +427,9 @@ struct PlanCard: View {
      */
     @ViewBuilder
     private var periodView: some View {
-        if let period = plan.period, !period.isEmpty {
+        // #933 — `displayPeriod`: an authored period wins, and a plan that authored
+        // none now reads the STORE's, phrased in the device's language.
+        if let period = plan.displayPeriod, !period.isEmpty {
             Group {
                 if let ts = periodTextStyle {
                     Text(loc?("plan.\(planIndex).period", period) ?? period).applyTextStyle(ts)

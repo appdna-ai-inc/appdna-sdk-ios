@@ -96,11 +96,20 @@ extension SharedFixtureTests {
             guard let dict = c.objectValue?["value"]?.foundation as? [String: Any],
                   JSONSerialization.isValidJSONObject(dict),
                   let data = try? JSONSerialization.data(withJSONObject: dict),
-                  let plan = try? JSONDecoder().decode(PaywallPlan.self, from: data) else {
+                  var plan = try? JSONDecoder().decode(PaywallPlan.self, from: data) else {
                 XCTFail("[\(f.id)] a plan did not decode")
                 return NSNull()
             }
-            guard let period = plan.period, !period.isEmpty else { return NSNull() }
+            /*
+             #933 — a case may carry a `store_period` BESIDE its `value`, because the store's ISO
+             period is filled in by the presenter and is never part of a published document, so it
+             cannot live inside the plan the decoder reads.
+
+             `displayPeriod` rather than `period`: for every case without a `store_period` the two
+             are identical, which is why the assertions written before #933 still stand unchanged.
+            */
+            plan.resolvedStorePeriod = c.objectValue?["store_period"]?.stringValue
+            guard let period = plan.displayPeriod, !period.isEmpty else { return NSNull() }
             return period
         }
     }

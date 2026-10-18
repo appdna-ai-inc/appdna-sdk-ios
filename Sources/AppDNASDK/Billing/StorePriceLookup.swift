@@ -22,6 +22,80 @@ enum StorePriceLookup {
 
     /// Localized display prices by product id. Products the store does not know are simply absent,
     /// which is the same signal as a failed lookup and resolves the same way.
+    /**
+     #933 — what the store knows about a product: its localized price and its ISO billing period.
+
+     Both come off the SAME `Product`, so they are fetched in ONE call. A second lookup for the
+     period would double the round-trips and could disagree with the price it sits beside — a
+     paywall showing this month's price against last month's cadence is worse than showing neither.
+     */
+    struct StoreFacts {
+        let price: String?
+        let periodIso: String?
+    }
+
+    /**
+     StoreKit reports a subscription's period structurally, as a unit and a count. The SDKs speak
+     ISO-8601 for a period everywhere else (Play reports `P1M` directly, the shared fixtures use it,
+     and `BillingPeriodPhrase` parses it), so iOS's structural value is normalised to the same
+     spelling rather than given its own representation to diverge in.
+     */
+    private static func iso(_ period: Product.SubscriptionPeriod?) -> String? {
+        guard let period, period.value > 0 else { return nil }
+        let unit: String
+        switch period.unit {
+        case .day: unit = "D"
+        case .week: unit = "W"
+        case .month: unit = "M"
+        case .year: unit = "Y"
+        @unknown default: return nil
+        }
+        return "P\(period.value)\(unit)"
+    }
+
+    /// Price AND period by product id, in one store round-trip.
+    static func facts(
+        for productIds: [String],
+        timeout: TimeInterval = 1.5,
+        completion: @escaping ([String: StoreFacts]) -> Void
+    ) {
+        let ids = Array(Set(productIds.filter { !$0.isEmpty }))
+        guard !ids.isEmpty else { completion([:]); return }
+
+        // One-shot, the same way `prices` is: whichever arrives first — the reply or the deadline —
+        // answers, and the other is dropped. Without this a slow reply calls back after the paywall
+        // is already on screen.
+        let answered = AtomicFlag()
+        let finish: ([String: StoreFacts]) -> Void = { facts in
+            guard answered.testAndSet() else { return }
+            completion(facts)
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) {
+            Log.info("[Paywall] store lookup may have exceeded \(timeout)s — authored values stand if so")
+            finish([:])
+        }
+
+        Task {
+            do {
+                let products = try await Product.products(for: ids)
+                var map: [String: StoreFacts] = [:]
+                for p in products {
+                    // A one-time product has no subscription and therefore no period, which is
+                    // correct rather than missing.
+                    map[p.id] = StoreFacts(price: p.displayPrice, periodIso: iso(p.subscription?.subscriptionPeriod))
+                }
+                if map.isEmpty {
+                    Log.info("[Paywall] the store knows none of \(ids.count) product(s) — using authored values")
+                }
+                finish(map)
+            } catch {
+                Log.info("[Paywall] store lookup failed (\(error.localizedDescription)) — using authored values")
+                finish([:])
+            }
+        }
+    }
+
     static func prices(
         for productIds: [String],
         timeout: TimeInterval = 1.5,

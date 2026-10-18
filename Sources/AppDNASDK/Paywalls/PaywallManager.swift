@@ -226,10 +226,16 @@ final class PaywallManager {
         let productIds = (config.plans ?? []).compactMap { $0.productId }
         let group = DispatchGroup()
         var storePrices: [String: String] = [:]
+        var storePeriods: [String: String] = [:]
 
         group.enter()
-        StorePriceLookup.prices(for: productIds, timeout: 1.5) { prices in
-            storePrices = prices
+        // #933 — ONE round-trip for both facts. The period comes off the same `Product` as the
+        // price, and a second lookup could disagree with the price it sits beside.
+        StorePriceLookup.facts(for: productIds, timeout: 1.5) { facts in
+            for (id, f) in facts {
+                if let price = f.price { storePrices[id] = price }
+                if let period = f.periodIso { storePeriods[id] = period }
+            }
             group.leave()
         }
         if !imageURLs.isEmpty {
@@ -239,7 +245,7 @@ final class PaywallManager {
         group.notify(queue: .main) { [weak self] in
             guard let self else { return }
             // Every place plans live, not only the root array — see `applyingStorePrices`.
-            config = config.applyingStorePrices(storePrices)
+            config = config.applyingStorePrices(storePrices).applyingStorePeriods(storePeriods)
             var props = viewProps
             let sources = (config.plans ?? []).map { $0.priceSource }
             if !sources.isEmpty {

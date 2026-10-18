@@ -73,6 +73,39 @@ struct PaywallConfig: Codable {
         out.layout?.sections = priced(layout?.sections)
         return out
     }
+
+    /**
+     #933 — a copy with the STORE's ISO billing period on every plan, wherever that plan lives.
+
+     🔴 Deliberately the same THREE assignments as `applyingStorePrices`, including `_sections` and
+     `layout?.sections`. #923's first version of the price substitution mapped only the root `plans`
+     array, while every real paywall carries its plans in `layout.sections[].config.plans` — so the
+     feature passed its fixture, passed its live-StoreKit test, and reached nothing on screen.
+     Walking fewer places here would repeat that exactly.
+     */
+    func applyingStorePeriods(_ periods: [String: String]) -> PaywallConfig {
+        guard !periods.isEmpty else { return self }
+        func timed(_ list: [PaywallPlan]?) -> [PaywallPlan]? {
+            list?.map { plan in
+                var copy = plan
+                copy.resolvedStorePeriod = plan.productId.flatMap { periods[$0] }
+                return copy
+            }
+        }
+        func timed(_ list: [PaywallSection]?) -> [PaywallSection]? {
+            list?.map { section in
+                guard section.type == "plans", let plans = section.data?.plans else { return section }
+                var copy = section
+                copy.setPlans(timed(plans))
+                return copy
+            }
+        }
+        var out = self
+        out.plans = timed(plans)
+        out._sections = timed(_sections)
+        out.layout?.sections = timed(layout?.sections)
+        return out
+    }
 }
 
 struct PaywallLayout: Codable {
@@ -617,6 +650,12 @@ struct PaywallPlan: Codable, Identifiable {
      Read only through `displayPrice`, so every render site on every layout follows at once.
      */
     var resolvedStorePrice: String?
+    /**
+     #933 — the STORE's ISO billing period for this plan's product (`P1M`, `P1Y`), filled in by the
+     presenter beside `resolvedStorePrice`. Never authored and never published: it is what StoreKit
+     told this device, normalised to the spelling Play reports directly.
+     */
+    var resolvedStorePeriod: String?
     let badge: String?
     private let trialDuration: String?   // Legacy: "trial_duration" string
     let trial: PaywallPlanTrial?         // New: {duration_days, label} object
@@ -628,6 +667,21 @@ struct PaywallPlan: Codable, Identifiable {
     let cta_text: String?
     let icon: String?
     let image_url: String?
+    /**
+     #933 — the period drawn beside the price, phrased in the device's language.
+
+     🔴 AN AUTHORED `period` WINS. Additive on purpose: an author who typed "mo" keeps "mo", so no
+     published paywall changes appearance, while a plan that authored nothing — 0 of 81 in
+     production — gains a correct period instead of none. The store's value is structural (`P1M`),
+     so it is phrased through `BillingPeriodPhrase` rather than printed.
+     */
+    var displayPeriod: String? {
+        if let authored = period?.trimmingCharacters(in: .whitespaces), !authored.isEmpty {
+            return authored
+        }
+        return BillingPeriodPhrase.suffix(resolvedStorePeriod, locale: Locale.current.identifier)
+    }
+
     /// Struck-through "old" price shown beside `displayPrice`. Section-level
     /// `strikethrough_color` controls its color.
     let original_price_display: String?
@@ -736,6 +790,9 @@ struct PaywallPlan: Codable, Identifiable {
         // #923 — absent means "ask the store", so only an explicit `false` opts out.
         self.use_store_price = try? c.decodeIfPresent(Bool.self, forKey: .use_store_price)
         self.resolvedStorePrice = nil
+        // #933 — filled by the presenter after the store answers, never decoded: it is not in
+        // `CodingKeys` because it is not in the published document.
+        self.resolvedStorePeriod = nil
         self.period = c.lenient(String.self, .period)
         self.badge = c.lenient(String.self, .badge)
         self.trialDuration = PaywallPlan.looseString(c, .trialDuration)

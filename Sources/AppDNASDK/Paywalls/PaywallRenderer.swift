@@ -2151,7 +2151,7 @@ struct PaywallRenderer: View {
                                     .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                                 HStack(spacing: 4) {
                                     Text(loc("plan.\(index).price", plan.displayPrice)).font(.caption.bold()).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
-                                    if let period = plan.period {
+                                    if let period = plan.displayPeriod {
                                         Text("/ \(period)").font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                                     }
                                 }
@@ -2224,7 +2224,7 @@ struct PaywallRenderer: View {
                 if let (idx, selected) = plans.enumerated().first(where: { $0.element.id == selectedPlanId }) {
                     HStack(spacing: 4) {
                         Text(loc("plan.\(idx).price", selected.displayPrice)).font(.title3.bold())
-                        if let period = selected.period {
+                        if let period = selected.displayPeriod {
                             Text("/ \(period)").font(.subheadline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                         }
                     }
@@ -2244,7 +2244,7 @@ struct PaywallRenderer: View {
                             Text(loc("plan.\(index).price", plan.displayPrice))
                                 .font(.subheadline.bold())
                                 .foregroundColor(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : PaywallTextDefaults.readable(on: pageBackgroundHex))
-                            if let period = plan.period {
+                            if let period = plan.displayPeriod {
                                 Text("/ \(period)")
                                     .font(.caption2)
                                     .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
