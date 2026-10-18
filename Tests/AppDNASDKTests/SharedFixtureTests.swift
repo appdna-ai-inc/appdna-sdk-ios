@@ -1901,6 +1901,10 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_plan0_price_display"] = SharedFixtureTests.orNull(p0?.displayPrice)
             h.state["parsed_plan0_original_price_display"] = SharedFixtureTests.orNull(p0?.original_price_display)
             h.state["parsed_plan0_price_total_display"] = SharedFixtureTests.orNull(p0?.price_total_display)
+            // The five fields `looseString` coerces from a number. Exposed so a fixture can assert
+            // the two platforms agree to the digit, which they did not.
+            h.state["parsed_plan0_trial_label"] = SharedFixtureTests.orNull(p0?.trialLabel)
+            h.state["parsed_plan1_price_display"] = SharedFixtureTests.orNull(p1?.displayPrice)
             h.state["parsed_plan0_badge_enabled"] = SharedFixtureTests.orNull(p0?.description_badge?.enabled)
             h.state["parsed_plan0_badge_bg_color"] = SharedFixtureTests.orNull(p0?.description_badge?.bg_color)
             h.state["parsed_plan0_badge_text_color"] = SharedFixtureTests.orNull(p0?.description_badge?.text_color)
