@@ -121,7 +121,21 @@ import UserNotifications
             identifier: categoryId(from: userInfo),
             actions: actions,
             intentIdentifiers: [],
-            options: []
+            /*
+             * #968 — `.customDismissAction` is what makes a dismissal OBSERVABLE at all. iOS
+             * delivers `UNNotificationDismissActionIdentifier` to the delegate ONLY for a category
+             * registered with this option; without it `push_dismissed` cannot fire, which is why
+             * Android had the event and this platform did not.
+             *
+             * 🔴 IT MUST SHIP WITH THE DISMISS BRANCH IN `PushModuleForwarding.processTapped`, not
+             * before it. The delegate path turns any response into a TAP, so adding this option on
+             * its own would start recording every dismissal as `push_tapped` — a wrong number is
+             * worse than a missing one.
+             *
+             * Still limited: this builder returns nil when `actions.isEmpty`, so a push with no
+             * buttons carries no category and no dismissal. That half is the remainder on #968.
+             */
+            options: [.customDismissAction]
         )
     }
 

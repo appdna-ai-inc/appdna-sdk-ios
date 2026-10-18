@@ -249,4 +249,33 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(IconMapping.materialToSFSymbol, SFSymbolTables.material)
         XCTAssertEqual(SFSymbolTables.lucide["check"], "checkmark")
     }
+
+    // MARK: - #968 — a dismissal is observable, and is not a tap
+
+    func testCategoryOptsIntoDismissReporting() {
+        /*
+         * 🔴 WITHOUT THIS OPTION THE EVENT CANNOT EXIST. iOS delivers
+         * `UNNotificationDismissActionIdentifier` to the delegate ONLY for a category registered
+         * with `.customDismissAction` — which is why Android emitted `push_dismissed` from its
+         * delete intent while this platform emitted nothing at all, for any push, ever.
+         */
+        let category = PushActionCategories.category(from: userInfo())
+        XCTAssertNotNil(category, "a push with buttons must still produce a category")
+        XCTAssertTrue(
+            category!.options.contains(.customDismissAction),
+            "the category does not opt into dismiss reporting, so push_dismissed can never fire"
+        )
+    }
+
+    func testAPushWithNoButtonsStillHasNoCategory() {
+        /*
+         * The honest limit, pinned so it is not mistaken for full coverage: the builder returns nil
+         * when there are no actions, so a plain title-and-body push carries no category and is
+         * swiped away silently. An iOS dismissal rate is therefore a rate among pushes WITH
+         * buttons. The public events page says exactly that.
+         */
+        var noActions = userInfo()
+        noActions["actions"] = []
+        XCTAssertNil(PushActionCategories.category(from: noActions))
+    }
 }

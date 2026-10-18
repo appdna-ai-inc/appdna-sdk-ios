@@ -119,6 +119,24 @@ final class PushTokenManager {
         }
     }
 
+    /// Track that a push notification was DISMISSED — swiped away without being opened.
+    ///
+    /// #968 — the only negative signal a push campaign has, and this platform could not emit it:
+    /// iOS reports a dismissal solely for a category registered with `.customDismissAction`, which
+    /// `PushActionCategories` now sets. Android has emitted it from a delete intent all along, so a
+    /// funnel built on this event measured one platform and read as zero dismissals on the other.
+    ///
+    /// Properties match Android's exactly (`push_id`, and `delivery_id` when present) so one query
+    /// reads both. No `/push/...` call is made: unlike delivered and tapped there is no server
+    /// endpoint for a dismissal, and inventing one here would fail silently against production.
+    func trackDismissed(pushId: String, deliveryId: String?) {
+        var props: [String: String] = ["push_id": pushId]
+        if let deliveryId, !deliveryId.isEmpty {
+            props["delivery_id"] = deliveryId
+        }
+        eventTracker?.track(event: "push_dismissed", properties: props)
+    }
+
     // MARK: - Public: Permission Request
 
     /// Request push notification permission from the user.

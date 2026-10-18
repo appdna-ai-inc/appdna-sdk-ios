@@ -351,6 +351,25 @@ extension AppDNA.PushModule {
             return
         }
         let pushId = PushMarker.pushId(userInfo)
+
+        /*
+         * #968 — A DISMISSAL IS NOT A TAP. iOS routes both through this one delegate callback, so
+         * without this branch the `.customDismissAction` option added to the category in
+         * `PushActionCategories` would make every swipe-away arrive here and be recorded as
+         * `push_tapped` — inflating the one number a push campaign is judged on, and firing
+         * `onPushTapped` plus the tap router for a user who rejected the notification.
+         *
+         * `push_dismissed` with `push_id` and `delivery_id` matches Android's payload exactly, so
+         * one funnel reads both platforms. Nothing else runs: no delegate, no routing, no
+         * category re-registration — the user is not in the app.
+         */
+        if actionIdentifier == UNNotificationDismissActionIdentifier {
+            manager?.trackDismissed(
+                pushId: pushId,
+                deliveryId: PushMarker.deliveryId(userInfo)
+            )
+            return
+        }
         // The TRACKED action is the system identifier for a body tap; routing and `onPushTapped`
         // keep `nil` for a body tap, as they always have.
         manager?.trackTapped(

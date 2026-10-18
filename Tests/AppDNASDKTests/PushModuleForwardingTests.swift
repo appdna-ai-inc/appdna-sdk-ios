@@ -299,4 +299,51 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(events.map { $0.properties?["delivery_id"]?.value as? String }, ["d", "d", nil])
         XCTAssertEqual(events[1].properties?["action"]?.value as? String, "a")
     }
+
+    // MARK: - #968 — a dismissal is not a tap
+
+    func testADismissalEmitsPushDismissedAndNotPushTapped() {
+        /*
+         * 🔴 THE REASON THE BRANCH AND THE CATEGORY OPTION HAD TO SHIP TOGETHER. iOS routes a tap
+         * and a swipe-away through the SAME delegate callback, so once the category opts into
+         * dismiss reporting (`.customDismissAction`, added in `PushActionCategories` for #968),
+         * every dismissal arrives here. Without the branch each one would have been recorded as
+         * `push_tapped` — inflating the single number a push campaign is judged on, and firing
+         * `onPushTapped` plus the tap router for a user who had just REJECTED the notification.
+         *
+         * A wrong number is worse than a missing one, which is why this test asserts both halves:
+         * the right event fires, and the wrong one does not.
+         */
+        let userInfo: [AnyHashable: Any] = [
+            "aps": ["alert": ["title": "T", "body": "B"]],
+            "appdna": "1",
+            "push_id": "p_dismissed",
+            "delivery_id": "d_dismissed",
+        ]
+        AppDNA.pushModule.processTapped(userInfo, actionIdentifier: UNNotificationDismissActionIdentifier)
+
+        let names = events.map { $0.event_name }
+        XCTAssertEqual(names, ["push_dismissed"], "a dismissal must emit exactly one event: \(names)")
+        XCTAssertEqual(events[0].properties?["push_id"]?.value as? String, "p_dismissed")
+        XCTAssertEqual(
+            events[0].properties?["delivery_id"]?.value as? String, "d_dismissed",
+            "delivery_id must be carried so a dismissal joins to the delivery that caused it"
+        )
+        XCTAssertTrue(recorder.tapped.isEmpty, "onPushTapped must not fire for a dismissal: \(recorder.tapped)")
+    }
+
+    func testABodyTapStillEmitsPushTapped() {
+        /*
+         * The control. Without it the test above passes if the branch swallowed EVERY response,
+         * which would silently delete the push-open funnel — a far worse defect than the one #968
+         * set out to fix.
+         */
+        let userInfo: [AnyHashable: Any] = [
+            "aps": ["alert": ["title": "T", "body": "B"]],
+            "appdna": "1",
+            "push_id": "p_tapped",
+        ]
+        AppDNA.pushModule.processTapped(userInfo, actionIdentifier: UNNotificationDefaultActionIdentifier)
+        XCTAssertEqual(events.map { $0.event_name }, ["push_tapped"])
+    }
 }
