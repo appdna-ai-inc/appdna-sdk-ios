@@ -364,6 +364,17 @@ public struct OnboardingStep: Codable, Identifiable {
         case custom
         case form
         case interactive_chat
+        /*
+         #953 — `splash` is a first-class case, not an unknown that falls through to `.custom`.
+
+         The fallback below renders a splash correctly today, because both SDKs draw a step from
+         its `content_blocks` and a splash is content like any other — what makes it a splash
+         rather than a dead end is `auto_advance_seconds` / `wait_for_host` on the STEP (#921).
+         `check:sdk-parity` still asked for the case and was RED from the moment #931 put the type
+         in the agent catalog: a type the console can publish and the SDK cannot NAME is a type
+         nothing can ever branch on, and the gate is right to insist before something needs to.
+         */
+        case splash
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()

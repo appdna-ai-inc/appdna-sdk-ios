@@ -99,9 +99,15 @@ extension KeyedDecodingContainer {
         let kept = wrapped.compactMap(\.value)
         let dropped = wrapped.count - kept.count
         if dropped > 0 {
+            let reasons = wrapped.compactMap(\.failure).joined(separator: " | ")
             Log.error(
                 "[Decode] dropped \(dropped) of \(wrapped.count) \(T.self) in \(context()) — the rest "
-                + "still renders. Reason(s): \(wrapped.compactMap(\.failure).joined(separator: " | "))"
+                + "still renders. Reason(s): \(reasons)"
+            )
+            // #935 — and off the device, to the host and to us. A log nobody can read is how this
+            // class of defect stayed invisible.
+            ConfigurationIssueReporter.report(
+                surface: context(), id: nil, detail: reasons, dropped: dropped, total: wrapped.count
             )
         }
         return kept
@@ -122,9 +128,13 @@ extension JSONDecoder {
         let kept = wrapped.compactMap(\.value)
         let dropped = wrapped.count - kept.count
         if dropped > 0 {
+            let reasons = wrapped.compactMap(\.failure).joined(separator: " | ")
             Log.error(
                 "[Decode] dropped \(dropped) of \(wrapped.count) \(T.self) in \(context()) — the rest "
-                + "still renders. Reason(s): \(wrapped.compactMap(\.failure).joined(separator: " | "))"
+                + "still renders. Reason(s): \(reasons)"
+            )
+            ConfigurationIssueReporter.report(
+                surface: context(), id: nil, detail: reasons, dropped: dropped, total: wrapped.count
             )
         }
         return kept

@@ -1830,7 +1830,11 @@ struct OnboardingStepRouter: View {
                 QuestionStepView(config: effectiveConfig, onNext: onNext)
             case .value_prop:
                 ValuePropStepView(config: effectiveConfig, onNext: { onNext(nil) })
-            case .custom:
+            case .custom, .splash:
+                // #953 — the LEGACY path, taken only by a step with no `content_blocks` at all.
+                // A splash always carries content (that is what it is), so this branch is reached
+                // only by a malformed one — and a bare "continue" view is the right answer for it,
+                // exactly as it is for a custom step.
                 CustomStepView(config: effectiveConfig, onNext: { onNext(nil) })
             case .form:
                 FormStepView(config: effectiveConfig, onNext: onNext, apiClient: AppDNA.geocodeClient, savedValues: savedResponses)

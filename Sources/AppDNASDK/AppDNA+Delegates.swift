@@ -103,12 +103,29 @@ public protocol AppDNALifecycleDelegate: AnyObject {
     /// to drop a "service unavailable" banner and force an event-queue
     /// flush retry.
     func onSdkRuntimeUnlocked()
+
+    /// #935 — part of a published config could not be decoded and was DROPPED; the rest still
+    /// renders.
+    ///
+    /// `surface` is the kind (`"onboarding_flow"`, `"paywall"`, …), `id` the document it came
+    /// from when one is known, and `detail` the CODING PATH and reason — for example
+    /// `"steps[9].content_blocks[3]: Dictionary<String, Any> was null"`.
+    ///
+    /// 🔴 A count is deliberately not enough. The first version of the decode log said
+    /// `dropped 4 of 5`, which tells an engineer that something is wrong and nothing about what —
+    /// and that is how this class of defect stayed invisible for months. The path names the field.
+    ///
+    /// Fires on the main thread, once per decode that dropped anything. The SDK also tracks
+    /// `sdk_decode_dropped` with the same three values, so the fleet answer does not depend on a
+    /// host implementing this.
+    func onConfigurationIssue(surface: String, id: String?, detail: String)
 }
 
 /// Default no-op extensions — hosts that don't care stay zero-config.
 public extension AppDNALifecycleDelegate {
     func onSdkRuntimeLocked(reason: String, lockedAt: String) {}
     func onSdkRuntimeUnlocked() {}
+    func onConfigurationIssue(surface: String, id: String?, detail: String) {}
 }
 
 /// Delegate for server-driven screen events.
