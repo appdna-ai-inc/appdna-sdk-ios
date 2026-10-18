@@ -32,7 +32,7 @@ struct LocationSearchSettings: Equatable {
     /// From a content block's free-form `field_config`.
     static func from(blockConfig: [String: AnyCodable]?, defaultMinChars: Int) -> LocationSearchSettings {
         LocationSearchSettings(
-            type: nonBlank(blockConfig?["location_type"]?.value as? String),
+            type: acceptableType(blockConfig?["location_type"]?.value as? String),
             biasCountry: nonBlank(blockConfig?["location_bias_country"]?.value as? String),
             language: nonBlank(blockConfig?["location_language"]?.value as? String),
             minChars: clampMinChars(blockConfig?["location_min_chars"]?.value, defaultMinChars)
@@ -42,11 +42,31 @@ struct LocationSearchSettings: Equatable {
     /// From a form-step field's `FormFieldConfig`.
     static func from(fieldConfig: FormFieldConfig?, defaultMinChars: Int) -> LocationSearchSettings {
         LocationSearchSettings(
-            type: nonBlank(fieldConfig?.location_type),
+            type: acceptableType(fieldConfig?.location_type),
             biasCountry: nonBlank(fieldConfig?.location_bias_country),
             language: nonBlank(fieldConfig?.location_language),
             minChars: clampMinChars(fieldConfig?.location_min_chars, defaultMinChars)
         )
+    }
+
+    /// The only values the geocoding proxy accepts
+    /// (`/api/v1/sdk/geocode/autocomplete` → `z.enum(['city','address','region','country'])`).
+    ///
+    /// 🔴 A TYPE WE CANNOT USE IS TREATED AS ABSENT, NOT PASSED ON. The proxy answers an unknown
+    /// `type` with a ValidationError, and both SDKs read a non-200 as "no suggestions" — so
+    /// forwarding a bad value turns the whole autocomplete OFF rather than degrading it.
+    ///
+    /// Not hypothetical: content-block `field_config` is `.passthrough()` and therefore
+    /// UNVALIDATED, and the Console's content-block Location Type select offered `coordinates` —
+    /// in no enum, no SDK, and refused by the proxy. Those blocks were harmless only because this
+    /// surface sent no `type` at all; the moment it honoured the authored one (#963) every one of
+    /// them would have gone silently dead. The picker is fixed too (#964), but published documents
+    /// outlive a picker fix.
+    private static let proxyTypes: Set<String> = ["city", "address", "region", "country"]
+
+    private static func acceptableType(_ raw: String?) -> String? {
+        guard let t = nonBlank(raw), proxyTypes.contains(t) else { return nil }
+        return t
     }
 
     private static func nonBlank(_ s: String?) -> String? {

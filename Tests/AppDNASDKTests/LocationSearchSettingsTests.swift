@@ -131,4 +131,29 @@ final class LocationSearchSettingsTests: XCTestCase {
         XCTAssertNil(s.language)
         XCTAssertEqual(s.minChars, 2)
     }
+
+    func testATypeTheProxyDoesNotAcceptResolvesToUnsetNotForwarded() {
+        /*
+         * 🔴 THE REGRESSION #963 WOULD HAVE SHIPPED. The proxy validates `type` against
+         * `z.enum(['city','address','region','country'])` and answers anything else with a
+         * ValidationError — which both SDKs read as "no suggestions". So forwarding a bad value
+         * turns the whole autocomplete OFF rather than degrading it.
+         *
+         * `coordinates` is the real one: content-block `field_config` is `.passthrough()` and so
+         * UNVALIDATED, and the Console's content-block Location Type select offered it. Those
+         * blocks were harmless only while this surface sent no `type` at all.
+         */
+        for bad in ["coordinates", "Address", "anything"] {
+            XCTAssertNil(
+                LocationSearchSettings.from(blockConfig: block(["location_type": bad]), defaultMinChars: 3).type,
+                "\(bad) must not be forwarded to the proxy")
+        }
+        // ...and the four it DOES accept still pass through, including `region`, which the
+        // content-block picker was missing while offering `coordinates`.
+        for good in ["city", "address", "region", "country"] {
+            XCTAssertEqual(
+                LocationSearchSettings.from(blockConfig: block(["location_type": good]), defaultMinChars: 3).type,
+                good)
+        }
+    }
 }
