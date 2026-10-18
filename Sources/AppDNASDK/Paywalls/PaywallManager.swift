@@ -227,6 +227,8 @@ final class PaywallManager {
         let group = DispatchGroup()
         var storePrices: [String: String] = [:]
         var storePeriods: [String: String] = [:]
+        // #933 slice 3 — present only for a product this user is ELIGIBLE for a free trial on.
+        var storeTrials: [String: String] = [:]
 
         group.enter()
         // #933 — ONE round-trip for both facts. The period comes off the same `Product` as the
@@ -235,6 +237,7 @@ final class PaywallManager {
             for (id, f) in facts {
                 if let price = f.price { storePrices[id] = price }
                 if let period = f.periodIso { storePeriods[id] = period }
+                if let trial = f.trialIso { storeTrials[id] = trial }
             }
             group.leave()
         }
@@ -245,7 +248,9 @@ final class PaywallManager {
         group.notify(queue: .main) { [weak self] in
             guard let self else { return }
             // Every place plans live, not only the root array — see `applyingStorePrices`.
-            config = config.applyingStorePrices(storePrices).applyingStorePeriods(storePeriods)
+            config = config.applyingStorePrices(storePrices)
+                .applyingStorePeriods(storePeriods)
+                .applyingStoreTrials(storeTrials)
             var props = viewProps
             let sources = (config.plans ?? []).map { $0.priceSource }
             if !sources.isEmpty {

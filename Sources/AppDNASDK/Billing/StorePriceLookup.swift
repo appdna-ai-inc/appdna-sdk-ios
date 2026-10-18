@@ -32,6 +32,18 @@ enum StorePriceLookup {
     struct StoreFacts {
         let price: String?
         let periodIso: String?
+
+        /**
+         #933 slice 3 — the free-trial period, as ISO, and ONLY when this user can actually have it.
+
+         🔴 A TRIAL SENTENCE IS A PROMISE. `isEligibleForIntroOffer` is a real per-user flag: a user
+         who has already taken the trial on this Apple ID answers false, and this stays nil, so the
+         paywall says nothing rather than offering a trial the purchase sheet will refuse.
+
+         Only a `.freeTrial` payment mode qualifies. An introductory PRICE is a different promise
+         and is deliberately not rendered as a free trial.
+         */
+        let trialIso: String?
     }
 
     /**
@@ -83,7 +95,19 @@ enum StorePriceLookup {
                 for p in products {
                     // A one-time product has no subscription and therefore no period, which is
                     // correct rather than missing.
-                    map[p.id] = StoreFacts(price: p.displayPrice, periodIso: iso(p.subscription?.subscriptionPeriod))
+                    let sub = p.subscription
+                    var trial: String? = nil
+                    if let sub, let intro = sub.introductoryOffer, intro.paymentMode == .freeTrial {
+                        // The per-user question, asked of the store rather than inferred.
+                        if await sub.isEligibleForIntroOffer {
+                            trial = iso(intro.period)
+                        }
+                    }
+                    map[p.id] = StoreFacts(
+                        price: p.displayPrice,
+                        periodIso: iso(sub?.subscriptionPeriod),
+                        trialIso: trial
+                    )
                 }
                 if map.isEmpty {
                     Log.info("[Paywall] the store knows none of \(ids.count) product(s) — using authored values")

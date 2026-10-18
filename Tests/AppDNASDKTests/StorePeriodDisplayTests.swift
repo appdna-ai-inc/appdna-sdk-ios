@@ -113,4 +113,42 @@ final class StorePeriodDisplayTests: XCTestCase {
         let config = try JSONDecoder().decode(PaywallConfig.self, from: data)
         XCTAssertEqual(config.applyingStorePeriods([:]).plans?.first?.displayPeriod, "mo")
     }
+
+    // MARK: - #933 slice 3 — the STORE's free trial, and the promise rule
+
+    private func trialPlan(label: String?, duration: String?, storeTrial: String?) throws -> PaywallPlan {
+        var doc: [String: Any] = ["id": "p", "product_id": "app.premium.monthly", "name": "Monthly"]
+        if let label { doc["trial"] = ["label": label] }
+        if let duration { doc["trial_duration"] = duration }
+        let data = try JSONSerialization.data(withJSONObject: doc)
+        var p = try JSONDecoder().decode(PaywallPlan.self, from: data)
+        p.resolvedStoreTrial = storeTrial
+        return p
+    }
+
+    func testAnAuthoredTrialLabelWinsOverTheStore() throws {
+        // The behaviour that must NOT change for any published paywall.
+        XCTAssertEqual(try trialPlan(label: "Free week", duration: nil, storeTrial: "P1M").trialLabel, "Free week")
+        XCTAssertEqual(try trialPlan(label: nil, duration: "7-day", storeTrial: "P1M").trialLabel, "7-day free trial")
+    }
+
+    func testAnUnauthoredTrialReadsTheStorePhrased() throws {
+        XCTAssertEqual(try trialPlan(label: nil, duration: nil, storeTrial: "P7D").trialLabel, "7 days free trial")
+        XCTAssertEqual(try trialPlan(label: nil, duration: nil, storeTrial: "P1W").trialLabel, "1 week free trial")
+        XCTAssertEqual(try trialPlan(label: nil, duration: nil, storeTrial: "P1M").trialLabel, "1 month free trial")
+    }
+
+    func testNoStoreTrialMeansNoSentenceNeverAnInventedOne() throws {
+        /*
+         🔴 THE PROMISE RULE. `resolvedStoreTrial` is nil when `isEligibleForIntroOffer` answered
+         false — this user has already taken the trial on this Apple ID. Rendering "7 days free"
+         there would promise a trial the purchase sheet refuses, which is worse than silence.
+        */
+        XCTAssertNil(try trialPlan(label: nil, duration: nil, storeTrial: nil).trialLabel)
+    }
+
+    func testAStoreTrialWeCannotParseDrawsNothing() throws {
+        XCTAssertNil(try trialPlan(label: nil, duration: nil, storeTrial: "WEEKLY").trialLabel)
+        XCTAssertNil(try trialPlan(label: nil, duration: nil, storeTrial: "PT1H").trialLabel)
+    }
 }

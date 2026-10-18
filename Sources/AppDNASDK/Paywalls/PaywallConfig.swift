@@ -83,6 +83,37 @@ struct PaywallConfig: Codable {
      feature passed its fixture, passed its live-StoreKit test, and reached nothing on screen.
      Walking fewer places here would repeat that exactly.
      */
+    /**
+     #933 slice 3 — a copy with the STORE's free-trial period on every eligible plan.
+
+     The same three assignments as `applyingStorePrices` and `applyingStorePeriods`, for the reason
+     recorded on those: #923's first substitution walked only the root `plans` array and so reached
+     no real paywall.
+     */
+    func applyingStoreTrials(_ trials: [String: String]) -> PaywallConfig {
+        guard !trials.isEmpty else { return self }
+        func trialed(_ list: [PaywallPlan]?) -> [PaywallPlan]? {
+            list?.map { plan in
+                var copy = plan
+                copy.resolvedStoreTrial = plan.productId.flatMap { trials[$0] }
+                return copy
+            }
+        }
+        func trialed(_ list: [PaywallSection]?) -> [PaywallSection]? {
+            list?.map { section in
+                guard section.type == "plans", let plans = section.data?.plans else { return section }
+                var copy = section
+                copy.setPlans(trialed(plans))
+                return copy
+            }
+        }
+        var out = self
+        out.plans = trialed(plans)
+        out._sections = trialed(_sections)
+        out.layout?.sections = trialed(layout?.sections)
+        return out
+    }
+
     func applyingStorePeriods(_ periods: [String: String]) -> PaywallConfig {
         guard !periods.isEmpty else { return self }
         func timed(_ list: [PaywallPlan]?) -> [PaywallPlan]? {
@@ -656,6 +687,20 @@ struct PaywallPlan: Codable, Identifiable {
      told this device, normalised to the spelling Play reports directly.
      */
     var resolvedStorePeriod: String?
+
+    /**
+     #933 slice 3 — the store's own free-trial period, as an ISO duration, filled by the presenter
+     ONLY when the store says THIS user is eligible for it.
+
+     🔴 PROMISE ONLY ON A POSITIVE SIGNAL. A trial sentence is a promise, and showing "7 days free"
+     to a user who has already used the trial on that account is worse than showing nothing. iOS
+     answers eligibility explicitly (`isEligibleForIntroOffer`); Google answers it structurally, by
+     returning only the offers a user may buy (`getSubscriptionOfferDetails`). Both can be stale in
+     the same direction — Play's own docs say it tells the user at purchase time if an offer is no
+     longer eligible — so a POSITIVE is acted on and a NEGATIVE is never used to suppress an
+     authored label.
+     */
+    var resolvedStoreTrial: String?
     let badge: String?
     private let trialDuration: String?   // Legacy: "trial_duration" string
     let trial: PaywallPlanTrial?         // New: {duration_days, label} object
@@ -750,8 +795,21 @@ struct PaywallPlan: Codable, Identifiable {
     */
     var trialLabel: String? {
         if let label = trial?.label { return label }
-        guard let d = trialDuration else { return nil }
-        let phrased = BillingPeriodPhrase.duration(d, locale: Locale.current.identifier) ?? d
+        if let d = trialDuration {
+            let phrased = BillingPeriodPhrase.duration(d, locale: Locale.current.identifier) ?? d
+            return "\(phrased) free trial"
+        }
+        /*
+         #933 slice 3 — nothing authored, so the STORE's trial, phrased.
+
+         Last rung on purpose: an authored label and an authored duration both win, so no published
+         paywall changes wording. Only a plan that said nothing gains a sentence — and only when
+         `resolvedStoreTrial` is set, which the presenter does solely for a user the store says is
+         eligible. An ISO duration we cannot parse yields nil rather than "P1W free trial".
+        */
+        guard let iso = resolvedStoreTrial,
+              let phrased = BillingPeriodPhrase.duration(iso, locale: Locale.current.identifier)
+        else { return nil }
         return "\(phrased) free trial"
     }
 
@@ -793,6 +851,7 @@ struct PaywallPlan: Codable, Identifiable {
         // #933 — filled by the presenter after the store answers, never decoded: it is not in
         // `CodingKeys` because it is not in the published document.
         self.resolvedStorePeriod = nil
+        self.resolvedStoreTrial = nil
         self.period = c.lenient(String.self, .period)
         self.badge = c.lenient(String.self, .badge)
         self.trialDuration = PaywallPlan.looseString(c, .trialDuration)
