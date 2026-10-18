@@ -17,7 +17,7 @@ final class ReviewPromptManager {
     // MARK: - Rate limiting
 
     /// Check if a review prompt can be shown (max 3/year, 90 days between prompts).
-    private func canShowReviewPrompt() -> Bool {
+    internal func canShowReviewPrompt() -> Bool {
         let count = defaults.integer(forKey: "\(prefix)request_count")
         if count >= Self.maxPromptsPerYear { return false }
 
@@ -95,22 +95,41 @@ final class ReviewPromptManager {
         guard canShowReviewPrompt() else { return }
         DispatchQueue.main.async { [weak self] in
             self?.requestNativeReview()
-            AppDNA.track(event: "review_prompt_shown", properties: ["prompt_type": "direct"])
         }
     }
 
     // MARK: - Private
 
+    /**
+     #939 — THE QUOTA IS SPENT ONLY WHEN THE PROMPT IS ACTUALLY ASKED FOR.
+
+     🔴 This used to count the request, stamp the date and fire `review_prompt_shown` BEFORE
+     looking for a scene — so an app with no foreground window scene (backgrounded, mid-transition,
+     an extension) burned one of its three yearly asks on a prompt StoreKit was never told about,
+     and reported it as shown. Three of those and the user is never asked again for a year, by a
+     path nothing records as having failed.
+
+     Android has always had the other behaviour: `recordPromptShown` runs inside Play's success
+     branch, so a request that cannot be served costs nothing. Two platforms, one field, opposite
+     answers — and the one that spends an invisible quota is the wrong one.
+
+     The OS still decides whether a sheet appears, and neither store will say. What this makes
+     true is narrower and worth having: a slot is spent only when we actually asked.
+     */
     private func requestNativeReview() {
-        // Track that we requested a review
+        guard let scene = UIApplication.shared.connectedScenes
+            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene else { return }
+
+        SKStoreReviewController.requestReview(in: scene)
+        recordPromptShown()
+        AppDNA.track(event: "review_prompt_shown", properties: ["prompt_type": "direct"])
+    }
+
+    /// The rate-limit state, in `UserDefaults` so it survives a cold start (#928's class).
+    private func recordPromptShown() {
         let count = defaults.integer(forKey: "\(prefix)request_count")
         defaults.set(count + 1, forKey: "\(prefix)request_count")
         defaults.set(Date(), forKey: "\(prefix)last_request_date")
-
-        if let scene = UIApplication.shared.connectedScenes
-            .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
-            SKStoreReviewController.requestReview(in: scene)
-        }
     }
 
 }
