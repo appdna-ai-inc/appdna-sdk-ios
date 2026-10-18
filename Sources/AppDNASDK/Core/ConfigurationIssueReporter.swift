@@ -32,6 +32,12 @@ enum ConfigurationIssueReporter {
     private static let lock = NSLock()
 
     /// The event name, shared with Android so the two fleets aggregate together.
+    ///
+    /// 🔴 The literal is repeated at the `track` call below rather than passed from here, and that
+    /// is deliberate: `check:server-event-names` harvests event names from `track(event: "…")` call
+    /// SITES, so a constant makes a real event look like one no SDK emits. The gate's own comment
+    /// records the same trap for `onboarding_flow_completed`. One duplicated string is cheaper than
+    /// a blind spot in the thing that catches invented event names.
     static let eventName = "sdk_decode_dropped"
 
     /**
@@ -53,7 +59,7 @@ enum ConfigurationIssueReporter {
         lock.unlock()
         guard isNew else { return }
 
-        AppDNA.track(event: eventName, properties: [
+        AppDNA.track(event: "sdk_decode_dropped", properties: [
             "surface": surface,
             "surface_id": id ?? "",
             // 🔴 The path, truncated rather than dropped: an event property has a practical size
