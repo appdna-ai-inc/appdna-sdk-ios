@@ -2184,7 +2184,12 @@ struct PaywallRenderer: View {
                         Button { selectPlan(plan.id) } label: {
                             VStack(spacing: 2) {
                                 Text(loc("plan.\(index).name", plan.displayName))
-                                    .font(.subheadline.weight(.semibold))
+                                    // 13pt to match Android's 13.sp on this arm, rather than
+                                    // `.subheadline` (15pt). A tab bar is the one place the two
+                                    // platforms sit side by side in a screenshot comparison, and an
+                                    // 2pt difference reads as a bug in whichever one you look at
+                                    // second. The console preview draws it at 12px.
+                                    .font(.system(size: 13, weight: .semibold))
                                 Text(loc("plan.\(index).price", plan.displayPrice))
                                     .font(.caption)
                             }
@@ -2258,6 +2263,58 @@ struct PaywallRenderer: View {
             })
 
         // Explicit vertical stack cases
+        /*
+         #960 — a tab bar, one tab per plan, with the SELECTED plan's full card beneath it.
+
+         The console has offered this style in its picker since it shipped and neither renderer had
+         a case for it, so an author picked "Tab groups", saw the console preview draw it,
+         published, and every device silently drew the default vertical stack instead.
+
+         The shape is the console preview's (`PaywallPreview.tsx`, "6. Tab Groups") — the only
+         specification that existed: equal-width tabs over a full-width rule, the selected tab's
+         segment of that rule in the accent colour, and one plan card below.
+
+         🔴 Deliberately NOT a `Picker(.segmented)`, which is what `segmented_toggle` already is.
+         The point of this style is a tab bar whose selected tab owns the detail panel underneath,
+         and a segmented control cannot express that — it also caps out visually at a handful of
+         options, while tabs degrade predictably.
+         */
+        case "tab_groups":
+            let tabAccent = Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+            // #947 — read off the PAGE, not `.primary`/`.secondary`, which follow the PHONE's
+            // appearance and so drew different pixels in light and dark for the same paywall.
+            let tabInactiveInk = PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)
+            let tabRule = PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.2)
+            // `firstIndex` can miss (no selection yet, or a stale id), so the fallback is the
+            // first plan — and it is clamped, because `plans` is author-supplied and may be empty.
+            let selectedIndex = plans.firstIndex(where: { $0.id == selectedPlanId }) ?? 0
+            let selectedPlan = selectedIndex < plans.count ? plans[selectedIndex] : nil
+            return AnyView(VStack(spacing: 12) {
+                HStack(spacing: 0) {
+                    ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
+                        let isSelected = plan.id == selectedPlan?.id
+                        Button { selectPlan(plan.id) } label: {
+                            VStack(spacing: 8) {
+                                Text(loc("plan.\(index).name", plan.displayName))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundColor(isSelected ? tabAccent : tabInactiveInk)
+                                    .lineLimit(1)
+                                Rectangle()
+                                    .fill(isSelected ? tabAccent : tabRule)
+                                    .frame(height: 2)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                if let selected = selectedPlan {
+                    PlanCard(plan: selected, isSelected: true,
+                             onSelect: { selectPlan(selected.id) }, planIndex: selectedIndex,
+                             loc: loc, sectionStyle: style, cardStyle: cardStyle)
+                }
+            })
+
         case "vertical_stack", "stack":
             return planLayoutFallbackStack(plans: plans, style: style, cardStyle: cardStyle)
 

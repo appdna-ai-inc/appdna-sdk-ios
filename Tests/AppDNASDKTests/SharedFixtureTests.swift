@@ -1893,6 +1893,8 @@ final class SharedFixtureTests: XCTestCase {
             // objects, not the raw JSON, so a field the model silently drops shows up here.
             let plansSection = paywall.sections.first { $0.type == "plans" }
             h.state["parsed_price_layout"] = SharedFixtureTests.orNull(plansSection?.data?.priceLayout)
+            // #960 — which plan LAYOUT the document asked for; see the Android runner.
+            h.state["parsed_plan_display_style"] = SharedFixtureTests.orNull(plansSection?.data?.planDisplayStyle)
             h.state["parsed_strikethrough_font_size"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughFontSize)
             h.state["parsed_strikethrough_gap"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughGap)
             let plansList = paywall.plans ?? []
