@@ -127,9 +127,13 @@ struct LocationFieldView: View {
         return LocationData.fromStoredAnswer(value)
     }
 
-    private var minChars: Int {
-        (field.config?.location_min_chars as? Int) ?? 2
+    /// #963 — resolved by the shared `LocationSearchSettings`, the same one the `input_location`
+    /// content block uses, so the two surfaces cannot drift apart again.
+    private var search: LocationSearchSettings {
+        LocationSearchSettings.from(fieldConfig: field.config, defaultMinChars: 2)
     }
+
+    private var minChars: Int { search.minChars }
 
     private var placeholder: String {
         (field.config?.location_placeholder as? String) ?? "Search for a location..."
@@ -294,10 +298,12 @@ struct LocationFieldView: View {
         defer { isLoading = false }
 
         do {
+            let settings = search
             var body: [String: Any] = ["query": query, "limit": 5]
-            if let t = field.config?.location_type { body["type"] = t }
-            if let c = field.config?.location_bias_country { body["bias_country"] = c }
-            if let l = field.config?.location_language { body["language"] = l }
+            // Only when the author chose one — see the note on `LocationSearchSettings.type`.
+            if let t = settings.type { body["type"] = t }
+            if let c = settings.biasCountry { body["bias_country"] = c }
+            if let l = settings.language { body["language"] = l }
 
             let jsonData = try JSONSerialization.data(withJSONObject: body)
 

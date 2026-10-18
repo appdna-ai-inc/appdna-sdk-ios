@@ -2647,8 +2647,20 @@ struct FormInputLocationPlaceholderBlock: View {
                     // dict with the raw string. Same when a suggestion is
                     // selected (we set text before storing the dict).
                     if isRestoringFromSaved { return }
-                    searchCompleter.search(query: newValue)
-                    showResults = isFocused && !newValue.isEmpty
+                    // #963 — honour the author's Min characters. The Console seeds
+                    // `location_min_chars: 3` on every Location content block
+                    // (`StepContentEditor.tsx:2845`) and this surface searched from the FIRST
+                    // keystroke, so an authored threshold did nothing and every block issued two
+                    // throwaway searches before the one that could match. Resolved by the same
+                    // `LocationSearchSettings` the form-step sibling uses.
+                    let search = LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
+                    if newValue.count < search.minChars {
+                        searchCompleter.search(query: "")   // clears results and stops the spinner
+                        showResults = false
+                    } else {
+                        searchCompleter.search(query: newValue)
+                        showResults = isFocused
+                    }
                     // Only store the raw string if the user is ACTIVELY typing.
                     // Once a suggestion is selected, selectResult writes the
                     // structured dict and this onChange won't fire again until

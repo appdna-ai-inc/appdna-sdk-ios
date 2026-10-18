@@ -37,6 +37,7 @@ extension SharedFixtureTests {
         case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
         case "resolve_element_container": runElementContainer(f, h)
         case "resolve_plan_period": runPlanPeriod(f, h)
+        case "resolve_location_search": runLocationSearch(f, h)
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -111,6 +112,59 @@ extension SharedFixtureTests {
             plan.resolvedStorePeriod = c.objectValue?["store_period"]?.stringValue
             guard let period = plan.displayPeriod, !period.isEmpty else { return NSNull() }
             return period
+        }
+    }
+
+    // MARK: resolve_location_search
+
+    /**
+     #963 — the Console's four location settings, resolved for the surface that offers them.
+
+     🔴 FOUR SURFACES, NOT TWO. A form-step Location field takes its config as a typed
+     `FormFieldConfig`; an `input_location` content block takes a free-form `field_config` map. The
+     field read all four settings and the block read NONE, because the block had grown its own copy
+     of the search call that took only the query — so Type = "city" returned street addresses and an
+     authored Min characters did nothing, silently, on both platforms.
+
+     Both shapes go through the REAL `LocationSearchSettings`, and the typed one through the REAL
+     `FormFieldConfig` decode, because a driver that builds the config by hand can only ever agree
+     with itself.
+
+     The two `defaultMinChars` are deliberate: 2 for a form-step field, 3 for a content block (what
+     the Console seeds), preserved per surface so no published flow changes.
+     */
+    private func runLocationSearch(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_location_search needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let obj = c.objectValue,
+                  let surface = obj["surface"]?.stringValue,
+                  let raw = obj["value"]?.foundation as? [String: Any] else {
+                XCTFail("[\(f.id)] a case needs {surface, value}")
+                return NSNull()
+            }
+            let resolved: LocationSearchSettings
+            switch surface {
+            case "content_block":
+                resolved = LocationSearchSettings.from(
+                    blockConfig: raw.mapValues { AnyCodable($0) }, defaultMinChars: 3)
+            case "form_field":
+                guard JSONSerialization.isValidJSONObject(raw),
+                      let data = try? JSONSerialization.data(withJSONObject: raw),
+                      let typed = try? JSONDecoder().decode(FormFieldConfig.self, from: data) else {
+                    XCTFail("[\(f.id)] a form field config did not decode")
+                    return NSNull()
+                }
+                resolved = LocationSearchSettings.from(fieldConfig: typed, defaultMinChars: 2)
+            default:
+                XCTFail("[\(f.id)] unknown surface \(surface)")
+                return NSNull()
+            }
+            let parts = [resolved.type ?? "-", resolved.biasCountry ?? "-", resolved.language ?? "-",
+                         String(resolved.minChars)]
+            return parts.joined(separator: "|")
         }
     }
 
