@@ -44,21 +44,35 @@ final class RiveWalkUITests: XCTestCase {
         }
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
-        // Four steps of location surfaces stand between the start and the Rive step; none of them
-        // is required, so each advances on its own CTA.
-        for label in ["Next", "Next", "Next"] {
-            let cta = app.buttons[label].firstMatch
-            XCTAssertTrue(cta.waitForExistence(timeout: 10), "no \(label) button on the way to the Rive step")
-            cta.tap()
+        /*
+         * 🔴 ASSERT EACH STEP BY NAME on the way, not just the destination. The first version
+         * tapped three Nexts and a Continue and failed with "the Rive step never arrived", which
+         * says nothing about WHICH tap went astray — and a walk whose failure cannot be located is
+         * a walk you have to run again to learn anything.
+         */
+        let itinerary: [(heading: String, cta: String)] = [
+            ("No authored Type", "Next"),
+            ("Type = City", "Next"),
+            ("Min characters = 6", "Next"),
+            // 🔴 The form step renders its FIELD LABEL, not its authored `name`. The first
+            // version asserted the name ("Form-step field") — a value the SDK never draws — and so
+            // failed on a step that was on screen in front of it.
+            ("Location (form-step field, no Type set)", "Continue"),
+        ]
+        for (heading, cta) in itinerary {
+            XCTAssertTrue(
+                app.staticTexts[heading].waitForExistence(timeout: 15),
+                "expected the step \"\(heading)\" and it never arrived",
+            )
+            let button = app.buttons[cta].firstMatch
+            XCTAssertTrue(button.waitForExistence(timeout: 10), "step \"\(heading)\" has no \(cta) button")
+            button.tap()
         }
-        let cont = app.buttons["Continue"].firstMatch
-        XCTAssertTrue(cont.waitForExistence(timeout: 10), "the form step never arrived")
-        cont.tap()
 
-        XCTAssertTrue(
-            app.staticTexts["Rive animation"].waitForExistence(timeout: 15),
-            "the Rive step never arrived",
-        )
+        if !app.staticTexts["Rive animation"].waitForExistence(timeout: 15) {
+            let drawn = app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label)
+            XCTFail("the Rive step never arrived. On screen: \(drawn)")
+        }
         // The runtime fetches the file over the network before it can draw anything.
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 6)
 
