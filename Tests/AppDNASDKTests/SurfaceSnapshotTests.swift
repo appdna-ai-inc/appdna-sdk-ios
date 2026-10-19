@@ -127,6 +127,35 @@ final class SurfaceSnapshotTests: XCTestCase {
         return false
     }
 
+    /**
+     How many pixels in the frame are DARK (`r`, `g`, `b` all below 120) — the same measure
+     Android's light-page corpus is counted with, so the two platforms can be compared by number
+     rather than by eye.
+
+     🔴 It exists because the frames themselves do not survive. `write` puts them in the
+     SIMULATOR's temp directory, which is cleaned after the run, and `APPDNA_SNAPSHOT_DIR` does not
+     reach this process for an SPM package scheme (see `outputDir`). A count printed into the test
+     log outlives the file, so "what did it draw" is answerable afterwards instead of only during.
+     */
+    func darkPixelCount(_ name: String) throws -> Int {
+        let path = "\(outputDir)/\(name).png"
+        guard let data = FileManager.default.contents(atPath: path),
+              let image = UIImage(data: data), let cg = image.cgImage else { return -1 }
+        let w = cg.width, h = cg.height
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let ctx = CGContext(
+            data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue,
+        ) else { return -1 }
+        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var dark = 0
+        for i in stride(from: 0, to: pixels.count, by: 4) {
+            if pixels[i] < 120, pixels[i + 1] < 120, pixels[i + 2] < 120 { dark += 1 }
+        }
+        return dark
+    }
+
     /// Whether every sampled pixel is the same colour — i.e. the renderer produced nothing.
     private func isBlank(_ image: UIImage) -> Bool {
         guard let cg = image.cgImage else { return true }
@@ -397,6 +426,148 @@ final class SurfaceSnapshotTests: XCTestCase {
                 try frameContains(name, colour: PaywallTextDefaults.dark),
                 "\(name): no dark pixel — the plan text did not draw on a white page",
             )
+        }
+    }
+
+    /*
+     * #966 / #962 — EVERY plan display style the Console offers, RENDERED on a white page.
+     *
+     * 🔴 This instrument did not exist on iOS. `grep -c plan_display_style` over both iOS snapshot
+     * suites returned 0, so the harness that found a three-defect cluster on Android — a selected
+     * card whose 16%-white fill vanished, and the name and price with it — had no iOS counterpart.
+     * #966 closed with that named as a gap and an argued equivalent proof; this replaces the
+     * argument with pixels.
+     *
+     * The list is the CONSOLE's picker, read off `SectionContentEditor.tsx`, not iOS's `switch`.
+     * Reading the switch would only assert that iOS agrees with itself: a style an author can pick
+     * and iOS falls through on is exactly the defect #960 found, and it draws the vertical stack
+     * rather than nothing, so the frame alone cannot report it. What this asserts is the weaker and
+     * still useful claim — whatever each style draws, it is VISIBLE on a white page.
+     *
+     * `carousel_cards` is in the list for #962: Android grew its own arm (full-width pages plus a
+     * page-dot indicator) where it used to share `horizontal_scroll`'s peeking pager, and the two
+     * Console choices have to look different on both platforms.
+     */
+    func testEveryPlanDisplayStyleDrawsOnAWhitePage() throws {
+        let styles = [
+            "vertical_stack", "grid", "horizontal_scroll", "radio_list", "pill_selector",
+            "segmented_toggle", "tab_groups", "comparison_table", "single_hero",
+            "product_as_cta", "carousel_cards", "timeline_reveal", "accordion",
+        ]
+        /*
+         * 🔴 THE CONTROL, AND WITHOUT IT THIS SUITE PROVES NOTHING. `render` draws the WHOLE
+         * paywall, so the frame carries the close button and the pinned CTA whatever the plans do —
+         * and the close button is dark on a white page. `frameContains(dark)` would therefore pass
+         * for a plans section that drew absolutely nothing, which is the shape of the false green
+         * #923's accessibility-tree read produced.
+         *
+         * So the same paywall is rendered with an EMPTY plans array first, and every style has to
+         * put meaningfully more dark ink on the page than that baseline does.
+         */
+        let emptyJSON = """
+        {
+          "id": "snap_plan_style_control",
+          "name": "Plan style control",
+          "layout": {
+            "type": "stack",
+            "background": { "type": "color", "value": "#FFFFFF" },
+            "sections": [
+              { "id": "p", "type": "plans", "config": { "plan_display_style": "vertical_stack" } }
+            ]
+          },
+          "plans": [],
+          "cta": { "text": "Continue" },
+          "dismiss": { "allowed": true, "style": "x_button" }
+        }
+        """
+        try write(render(try paywall(emptyJSON)).environment(\.colorScheme, .light), named: "plan_style_control_light")
+        let chromeOnly = try darkPixelCount("plan_style_control_light")
+        print("[plan-style] CONTROL (no plans) dark=\(chromeOnly)")
+        XCTAssertGreaterThan(chromeOnly, 0, "the control frame drew nothing at all — the harness is broken, not the renderer")
+
+        var measured: [String: Int] = [:]
+
+        for style in styles {
+            let json = """
+            {
+              "id": "snap_plan_style_\(style)",
+              "name": "Plan style",
+              "layout": {
+                "type": "stack",
+                "background": { "type": "color", "value": "#FFFFFF" },
+                "sections": [
+                  { "id": "p", "type": "plans",
+                    "config": { "plan_display_style": "\(style)", "show_plan_subtitles": true } }
+                ]
+              },
+              "plans": [
+                { "id": "p_month", "product_id": "premium_monthly", "label": "Monthly",
+                  "price_display": "$9.99", "period": "month", "description": "Billed monthly",
+                  "is_default": true, "sort_order": 0 },
+                { "id": "p_year", "product_id": "premium_annual", "label": "Annual",
+                  "price_display": "$49.99", "period": "year", "description": "Billed yearly",
+                  "badge": "Save 58%", "is_default": false, "sort_order": 1 }
+              ],
+              "cta": { "text": "Continue" },
+              "dismiss": { "allowed": true, "style": "x_button" }
+            }
+            """
+            let config = try paywall(json)
+            let name = "plan_style_\(style)_light"
+            try write(render(config).environment(\.colorScheme, .light), named: name)
+            // The number, into the log, because the PNG does not survive the run.
+            let dark = try darkPixelCount(name)
+            print("[plan-style] \(style) dark=\(dark)")
+            /*
+             * Against the chrome-only baseline, not against zero. `product_as_cta` is included
+             * here even though it is excluded from the ink assertion below: its rows are
+             * accent-filled with white content (#961), so it adds no DARK ink of its own — which
+             * is why it gets the weaker `>=` and the comment that says so out loud.
+             */
+            if style == "product_as_cta" {
+                XCTAssertGreaterThanOrEqual(
+                    dark, chromeOnly,
+                    "product_as_cta: fewer dark pixels than the chrome alone — something stopped drawing",
+                )
+            } else {
+                XCTAssertGreaterThan(
+                    dark, chromeOnly,
+                    "plan_display_style \(style): no more dark ink than an EMPTY plans section — "
+                        + "the plan content did not draw, and the close button is what passed the colour check",
+                )
+                // The colour check as well as the count: the ink has to be the READABLE dark, not
+                // merely some dark pixel that happens to be under 120 on all three channels.
+                XCTAssertTrue(
+                    try frameContains(name, colour: PaywallTextDefaults.dark),
+                    "plan_display_style \(style): no readable-dark pixel on a WHITE page",
+                )
+            }
+            measured[style] = dark
+        }
+
+        /*
+         * #962 — `carousel_cards` AND `horizontal_scroll` ARE TWO CONSOLE CHOICES AND MUST NOT
+         * DRAW THE SAME THING. Android rendered them with one arm until this issue, so an author
+         * who picked the second silently got the first.
+         *
+         * The discriminating claim, which a count CAN make: `horizontal_scroll` peeks the next
+         * plan, so both plans put ink on the page; `carousel_cards` pages, so only one does. Fewer
+         * dark pixels is therefore the expected direction, and equality would mean the styles had
+         * collapsed back together.
+         *
+         * 🔴 A dark-pixel count is position-independent, so it canNOT prove two layouts are the
+         * same — `grid`, `horizontal_scroll` and `vertical_stack` all measure 14658 here while
+         * dispatching to three different views, because they draw the same glyphs in different
+         * places. It is used only in the direction it is sound in: a DIFFERENCE is evidence.
+         */
+        if let carousel = measured["carousel_cards"], let scroll = measured["horizontal_scroll"] {
+            XCTAssertLessThan(
+                carousel, scroll,
+                "carousel_cards drew as much ink as horizontal_scroll — it is paging one plan at a "
+                    + "time, so it should draw less than the style that peeks the next one",
+            )
+        } else {
+            XCTFail("both styles must have been measured — the sweep list changed without this check")
         }
     }
 }
