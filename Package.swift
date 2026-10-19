@@ -122,7 +122,12 @@ let package = Package(
             // The StoreKit test configuration the SKTestSession tests load
             // (`Bundle.module`): coins (consumable), lifetime (non-consumable), and three monthly
             // subscriptions each in its own group (no offer, free-trial intro, pay-up-front intro).
-            resources: [.copy("AppDNATestProducts.storekit")]
+            resources: [
+                .copy("AppDNATestProducts.storekit"),
+                // #982 — a minimal, valid Lottie (one dark square translating left→right over 30
+                // frames) so a render test can prove the engine DRAWS, rather than that it links.
+                .copy("LottieProbe.json"),
+            ]
         )
     ]
 )

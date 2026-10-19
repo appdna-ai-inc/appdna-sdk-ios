@@ -61,13 +61,26 @@ public struct LottieBlockView: View {
     @ViewBuilder
     private func animation(playing trigger: Int?) -> some View {
         if let urlString = block.lottie_url, let url = URL(string: urlString) {
-            LottieView {
-                try await DotLottieFile.loadedFrom(url: url)
+            /*
+             🔴 TWO LOADERS, CHOSEN BY EXTENSION, and getting this wrong draws NOTHING rather than
+             failing. `DotLottieFile` reads the zipped `.lottie` container; a plain `.json` is a
+             `LottieAnimation`. The first version of this used `DotLottieFile` for both and the
+             render test measured `withAnimation=0` — it linked, it compiled, it laid out, and it
+             drew an empty frame. The build could not have told me; only reading the pixels did.
+            */
+            if url.pathExtension.lowercased() == "lottie" {
+                LottieView { try await DotLottieFile.loadedFrom(url: url) }
+                    .configure { $0.contentMode = .scaleAspectFit }
+                    .playbackMode(playbackMode(trigger))
+                    .animationSpeed(block.speed)
+                    .id(trigger ?? 0)
+            } else {
+                LottieView { try await LottieAnimation.loadedFrom(url: url) }
+                    .configure { $0.contentMode = .scaleAspectFit }
+                    .playbackMode(playbackMode(trigger))
+                    .animationSpeed(block.speed)
+                    .id(trigger ?? 0)
             }
-            .configure { $0.contentMode = .scaleAspectFit }
-            .playbackMode(playbackMode(trigger))
-            .animationSpeed(block.speed)
-            .id(trigger ?? 0)
         } else {
             // No URL is not an error — an authored block with nothing to show draws nothing, the
             // way every other block type does, rather than reserving space for a missing file.
