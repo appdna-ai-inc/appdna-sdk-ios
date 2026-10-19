@@ -1451,7 +1451,6 @@ public struct ContentBlock: Codable, Identifiable {
     public let z_index: Double?
     public let gap: Double?
     public let wrap: Bool?
-    public let justify: String?
     public let align_items: String?
     // Row layout direction and distribution
     public let row_direction: String?       // horizontal (default), vertical
@@ -1599,7 +1598,7 @@ public struct ContentBlock: Codable, Identifiable {
         case time_format, time_text_size
         case picker_spacing, calendar_bg_color, wheel_bg_color, wheel_height
         case wheel_line_color, wheel_line_stroke_width
-        case children, stack_children, z_index, gap, wrap, justify, align_items
+        case children, stack_children, z_index, gap, wrap, align_items
         case row_direction, row_distribution, row_child_fill, column_ratios
         case view_key, custom_config, placeholder_image_url, placeholder_text
         case particle_type, density, speed, secondary_color, size_range, fullscreen
@@ -1816,7 +1815,6 @@ public struct ContentBlock: Codable, Identifiable {
         self.z_index = c.lenient(Double.self, .z_index)
         self.gap = c.lenient(Double.self, .gap)
         self.wrap = c.lenient(Bool.self, .wrap)
-        self.justify = c.lenient(String.self, .justify)
         self.align_items = c.lenient(String.self, .align_items)
         self.row_direction = c.lenient(String.self, .row_direction)
         self.column_ratios = c.lenient(String.self, .column_ratios)

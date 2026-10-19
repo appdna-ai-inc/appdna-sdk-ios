@@ -170,7 +170,6 @@ enum BlockKeyTypes {
             "inactive_rating_color": "string",
             "inline_playback": "bool",
             "items": "string_list",
-            "justify": "string",
             "label": "string",
             "label_color": "string",
             "label_font_size": "number",
