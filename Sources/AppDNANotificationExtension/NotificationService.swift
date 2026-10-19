@@ -94,7 +94,10 @@ open class NotificationService: UNNotificationServiceExtension {
         slot: NotificationCenterSlot,
         completion: @escaping () -> Void
     ) {
-        guard PushActionCategories.category(from: userInfo) != nil else { return completion() }
+        // #987 — BUTTONS, not "has a category": every AppDNA push has one now. This extension
+        // exists to register a BUTTON category before display; the button-less default belongs to
+        // the app's configure, once per launch.
+        guard PushActionCategories.hasActionButtons(userInfo) else { return completion() }
         PushActionCategories.register(from: userInfo, slot: slot) {
             slot.getCategories { _ in completion() }
         }

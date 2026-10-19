@@ -176,6 +176,19 @@ import UserNotifications
 
     public static let defaultCategoryId = "appdna_default"
 
+    /// Whether this payload carries action BUTTONS, as distinct from merely having a category.
+    ///
+    /// #987 made `category(from:)` non-nil for every AppDNA push, so it stopped being the test for
+    /// "are there buttons to register". The notification service extension still needs that test:
+    /// it exists to register a BUTTON category before the notification is shown, and the
+    /// button-less default is registered by the app at configure instead — where it is registered
+    /// once per launch rather than per push, and where a plain push (which is not
+    /// `mutable-content`, so the extension never runs for it) is still covered.
+    public static func hasActionButtons(_ userInfo: [AnyHashable: Any]) -> Bool {
+        guard let actions = userInfo["actions"] as? [[String: Any]] else { return false }
+        return !actions.isEmpty
+    }
+
     /// The title of a button in a registered category. A category is shared by every later push with the
     /// same button set, and it is registered by two processes — the Notification Service Extension
     /// (where the SDK is not configured: no user, no session, no remote config) and the app. Both must

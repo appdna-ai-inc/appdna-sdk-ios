@@ -39,10 +39,27 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(reply.textInputPlaceholder, "Type a reply")
     }
 
-    func testNoButtonsRegistersNothing() {
+    /**
+     #987 — a button-less payload registers the DEFAULT category, not nothing.
+
+     This asserted `slot.categories.isEmpty` when a button-less push carried no category at all.
+     It registers one now, with no actions, so the push can report its dismissal — and the
+     assertion that keeps that safe is that it brings no buttons with it.
+     */
+    func testNoButtonsRegistersTheButtonlessDefault() {
         let slot = InMemoryNotificationCenterSlot()
         PushActionCategories.register(from: ["aps": ["category": "x"], "appdna": "1"], slot: slot)
-        XCTAssertTrue(slot.categories.isEmpty)
+        XCTAssertEqual(slot.categories.map(\.identifier), [PushActionCategories.defaultCategoryId])
+        XCTAssertTrue(slot.categories.first?.actions.isEmpty == true)
+    }
+
+    /// And the EXTENSION still only runs for buttons — the default belongs to the app's configure.
+    func testHasActionButtonsIsTheExtensionsTest() {
+        XCTAssertTrue(PushActionCategories.hasActionButtons(userInfo()))
+        XCTAssertFalse(PushActionCategories.hasActionButtons(["appdna": "1"]))
+        var empty = userInfo()
+        empty["actions"] = []
+        XCTAssertFalse(PushActionCategories.hasActionButtons(empty))
     }
 
     /// A re-registration with the same id replaces the old category; other categories (the host's) stay.
