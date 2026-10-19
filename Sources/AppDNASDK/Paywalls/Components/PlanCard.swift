@@ -626,7 +626,15 @@ struct PlanCard: View {
 
     private func badgeShape(_ style: String) -> some Shape {
         switch style {
-        case "rectangle":
+        /*
+         * #988 — `square` is accepted as an alias for `rectangle`, which Android has done since it
+         * shipped. Without it the value fell through to `default:` and drew a **capsule** — the
+         * opposite of what the word means, so one hand-written document was a box on Android and a
+         * pill here. The Console never writes it (its picker offers capsule/rectangle/rounded), so
+         * nothing an author authored changes; what changes is an imported or hand-edited document
+         * finally getting the shape it asked for.
+         */
+        case "rectangle", "square":
             return AnyShape(RoundedRectangle(cornerRadius: 2))
         case "rounded":
             return AnyShape(RoundedRectangle(cornerRadius: 6))
