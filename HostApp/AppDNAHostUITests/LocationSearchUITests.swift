@@ -111,7 +111,17 @@ final class LocationSearchUITests: XCTestCase {
             + "nothing for an unauthored Type (#964) — `address` is the default Android used to "
             + "substitute")
 
+        /*
+         * The flow has one more step after the form — a plain "Done" screen, so that the form step
+         * has somewhere to route to. iOS honours that rule and lands on it; the Android walk of the
+         * same flow went straight to completion from the form step, which is a difference in how a
+         * form step's `next_step_rules` is followed and not something this issue is about.
+         * Tolerating both is what keeps this test about the location settings.
+         */
         app.buttons["Continue"].tap()
+        if app.staticTexts["Done"].waitForExistence(timeout: 8) {
+            app.buttons["Finish"].tap()
+        }
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20), "the flow did not complete")
     }
 
