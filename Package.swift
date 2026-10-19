@@ -127,6 +127,17 @@ let package = Package(
                 // #982 — a minimal, valid Lottie (one dark square translating left→right over 30
                 // frames) so a render test can prove the engine DRAWS, rather than that it links.
                 .copy("LottieProbe.json"),
+                /*
+                 * #990 — a real `.riv`, because nothing else can prove the Rive engine draws.
+                 *
+                 * Both SDKs fetch a `.riv` over the network and there is no bundled-asset rung on
+                 * that path, so an offline render test needs a file in the bundle. This one is
+                 * `teststatemachine.riv` from the rive-ios package's own Example-iOS assets (MIT,
+                 * © 2020 Rive — see `RiveStateMachineProbe.riv.LICENSE`), 399 bytes, and it carries
+                 * a STATE MACHINE so the same test can exercise `rive_state_machine`.
+                 */
+                .copy("RiveStateMachineProbe.riv"),
+                .copy("RiveStateMachineProbe.riv.LICENSE"),
             ]
         )
     ]

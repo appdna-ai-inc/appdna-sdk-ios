@@ -1,0 +1,31 @@
+RiveStateMachineProbe.riv is `teststatemachine.riv` from the rive-ios package's Example-iOS
+assets, redistributed here as a test fixture under the MIT licence it ships with.
+
+It exists so an offline test can prove the Rive engine RENDERS. Both SDKs fetch a `.riv` over the
+network and there is no bundled-asset rung on that path, so without a file in the test bundle there
+is nothing to draw (#990). It carries a state machine, which lets the same test exercise the
+`rive_state_machine` config key.
+
+────────────────────────────────────────────────────────────────────────────────
+
+MIT License
+
+Copyright (c) 2020 Rive
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

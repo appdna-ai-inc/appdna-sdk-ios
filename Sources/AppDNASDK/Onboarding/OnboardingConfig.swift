@@ -683,6 +683,18 @@ public struct FormFieldConfig: Codable {
 /// border, corner_radius). The free-form sub-maps `label_style`,
 /// `input_style`, `error_style` are untyped because the schema treats
 /// them as opaque records — authors can pass any sub-keys.
+/**
+ A form-step field's styling, as the console's Field Style panel writes it.
+
+ 🔴 #994 — THIRTEEN OF THESE WERE DECLARED BY NOBODY. The panel has always offered eighteen
+ controls and this struct declared seven, so `text_color`, `font_size`, the icons, the label
+ position and the Select's option styling were authorable and unreadable: set on the page, saved,
+ published, and dropped at decode. The CONTENT-BLOCK input surface honoured most of them all
+ along, so the same setting worked on one surface and not its sibling.
+
+ Every key here is read by both platforms; `check:form-field-style` fails when one is offered and
+ no renderer declares it.
+ */
 public struct FormFieldStyle: Codable {
     public let label_style: AnyCodable?
     public let input_style: AnyCodable?
@@ -691,6 +703,30 @@ public struct FormFieldStyle: Codable {
     public let border_color: String?
     public let focus_border_color: String?
     public let background_color: String?
+
+    // ── #994: the text field's own ink and chrome ──
+    public let border_width: Double?
+    public let text_color: String?
+    public let placeholder_color: String?
+    public let font_size: Double?
+    /// The fill while the field has the keyboard; falls back to `background_color`.
+    public let focused_background_color: String?
+
+    // ── #994: the label ──
+    /// `above` (default) · `inline` · `floating` · `hidden`.
+    public let label_position: String?
+
+    // ── #994: leading / trailing glyphs, by SF Symbol name (Android maps the same names) ──
+    public let icon_prefix: String?
+    public let icon_suffix: String?
+
+    // ── #994: a Select's options, mirroring the content block's `field_style.option_*` ──
+    public let option_font_family: String?
+    public let option_corner_radius: Double?
+    public let option_text_wrap: Bool?
+    /// `contain` · `cover` · `fit`.
+    public let option_image_scale: String?
+    public let checkmark_color: String?
 }
 
 public struct FormField: Codable, Identifiable {
