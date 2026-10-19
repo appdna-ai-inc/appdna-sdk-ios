@@ -317,20 +317,34 @@ internal enum ImageSectionRenderer: SectionRenderer {
 
 internal enum VideoSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
-        let videoURL = section.data?["video_url"]?.value as? String
-        let height = section.data?["height"]?.value as? Double ?? 200
+        /*
+         * #981 — A SCREEN SECTION SPELLS ITS RICH-MEDIA KEYS UNPREFIXED, and a CONTENT BLOCK
+         * spells the same settings with a `video_` / `lottie_` / `rive_` prefix. The screens
+         * editor writes the unprefixed form (`SectionPropertiesPanel.tsx:520-547`) and that is
+         * what this renderer has always read; Android's `VideoSectionRenderer` reads BOTH, so a
+         * section whose data was pasted from a content block worked there and silently fell to
+         * these defaults here. Both spellings now, unprefixed first — the editor's own.
+         */
+        let videoURL = section.data?["video_url"]?.value as? String ?? section.data?["url"]?.value as? String
+        let height = section.data?["height"]?.value as? Double
+            ?? section.data?["video_height"]?.value as? Double ?? 200
 
         return AnyView(
             Group {
                 if let url = videoURL {
                     VideoBlockView(block: VideoBlock(
                         video_url: url,
-                        video_thumbnail_url: section.data?["thumbnail_url"]?.value as? String,
+                        video_thumbnail_url: section.data?["thumbnail_url"]?.value as? String
+                            ?? section.data?["video_thumbnail_url"]?.value as? String,
                         video_height: height,
-                        video_corner_radius: section.data?["corner_radius"]?.value as? Double ?? 0,
-                        autoplay: section.data?["autoplay"]?.value as? Bool ?? false,
-                        loop: section.data?["loop"]?.value as? Bool ?? false,
-                        muted: section.data?["muted"]?.value as? Bool ?? true,
+                        video_corner_radius: section.data?["corner_radius"]?.value as? Double
+                            ?? section.data?["video_corner_radius"]?.value as? Double ?? 0,
+                        autoplay: section.data?["autoplay"]?.value as? Bool
+                            ?? section.data?["video_autoplay"]?.value as? Bool ?? false,
+                        loop: section.data?["loop"]?.value as? Bool
+                            ?? section.data?["video_loop"]?.value as? Bool ?? false,
+                        muted: section.data?["muted"]?.value as? Bool
+                            ?? section.data?["video_muted"]?.value as? Bool ?? true,
                         controls: nil,
                         inline_playback: nil
                     ))
@@ -342,8 +356,10 @@ internal enum VideoSectionRenderer: SectionRenderer {
 
 internal enum LottieSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
-        let lottieURL = section.data?["lottie_url"]?.value as? String
-        let height = section.data?["height"]?.value as? Double ?? 200
+        // #981 — both spellings, as in `VideoSectionRenderer` above.
+        let lottieURL = section.data?["lottie_url"]?.value as? String ?? section.data?["url"]?.value as? String
+        let height = section.data?["height"]?.value as? Double
+            ?? section.data?["lottie_height"]?.value as? Double ?? 200
 
         return AnyView(
             Group {
@@ -351,9 +367,12 @@ internal enum LottieSectionRenderer: SectionRenderer {
                     LottieBlockView(block: LottieBlock(
                         lottie_url: lottieURL,
                         lottie_json: nil,
-                        autoplay: section.data?["autoplay"]?.value as? Bool ?? true,
-                        loop: section.data?["loop"]?.value as? Bool ?? true,
-                        speed: section.data?["speed"]?.value as? Double ?? 1.0,
+                        autoplay: section.data?["autoplay"]?.value as? Bool
+                            ?? section.data?["lottie_autoplay"]?.value as? Bool ?? true,
+                        loop: section.data?["loop"]?.value as? Bool
+                            ?? section.data?["lottie_loop"]?.value as? Bool ?? true,
+                        speed: section.data?["speed"]?.value as? Double
+                            ?? section.data?["lottie_speed"]?.value as? Double ?? 1.0,
                         width: nil,
                         height: height,
                         alignment: "center",
@@ -369,7 +388,8 @@ internal enum LottieSectionRenderer: SectionRenderer {
 
 internal enum RiveSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
-        let riveURL = section.data?["rive_url"]?.value as? String
+        // #981 — both spellings, as above.
+        let riveURL = section.data?["rive_url"]?.value as? String ?? section.data?["url"]?.value as? String
         let height = section.data?["height"]?.value as? Double ?? 200
 
         return AnyView(
@@ -377,8 +397,10 @@ internal enum RiveSectionRenderer: SectionRenderer {
                 if let url = riveURL {
                     RiveBlockView(block: RiveBlock(
                         rive_url: url,
-                        artboard: section.data?["artboard"]?.value as? String,
-                        state_machine: section.data?["state_machine"]?.value as? String,
+                        artboard: section.data?["artboard"]?.value as? String
+                            ?? section.data?["rive_artboard"]?.value as? String,
+                        state_machine: section.data?["state_machine"]?.value as? String
+                            ?? section.data?["rive_state_machine"]?.value as? String,
                         autoplay: true,
                         height: height,
                         alignment: "center",
