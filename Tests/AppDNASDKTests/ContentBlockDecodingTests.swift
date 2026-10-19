@@ -753,7 +753,15 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.children?[1].text, "Premium")
         XCTAssertEqual(block.gap, 12)
         XCTAssertEqual(block.wrap, false)
-        XCTAssertEqual(block.justify, "space-between")
+        /*
+         * #992 — `justify` is GONE, and the JSON above deliberately still carries it. The row's
+         * justify-content is `row_distribution`, which the console, the preview and both renderers
+         * already agreed on; `justify` was decoded by both platforms and read by neither, so
+         * keeping it would have been a second name for one setting with no rule for which wins.
+         *
+         * The key staying in the fixture is the assertion: a document that still carries it must
+         * decode without throwing, because published flows outlive a key removal.
+         */
         XCTAssertEqual(block.align_items, "center")
     }
 
