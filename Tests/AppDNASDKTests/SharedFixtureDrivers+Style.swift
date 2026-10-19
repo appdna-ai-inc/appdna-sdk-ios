@@ -42,6 +42,7 @@ extension SharedFixtureTests {
         case "resolve_store_price": runStorePrice(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
         case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
+        case "resolve_button_label_colour": runButtonLabelColour(f, h)
         default:
             return false
         }
@@ -250,6 +251,32 @@ extension SharedFixtureTests {
                 // "id|" for no icon; "id|library|name" otherwise.
                 return icon == nil ? "\(parts[0])|" : parts.joined(separator: "|")
             } as [Any]
+        }
+    }
+
+
+    // MARK: resolve_button_label_colour
+
+    /**
+     WHICH authored colour a button's label draws in, through the REAL `ButtonLabelColour.resolve`
+     both the renderer and the Kotlin now call.
+
+     🔴 It is driven through the production function rather than re-stated here, because the two
+     platforms had OPPOSITE rules and a test that re-implements the rule can only agree with
+     whichever side wrote it (Rule 25). `""` for "neither authored", so the nil case is asserted
+     rather than skipped.
+     */
+    private func runButtonLabelColour(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_button_label_colour needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return ButtonLabelColour.resolve(
+                textColor: v?["text_color"]?.stringValue,
+                styleColor: v?["style_color"]?.stringValue,
+            ) ?? ""
         }
     }
 
