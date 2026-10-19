@@ -74,8 +74,38 @@ enum LocationAnswer {
         items.compactMap { LocationData.fromStoredAnswer($0) }
     }
 
-    /// The current offset of `timeZone` from UTC, in minutes (the unit the server's lookup uses).
-    static func offsetMinutes(_ timeZone: TimeZone, at date: Date = Date()) -> Int {
-        timeZone.secondsFromGMT(for: date) / 60
+}
+
+/// The two lines one autocomplete suggestion shows in the dropdown.
+///
+/// 🔴 ONE RULE FOR EVERY SURFACE AND BOTH PLATFORMS (#963). This used to be four rules: the iOS
+/// content block took MapKit's own `title`/`subtitle`, the iOS form-step field showed
+/// `city` over `"state, country"`, and the two Android surfaces each split the address on its first
+/// comma — one with a city/country fallback and one without. Routing the iOS content block through
+/// the geocoding proxy removed MapKit's pre-split strings and so required picking a rule; picking
+/// it once, here, is what stops a fifth appearing. `LocationAnswer.displayLines` in
+/// `LocationAnswer.kt` is the Kotlin twin, and `location_suggestion_display` pins the pair.
+///
+/// `formatted_address` is a comma-separated address, so its first segment is the place and the
+/// remainder is where it is. The `city, country` fallback covers a single-segment address (a
+/// country-level suggestion), which would otherwise show one line and no context.
+extension LocationAnswer {
+    static func displayLines(_ s: LocationData) -> (title: String, subtitle: String) {
+        let address = s.formatted_address
+        let comma = address.firstIndex(of: ",")
+        let head = comma.map { String(address[address.startIndex..<$0]) } ?? address
+        let tail = comma.map { String(address[address.index(after: $0)...]) } ?? ""
+        func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespacesAndNewlines) }
+        let title = trimmed(head).isEmpty ? address : trimmed(head)
+        var subtitle = trimmed(tail)
+        if subtitle.isEmpty {
+            // A fallback part equal to the title is dropped: a single-segment city suggestion would
+            // otherwise read "Kyoto / Kyoto, Japan".
+            subtitle = [s.city, s.country]
+                .compactMap { $0.flatMap { trimmed($0).isEmpty ? nil : trimmed($0) } }
+                .filter { $0 != title }
+                .joined(separator: ", ")
+        }
+        return (title, subtitle)
     }
 }

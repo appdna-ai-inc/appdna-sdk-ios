@@ -1,5 +1,4 @@
 import SwiftUI
-import MapKit
 import PhotosUI
 // MARK: - Form Input Block Views
 
@@ -2543,47 +2542,17 @@ struct FormInputPlaceholderBlock: View {
     }
 }
 
-// MARK: - AC-046: Location Input with MKLocalSearchCompleter autocomplete
+// MARK: - AC-046: Location Input with geocoding-proxy autocomplete
 
-/// Observable wrapper around MKLocalSearchCompleter for location autocomplete.
-class LocationSearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
-    @Published var results: [MKLocalSearchCompletion] = []
-    @Published var isSearching = false
+// #963 — the `LocationSearchCompleter` that used to live here (an `MKLocalSearchCompleter` wrapper)
+// is gone. Apple's place index takes no country bias, no language tag and has no
+// city/region/country result type, so three of the four Console settings on this block could not be
+// honoured on this surface at any price — and the fourth, the character threshold, was not read
+// either. The search is now `LocationAutocomplete`/`LocationSuggestionSearch`, shared with the
+// form-step Location field and matching what Android has done on both surfaces since #963's first
+// half.
 
-    private let completer = MKLocalSearchCompleter()
-
-    override init() {
-        super.init()
-        completer.delegate = self
-        completer.resultTypes = .address
-    }
-
-    func search(query: String) {
-        guard !query.isEmpty else {
-            results = []
-            isSearching = false
-            return
-        }
-        isSearching = true
-        completer.queryFragment = query
-    }
-
-    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        DispatchQueue.main.async {
-            self.results = Array(completer.results.prefix(5))
-            self.isSearching = false
-        }
-    }
-
-    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        DispatchQueue.main.async {
-            self.results = []
-            self.isSearching = false
-        }
-    }
-}
-
-/// Location input with autocomplete powered by MKLocalSearchCompleter.
+/// Location input with autocomplete powered by the AppDNA geocoding proxy.
 /// User types to search, selects a result, and the formatted address + coordinates are stored.
 struct FormInputLocationPlaceholderBlock: View {
     let block: ContentBlock
@@ -2592,7 +2561,7 @@ struct FormInputLocationPlaceholderBlock: View {
     @State private var text: String = ""
     @State private var showResults = false
     @State private var isFocused: Bool = false
-    @StateObject private var searchCompleter = LocationSearchCompleter()
+    @StateObject private var searchCompleter = LocationSuggestionSearch()
 
     /// True while we're restoring text from saved inputValues so the
     /// .onChange(of: text) handler doesn't clobber the full dict with a
@@ -2655,10 +2624,13 @@ struct FormInputLocationPlaceholderBlock: View {
                     // `LocationSearchSettings` the form-step sibling uses.
                     let search = LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
                     if newValue.count < search.minChars {
-                        searchCompleter.search(query: "")   // clears results and stops the spinner
+                        searchCompleter.clear()
                         showResults = false
                     } else {
-                        searchCompleter.search(query: newValue)
+                        // #963 — all four settings reach the proxy from this surface now, not just
+                        // the threshold: `search` carries the authored Type, Bias country and
+                        // Language, and `LocationAutocomplete` sends each one that is present.
+                        searchCompleter.search(query: newValue, settings: search)
                         showResults = isFocused
                     }
                     // Only store the raw string if the user is ACTIVELY typing.
@@ -2738,12 +2710,16 @@ struct FormInputLocationPlaceholderBlock: View {
                                 }
                                 .frame(width: CGFloat(ddIconSize), height: CGFloat(ddIconSize))
 
+                                // #963 — a proxy suggestion has no pre-split title/subtitle the way
+                                // an `MKLocalSearchCompletion` did, so the two lines come from the
+                                // one rule every surface and both platforms share.
+                                let lines = LocationAnswer.displayLines(result)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(result.title)
+                                    Text(lines.title)
                                         .font(.system(size: CGFloat(ddFontSize)))
                                         .foregroundColor(ddText)
-                                    if !result.subtitle.isEmpty {
-                                        Text(result.subtitle)
+                                    if !lines.subtitle.isEmpty {
+                                        Text(lines.subtitle)
                                             .font(.system(size: CGFloat(ddSubFontSize)))
                                             .foregroundColor(ddSubtext)
                                     }
@@ -2828,106 +2804,34 @@ struct FormInputLocationPlaceholderBlock: View {
         }
     }
 
-    /// The stored answer for a resolved MapKit place, through the one rule both
-    /// writers and both platforms share (`LocationAnswer`). A missing city / state / country is left
-    /// out (it used to be stored as `""`), and a failed time-zone lookup (`timeZone == nil`) stores no
-    /// `timezone` / `timezone_offset` (it used to store `"UTC"`, a real zone the place is not in).
-    static func storedAnswer(
-        formattedAddress: String,
-        city: String?,
-        state: String?,
-        stateCode: String? = nil,
-        country: String?,
-        countryCode: String?,
-        latitude: Double?,
-        longitude: Double?,
-        timeZone: TimeZone?,
-        postalCode: String?,
-        rawQuery: String?,
-        now: Date = Date()
-    ) -> [String: Any] {
-        LocationAnswer.selection(
-            formattedAddress: formattedAddress,
-            city: city, state: state, stateCode: stateCode,
-            country: country, countryCode: countryCode,
-            latitude: latitude, longitude: longitude,
-            timezone: timeZone?.identifier,
-            timezoneOffsetMinutes: timeZone.map { LocationAnswer.offsetMinutes($0, at: now) },
-            postalCode: postalCode,
-            rawQuery: rawQuery
-        )
-    }
-
-    private func selectResult(_ result: MKLocalSearchCompletion, fieldId: String) {
+    /// #963 — the proxy has already resolved the place, so this stores it.
+    ///
+    /// What it replaces: an `MKLocalSearch` round trip to turn the completion into a placemark, and
+    /// then — because `MKPlacemark.timeZone` is almost always nil for a text-search result — a
+    /// `CLGeocoder` reverse-geocode purely to find the time zone. Two extra network calls per
+    /// selection, and a `state_code` that was never available at the end of them. The proxy returns
+    /// city, state, `state_code`, country, country code, coordinates, the zone, its offset and the
+    /// postal code in the suggestion itself, so a selection is now local work.
+    private func selectResult(_ suggestion: LocationData, fieldId: String) {
         showResults = false
         isFocused = false  // dismiss keyboard + hide dropdown reliably
         // The text the user typed to find this place — read before `text` shows the selection.
         let typed = text
 
-        // Resolve full placemark via MKLocalSearch to get city/state/country
-        let searchRequest = MKLocalSearch.Request(completion: result)
-        let search = MKLocalSearch(request: searchRequest)
-        search.start { response, _ in
-            // The completion's own text is `formatted_address`.
-            let formattedAddress = result.subtitle.isEmpty ? result.title : "\(result.title), \(result.subtitle)"
-            guard let mapItem = response?.mapItems.first else {
-                // Fallback: the completion text only (no placemark → no coordinates, no zone).
-                isRestoringFromSaved = true
-                text = formattedAddress
-                DispatchQueue.main.async { isRestoringFromSaved = false }
-                inputValues[fieldId] = LocationAnswer.selection(formattedAddress: formattedAddress, rawQuery: typed)
-                Log.debug("Location resolved without a placemark")
-                return
-            }
-            let placemark = mapItem.placemark
-            let coordinate = placemark.coordinate
+        // The one stored shape on both platforms and both writers (`LocationAnswer`): a value the
+        // lookup does not have is left out, never stored as "" or "UTC".
+        let locationDict = LocationAnswer.selection(from: suggestion, rawQuery: typed)
+        inputValues[fieldId] = locationDict
 
-            // IMPORTANT: MKLocalSearch's MKPlacemark.timeZone is USUALLY NIL
-            // for text-search results. Falling back to TimeZone.current returns
-            // the DEVICE's timezone (e.g. Europe/Warsaw) — not the LOCATION's
-            // timezone. To get the accurate timezone for the selected location,
-            // we reverse-geocode via CLGeocoder which reliably populates
-            // CLPlacemark.timeZone. When that fails too, no zone is stored.
-            let finalize: (TimeZone?) -> Void = { resolvedTimeZone in
-                let locationDict = Self.storedAnswer(
-                    formattedAddress: formattedAddress,
-                    city: placemark.locality ?? placemark.subAdministrativeArea,
-                    state: placemark.administrativeArea,
-                    country: placemark.country,
-                    countryCode: placemark.isoCountryCode,
-                    latitude: coordinate.latitude,
-                    longitude: coordinate.longitude,
-                    timeZone: resolvedTimeZone,
-                    postalCode: placemark.postalCode,
-                    rawQuery: typed
-                )
-                inputValues[fieldId] = locationDict
+        let display = Self.formatLocationDisplay(from: locationDict)
+            ?? LocationAnswer.displayLines(suggestion).title
+        isRestoringFromSaved = true
+        text = display
+        DispatchQueue.main.async { isRestoringFromSaved = false }
 
-                let display = Self.formatLocationDisplay(from: locationDict) ?? result.title
-                isRestoringFromSaved = true
-                text = display
-                DispatchQueue.main.async { isRestoringFromSaved = false }
-
-                // Never log city/state/country/coordinates. A raw `print` is
-                // unconditional and reaches release builds.
-                Log.debug("Location selected (timezone resolved: \(resolvedTimeZone != nil))")
-            }
-
-            if let tz = placemark.timeZone {
-                // Rare happy path — placemark already has timezone
-                finalize(tz)
-            } else {
-                // Reverse geocode to fetch the LOCATION's timezone (not device tz)
-                let geocoder = CLGeocoder()
-                let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                geocoder.reverseGeocodeLocation(location) { placemarks, error in
-                    if let error = error {
-                        Log.warning("Reverse geocode timezone lookup failed: \(error.localizedDescription) — no timezone stored")
-                    }
-                    finalize(placemarks?.first?.timeZone)
-                }
-            }
-        }
+        // Never log city/state/country/coordinates. A raw `print` is unconditional and reaches
+        // release builds.
+        Log.debug("Location selected (timezone resolved: \(suggestion.timezone != nil))")
     }
 }
 

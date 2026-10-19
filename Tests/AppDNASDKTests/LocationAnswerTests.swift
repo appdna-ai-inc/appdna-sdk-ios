@@ -1,11 +1,13 @@
 // LocationAnswerTests.swift
 //
-// The stored answer of the `input_location` content block's MapKit path, which the
-// shared fixtures cannot reach (they drive the server-suggestion path). A missing city / state /
-// country is left out, and a failed time-zone lookup stores no zone at all.
+// `LocationAnswer.selection`'s omission rules, which the shared fixtures do not reach: a blank
+// string, a non-finite coordinate, and an offset without a zone are each LEFT OUT rather than
+// stored.
 //
-// NEGATIVE CONTROL: the old `finalize` stored `"city": ""`, `"state": ""` and `"timezone": "UTC"` for
-// these inputs, and never `timezone_offset` / `raw_query`.
+// NEGATIVE CONTROL: the content block's old MapKit `finalize` stored `"city": ""`, `"state": ""`
+// and `"timezone": "UTC"` for these inputs, and never `timezone_offset` / `raw_query`. #963 removed
+// that path — the proxy resolves the place — so these assertions now sit directly on the rule both
+// writers call.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -15,11 +17,11 @@ import XCTest
 final class LocationAnswerTests: XCTestCase {
 
     func testAPlaceWithoutCityOrStateAndAFailedTimeZoneLookupStoresNeither() {
-        let stored = FormInputLocationPlaceholderBlock.storedAnswer(
+        let stored = LocationAnswer.selection(
             formattedAddress: "Somewhere, Nowhere",
             city: nil, state: "", country: "Nowhere", countryCode: "NW",
             latitude: 1.5, longitude: -2.5,
-            timeZone: nil,
+            timezone: nil, timezoneOffsetMinutes: nil,
             postalCode: "", rawQuery: "some"
         )
         XCTAssertEqual(Set(stored.keys), [
@@ -30,11 +32,12 @@ final class LocationAnswerTests: XCTestCase {
         XCTAssertEqual(stored["raw_query"] as? String, "some")
     }
 
-    func testAResolvedTimeZoneStoresItsIdentifierAndCurrentOffsetInMinutes() throws {
-        let tz = try XCTUnwrap(TimeZone(identifier: "Asia/Kolkata"))
-        let stored = FormInputLocationPlaceholderBlock.storedAnswer(
+    func testAResolvedTimeZoneStoresItsIdentifierAndOffsetInMinutes() {
+        let stored = LocationAnswer.selection(
             formattedAddress: "A", city: "A", state: nil, country: nil, countryCode: nil,
-            latitude: 0, longitude: 0, timeZone: tz, postalCode: nil, rawQuery: nil
+            latitude: 0, longitude: 0,
+            timezone: "Asia/Kolkata", timezoneOffsetMinutes: 330,
+            postalCode: nil, rawQuery: nil
         )
         XCTAssertEqual(stored["timezone"] as? String, "Asia/Kolkata")
         XCTAssertEqual(stored["timezone_offset"] as? Int, 330)

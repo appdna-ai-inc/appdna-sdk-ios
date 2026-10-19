@@ -11,6 +11,8 @@
 //                              `StepConfigOverrideMerger.apply` (the merge the renderer runs) →
 //                              `MapInteractivePlan.compute`, the seam `GoogleInteractiveMap` draws from.
 //   location_data_from_answer  REAL: `SessionDataStore` + `AppDNA.getLocationData(fieldId:)`.
+//   location_suggestion_display REAL: `LocationAnswer.displayLines`, the ONE dropdown title/subtitle
+//                              rule every location surface on both platforms draws from.
 //   location_answer_from_input REAL: `LocationAnswer` (the rule both location writers call; a selection
 //                              first goes through `LocationAnswer.decodeSuggestions`, the form-step
 //                              field's parser) → `SessionDataStore` → `AppDNA.getLocationData(fieldId:)`.
@@ -41,6 +43,7 @@ extension SharedFixtureTests {
         case "map_interactive_plan":      runMapInteractivePlan(f, h)
         case "location_data_from_answer": runLocationDataFromAnswer(f, h)
         case "location_answer_from_input": runLocationAnswerFromInput(f, h)
+        case "location_suggestion_display": runLocationSuggestionDisplay(f, h)
         case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
         case "parse_window_date":         runParseWindowDate(f, h)
@@ -262,6 +265,30 @@ extension SharedFixtureTests {
     }
 
     // MARK: location_answer_from_input
+
+    /**
+     #963 — the dropdown's two lines, through the REAL `LocationAnswer.displayLines`.
+
+     The suggestion goes through `LocationAnswer.decodeSuggestions` first, the same parser the
+     search uses, so the case data is a server suggestion and not a hand-built `LocationData`.
+     */
+    private func runLocationSuggestionDisplay(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] location_suggestion_display needs action.cases")
+        }
+        var lines: [[String: Any]] = []
+        for c in cases {
+            guard let obj = c.objectValue,
+                  let name = obj["name"]?.stringValue,
+                  let item = obj["suggestion"]?.foundation as? [String: Any],
+                  let suggestion = LocationAnswer.decodeSuggestions([item]).first else {
+                return XCTFail("[\(f.id)] a case needs name + a suggestion that parses")
+            }
+            let (title, subtitle) = LocationAnswer.displayLines(suggestion)
+            lines.append(["name": name, "title": title, "subtitle": subtitle])
+        }
+        h.state["lines"] = lines
+    }
 
     private func runLocationAnswerFromInput(_ f: Fixture, _ h: Harness) {
         guard let fieldId = f.action.raw["field_id"]?.stringValue,

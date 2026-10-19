@@ -292,45 +292,23 @@ struct LocationFieldView: View {
         }
     }
 
+    /// #963 — the search itself is `LocationAutocomplete`, the one autocomplete call in the SDK,
+    /// shared with the `input_location` content block. This method is the field's own state around
+    /// it: the spinner, and whether the dropdown is open.
+    ///
+    /// A failed request now closes the dropdown instead of leaving the previous suggestions on
+    /// screen, which is what Android has always done (`fetchLocationSuggestions` answers an
+    /// unreachable proxy with an empty list). Stale suggestions for a query the user has since
+    /// changed are the worse of the two.
     private func fetchSuggestions(query: String) async {
-        guard let client = apiClient else { return }
+        guard apiClient != nil else { return }
         isLoading = true
         defer { isLoading = false }
 
-        do {
-            let settings = search
-            var body: [String: Any] = ["query": query, "limit": 5]
-            // Only when the author chose one — see the note on `LocationSearchSettings.type`.
-            if let t = settings.type { body["type"] = t }
-            if let c = settings.biasCountry { body["bias_country"] = c }
-            if let l = settings.language { body["language"] = l }
-
-            let jsonData = try JSONSerialization.data(withJSONObject: body)
-
-            let endpoint = Endpoint.geocodeAutocomplete
-            guard let url = endpoint.url(environment: client.environment) else { return }
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.httpBody = jsonData
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.setValue(client.apiKey, forHTTPHeaderField: "x-api-key")
-            // The server answers null for a missing coordinate / zone only to an SDK that says it reads
-            // null (iOS >= 1.0.82); without these headers it sends the legacy 0 / "UTC" shape.
-            request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
-            request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
-
-            let (data, _) = try await URLSession.shared.data(for: request)
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            let dataObj = json?["data"] as? [String: Any]
-            let suggestionsArr = dataObj?["suggestions"] as? [[String: Any]] ?? []
-
-            let decoded = LocationAnswer.decodeSuggestions(suggestionsArr)
-            await MainActor.run {
-                suggestions = decoded
-                isExpanded = !decoded.isEmpty
-            }
-        } catch {
-            Log.warning("Location autocomplete failed: \(error.localizedDescription)")
+        let decoded = await LocationAutocomplete.fetch(query: query, settings: search, client: apiClient)
+        await MainActor.run {
+            suggestions = decoded
+            isExpanded = !decoded.isEmpty
         }
     }
 
