@@ -267,15 +267,50 @@ final class PushActionCategoryTests: XCTestCase {
         )
     }
 
-    func testAPushWithNoButtonsStillHasNoCategory() {
-        /*
-         * The honest limit, pinned so it is not mistaken for full coverage: the builder returns nil
-         * when there are no actions, so a plain title-and-body push carries no category and is
-         * swiped away silently. An iOS dismissal rate is therefore a rate among pushes WITH
-         * buttons. The public events page says exactly that.
-         */
+    /**
+     #987 — A PUSH WITH NO BUTTONS GETS A CATEGORY TOO, so it can report its dismissal.
+
+     This test used to assert the opposite — `XCTAssertNil` — as "the honest limit, pinned so it is
+     not mistaken for full coverage". It was honest and it was a gap: a plain title-and-body push
+     was swiped away silently, so an iOS dismissal rate was a rate among pushes WITH buttons.
+
+     🔴 THE CATEGORY MUST HAVE NO ACTIONS, and that is what makes shipping it safe. The service
+     extension and the app must agree on category identifiers, and a category the extension names
+     and the app has not registered shows a notification with no buttons at all — here there are no
+     buttons to lose, so a host on an older SDK sees exactly what it would have seen.
+
+     🔴 It also caught the fix not landing. The first attempt changed a LATER guard, which only
+     runs for a push whose `actions` array exists and parses to nothing; this early `guard` returns
+     first for `actions: []`. The whole suite stayed green and this assertion stayed true, which is
+     the signal that the change had not taken.
+     */
+    func testAPushWithNoButtonsGetsTheButtonlessDefaultCategory() {
         var noActions = userInfo()
         noActions["actions"] = []
-        XCTAssertNil(PushActionCategories.category(from: noActions))
+        let category = PushActionCategories.category(from: noActions)
+        XCTAssertNotNil(category, "a button-less push must still carry a category, or it cannot report a dismissal")
+        XCTAssertEqual(category?.identifier, PushActionCategories.defaultCategoryId)
+        XCTAssertTrue(
+            category?.options.contains(.customDismissAction) == true,
+            "the default category does not opt into dismiss reporting, so it achieves nothing"
+        )
+        XCTAssertTrue(
+            category?.actions.isEmpty == true,
+            "the default category has BUTTONS — a host that has not registered it would show a push without them"
+        )
+    }
+
+    /// A payload with no `actions` key at all — the ordinary shape of a plain push from the server.
+    func testAPushWithNoActionsKeyAtAllGetsTheDefaultCategory() {
+        var noKey = userInfo()
+        noKey.removeValue(forKey: "actions")
+        XCTAssertEqual(PushActionCategories.category(from: noKey)?.identifier, PushActionCategories.defaultCategoryId)
+    }
+
+    /// And a push WITH buttons keeps its own category, not the default.
+    func testAPushWithButtonsKeepsItsOwnCategory() {
+        let category = PushActionCategories.category(from: userInfo())
+        XCTAssertNotNil(category)
+        XCTAssertFalse(category!.actions.isEmpty, "the button category lost its buttons")
     }
 }

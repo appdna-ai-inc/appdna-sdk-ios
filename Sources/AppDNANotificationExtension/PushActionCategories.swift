@@ -73,7 +73,14 @@ import UserNotifications
     /// `{id, label, action_type, action_value?, foreground}`: `foreground` → `.foreground`; `dismiss` →
     /// `.destructive` alone (never `.foreground`, so it never opens the app); `text_reply` → a text-input action whose placeholder is `action_value`.
     public static func category(from userInfo: [AnyHashable: Any]) -> UNNotificationCategory? {
-        guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else { return nil }
+        /*
+         * #987 — a push with NO buttons gets the button-less `defaultCategory` rather than nil, so
+         * it can still report its dismissal. This is the guard that matters: the one further down
+         * only catches a push whose `actions` array exists and parses to nothing.
+         */
+        guard let actionsData = userInfo["actions"] as? [[String: Any]], !actionsData.isEmpty else {
+            return defaultCategory
+        }
 
         let actions: [UNNotificationAction] = actionsData.compactMap { actionData in
             guard let id = actionData["id"] as? String,
