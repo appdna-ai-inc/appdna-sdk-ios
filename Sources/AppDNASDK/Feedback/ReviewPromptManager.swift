@@ -80,7 +80,14 @@ final class ReviewPromptManager {
         DispatchQueue.main.async {
             UIApplication.shared.open(url) { opened in
                 if opened {
-                    AppDNA.track(event: "store_listing_opened", properties: ["app_store_id": id])
+                    /*
+                     * #974 — `store` is the property a funnel can GROUP BY. This event used to
+                     * carry only `app_store_id` here and only `package` on Android, two disjoint
+                     * keys, so a report grouped by either saw one platform's traffic and presented
+                     * it as the whole number. `app_store` / `google_play` is the same vocabulary
+                     * `Subscription.store` uses, rather than a third spelling.
+                     */
+                    AppDNA.track(event: "store_listing_opened", properties: ["store": "app_store", "app_store_id": id])
                 } else {
                     Log.warning("[Review] the App Store could not be opened for id \(id)")
                 }
