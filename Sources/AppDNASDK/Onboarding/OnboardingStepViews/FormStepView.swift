@@ -10,6 +10,9 @@ struct FormStepView: View {
 
     @State private var values: [String: Any] = [:]
     @State private var errors: [String: String] = [:]
+
+    /// #985 — which field has the keyboard, so `focus_border_color` has a state to apply to.
+    @FocusState private var focusedFieldId: String?
     @State private var showValidationToast = false
 
     private var fields: [FormField] { config.fields ?? [] }
@@ -285,7 +288,8 @@ struct FormStepView: View {
             set: { values[field.id] = $0; errors[field.id] = nil }
         )
         return TextField((field.placeholder ?? "").interpolated(), text: binding)
-            .textFieldStyle(.roundedBorder)
+            .appdnaFieldChrome(field, focused: focusedFieldId == field.id, hasError: errors[field.id] != nil)
+            .focused($focusedFieldId, equals: field.id)
             .keyboardType(keyboardType(for: field))
             .autocapitalization(autocap(for: field))
     }
@@ -297,10 +301,13 @@ struct FormStepView: View {
         )
         return TextEditor(text: binding)
             .frame(minHeight: 80, maxHeight: 150)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            .appdnaFieldChrome(
+                field,
+                focused: focusedFieldId == field.id,
+                hasError: errors[field.id] != nil,
+                fallbackBorder: Color.gray.opacity(0.3)
             )
+            .focused($focusedFieldId, equals: field.id)
     }
 
     private func numberField(_ field: FormField) -> some View {
