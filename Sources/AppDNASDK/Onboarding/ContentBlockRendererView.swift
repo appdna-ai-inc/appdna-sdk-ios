@@ -36,8 +36,20 @@ func buttonFillsWidth(_ elementWidth: String?) -> Bool { elementWidth != "auto" 
 /// and a yellow border therefore drew nothing, and the two controls looked broken because they were
 /// never read. Returning 0 means "no ring", which is what an unauthored non-outline button gets —
 /// so no already-published flow changes. Mirrors Android `authoredButtonBorderWidth`.
-func authoredButtonBorderWidth(_ authored: Double?, variant: String?) -> Double {
+func authoredButtonBorderWidth(_ authored: Double?, variant: String?, hasColour: Bool = false) -> Double {
     if let authored { return max(0, authored) }
+    /*
+     * 🔴 #1007 — AN AUTHORED COLOUR IMPLIES A VISIBLE BORDER.
+     *
+     * "Border color" and "Border width" are two separate controls, and the width's input is empty
+     * by default. So an author who picked a border colour and did not then find and fill the
+     * second box got NOTHING drawn — on the device and in the console mock alike — and reported
+     * the colour as a dead control. It was not dead; it was waiting on a number nobody mentioned.
+     *
+     * 1.5 is the same hairline an `outline` button rings itself with, so a filled button with a
+     * colour now looks like the outline variant's border rather than inventing a new weight.
+     */
+    if hasColour { return 1.5 }
     return variant == "outline" ? 1.5 : 0
 }
 
@@ -407,6 +419,14 @@ struct ContentBlockRendererView: View {
     private func renderBlock(_ block: ContentBlock, animate: Bool = false) -> some View {
         let content = renderBlockContent(block)
             .applyBlockStyle(block.block_style)
+            // #1006 — AFTER the background, so the background is what widens. Negative horizontal
+            // padding is SwiftUI's "extend outward"; Compose has to measure for it instead
+            // (`Modifier.fullBleedHorizontal`), which is why the inset lives in one shared place.
+            .padding(
+                .horizontal,
+                BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
+                    ? -CGFloat(BlockFullBleed.stepHorizontalInset) : 0,
+            )
             .applyBlockPosition(
                 verticalAlign: block.vertical_align,
                 horizontalAlign: block.horizontal_align,
@@ -1006,8 +1026,11 @@ struct ContentBlockRendererView: View {
         }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
         // #609 — authored width/colour win; the outline default is the fallback, not the rule.
-        let borderWidth = CGFloat(authoredButtonBorderWidth(block.border_width, variant: btnVariant))
-        let borderColor = authoredButtonBorderColorHex(block.border_color).map { Color(hex: $0) } ?? bgColor
+        let borderColourHex = authoredButtonBorderColorHex(block.border_color)
+        let borderWidth = CGFloat(authoredButtonBorderWidth(
+            block.border_width, variant: btnVariant, hasColour: borderColourHex != nil,
+        ))
+        let borderColor = borderColourHex.map { Color(hex: $0) } ?? bgColor
         let labelText = loc?("block.\(block.id).text", block.text ?? "Continue") ?? block.text ?? "Continue"
         let fgColor = btnVariant == "outline" ? bgColor : (btnVariant == "text" ? bgColor : txtColor)
         // The step channel applies only to a `refresh_step` button with no
@@ -1088,7 +1111,7 @@ struct ContentBlockRendererView: View {
                 // `text_color`. A nil-passing version of this shipped briefly and changed three
                 // goldens on CI while rendering identically on a Mac, because the default it reset
                 // to follows the system appearance.
-                if let hex = block.text_color, !hex.isEmpty {
+                if let hex = ButtonLabelColour.resolve(textColor: block.text_color, styleColor: block.style?.color) {
                     Text(labelText)
                         .font(.body.weight(.semibold))
                         .applyTextStyle(block.style)
@@ -2604,9 +2627,19 @@ struct ContentBlockRendererView: View {
             }
             return out
         }()
+        /*
+         * #1006 — a shared background that reaches the screen edges.
+         *
+         * The background itself is drawn by `applyBlockStyle` around this view, so the bleed is two
+         * paddings: the rows gain the step's inset BACK (so the buttons do not move at all), and
+         * `renderBlock` pulls the whole styled box outward by the same amount. Changing the width
+         * cannot do this — `element_width: 100%` is 100% of a column that is already inset.
+         */
+        let bleeds = BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
         MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
             renderBlock(child)
         }
+        .padding(.horizontal, bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset) : 0)
     }
 
     @ViewBuilder
