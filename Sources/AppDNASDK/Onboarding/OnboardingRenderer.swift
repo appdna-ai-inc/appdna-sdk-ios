@@ -151,6 +151,34 @@ struct OnboardingFlowHost: View {
                         insertion: .move(edge: .trailing),
                         removal: .move(edge: .leading)
                     ))
+                    /*
+                     * #1014 — a tap ANYWHERE advances the step.
+                     *
+                     * A splash that is nothing but an image has no button to hang a CTA on, and the
+                     * only way past it was "Allow skip" — a ✕ in the corner, which says "leave"
+                     * rather than "continue".
+                     *
+                     * 🔴 A SIMULTANEOUS gesture, not `.onTapGesture`: a plain tap modifier on the
+                     * container would swallow taps meant for the content underneath, so a step with
+                     * this on AND a button would stop the button working. `simultaneousGesture`
+                     * lets both fire, which is what "anywhere" has to mean on a step that also has
+                     * something to tap.
+                     *
+                     * It goes through `advanceOrComplete()`, the same entry the CTA uses, so the
+                     * step's rules, its completion event and `canAdvance` all behave identically.
+                     */
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            guard currentIndex < flow.steps.count,
+                                  flow.steps[currentIndex].tap_anywhere_advances == true else { return }
+                            guard !isProcessing else { return }
+                            HapticEngine.triggerIfEnabled(
+                                flow.settings.haptic?.triggers?.on_step_advance,
+                                config: flow.settings.haptic,
+                            )
+                            advanceOrComplete()
+                        }
+                    )
 
                     // Error banner
                     if showError, let msg = errorMessage {

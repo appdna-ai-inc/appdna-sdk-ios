@@ -342,7 +342,11 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(question.options?[0].id, "opt_1")
         XCTAssertEqual(question.options?[0].text, "Dashboard")
         XCTAssertNil(question.options?[0].icon)
-        XCTAssertEqual(question.options?[1].icon, "chart")
+        // #999 — the option icon is an `IconReference` now, not a bare String: the object form
+        // `IconRefSchema` accepts used to make the whole OPTION fail to decode. A bare string
+        // still decodes, and classifies itself the way every other surface does.
+        XCTAssertEqual(question.options?[1].icon?.name, "chart")
+        XCTAssertEqual(question.options?[1].icon?.library, "sf-symbols")
     }
 
     // MARK: - Question type: Multi choice
@@ -371,7 +375,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(question.options?.count, 4)
         XCTAssertEqual(question.options?[0].id, "opt_a")
         XCTAssertEqual(question.options?[0].text, "Performance")
-        XCTAssertEqual(question.options?[0].icon, "zap")
+        XCTAssertEqual(question.options?[0].icon?.name, "zap")
         XCTAssertNil(question.options?[2].icon)
     }
 
@@ -1447,7 +1451,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
 
         XCTAssertEqual(option.id, "opt_special")
         XCTAssertEqual(option.text, "Premium Support")
-        XCTAssertEqual(option.icon, "star.fill")
+        XCTAssertEqual(option.icon?.name, "star.fill")
     }
 
     func testDecodeOptionWithoutIcon() throws {

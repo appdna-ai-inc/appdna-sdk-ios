@@ -259,6 +259,18 @@ public struct OnboardingStep: Codable, Identifiable {
      */
     public let wait_for_host: Bool?
 
+    /**
+     #1014 — a tap ANYWHERE on the step advances it.
+
+     A splash screen that is nothing but an image has no button to hang a CTA on, and the only way
+     past it was "Allow skip" — which puts a ✕ in the corner, an affordance that says "leave"
+     rather than "continue". The pattern this is modelled on is the one every splash uses.
+
+     Composes with `auto_advance_seconds` rather than replacing it: a splash may advance by itself
+     after N seconds AND take a tap before that.
+     */
+    public let tap_anywhere_advances: Bool?
+
     /// The step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
     ///
     /// The typed model drops what the raw host-data pass needs (`data_templates`, a token in a typed
@@ -270,7 +282,7 @@ public struct OnboardingStep: Codable, Identifiable {
     private enum CodingKeys: String, CodingKey {
         case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
         case request_store_review
-        case auto_advance_seconds, wait_for_host
+        case auto_advance_seconds, wait_for_host, tap_anywhere_advances
         case raw_content_blocks
     }
 
@@ -283,7 +295,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// step's `layout` object (verified against `OnboardingFlowConfigSyncService.mapStepsForFirestore`,
     /// which never hoists `layout.*` to the step root). Read them from `layout` with a step-root
     /// fallback for any older/hand-written config.
-    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review, auto_advance_seconds, wait_for_host }
+    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review, auto_advance_seconds, wait_for_host, tap_anywhere_advances }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -323,6 +335,11 @@ public struct OnboardingStep: Codable, Identifiable {
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Double.self, forKey: .auto_advance_seconds) })
         self.wait_for_host = (try? c.decodeIfPresent(Bool.self, forKey: .wait_for_host))
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .wait_for_host) })
+        // #1014 — read at the step root AND under `layout`, like the two flags above: the editor
+        // writes some step settings into `layout` and a reader that knows only one place misses
+        // half the flows (`auto_advance_seconds` learned this the same way).
+        self.tap_anywhere_advances = (try? c.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances))
+            ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances) })
         // Read next_step_rules from step level, but also check layout.next_step_rules
         // which may have richer conditions from the Logic panel
         let stepRules = try c.decodeIfPresent([NextStepRule].self, forKey: .next_step_rules)
@@ -399,7 +416,7 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
-    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil, auto_advance_seconds: Double? = nil, wait_for_host: Bool? = nil) {
+    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil, auto_advance_seconds: Double? = nil, wait_for_host: Bool? = nil, tap_anywhere_advances: Bool? = nil) {
         self.rawContentBlocks = nil
         self.id = id
         self.name = name
@@ -411,6 +428,7 @@ public struct OnboardingStep: Codable, Identifiable {
         self.request_store_review = request_store_review
         self.auto_advance_seconds = auto_advance_seconds
         self.wait_for_host = wait_for_host
+        self.tap_anywhere_advances = tap_anywhere_advances
         self.next_step_rules = next_step_rules
     }
 

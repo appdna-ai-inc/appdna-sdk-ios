@@ -34,7 +34,6 @@ final class LottieRendersTests: XCTestCase {
     private func block(url: String?) -> LottieBlock {
         LottieBlock(
             lottie_url: url,
-            lottie_json: nil,
             autoplay: true,
             loop: true,
             speed: 1,
@@ -42,8 +41,7 @@ final class LottieRendersTests: XCTestCase {
             height: Double(size.height),
             alignment: "center",
             play_on_scroll: nil,
-            play_on_tap: nil,
-            color_overrides: nil
+            play_on_tap: nil
         )
     }
 
