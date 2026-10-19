@@ -81,7 +81,7 @@ final class LocationSearchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Min characters = 6"].waitForExistence(timeout: 10), "step 3 never arrived")
         let short = app.textFields.firstMatch
         XCTAssertTrue(short.waitForExistence(timeout: 10))
-        short.tap()
+        focus(short, in: app)
         short.typeText("Lisb")
         let anySuggestion = NSPredicate(format: "label BEGINSWITH %@", "TYPE=")
         XCTAssertFalse(
@@ -156,11 +156,26 @@ final class LocationSearchUITests: XCTestCase {
         suggestion.tap()
     }
 
+    /*
+     * 🔴 A TAP IS NOT FOCUS. A tap that lands while the step is still settling leaves the field
+     * un-focused, and `typeText` then fails with "Neither element nor any descendant has keyboard
+     * focus" — a flake that reads exactly like the field being broken. Waiting for the KEYBOARD is
+     * the observable that says the tap took.
+     */
+    private func focus(_ field: XCUIElement, in app: XCUIApplication) {
+        for attempt in 0..<5 {
+            field.tap()
+            if app.keyboards.element.waitForExistence(timeout: 3) { return }
+            NSLog("field did not take focus, attempt \(attempt + 1)")
+        }
+        XCTFail("the location field never took keyboard focus")
+    }
+
     private func search(_ app: XCUIApplication, expecting prefix: String, typing: Bool) throws -> XCUIElement {
         let field = app.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 10), "the step has no location field")
         if typing {
-            field.tap()
+            focus(field, in: app)
             field.typeText(query)
         }
 
