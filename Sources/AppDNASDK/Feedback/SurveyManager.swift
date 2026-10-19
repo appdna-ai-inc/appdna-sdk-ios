@@ -501,14 +501,33 @@ final class SurveyManager {
             return .neutral
         }
 
-        // Emoji: last 2 = positive, first 2 = negative
+        /*
+         * Emoji: above the middle of the scale is positive, below it negative, the middle itself
+         * neutral.
+         *
+         * 🔴 THE SCALE IS THE AUTHORED ONE, not a hard-coded five. This compared the answer
+         * against a literal list of the five DEFAULT emoji and gave up when the index was not
+         * found — so an author who customised `emoji_config.emojis` at all (a three-emoji scale, a
+         * different set of five) got `neutral` for every respondent, and `follow_up_actions`
+         * silently stopped routing. Nothing failed; the feature just never fired. Found by reading
+         * both emitters for the docs audit, and the same literal was in the Kotlin.
+         *
+         * The midpoint rule reproduces the old thresholds exactly for a five-emoji scale
+         * (positive 3-4, negative 0-1, neutral 2) and is defined for every other length.
+         */
         if (config.survey_type ?? "") == "emoji_scale" || answers.first?.answer is String {
-            let emojis = ["😡", "😕", "😐", "😊", "😍"]
-            if let first = answers.first, let emoji = first.answer as? String,
-               let idx = emojis.firstIndex(of: emoji) {
-                if idx >= 3 { return .positive }
-                if idx <= 1 { return .negative }
-                return .neutral
+            if let first = answers.first, let emoji = first.answer as? String {
+                let authored = config.questions?
+                    .first { ($0.id ?? "") == first.question_id }?
+                    .emoji_config?.emojis
+                let emojis = (authored?.isEmpty == false ? authored : nil)
+                    ?? ["😡", "😕", "😐", "😊", "😍"]
+                if let idx = emojis.firstIndex(of: emoji) {
+                    let middle = Double(emojis.count - 1) / 2.0
+                    if Double(idx) > middle { return .positive }
+                    if Double(idx) < middle { return .negative }
+                    return .neutral
+                }
             }
         }
 
