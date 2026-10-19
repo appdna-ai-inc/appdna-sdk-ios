@@ -32,6 +32,14 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   # GoogleMaps only up to 9.4.0, so 9.4 is the highest both channels can share.
   s.dependency 'GoogleMaps', '~> 9.4'
 
+  # #982 — the animation engines. THE PODSPEC NEEDS THESE TOO, for exactly the reason the GoogleMaps
+  # note above gives: the React Native and Flutter hosts consume AppDNASDK through CocoaPods, so an
+  # `import Lottie` that is green under SwiftPM fails there with "no such module".
+  #
+  # Same major as Package.swift on both, so neither channel ships a version the other never built.
+  s.dependency 'lottie-ios', '~> 4.6'
+  s.dependency 'RiveRuntime', '~> 6.0'
+
   # 🔴 STATIC, and this is the line that actually fixes the link.
   #
   # GoogleMaps ships as a STATIC xcframework. Under `use_frameworks!` (dynamic) — which every RN and
