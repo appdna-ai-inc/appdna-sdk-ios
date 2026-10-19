@@ -39,40 +39,28 @@ final class RiveWalkUITests: XCTestCase {
         var presented = false
         for attempt in 0..<12 where !presented {
             app.buttons["host.onboarding"].tap()
-            presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
+            presented = app.staticTexts["Rive animation"].waitForExistence(timeout: 5)
             if !presented { NSLog("flow not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
         /*
-         * 🔴 ASSERT EACH STEP BY NAME on the way, not just the destination. The first version
-         * tapped three Nexts and a Continue and failed with "the Rive step never arrived", which
-         * says nothing about WHICH tap went astray — and a walk whose failure cannot be located is
-         * a walk you have to run again to learn anything.
+         * 🔴 ONE STEP, NOT A WALK — and the five-step walk is why this took four device runs.
+         *
+         * The Rive step was originally bolted onto #963's location itinerary because that flow
+         * already existed, and every failure since was about the ITINERARY rather than about Rive:
+         * a step name asserted that the SDK never draws, a published copy that predated the step,
+         * and then a step the device passes straight through (#1016 — real, and nothing to do with
+         * this claim). The claim here is "a `rive` block draws on a device and keeps moving", so
+         * the flow is one step carrying that block and nothing else
+         * (`scripts/spec502/probe-990-rive-only-flow.ts` builds and publishes it).
          */
-        let itinerary: [(heading: String, cta: String)] = [
-            ("No authored Type", "Next"),
-            ("Type = City", "Next"),
-            ("Min characters = 6", "Next"),
-            // 🔴 The form step renders its FIELD LABEL, not its authored `name`. The first
-            // version asserted the name ("Form-step field") — a value the SDK never draws — and so
-            // failed on a step that was on screen in front of it.
-            ("Location (form-step field, no Type set)", "Continue"),
-        ]
-        for (heading, cta) in itinerary {
-            XCTAssertTrue(
-                app.staticTexts[heading].waitForExistence(timeout: 15),
-                "expected the step \"\(heading)\" and it never arrived",
-            )
-            let button = app.buttons[cta].firstMatch
-            XCTAssertTrue(button.waitForExistence(timeout: 10), "step \"\(heading)\" has no \(cta) button")
-            button.tap()
-        }
+        XCTAssertTrue(
+            app.staticTexts["Rive animation"].waitForExistence(timeout: 20),
+            "the Rive step never presented — on screen: "
+            + "\(app.staticTexts.allElementsBoundByIndex.prefix(8).map(\.label))",
+        )
 
-        if !app.staticTexts["Rive animation"].waitForExistence(timeout: 15) {
-            let drawn = app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label)
-            XCTFail("the Rive step never arrived. On screen: \(drawn)")
-        }
         // The runtime fetches the file over the network before it can draw anything.
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 6)
 
