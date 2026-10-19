@@ -2075,9 +2075,34 @@ struct ContentBlockRendererView: View {
                 .foregroundColor(monoColor))
         case "google":
             if let mono = monoColor {
+                // A monochrome style is an explicit author choice, and Google's guidelines allow a
+                // white or black mark on a coloured button — the letterform stands in for it at
+                // these sizes, as it always has.
                 return AnyView(Text("G")
                     .font(.system(size: 18, weight: .bold, design: .rounded))
                     .foregroundColor(mono))
+            }
+            /*
+             * #1003 — THE OFFICIAL MARK, not a letter.
+             *
+             * This drew `Text("G")` in a rounded bold font, so a Sign in with Google button could
+             * not be made to match Google's own branding guidelines — which require the official
+             * asset, unmodified. The file ships in the SDK bundle
+             * (`Resources/appdna_google_g.png`, provenance in its `.LICENSE` sidecar) rather than
+             * being fetched, so the button draws correctly offline and on first launch.
+             *
+             * The letterform stays as the fallback: a host that strips SPM resources, or an older
+             * cached bundle, gets what it has always had rather than an empty button.
+             */
+            if let url = Bundle.module.url(forResource: "appdna_google_g", withExtension: "png"),
+               let data = try? Data(contentsOf: url),
+               let image = UIImage(data: data) {
+                return AnyView(
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 18, height: 18)
+                )
             }
             return AnyView(Text("G")
                 .font(.system(size: 18, weight: .bold, design: .rounded)))

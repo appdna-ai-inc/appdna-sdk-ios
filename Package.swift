@@ -80,7 +80,18 @@ let package = Package(
                 .product(name: "RiveRuntime", package: "rive-ios"),
             ],
             resources: [
-                .copy("PrivacyInfo.xcprivacy")
+                .copy("PrivacyInfo.xcprivacy"),
+                /*
+                 * #1003 — Google's official "G" for Sign in with Google buttons, UNMODIFIED.
+                 *
+                 * The provider glyph was a `Text("G")` in a rounded bold font on both platforms —
+                 * a letter, not the mark — so a sign-in button could not be made to match Google's
+                 * own branding guidelines, which require the official asset. `.copy`, not
+                 * `.process`, so Xcode's asset pipeline cannot re-encode what ships.
+                 *
+                 * Provenance and terms: `Resources/appdna_google_g.png.LICENSE`.
+                 */
+                .copy("Resources/appdna_google_g.png")
             ]
         ),
         .target(
