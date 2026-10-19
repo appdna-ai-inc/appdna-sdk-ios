@@ -33,8 +33,8 @@ struct SingleChoiceView: View {
                         Image(systemName: selectedId == option.id ? "circle.inset.filled" : "circle")
                             .foregroundColor(selectedId == option.id ? accentColor : .gray)
 
-                        if let icon = option.icon {
-                            Text(icon)
+                        if let icon = option.resolvedIcon {
+                            IconView(ref: icon, size: 20)
                         }
 
                         Text(option.text ?? "")

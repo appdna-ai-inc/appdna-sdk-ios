@@ -32,8 +32,8 @@ struct MultiChoiceView: View {
                         Image(systemName: selectedIds.contains(option.id ?? "") ? "checkmark.square.fill" : "square")
                             .foregroundColor(selectedIds.contains(option.id ?? "") ? accentColor : .gray)
 
-                        if let icon = option.icon {
-                            Text(icon)
+                        if let icon = option.resolvedIcon {
+                            IconView(ref: icon, size: 20)
                         }
 
                         Text(option.text ?? "")

@@ -41,6 +41,7 @@ extension SharedFixtureTests {
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
+        case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
         default:
             return false
         }
@@ -209,6 +210,46 @@ extension SharedFixtureTests {
                 return [] as [Any]
             }
             return (holder.content_blocks ?? []).map { $0.id ?? "" } as [Any]
+        }
+    }
+
+
+    // MARK: resolve_survey_choice_options
+
+    /**
+     A survey choice option's icon, through the REAL `ChoiceConfig` decode and `resolvedIcon`.
+
+     🔴 The assertion is the SURVIVING OPTIONS as well as their icons, because the defect deleted
+     options. `icon` was declared `String?` inside a lenient array, so the object form `IconRefSchema`
+     accepts made that element fail to decode and the respondent saw one fewer choice — silently.
+     An option with no icon resolves to `id|`, so a dropped option can never be read as an
+     icon-less one.
+     */
+    private func runSurveyChoiceOptions(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_survey_choice_options needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let raw = c.objectValue?["value"]?.foundation as? [Any] else {
+                XCTFail("[\(f.id)] a case had no value array")
+                return [] as [Any]
+            }
+            // Through `choice_config`, keyed exactly as Firestore sends it, so the path under test
+            // is production's — including the lenient array that did the dropping.
+            let wrapper: [String: Any] = ["options": raw]
+            guard JSONSerialization.isValidJSONObject(wrapper),
+                  let data = try? JSONSerialization.data(withJSONObject: wrapper),
+                  let cfg = try? JSONDecoder().decode(ChoiceConfig.self, from: data) else {
+                XCTFail("[\(f.id)] choice_config did not decode at all")
+                return [] as [Any]
+            }
+            return (cfg.options ?? []).map { opt -> Any in
+                let icon = opt.resolvedIcon
+                let parts = [opt.id ?? "", icon?.library ?? "", icon?.name ?? ""]
+                // "id|" for no icon; "id|library|name" otherwise.
+                return icon == nil ? "\(parts[0])|" : parts.joined(separator: "|")
+            } as [Any]
         }
     }
 

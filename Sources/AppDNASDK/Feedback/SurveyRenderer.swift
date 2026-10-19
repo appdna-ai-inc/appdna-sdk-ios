@@ -343,10 +343,13 @@ struct SurveyContainerView: View {
             csat_config: question.csat_config,
             rating_config: question.rating_config,
             options: question.options?.map { opt in
+                // 🔴 `emoji` has to be carried too. This init defaulted it to nil, so an authored
+                // option emoji never survived the copy every rendered question goes through.
                 SurveyQuestionOption(
                     id: opt.id,
                     text: e.interpolate(opt.text ?? "", context: ctx),
-                    icon: opt.icon
+                    icon: opt.icon,
+                    emoji: opt.emoji
                 )
             },
             emoji_config: question.emoji_config,

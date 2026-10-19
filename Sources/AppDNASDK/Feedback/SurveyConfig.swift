@@ -114,15 +114,32 @@ public struct SurveyQuestionOption: Codable {
     public let id: String?
     private let _text: String?   // Legacy "text"
     public let label: String?    // Firestore sends "label"
-    public let icon: String?
+    /*
+     * 🔴 `IconReference`, NOT `String` — and that was a dropped option, not a missing icon.
+     *
+     * `IconRefSchema` accepts a bare string OR `{ library, name, color, size }`, and every other
+     * surface in this SDK decodes it through `IconReference`'s dual-shape decoder. This one field
+     * was declared `String?`, so the object form threw — and because `ChoiceConfig.options` is
+     * `@LenientArray` ("one malformed option costs that option", #936) the respondent silently
+     * saw ONE FEWER CHOICE. A bare string still decodes exactly as before, and `IconView` renders
+     * all four libraries instead of printing the raw name as text.
+     */
+    public let icon: IconReference?
+    /// A shorthand for `icon` with the `emoji` library. Read nowhere before this: the console
+    /// accepted it, iOS decoded it, and `interpolatedQuestion` then dropped it on the floor.
     public let emoji: String?
 
     /// Display text — prefer label (Firestore), fall back to text (legacy)
     public var text: String? { label ?? _text }
 
+    /// The icon to draw, whichever field the author used.
+    public var resolvedIcon: IconReference? {
+        icon ?? emoji.map { IconReference(library: "emoji", name: $0) }
+    }
+
     /// Convenience init for creating interpolated copies
-    public init(id: String?, text: String?, icon: String?) {
-        self.id = id; self._text = text; self.label = nil; self.icon = icon; self.emoji = nil
+    public init(id: String?, text: String?, icon: IconReference?, emoji: String? = nil) {
+        self.id = id; self._text = text; self.label = nil; self.icon = icon; self.emoji = emoji
     }
 
     enum CodingKeys: String, CodingKey {
