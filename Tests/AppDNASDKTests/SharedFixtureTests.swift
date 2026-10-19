@@ -1427,7 +1427,16 @@ final class SharedFixtureTests: XCTestCase {
         // each hardcoded a 1.5 ring in the BACKGROUND colour and drew it only for `outline`, so a
         // filled button at width 40 drew nothing. Resolved through the SAME pure helpers the
         // renderer uses, so a fixture cannot pass while the screen stays wrong.
-        h.state["child_border_widths"] = children.map { authoredButtonBorderWidth($0.border_width, variant: $0.variant) }
+        // #1007 — the colour is PASSED, exactly as the renderer passes it: an authored border
+        // colour with no width implies a hairline, and a driver that omitted the argument would
+        // measure a rule the screen does not follow.
+        h.state["child_border_widths"] = children.map {
+            authoredButtonBorderWidth(
+                $0.border_width,
+                variant: $0.variant,
+                hasColour: authoredButtonBorderColorHex($0.border_color) != nil,
+            )
+        }
         h.state["child_border_colors"] = children.map { authoredButtonBorderColorHex($0.border_color) ?? "" }
         h.state["child_icon_emojis"] = children.map { $0.icon_emoji ?? "" }
         h.state["child_image_urls"] = children.map { $0.image_url ?? "" }

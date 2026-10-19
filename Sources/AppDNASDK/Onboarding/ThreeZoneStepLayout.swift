@@ -137,7 +137,10 @@ struct ThreeZoneStepLayout: View {
             gateBlocks: gateBlocks ?? blocks
         )
         // Use ~8% of screen width for responsive margins across all devices
-        .padding(.horizontal, max(24, UIScreen.main.bounds.width * 0.08))
+        // The ONE definition of the step's horizontal inset, shared with the full-bleed modifier
+        // that has to cancel it (#1006). A constant there and a formula here is how a background
+        // "reaching the screen edges" stopped eleven points short.
+        .padding(.horizontal, CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width)))
     }
 
     static func partitionBlocks(_ blocks: [ContentBlock]) -> (top: [ContentBlock], center: [ContentBlock], bottom: [ContentBlock]) {

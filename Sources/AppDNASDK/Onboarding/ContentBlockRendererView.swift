@@ -425,7 +425,8 @@ struct ContentBlockRendererView: View {
             .padding(
                 .horizontal,
                 BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
-                    ? -CGFloat(BlockFullBleed.stepHorizontalInset) : 0,
+                    ? -CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width))
+                    : 0,
             )
             .applyBlockPosition(
                 verticalAlign: block.vertical_align,
@@ -2665,7 +2666,10 @@ struct ContentBlockRendererView: View {
         MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
             renderBlock(child)
         }
-        .padding(.horizontal, bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset) : 0)
+        .padding(
+            .horizontal,
+            bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width)) : 0,
+        )
     }
 
     @ViewBuilder

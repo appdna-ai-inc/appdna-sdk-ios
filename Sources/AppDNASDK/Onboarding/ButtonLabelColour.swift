@@ -49,8 +49,21 @@ public enum ButtonLabelColour {
  cannot drift to three different numbers.
  */
 public enum BlockFullBleed {
-    /// The step's horizontal content padding, which a full-bleed background has to cancel.
-    public static let stepHorizontalInset: Double = 20
+    /**
+     The step's horizontal content padding, which a full-bleed background has to cancel.
+
+     🔴 IT IS RESPONSIVE, and a constant was wrong. The first version used 20 — the number the map's
+     own full bleed cancels — and the device showed the background still inset by about eleven
+     points, because `ThreeZoneStepLayout` insets content by `max(24, screenWidth * 0.08)`: 31.4pt
+     on a 393pt iPhone, not 20. A full bleed that cancels the wrong number is a full bleed that does
+     not reach the edge, which is the defect it was written to fix.
+
+     The layout reads this function too, so the two cannot drift apart again. Android computes the
+     same thing from its own `screenWidthDp`.
+     */
+    public static func stepHorizontalInset(screenWidth: Double) -> Double {
+        max(24, screenWidth * 0.08)
+    }
 
     /// `field_config.background_full_bleed`, read the same way on both platforms.
     public static func isOn(_ value: Any?) -> Bool {
