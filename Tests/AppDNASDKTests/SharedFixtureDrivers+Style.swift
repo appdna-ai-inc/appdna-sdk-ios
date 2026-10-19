@@ -43,6 +43,7 @@ extension SharedFixtureTests {
         case "parse_blocks_leniently": runLenientBlocks(f, h)
         case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
         case "resolve_button_label_colour": runButtonLabelColour(f, h)
+        case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
         }
@@ -277,6 +278,33 @@ extension SharedFixtureTests {
                 textColor: v?["text_color"]?.stringValue,
                 styleColor: v?["style_color"]?.stringValue,
             ) ?? ""
+        }
+    }
+
+
+    // MARK: resolve_survey_sentiment
+
+    /**
+     WHICH follow-up branch a completed survey takes, through the REAL `SurveySentimentRule` the
+     renderer calls.
+
+     🔴 Driven through the production function, not re-stated: the defect was a hard-coded emoji
+     scale, and a test that hard-codes its own would agree with it (Rule 25). The authored scale is
+     passed exactly as `determineSentiment` passes it — off the ANSWERED question.
+     */
+    private func runSurveySentiment(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_survey_sentiment needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let scale = v?["emoji_scale"]?.arrayValue?.compactMap { $0.stringValue }
+            return SurveySentimentRule.resolve(
+                surveyType: v?["survey_type"]?.stringValue,
+                answer: v?["answer"]?.foundation,
+                emojiScale: scale,
+            ).analyticsName
         }
     }
 

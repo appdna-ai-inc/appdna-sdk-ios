@@ -315,14 +315,14 @@ public enum SurveyResult {
 }
 
 /// Sentiment determination.
-enum SurveySentiment {
+public enum SurveySentiment {
     case positive
     case negative
     case neutral
 
     /// The `sentiment` property value on every `survey_followup_*` event. Android sends
     /// `sentiment.name.lowercase()` (`feedback/SurveyManager.kt:314`) — same three strings.
-    var analyticsName: String {
+    public var analyticsName: String {
         switch self {
         case .positive: return "positive"
         case .negative: return "negative"
