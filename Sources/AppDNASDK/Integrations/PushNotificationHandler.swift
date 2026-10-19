@@ -64,6 +64,19 @@ extension PushActionCategories {
     /// (delivered while the app was not running, with no Notification Service Extension to register them).
     static func registerFromDeliveredNotifications() {
         guard !NotificationProxyBootstrap.isRunningUnderXCTest else { return }
+        /*
+         * #987 — the button-less `appdna_default` category, registered once per launch so EVERY
+         * AppDNA push can report a dismissal rather than only those carrying buttons.
+         *
+         * 🔴 At CONFIGURE, not lazily on arrival. A category has to be registered before the
+         * notification is shown, and a plain title-and-body push is not `mutable-content`, so the
+         * notification service extension never runs for it — there is no later moment. Registering
+         * it here means the app has it from its first launch after install.
+         *
+         * It merges through the same `register(from:)` path as every button category, which
+         * preserves the host's own categories and the recency pruning.
+         */
+        register(from: ["aps": ["category": defaultCategoryId]], slot: NotificationProxyBootstrap.categorySlot())
         UNUserNotificationCenter.current().getDeliveredNotifications { notifications in
             let userInfos = notifications
                 .map { $0.request.content.userInfo }

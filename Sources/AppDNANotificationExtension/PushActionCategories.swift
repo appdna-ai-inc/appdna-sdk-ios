@@ -66,7 +66,7 @@ import UserNotifications
     public static func categoryId(from userInfo: [AnyHashable: Any]) -> String {
         if let aps = userInfo["aps"] as? [String: Any], let id = aps["category"] as? String, !id.isEmpty { return id }
         if let id = userInfo["category"] as? String, !id.isEmpty { return id }
-        return "appdna_default"
+        return defaultCategoryId
     }
 
     /// The category for the payload's buttons, or nil when it has none. Buttons are the server's SDK shape
@@ -116,7 +116,7 @@ import UserNotifications
             }
             return UNNotificationAction(identifier: id, title: label, options: options)
         }
-        guard !actions.isEmpty else { return nil }
+        guard !actions.isEmpty else { return defaultCategory }
         return UNNotificationCategory(
             identifier: categoryId(from: userInfo),
             actions: actions,
@@ -132,12 +132,42 @@ import UserNotifications
              * its own would start recording every dismissal as `push_tapped` — a wrong number is
              * worse than a missing one.
              *
-             * Still limited: this builder returns nil when `actions.isEmpty`, so a push with no
-             * buttons carries no category and no dismissal. That half is the remainder on #968.
+             * #987 closed the other half: a push with no buttons gets `defaultCategory` below, so
+             * every AppDNA notification carries a category that reports dismissals.
              */
             options: [.customDismissAction]
         )
     }
+
+    /**
+     #987 — THE BUTTON-LESS CATEGORY, so every AppDNA push can report a dismissal.
+
+     iOS delivers `UNNotificationDismissActionIdentifier` only for a category registered with
+     `.customDismissAction`, and a category used to exist only when the push carried buttons — so a
+     plain title-and-body push was swiped away silently and an iOS dismissal rate was a rate among
+     a SUBSET. Android has reported every dismissal all along, through the notification's delete
+     intent.
+
+     🔴 THE HAZARD THIS AVOIDS, and the reason it is a category with NO actions. The notification
+     service extension and the app must agree on category identifiers: a category the extension
+     names and the app has not registered produces a notification **with no buttons at all**. Here
+     there are no buttons to lose — the category exists solely to carry the dismiss option — so a
+     host on an older SDK that receives `appdna_default` shows exactly what it would have shown
+     anyway. That is what makes shipping it safe without a coordinated release.
+
+     `appdna_default` is the identifier `categoryId(from:)` has always fallen back to, so a payload
+     that names it and one that names nothing resolve to the same category.
+     */
+    public static var defaultCategory: UNNotificationCategory {
+        UNNotificationCategory(
+            identifier: defaultCategoryId,
+            actions: [],
+            intentIdentifiers: [],
+            options: [.customDismissAction]
+        )
+    }
+
+    public static let defaultCategoryId = "appdna_default"
 
     /// The title of a button in a registered category. A category is shared by every later push with the
     /// same button set, and it is registered by two processes — the Notification Service Extension
