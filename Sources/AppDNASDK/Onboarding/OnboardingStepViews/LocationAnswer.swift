@@ -84,7 +84,7 @@ enum LocationAnswer {
 /// comma — one with a city/country fallback and one without. Routing the iOS content block through
 /// the geocoding proxy removed MapKit's pre-split strings and so required picking a rule; picking
 /// it once, here, is what stops a fifth appearing. `LocationAnswer.displayLines` in
-/// `LocationAnswer.kt` is the Kotlin twin, and `location_suggestion_display` pins the pair.
+/// `LocationAnswer.kt` is the Kotlin twin, and `location_suggestion_display_lines` pins the pair.
 ///
 /// `formatted_address` is a comma-separated address, so its first segment is the place and the
 /// remainder is where it is. The `city, country` fallback covers a single-segment address (a
