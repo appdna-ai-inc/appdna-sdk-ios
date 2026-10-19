@@ -64,11 +64,21 @@ public struct ConfettiOverlay: View {
             }
         }
         .allowsHitTesting(false)
-        .onAppear {
-            if effect.trigger == "on_appear" || effect.trigger == nil {
-                startAnimation()
-            }
-        }
+        /*
+         🔴 #956 — NO SECOND GATE. This used to re-check `effect.trigger == "on_appear"`, and every
+         caller already decides WHEN to render the overlay: the paywall sets `showConfetti` only
+         after a purchase when the trigger says `on_purchase`, the survey only on completion, a
+         message only when its own condition fires. So the re-check could not admit anything the
+         parent had not already admitted — it could only SUBTRACT, and it did: an effect authored
+         `on_purchase` was armed by the paywall and then refused here, on both platforms. Android's
+         `trigger && (effect.trigger == "on_appear" || isActive)` is the same bug in Kotlin, and
+         `PaywallConfig.kt` DEFAULTS an unauthored paywall effect to `on_purchase` — so the
+         default never fired either.
+
+         The overlay animates when it appears. Deciding whether it should appear is the parent's
+         job, and the parent is the only one that knows.
+        */
+        .onAppear { startAnimation() }
     }
 
     private func startAnimation() {
