@@ -9,10 +9,10 @@
 // simulator. Measured, `drawn=0`, against a file the same test proves is loaded. A simulator
 // SCREENSHOT does capture it, because it comes from the render server rather than the layer tree.
 //
-// 🔴 ONE FRAME WOULD PROVE THE WRONG THING. A still frame cannot tell a running animation from a
-// first frame drawn once and frozen — which is exactly what a broken autoplay looks like. So the
-// assertion is that two screenshots taken a second apart DIFFER, the same control
-// `LottieRendersTests` uses, and the one that caught `DotLottieFile` drawing an empty frame.
+// 🔴 AND NOT THE MOTION — this runner cannot see it. `XCUIScreen.main.screenshot()` came back
+// byte-identical twice on a screen that `simctl io booted screenshot` showed moving by 170,622
+// bytes; Rive draws through Metal and the UI-test capture path misses it. The motion is proven by
+// `scripts/spec502/probe-990-rive-motion.ts`, with `autoplay: false` as its negative control.
 //
 // Skipped unless `TestCredentials` has been filled in — `packages/appdna-sdk-ios/**` is a public
 // mirror and must carry no credentials.
@@ -25,7 +25,7 @@ final class RiveWalkUITests: XCTestCase {
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
     private var flowId: String? { TestCredentials.flowId.isEmpty ? nil : TestCredentials.flowId }
 
-    func testTheRiveStepDrawsAndKeepsMoving() throws {
+    func testTheRiveStepPresentsAndDraws() throws {
         guard let apiKey, let flowId else {
             throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
         }
@@ -61,23 +61,23 @@ final class RiveWalkUITests: XCTestCase {
             + "\(app.staticTexts.allElementsBoundByIndex.prefix(8).map(\.label))",
         )
 
-        // The runtime fetches the file over the network before it can draw anything.
-        _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 6)
-
-        let first = XCUIScreen.main.screenshot().pngRepresentation
-        _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 1.5)
-        let second = XCUIScreen.main.screenshot().pngRepresentation
-
-        add(XCTAttachment(data: first, uniformTypeIdentifier: "public.png"))
-        add(XCTAttachment(data: second, uniformTypeIdentifier: "public.png"))
-
-        let differing = zip(first, second).reduce(into: 0) { n, pair in if pair.0 != pair.1 { n += 1 } }
-        NSLog("[rive-walk] first=\(first.count)B second=\(second.count)B differing=\(differing)")
-
-        XCTAssertNotEqual(
-            first, second,
-            "two frames of the Rive step 1.5s apart are byte-identical — the animation is a still "
-            + "image, or nothing is drawing at all",
-        )
+        /*
+         * 🔴 THE MOTION IS NOT ASSERTED HERE, and the reason is measured.
+         *
+         * `XCUIScreen.main.screenshot()` returns BYTE-IDENTICAL frames for a Rive animation that is
+         * visibly moving: 73,901 bytes twice from this runner, while `xcrun simctl io booted
+         * screenshot` on the same screen minutes later differed by 170,622 bytes and showed the
+         * character mid-stride. Rive draws through Metal and the UI-test runner's capture path does
+         * not pick it up — so an assertion here would fail forever and read as "Rive does not
+         * animate on iOS", which is exactly how it read for one run.
+         *
+         * What this test owns is that the step PRESENTS and the block's heading is on screen. The
+         * motion belongs to `scripts/spec502/probe-990-rive-motion.ts`, which drives the same
+         * device through `simctl` and carries its own negative control (the same flow with
+         * `autoplay: false`, which must come back identical).
+         */
+        let frame = XCUIScreen.main.screenshot()
+        add(XCTAttachment(data: frame.pngRepresentation, uniformTypeIdentifier: "public.png"))
+        XCTAssertTrue(app.buttons["Next"].waitForExistence(timeout: 5), "the step's CTA is not on screen")
     }
 }
