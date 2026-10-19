@@ -48,3 +48,24 @@ If you are running v1.0.59 or earlier in production, see [DEPRECATION_NOTICE.md]
 ---
 
 © 2026 AppDNA AI, Inc. All rights reserved. "AppDNA" and the AppDNA logo are trademarks of AppDNA AI, Inc.
+
+---
+
+## Third-party assets
+
+### Google's "G" mark — `appdna_google_g.png`
+
+Google's official mark for **Sign in with Google** buttons, shipped UNMODIFIED.
+
+- Source: https://developers.google.com/identity/images/g-logo.png
+- Fetched: 2026-10-19 · 33,661 bytes · 200 × 204 RGBA PNG
+- Terms: https://developers.google.com/identity/branding-guidelines
+
+Google's branding guidelines require the official asset, used unmodified, on a sign-in button. That
+is the only place this SDK draws it: the `social_login` block's `google` provider. It is not
+resized by hand, not recoloured, and not offered as a general-purpose icon.
+
+🔴 Do not edit the file. Re-fetch it from the URL above if it ever needs updating, so what ships
+stays byte-identical to what Google publishes. On Android it must live in `res/` as a `.png` and
+NOTHING else: a sidecar file beside it fails `packageDebugResources` with "The file name must end
+with .xml or .png", which is why this note is here rather than next to the asset.
