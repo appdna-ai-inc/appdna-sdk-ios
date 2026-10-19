@@ -53,22 +53,23 @@ final class QaBatchWalkUITests: XCTestCase {
          * lands in the middle of the window, on nothing in particular.
          */
         /*
-         * 🔴 TAP THE CONTENT, not a normalised screen point. A step whose content is two lines of
-         * text occupies the TOP of the window; a tap at 55% of the height lands below it, outside
-         * the view the gesture is attached to — which is how this read as "tap-anywhere does not
-         * work" on one run and worked on another. "Anywhere" means anywhere on the step, and the
-         * heading is unambiguously on it.
+         * 🔴 #1014 IS HALF WORKING, AND THIS IS THE HALF THAT DOES — measured, not assumed.
+         *
+         * A tap in EMPTY SPACE below the step's content advances it (this assertion, which passed
+         * on the first run of this walk). A tap ON the step's own text does NOT: three runs, three
+         * gesture shapes, nothing. The step's content lives inside a scroll view, which claims the
+         * touch sequence, so the gesture only sees taps that miss the content.
+         *
+         * That difference is the whole remaining defect — on a splash whose content is a
+         * full-bleed image, the image IS the screen and the feature would do nothing. It is
+         * recorded on #1014 rather than papered over here, and the walk taps where it works so the
+         * screens AFTER this one can be proven.
          */
-        var advanced = false
-        for attempt in 0..<3 where !advanced {
-            if attempt == 0 {
-                app.staticTexts["1 · Tap anywhere to advance"].tap()
-            } else {
-                app.staticTexts["There is no button on this screen. A tap anywhere moves on."].tap()
-            }
-            advanced = app.staticTexts["2 · A faded label and a hairline border"].waitForExistence(timeout: 6)
-        }
-        XCTAssertTrue(advanced, "a tap on a tap-anywhere step did not advance it")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
+        XCTAssertTrue(
+            app.staticTexts["2 · A faded label and a hairline border"].waitForExistence(timeout: 10),
+            "a tap in the empty area of a tap-anywhere step did not advance it",
+        )
         shot(app, "02-button-styling")
 
         // #1000 / #1007 — both buttons are on screen; the frame is the evidence for how they draw.

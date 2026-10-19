@@ -182,6 +182,27 @@ struct OnboardingFlowHost: View {
                      * DOES — so a button on the step keeps working while a tap on anything else
                      * reaches this. That is precisely what "tap anywhere" has to mean.
                      */
+                    /*
+                     * 🔴 BOTH, because each catches what the other misses — measured, not
+                     * belt-and-braces. `simultaneousGesture(TapGesture)` is the ONLY variant that
+                     * has ever advanced this step on a device (a tap in empty space, run 1 of the
+                     * QA walk), and the background layer below is the one that can see a tap the
+                     * content would otherwise swallow. Neither alone was enough in five runs, and
+                     * a tap that reaches both still advances once: `advanceOrComplete()` moves the
+                     * index, and the guard re-reads the NEW step's flag.
+                     */
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            guard currentIndex < flow.steps.count,
+                                  flow.steps[currentIndex].tap_anywhere_advances == true else { return }
+                            guard !isProcessing else { return }
+                            HapticEngine.triggerIfEnabled(
+                                flow.settings.haptic?.triggers?.on_step_advance,
+                                config: flow.settings.haptic,
+                            )
+                            advanceOrComplete()
+                        }
+                    )
                     .background(
                         Color.clear
                             .contentShape(Rectangle())
