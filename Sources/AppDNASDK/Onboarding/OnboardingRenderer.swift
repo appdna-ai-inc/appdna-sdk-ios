@@ -167,17 +167,38 @@ struct OnboardingFlowHost: View {
                      * It goes through `advanceOrComplete()`, the same entry the CTA uses, so the
                      * step's rules, its completion event and `canAdvance` all behave identically.
                      */
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            guard currentIndex < flow.steps.count,
-                                  flow.steps[currentIndex].tap_anywhere_advances == true else { return }
-                            guard !isProcessing else { return }
-                            HapticEngine.triggerIfEnabled(
-                                flow.settings.haptic?.triggers?.on_step_advance,
-                                config: flow.settings.haptic,
-                            )
-                            advanceOrComplete()
-                        }
+                    /*
+                     * 🔴 A TAPPABLE LAYER BEHIND THE STEP, not a gesture on top of it — and the
+                     * device had to say so three times.
+                     *
+                     * `.simultaneousGesture(TapGesture())` advanced on a tap in empty space and
+                     * did nothing when the tap landed on the step's own text; a zero-distance
+                     * `DragGesture` did nothing either. The step content lives inside a scroll
+                     * view, which claims the touch sequence for its own gesture, and a gesture
+                     * attached ABOVE the content competes with it.
+                     *
+                     * A `.background` layer does not compete: SwiftUI hit-tests front to back, a
+                     * `Text` with no gesture of its own does not consume the tap, and a Button
+                     * DOES — so a button on the step keeps working while a tap on anything else
+                     * reaches this. That is precisely what "tap anywhere" has to mean.
+                     */
+                    .background(
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                // TEMPORARY DIAGNOSTIC (#1014) — distinguishes "the gesture never
+                                // fires" from "the advance is refused", which look identical.
+                                Log.warning("[DIAG] tap layer fired, index=\(currentIndex) processing=\(isProcessing)")
+                                guard currentIndex < flow.steps.count,
+                                      flow.steps[currentIndex].tap_anywhere_advances == true else { return }
+                                guard !isProcessing else { return }
+                                Log.warning("[DIAG] tap layer advancing")
+                                HapticEngine.triggerIfEnabled(
+                                    flow.settings.haptic?.triggers?.on_step_advance,
+                                    config: flow.settings.haptic,
+                                )
+                                advanceOrComplete()
+                            }
                     )
 
                     // Error banner
