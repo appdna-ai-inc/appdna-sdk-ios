@@ -1431,7 +1431,20 @@ struct PaywallRenderer: View {
                         .font(.system(size: data?.labelFontSize ?? 12))
                         .foregroundColor(Color(hex: data?.labelColor ?? "#9CA3AF"))
                         .padding(.horizontal, 8)
-                        .background(Color.clear)
+                        /*
+                         * #976 — `label_bg_color`, which this hard-coded to `.clear` while Android
+                         * has always honoured it (`PaywallActivity.kt`, the divider's label
+                         * background with a 4dp corner). Both SDKs DECODE the key; only one drew
+                         * it, so a divider authored with a label chip rendered as a chip on
+                         * Android and as bare text on iOS — one document, two paywalls, which is
+                         * the divergence class ADR-001 exists to prevent.
+                         *
+                         * Unauthored stays `.clear`, so nothing already published moves.
+                         */
+                        .background(
+                            (data?.labelBgColor.map { Color(hex: $0) } ?? Color.clear)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        )
                     dividerLine(color: dividerColor, thickness: thickness, style: lineStyle)
                 }
             } else {
