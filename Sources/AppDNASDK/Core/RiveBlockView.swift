@@ -15,7 +15,12 @@ public struct RiveBlock: Codable {
 public struct RiveBlockView: View {
     let block: RiveBlock
 
-    private var alignmentValue: Alignment {
+    /*
+     * 🔴 `SwiftUI.Alignment`, qualified. `RiveRuntime` exports an `Alignment` of its own, so the
+     * bare name is ambiguous the moment this file imports it — and the error ("'Alignment' is
+     * ambiguous for type lookup in this context") names the line, not the cause.
+     */
+    private var alignmentValue: SwiftUI.Alignment {
         switch block.alignment {
         case "left": return .leading
         case "right": return .trailing
