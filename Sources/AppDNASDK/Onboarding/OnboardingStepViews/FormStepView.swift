@@ -637,6 +637,37 @@ struct FormStepView: View {
                     errors[field.id] = field.validation?.pattern_message ?? "Invalid format"
                 }
             }
+
+            /*
+             * #984 — `min_length` and `validate_format` were DECODED BY BOTH PLATFORMS AND READ BY
+             * NEITHER, so neither ever rejected anything.
+             *
+             * `max_length` has always truncated in `FormFieldRendererExtras`, which is what made
+             * the pair look symmetric in the DTO when only one half existed. `validate_format` is
+             * worse than absent: the console shows a "Validate URL Format" switch that reads
+             * `!== false`, so it is ON for every URL field ever authored and did nothing.
+             *
+             * Both messages are shared verbatim with Android and pinned by
+             * `scripts/__tests__/default-user-copy-parity.test.ts` — the gate #977 exists for.
+             */
+            if let minLength = field.config?.min_length,
+               minLength > 0,
+               let val = values[field.id] as? String,
+               !val.isEmpty,
+               val.count < minLength,
+               errors[field.id] == nil {
+                let unit = minLength == 1 ? "character" : "characters"
+                errors[field.id] = "Enter at least \(minLength) \(unit)"
+            }
+
+            if field.type == .url,
+               field.config?.validate_format != false,
+               let val = values[field.id] as? String,
+               !val.isEmpty,
+               errors[field.id] == nil,
+               !FormFieldFormats.looksLikeURL(val) {
+                errors[field.id] = "Enter a valid URL"
+            }
         }
 
         if errors.isEmpty {
