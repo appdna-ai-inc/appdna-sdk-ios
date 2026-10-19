@@ -35,6 +35,27 @@ let package = Package(
         // are CocoaPods consumers, so the platform this whole spec is for would be the one running
         // the version nothing was tested against.
         .package(url: "https://github.com/googlemaps/ios-maps-sdk.git", from: "9.4.0"),
+        /*
+         * #982 — THE ANIMATION ENGINES, and they are a deliberate cost.
+         *
+         * `LottieBlockView` and `RiveBlockView` were PLACEHOLDERS — a rounded panel with a play
+         * glyph and the filename — for as long as the block types have existed, while Android
+         * rendered both for real. 27 blocks across 19 flows on dev used them, 3 of those flows
+         * ACTIVE, so real users were looking at a debug box with our text in it.
+         *
+         * 🔴 The owner's call (2026-10-19) was to ship the engines IN the SDK rather than behind a
+         * `#if canImport` the host opts into: roughly 2–3 MB for Lottie and 1–2 MB for Rive in
+         * EVERY integrating app, used or not. That was the argument against it and it was taken
+         * anyway — so the binary-size question is settled, not open.
+         *
+         * 🔴 The versions are pinned to the SAME MAJOR the podspec pins, for the reason the
+         * GoogleMaps note above spells out: a wrapper host consumes this SDK through CocoaPods, so
+         * a channel carrying a different major ships untested code to the platform the wrappers
+         * run on. Lottie 4.6.1 is the current release on both. Rive 6.x is current on both, and
+         * `riveRenderer` is 6.0's default — 5.x's `skiaRenderer` is gone.
+         */
+        .package(url: "https://github.com/airbnb/lottie-ios.git", from: "4.6.1"),
+        .package(url: "https://github.com/rive-app/rive-ios.git", from: "6.0.0"),
         // Optional billing providers — a SOURCE build only. Uncomment the dependency, add its product to
         // the AppDNASDK target, AND add `swiftSettings: [.define("APPDNA_LINK_REVENUECAT")]` (Adapty:
         // `APPDNA_LINK_ADAPTY`). The bridge needs the define: a host app that adds the provider's package
@@ -54,6 +75,9 @@ let package = Package(
                 // dependency: the three-product spelling this replaced was a workaround for 8.4.0's
                 // split package, and it only ever built against a warm module cache.
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
+                // #982 — the real renderers behind `LottieBlockView` / `RiveBlockView`.
+                .product(name: "Lottie", package: "lottie-ios"),
+                .product(name: "RiveRuntime", package: "rive-ios"),
             ],
             resources: [
                 .copy("PrivacyInfo.xcprivacy")
