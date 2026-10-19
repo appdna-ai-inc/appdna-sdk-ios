@@ -1925,6 +1925,24 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_legal_accent_color"] = SharedFixtureTests.orNull(legalSection?.data?.accentColor)
             h.state["parsed_legal_font_size"] = SharedFixtureTests.orNull(legalSection?.data?.fontSize)
             h.state["parsed_legal_alignment"] = SharedFixtureTests.orNull(legalSection?.data?.alignment)
+            /*
+             * #979 — the countdown section's vocabulary. Eight of its ten console controls wrote a
+             * key no renderer read, and the generator wrote two more of its own, so a value failing
+             * to reach the DTO was indistinguishable from an unstyled countdown. The four at the
+             * end (`label_font_weight`, `digit_*`, `text_color`) had no field on either platform's
+             * DTO until this change.
+             */
+            let countdownSection = paywall.sections.first { $0.type == "countdown" }
+            h.state["parsed_countdown_duration_seconds"] = SharedFixtureTests.orNull(countdownSection?.data?.durationSeconds)
+            h.state["parsed_countdown_label_text"] = SharedFixtureTests.orNull(countdownSection?.data?.labelText)
+            h.state["parsed_countdown_label_color"] = SharedFixtureTests.orNull(countdownSection?.data?.labelColor)
+            h.state["parsed_countdown_layout"] = SharedFixtureTests.orNull(countdownSection?.data?.layout)
+            h.state["parsed_countdown_background_color"] = SharedFixtureTests.orNull(countdownSection?.data?.backgroundColor)
+            h.state["parsed_countdown_on_expire_action"] = SharedFixtureTests.orNull(countdownSection?.data?.onExpireAction)
+            h.state["parsed_countdown_label_font_weight"] = SharedFixtureTests.orNull(countdownSection?.data?.labelFontWeight)
+            h.state["parsed_countdown_digit_font_size"] = SharedFixtureTests.orNull(countdownSection?.data?.digitFontSize)
+            h.state["parsed_countdown_digit_font_weight"] = SharedFixtureTests.orNull(countdownSection?.data?.digitFontWeight)
+            h.state["parsed_countdown_text_color"] = SharedFixtureTests.orNull(countdownSection?.data?.textColor)
             if let legalText = legalSection?.data?.text {
                 // REAL: the shipped parser BOTH legal renderers call.
                 let parsed = legalMarkdownLinks(legalText)

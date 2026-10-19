@@ -1005,7 +1005,10 @@ struct PaywallRenderer: View {
     private func socialProofSection(data: PaywallSectionData?, style: SectionStyleConfig?) -> AnyView {
         switch data?.subType {
         case "countdown":
-            return AnyView(CountdownTimerView(seconds: data?.countdownSeconds ?? 86400, valueTextStyle: style?.elements?["value"]?.textStyle))
+            return AnyView(countdownTimer(
+                duration: data?.countdownSeconds ?? 86400,
+                data: data,
+                valueTextStyle: style?.elements?["value"]?.textStyle))
         case "trial_badge":
             if let ts = style?.elements?["value"]?.textStyle {
                 return AnyView(Text(loc("social_proof.trial_badge", data?.text ?? "Free Trial"))
@@ -1249,12 +1252,13 @@ struct PaywallRenderer: View {
                 // hardcoded to `.caption`(~12pt)/medium/system-grey, so the label size was silently
                 // dropped and the default color differed on every countdown (grey vs dark-red) from Android.
                 Text(loc("countdown.label", label))
-                    .font(.system(size: data?.labelFontSize ?? 14, weight: .semibold))
+                    // #979 — `label_font_weight` is a console control that reached no renderer.
+                    .font(.system(size: data?.labelFontSize ?? 14, weight: resolvePaywallFontWeight(data?.labelFontWeight, default: .semibold)))
                     .foregroundColor(Color(hex: data?.labelColor ?? "#7F1D1D"))
             }
 
             if layout == "boxed" || layout == "banner" {
-                CountdownTimerView(seconds: duration, valueTextStyle: valueTextStyle)
+                countdownTimer(duration: duration, data: data, valueTextStyle: valueTextStyle)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(
@@ -1262,9 +1266,38 @@ struct PaywallRenderer: View {
                             .fill(Color(hex: data?.backgroundColor ?? "#FEF2F2"))
                     )
             } else {
-                CountdownTimerView(seconds: duration, valueTextStyle: valueTextStyle)
+                countdownTimer(duration: duration, data: data, valueTextStyle: valueTextStyle)
             }
         }
+    }
+
+    /*
+     * #978 — the countdown's six expiry/format fields, passed through in one place.
+     *
+     * `auto_advance` is wired to the renderer's own dismiss rather than to anything the view
+     * reaches for: the paywall owns its lifecycle, and a view that dismissed itself would bypass
+     * the single dismiss guard `PaywallManager` keeps (the one that stops the SDK dismissing
+     * twice). `.programmatic` is the honest reason — the user did nothing; the timer ran out.
+     */
+    private func countdownTimer(
+        duration: Int,
+        data: PaywallSectionData?,
+        valueTextStyle: TextStyleConfig?
+    ) -> some View {
+        CountdownTimerView(
+            seconds: duration,
+            valueTextStyle: valueTextStyle,
+            showDays: data?.showDays,
+            showHours: data?.showHours,
+            showMinutes: data?.showMinutes,
+            showSeconds: data?.showSeconds,
+            onExpireAction: data?.onExpireAction,
+            expiredText: data?.expiredText.map { loc("countdown.expired_text", $0) },
+            onExpire: { onDismiss(.programmatic) },
+            digitFontSize: data?.digitFontSize,
+            digitFontWeight: data?.digitFontWeight,
+            digitColorHex: data?.textColor
+        )
     }
 
     // MARK: - Legal section

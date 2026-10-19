@@ -4,12 +4,21 @@ import SwiftUI
 /// Font.Weight. Falls back to .semibold — the historical hardcoded CTA weight — so paywalls
 /// that never set the field keep their existing look. Shared by CTAButton + both sticky footers.
 func resolveCTAFontWeight(_ raw: String?) -> Font.Weight {
-    switch raw {
+    resolvePaywallFontWeight(raw, default: .semibold)
+}
+
+/// The same mapping with an explicit fallback.
+///
+/// #979 — the fallback is a PARAMETER because the countdown needs two of them: its label has
+/// always drawn semibold and its digits bold, so one shared default would have changed the pixels
+/// of every countdown already in the field.
+func resolvePaywallFontWeight(_ raw: String?, default fallback: Font.Weight) -> Font.Weight {
+    switch raw?.lowercased() {
     case "normal", "regular": return .regular
     case "medium": return .medium
     case "semibold": return .semibold
     case "bold": return .bold
-    default: return .semibold
+    default: return fallback
     }
 }
 

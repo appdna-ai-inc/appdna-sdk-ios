@@ -12,40 +12,151 @@ struct CountdownTimerView: View {
 
     let seconds: Int
     var valueTextStyle: TextStyleConfig? = nil
+
+    /*
+     * #978 — the six fields that were decoded by both SDKs and read by NOTHING.
+     *
+     * A timer reached zero and sat at `00:00:00`, which is the one outcome none of
+     * `on_expire_action`'s three values describes. They were in the type definitions, so every
+     * reader believed they worked, and the paywall generator could author them into real documents
+     * where nothing honoured them.
+     *
+     * `showDays` and its siblings are a FORMAT choice: with days shown, a 3-day countdown reads
+     * "02d 23h 59m" instead of "71h 59m". Unset means the historical layout — hours, minutes and
+     * seconds — so no published paywall changes.
+     */
+    var showDays: Bool? = nil
+    var showHours: Bool? = nil
+    var showMinutes: Bool? = nil
+    var showSeconds: Bool? = nil
+    /// `hide` | `show_expired_text` | `auto_advance`. Unset leaves the zeroed timer on screen,
+    /// which is what shipped before, so an unauthored paywall is unchanged.
+    var onExpireAction: String? = nil
+    var expiredText: String? = nil
+    /// What `auto_advance` calls. The paywall owns its own dismissal, so the renderer passes its
+    /// dismiss closure in rather than this view reaching for one.
+    var onExpire: (() -> Void)? = nil
+    /*
+     * #979 — the digits' own three console controls. Unset, they keep exactly the values this view
+     * hard-coded (`.title2` ≈ 22pt, bold, the page-readable ink), so a countdown nobody has styled
+     * draws the pixels it drew before. `valueTextStyle` still wins outright where it is set: it is
+     * the design-system channel and the more specific of the two.
+     */
+    var digitFontSize: CGFloat? = nil
+    var digitFontWeight: String? = nil
+    var digitColorHex: String? = nil
+
     @State private var remaining: Int
     @State private var countdownTimer: Timer?
+    @State private var didFireExpiry = false
 
-    init(seconds: Int, valueTextStyle: TextStyleConfig? = nil) {
+    init(
+        seconds: Int,
+        valueTextStyle: TextStyleConfig? = nil,
+        showDays: Bool? = nil,
+        showHours: Bool? = nil,
+        showMinutes: Bool? = nil,
+        showSeconds: Bool? = nil,
+        onExpireAction: String? = nil,
+        expiredText: String? = nil,
+        onExpire: (() -> Void)? = nil,
+        digitFontSize: CGFloat? = nil,
+        digitFontWeight: String? = nil,
+        digitColorHex: String? = nil
+    ) {
         self.seconds = seconds
         self.valueTextStyle = valueTextStyle
+        self.showDays = showDays
+        self.showHours = showHours
+        self.showMinutes = showMinutes
+        self.showSeconds = showSeconds
+        self.onExpireAction = onExpireAction
+        self.expiredText = expiredText
+        self.onExpire = onExpire
+        self.digitFontSize = digitFontSize
+        self.digitFontWeight = digitFontWeight
+        self.digitColorHex = digitColorHex
         self._remaining = State(initialValue: seconds)
     }
 
-    var body: some View {
-        let hours = remaining / 3600
-        let minutes = (remaining % 3600) / 60
-        let secs = remaining % 60
+    /// Which units to draw. Unset = the historical h:m:s, so an unauthored paywall is byte-identical.
+    private var units: (days: Bool, hours: Bool, minutes: Bool, seconds: Bool) {
+        let anyAuthored = showDays != nil || showHours != nil || showMinutes != nil || showSeconds != nil
+        guard anyAuthored else { return (false, true, true, true) }
+        return (showDays ?? false, showHours ?? true, showMinutes ?? true, showSeconds ?? true)
+    }
 
-        HStack(spacing: 4) {
-            timeUnit(hours, label: "h")
-            Text(":").foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
-            timeUnit(minutes, label: "m")
-            Text(":").foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
-            timeUnit(secs, label: "s")
+    private var hasExpired: Bool { remaining <= 0 }
+
+    var body: some View {
+        // `hide` removes the section outright once the timer is spent; everything else keeps
+        // drawing, so the `expired_text` and default cases share the layout below.
+        Group {
+            if hasExpired && onExpireAction == "hide" {
+                EmptyView()
+            } else if hasExpired, onExpireAction == "show_expired_text", let text = expiredText, !text.isEmpty {
+                Text(text)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
+            } else {
+                digits
+            }
         }
         .onAppear {
             countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
                 if remaining > 0 {
                     remaining -= 1
+                    if remaining == 0 { fireExpiryIfNeeded() }
                 } else {
                     timer.invalidate()
+                    fireExpiryIfNeeded()
                 }
             }
+            // A timer authored at zero (or restored past its deadline) expires without ever ticking.
+            if hasExpired { fireExpiryIfNeeded() }
         }
         .onDisappear {
             countdownTimer?.invalidate()
             countdownTimer = nil
         }
+    }
+
+    /// 🔴 Once only. The timer fires every second and the `remaining <= 0` branch is reached on each
+    /// of them, so without this guard `auto_advance` would dismiss repeatedly.
+    private func fireExpiryIfNeeded() {
+        guard !didFireExpiry else { return }
+        didFireExpiry = true
+        if onExpireAction == "auto_advance" { onExpire?() }
+    }
+
+    private var digits: some View {
+        let u = units
+        let days = remaining / 86_400
+        // With days hidden, the hours column carries the whole remainder — 71h rather than 2d 23h.
+        let hours = u.days ? (remaining % 86_400) / 3600 : remaining / 3600
+        let minutes = (remaining % 3600) / 60
+        let secs = remaining % 60
+
+        return HStack(spacing: 4) {
+            if u.days { timeUnit(days, label: "d") }
+            if u.days && u.hours { separator }
+            if u.hours { timeUnit(hours, label: "h") }
+            if u.hours && u.minutes { separator }
+            if u.minutes { timeUnit(minutes, label: "m") }
+            if u.minutes && u.seconds { separator }
+            if u.seconds { timeUnit(secs, label: "s") }
+        }
+    }
+
+    /// An authored digit colour tints the whole digit row — the chips behind the numbers, the unit
+    /// letters and the `:` between them — because they are all one element to an author.
+    private var digitInk: Color {
+        if let hex = digitColorHex, !hex.isEmpty { return Color(hex: hex) }
+        return PaywallTextDefaults.readable(on: pageBackgroundHex)
+    }
+
+    private var separator: some View {
+        Text(":").foregroundColor(digitInk.opacity(0.7))
     }
 
     private func timeUnit(_ value: Int, label: String) -> some View {
@@ -56,16 +167,22 @@ struct CountdownTimerView: View {
                     .monospacedDigit()
             } else {
                 Text(String(format: "%02d", value))
-                    .font(.title2.monospacedDigit().bold())
-                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
+                    .font(.system(size: digitFontSize ?? 22, weight: resolvePaywallFontWeight(digitFontWeight, default: .bold)).monospacedDigit())
+                    .foregroundColor(digitInk)
             }
             Text(label)
                 .font(.caption2)
-                .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
+                .foregroundColor(digitInk.opacity(0.7))
         }
         .frame(minWidth: 40)
         .padding(.vertical, 6)
-        .background(Color.white.opacity(0.1))
+        /*
+         * #979 — the chip was a hard-coded `Color.white.opacity(0.1)`, which on a light page is
+         * invisible: Android has drawn it in the page-readable ink since #946, so one platform
+         * showed a grey chip behind each number and the other showed none. Byte-identical on a
+         * dark page, where `readable` IS white.
+         */
+        .background(digitInk.opacity(0.1))
         .cornerRadius(8)
     }
 }

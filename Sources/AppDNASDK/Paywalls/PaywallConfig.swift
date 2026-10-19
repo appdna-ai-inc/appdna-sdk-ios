@@ -312,6 +312,19 @@ struct PaywallSectionData: Codable {
     let labelColor: String?
     let labelBgColor: String?
     let labelFontSize: CGFloat?
+    /*
+     * #979 — the countdown's four remaining console controls. The editor has offered Label Font
+     * Weight, Digit Size, Digit Font Weight and Text Color since the section existed; no renderer
+     * on any platform read them, so eight of its ten controls wrote keys nothing looked at.
+     *
+     * `textColor` is the DIGITS' colour — the label has `labelColor` — which is why the console
+     * control is relabelled "Digit Color". Unset, all four keep the values `CountdownTimerView`
+     * had hard-coded: 22pt bold in the page-readable ink, and a semibold label.
+     */
+    let labelFontWeight: String?
+    let digitFontSize: CGFloat?
+    let digitFontWeight: String?
+    let textColor: String?
 
     // Sticky footer section
     let ctaText: String?
@@ -521,6 +534,10 @@ struct PaywallSectionData: Codable {
         case labelColor = "label_color"
         case labelBgColor = "label_bg_color"
         case labelFontSize = "label_font_size"
+        case labelFontWeight = "label_font_weight"
+        case digitFontSize = "digit_font_size"
+        case digitFontWeight = "digit_font_weight"
+        case textColor = "text_color"
         case ctaText = "cta_text"
         case ctaBgColor = "cta_bg_color"
         case ctaTextColor = "cta_text_color"
