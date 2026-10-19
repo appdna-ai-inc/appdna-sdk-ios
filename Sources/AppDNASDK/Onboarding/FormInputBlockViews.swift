@@ -536,12 +536,12 @@ struct FormInputDateBlock: View {
                 // date_wheel_picker honored these; input_date/time/datetime silently dropped them.
                 // Parsed with the same helper the standalone picker uses (relative + ISO forms).
                 if let minD = DateWheelPickerBlockView.parseDate(block.min_date), newValue < minD {
-                    dateError = block.date_validation_message ?? "Date is before the allowed minimum"
+                    dateError = block.date_validation_message ?? "Date is before the earliest allowed date"
                     inputValues[fieldId] = nil
                     return
                 }
                 if let maxD = DateWheelPickerBlockView.parseDate(block.max_date), newValue > maxD {
-                    dateError = block.date_validation_message ?? "Date is after the allowed maximum"
+                    dateError = block.date_validation_message ?? "Date is after the latest allowed date"
                     inputValues[fieldId] = nil
                     return
                 }
