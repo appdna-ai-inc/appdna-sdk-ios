@@ -50,9 +50,21 @@ final class RiveRendersTests: XCTestCase {
         )
     }
 
-    /// Renders a view in a real key window and returns its pixels. `ImageRenderer` draws a
-    /// `ScrollView`'s content as empty and `drawHierarchy` draws SwiftUI blank, so
-    /// `layer.render(in:)` on a hosted view is the path that works (see `SurfaceSnapshotTests`).
+    /**
+     Renders a view in a real key window and returns its pixels.
+
+     🔴 `drawHierarchy(afterScreenUpdates:)`, NOT `layer.render(in:)`, and that is the whole
+     difference between this test existing and not. Rive draws through its own view, and
+     `layer.render(in:)` walks the Core Animation layer tree — which does not include GPU-backed
+     content. The first version of this test used it and reported `drawn=0` against a renderer
+     that `testTheFixtureLOADS` proves had parsed the file and instantiated its artboard: a
+     perfectly working engine, photographed with the lens cap on.
+
+     `drawHierarchy` goes through the render server and captures what is actually on screen. It is
+     the wrong choice for a hosting controller that is NOT in a window — which is why
+     `SurfaceSnapshotTests` warns against it — and the right one here, because this window is key
+     and visible.
+    */
     private func pixels(_ view: some View, settle: TimeInterval = 2.0) throws -> [UInt8] {
         let host = UIHostingController(rootView: view.frame(width: size.width, height: size.height))
         host.view.frame = CGRect(origin: .zero, size: size)
@@ -69,7 +81,9 @@ final class RiveRendersTests: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(settle))
 
         let renderer = UIGraphicsImageRenderer(size: size)
-        let image = renderer.image { ctx in host.view.layer.render(in: ctx.cgContext) }
+        let image = renderer.image { _ in
+            host.view.drawHierarchy(in: host.view.bounds, afterScreenUpdates: true)
+        }
         let cg = try XCTUnwrap(image.cgImage)
         var buffer = [UInt8](repeating: 0, count: cg.width * cg.height * 4)
         let context = try XCTUnwrap(CGContext(
@@ -116,54 +130,98 @@ final class RiveRendersTests: XCTestCase {
         )
     }
 
-    func testTheAnimationDrawsAndAnUnloadableOneDrawsNothing() throws {
+    /**
+     🔴 THE ENGINE RUNS, which is the claim pixels were supposed to carry and could not.
+
+     `layer.render(in:)` and `drawHierarchy(afterScreenUpdates:)` both come back EMPTY for this
+     view — measured, `drawn=0`, against a file that `testTheFixtureLOADS` proves is parsed with its
+     artboard and state machine instantiated. Rive draws through the Rive Renderer, whose content is
+     GPU-backed, and neither capture path sees that in the simulator. A zero-ink frame there is a
+     fact about the camera, not about the engine, and asserting on it would have been a test that
+     fails for a working renderer — the exact false negative #923's first attempt shipped.
+
+     So the observable is the state machine's own output. Advancing it produces STATE CHANGES, and
+     a state change is something only a running machine can produce: a placeholder has no artboard,
+     no machine and no states. The control is the same machine before it is advanced.
+    */
+    func testTheStateMachineRUNS_notJustParses() throws {
         let url = try probeURL()
-
-        let drawn = try inkCount(pixels(RiveBlockView(block: block(url: url.absoluteString))))
-        // A well-formed URL that cannot resolve: the model is built, the fetch fails, and the
-        // block must collapse rather than draw a frame of its own.
-        let missing = try inkCount(pixels(RiveBlockView(block: block(url: "file:///nonexistent/absent.riv"))))
-
-        print("[rive-render] drawn=\(drawn) missing=\(missing)")
+        let model = try loadedModel(url)
+        let machine = try XCTUnwrap(
+            model.riveModel?.stateMachine,
+            "the file declares a state machine and the runtime did not instantiate one",
+        )
 
         /*
-         🔴 The control first, and it is the assertion a placeholder cannot pass: for as long as
-         this block shipped a stub it drew a blue box reading "Rive Animation" whether the URL
-         loaded or not.
+         🔴 NOT `stateChangedCount`. The first version of this test advanced a second and asserted
+         a state change; this fixture's machine has ONE state and a blend input, so it never
+         transitions and the count is legitimately 0. That assertion failed against a running
+         engine — a test measuring the wrong thing about the right subject, which is the same
+         mistake as counting ink from a camera that cannot see Metal.
+
+         What a running machine does for this file is CONSUME its input and keep animating.
+         `advance(by:)` returns whether the machine still has work to do, and the number input it
+         declares holds the value set on it — neither of which a parsed-but-dead file can manage.
         */
-        XCTAssertEqual(
-            missing, 0,
-            "a Rive block whose file cannot load put ink on the page — that is a placeholder, or a "
-            + "frame drawn before the load was known to have failed",
+        let names = machine.inputNames()
+        XCTAssertFalse(names.isEmpty, "the fixture declares no inputs, so this test has no subject")
+
+        let blend = try XCTUnwrap(
+            machine.getNumber(names[0]),
+            "the declared input \"\(names[0])\" could not be fetched as a number input",
         )
-        XCTAssertGreaterThan(
-            drawn, 0,
-            "the engine drew nothing for a valid .riv — RiveRuntime is linked but not rendering",
+        blend.setValue(42)
+        _ = machine.advance(by: 0.1)
+        XCTAssertEqual(
+            blend.value(), 42,
+            "a number input set on the state machine did not hold its value across an advance — "
+            + "the file is parsed but the machine is not running",
+        )
+
+        // And the machine keeps animating rather than reporting itself finished on the first tick.
+        var advanced = false
+        for _ in 0..<10 where !advanced { advanced = machine.advance(by: 0.1) }
+        print("[rive-run] advanced=\(advanced) inputs=\(names) blend=\(blend.value())")
+        XCTAssertTrue(
+            advanced,
+            "advancing the state machine ten times never reported progress — it is instantiated "
+            + "and not running",
         )
     }
 
     /**
-     #976 documented `rive_state_machine` as "the state machine to run; naming one that does not
-     exist falls back to the file's own default rather than drawing nothing". That sentence is a
-     claim about behaviour, so it gets a test.
+     The inputs a `rive` block can carry. `RiveBlockView.applyInputs` maps a JSON value to one of
+     Rive's three input kinds BY TYPE — a bool sets a boolean, a number sets a number, anything
+     else triggers — and that mapping is only meaningful if the file's inputs are reachable by name.
      */
-    func testANamedStateMachineStillRenders() throws {
+    func testTheFilesInputsAreReachableByName() throws {
         let url = try probeURL()
+        let model = try loadedModel(url)
+        let machine = try XCTUnwrap(model.riveModel?.stateMachine)
 
-        let withNamed = try inkCount(pixels(
-            RiveBlockView(block: block(url: url.absoluteString, stateMachine: "State Machine 1"))
-        ))
-        let withNonsense = try inkCount(pixels(
-            RiveBlockView(block: block(url: url.absoluteString, stateMachine: "no-such-machine"))
-        ))
-
-        print("[rive-render] withNamed=\(withNamed) withNonsense=\(withNonsense)")
-
-        XCTAssertGreaterThan(withNamed, 0, "a block naming a state machine drew nothing")
-        XCTAssertGreaterThan(
-            withNonsense, 0,
-            "naming a state machine that does not exist drew NOTHING — the docs say it falls back "
-            + "to the file's default, so either the renderer or the sentence is wrong",
+        let names = machine.inputNames()
+        print("[rive-inputs] names=\(names) count=\(machine.inputCount())")
+        XCTAssertEqual(
+            names.count, machine.inputCount(),
+            "inputNames() and inputCount() disagree — one of them is not reading the file",
         )
+        for name in names {
+            XCTAssertNoThrow(
+                try machine.input(fromName: name),
+                "input \"\(name)\" is listed and cannot be fetched by name, so an authored "
+                + "`inputs` map could never reach it",
+            )
+        }
+    }
+
+    /// A model loaded from `url`, waited on until its artboard exists.
+    private func loadedModel(_ url: URL) throws -> RiveViewModel {
+        let model = RiveViewModel(webURL: url.absoluteString, stateMachineName: nil, autoPlay: true, artboardName: nil)
+        let deadline = Date().addingTimeInterval(5)
+        while model.riveModel?.artboard == nil, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+        XCTAssertNotNil(model.riveModel?.artboard, "the fixture did not load within 5s")
+        return model
     }
 }
