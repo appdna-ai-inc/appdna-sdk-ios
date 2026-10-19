@@ -847,7 +847,6 @@ private struct LottieSectionView: View {
             if let lottieUrl = data?.lottieUrl {
                 LottieBlockView(block: LottieBlock(
                     lottie_url: lottieUrl,
-                    lottie_json: nil,
                     autoplay: true,
                     loop: data?.lottieLoop ?? true,
                     speed: data?.lottieSpeed ?? 1.0,
@@ -855,8 +854,7 @@ private struct LottieSectionView: View {
                     height: Double(data?.lottieHeight ?? data?.height ?? 180),
                     alignment: "center",
                     play_on_scroll: nil,
-                    play_on_tap: nil,
-                    color_overrides: nil
+                    play_on_tap: nil
                 ))
             }
         }

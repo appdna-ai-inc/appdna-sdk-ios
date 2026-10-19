@@ -70,6 +70,58 @@ public struct BackButtonStyle: Codable {
     public let close_on_first: Bool?
 }
 
+/**
+ How the DISMISS control looks — the ✕ that closes the flow.
+
+ 🔴 #1004 — none of this was authorable. The glyph was `Image(systemName: "xmark")` at a hardcoded
+ size 14 in `.secondary`, inside a 44×44 frame with 8pt of padding, and the report was the obvious
+ consequence: "the skip button's size, its background color and the color of the X cannot be set,
+ and it is pushed as far as possible into the top-right corner, which makes it hard to tap".
+
+ The back control has had `back_button_style` for a long time; this is the same shape for the other
+ corner, so an author who can style one can style both. Every field is optional and the defaults are
+ exactly today's values, so no published flow changes.
+ */
+public struct DismissButtonStyle: Codable {
+    /// A custom glyph (any character). Unset draws the platform ✕.
+    public let icon: String?
+    public let icon_size: CGFloat?
+    public let icon_color: String?
+    /// A filled circle behind the glyph — unset draws none, which is today's look.
+    public let bg_color: String?
+    /// The background's corner radius. Unset is a full circle.
+    public let bg_radius: CGFloat?
+    /// How far the control sits from the screen edge. Unset is 8.
+    public let inset: CGFloat?
+
+    public init(
+        icon: String? = nil, icon_size: CGFloat? = nil, icon_color: String? = nil,
+        bg_color: String? = nil, bg_radius: CGFloat? = nil, inset: CGFloat? = nil
+    ) {
+        self.icon = icon; self.icon_size = icon_size; self.icon_color = icon_color
+        self.bg_color = bg_color; self.bg_radius = bg_radius; self.inset = inset
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        icon = c.lenient(String.self, .icon)
+        icon_size = c.lenient(CGFloat.self, .icon_size)
+        icon_color = c.lenient(String.self, .icon_color)
+        bg_color = c.lenient(String.self, .bg_color)
+        bg_radius = c.lenient(CGFloat.self, .bg_radius)
+        inset = c.lenient(CGFloat.self, .inset)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case icon, icon_size, icon_color, bg_color, bg_radius, inset
+    }
+
+    /// The size the glyph draws at. 14 is what shipped hardcoded.
+    public var resolvedIconSize: CGFloat { icon_size ?? 14 }
+    /// The inset from the screen edge. 8 is what shipped hardcoded.
+    public var resolvedInset: CGFloat { inset ?? 8 }
+}
+
 public struct OnboardingSettings: Codable {
     public let show_progress: Bool
     public let allow_back: Bool
@@ -86,6 +138,8 @@ public struct OnboardingSettings: Codable {
     public let progress_flash_color: String?
     public let back_button_style: BackButtonStyle?
     public let dismiss_allowed: Bool?
+    /// #1004 — how the ✕ looks. Unset keeps the values that shipped hardcoded.
+    public let dismiss_button_style: DismissButtonStyle?
     /// Global horizontal content padding in points. Default 24.
     public let content_padding: CGFloat?
     /// Global vertical spacing between content blocks in points. Default 12.
@@ -99,6 +153,7 @@ public struct OnboardingSettings: Codable {
                 progress_height: CGFloat? = nil, progress_gradient_colors: [String]? = nil,
                 progress_skip_label: String? = nil, progress_flash_color: String? = nil,
                 back_button_style: BackButtonStyle? = nil, dismiss_allowed: Bool? = nil,
+                dismiss_button_style: DismissButtonStyle? = nil,
                 content_padding: CGFloat? = nil, block_spacing: CGFloat? = nil, haptic: HapticConfig? = nil) {
         self.show_progress = show_progress
         self.allow_back = allow_back
@@ -112,6 +167,7 @@ public struct OnboardingSettings: Codable {
         self.progress_flash_color = progress_flash_color
         self.back_button_style = back_button_style
         self.dismiss_allowed = dismiss_allowed
+        self.dismiss_button_style = dismiss_button_style
         self.content_padding = content_padding
         self.block_spacing = block_spacing
         self.haptic = haptic
@@ -131,6 +187,7 @@ public struct OnboardingSettings: Codable {
         self.progress_flash_color = c.lenient(String.self, .progress_flash_color)
         self.back_button_style = try c.decodeIfPresent(BackButtonStyle.self, forKey: .back_button_style)
         self.dismiss_allowed = c.lenient(Bool.self, .dismiss_allowed)
+        self.dismiss_button_style = try c.decodeIfPresent(DismissButtonStyle.self, forKey: .dismiss_button_style)
         self.content_padding = c.lenient(CGFloat.self, .content_padding)
         self.block_spacing = c.lenient(CGFloat.self, .block_spacing)
         self.haptic = try c.decodeIfPresent(HapticConfig.self, forKey: .haptic)
@@ -138,7 +195,7 @@ public struct OnboardingSettings: Codable {
 
     enum CodingKeys: String, CodingKey {
         case show_progress, allow_back, skip_to_step, progress_style
-        case progress_color, progress_track_color, progress_height, progress_gradient_colors, progress_skip_label, progress_flash_color, back_button_style, dismiss_allowed
+        case progress_color, progress_track_color, progress_height, progress_gradient_colors, progress_skip_label, progress_flash_color, back_button_style, dismiss_allowed, dismiss_button_style
         case content_padding, block_spacing, haptic
     }
 }

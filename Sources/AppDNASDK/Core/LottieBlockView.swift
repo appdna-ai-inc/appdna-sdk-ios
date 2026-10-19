@@ -1,9 +1,19 @@
 import Lottie
 import SwiftUI
 
+/*
+ * 🔴 #996 — `lottie_json` and `color_overrides` are GONE, by the owner's decision (2026-10-19).
+ *
+ * Both were declared here, in the Kotlin DTO and in the Zod schema, and read by NO renderer on
+ * either platform: an inline animation document and a per-layer recolour that nothing applied. The
+ * console could not set either, so nothing in production carries them.
+ *
+ * `lottie_url` covers the real use; an inline document bloats the Firestore config a device
+ * downloads on every cold start; and a recolour belongs in the `.lottie` the designer ships, where
+ * it can be seen before it is published.
+ */
 public struct LottieBlock: Codable {
     public let lottie_url: String?
-    public let lottie_json: [String: AnyCodable]?
     public let autoplay: Bool
     public let loop: Bool
     public let speed: Double
@@ -12,7 +22,6 @@ public struct LottieBlock: Codable {
     public let alignment: String
     public let play_on_scroll: Bool?
     public let play_on_tap: Bool?
-    public let color_overrides: [String: String]?
 }
 
 public struct LottieBlockView: View {

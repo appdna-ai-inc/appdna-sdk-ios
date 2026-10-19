@@ -366,7 +366,6 @@ internal enum LottieSectionRenderer: SectionRenderer {
                 if lottieURL != nil {
                     LottieBlockView(block: LottieBlock(
                         lottie_url: lottieURL,
-                        lottie_json: nil,
                         autoplay: section.data?["autoplay"]?.value as? Bool
                             ?? section.data?["lottie_autoplay"]?.value as? Bool ?? true,
                         loop: section.data?["loop"]?.value as? Bool
@@ -377,8 +376,7 @@ internal enum LottieSectionRenderer: SectionRenderer {
                         height: height,
                         alignment: "center",
                         play_on_scroll: nil,
-                        play_on_tap: nil,
-                        color_overrides: nil
+                        play_on_tap: nil
                     ))
                 }
             }

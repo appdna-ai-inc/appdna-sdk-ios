@@ -370,6 +370,8 @@ struct OnboardingFlowHost: View {
         let backColor: Color = backStyle?.icon_color.flatMap { Color(hex: $0) } ?? Color(hex: "#6B7280")
         let hasBack = flow.settings.allow_back && !navigationHistory.isEmpty && !currentStepHidesBack
         let dismissAllowed = flow.settings.dismiss_allowed ?? true
+        // #1004 — the ✕'s own style. Unset resolves to the values that shipped hardcoded.
+        let dismissStyle = flow.settings.dismiss_button_style
         // back⇄X switch: show the dismiss in the leading slot on the first/no-history step.
         let leadingIsClose = !hasBack && dismissAllowed && (backStyle?.close_on_first == true)
 
@@ -422,11 +424,9 @@ struct OnboardingFlowHost: View {
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: backSize, weight: .semibold))
-                        .foregroundColor(backColor)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
+                    // The same affordance in the other corner, so it takes the same authored
+                    // style when one is set and the back control's look when it is not.
+                    DismissGlyph(style: dismissStyle, fallbackSize: backSize, fallbackColor: backColor)
                 }
                 .disabled(isProcessing)
             } else {
@@ -446,15 +446,14 @@ struct OnboardingFlowHost: View {
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 44, height: 44)
+                    DismissGlyph(style: dismissStyle)
                 }
                 .disabled(isProcessing)
             }
         }
-        .padding(.horizontal, 8)
+        // #1004 — "pushed as far as possible into the top-right corner, which makes it hard to
+        // tap". 8 is what shipped; an author can now move it in.
+        .padding(.horizontal, dismissStyle?.resolvedInset ?? 8)
     }
 
     // MARK: - Loading overlay

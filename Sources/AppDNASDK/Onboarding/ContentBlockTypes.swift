@@ -1262,6 +1262,19 @@ public struct ContentBlock: Codable, Identifiable {
     public let artboard: String?
     public let state_machine: String?
     public let trigger_on_step_complete: String?
+    /*
+     * 🔴 THE STATE-MACHINE INPUTS, which reached nothing on either platform under any name.
+     *
+     * `RiveBlockSchema` declares `inputs`; Android's renderer read `block.rive_inputs` and its
+     * DECODER never populated that field, so it was always null; iOS did not declare an inputs key
+     * at all and `riveBlock` passed `inputs: nil` outright. Three surfaces, three different
+     * answers, and an authored input did nothing anywhere — the same shape as `field_style` vs
+     * `style`.
+     *
+     * `inputs` is canonical because it is what the console schema writes. Android keeps
+     * `rive_inputs` as a read-only alias so anything already authored that way still works.
+     */
+    public let inputs: [String: AnyCodable]?
     // Icon reference (structured icon)
     public let icon_ref: IconReference?
 
@@ -1560,7 +1573,7 @@ public struct ContentBlock: Codable, Identifiable {
         case video_autoplay, video_loop, video_muted, video_controls
         case lottie_url, lottie_speed, lottie_width, lottie_height
         case play_on_scroll, play_on_tap
-        case rive_url, artboard, state_machine, trigger_on_step_complete
+        case rive_url, artboard, state_machine, trigger_on_step_complete, inputs
         case icon_ref
         case block_style
         case zone, vertical_align, horizontal_align, vertical_offset, horizontal_offset
@@ -1678,6 +1691,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.artboard = c.lenient(String.self, .artboard)
         self.state_machine = c.lenient(String.self, .state_machine)
         self.trigger_on_step_complete = c.lenient(String.self, .trigger_on_step_complete)
+        self.inputs = try c.decodeIfPresent([String: AnyCodable].self, forKey: .inputs)
         self.icon_ref = try c.decodeIfPresent(IconReference.self, forKey: .icon_ref)
         self.block_style = try c.decodeIfPresent(BlockStyle.self, forKey: .block_style)
         self.zone = c.lenient(String.self, .zone)

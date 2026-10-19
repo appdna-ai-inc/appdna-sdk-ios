@@ -1785,7 +1785,6 @@ struct ContentBlockRendererView: View {
             if let lottieUrl = block.lottie_url {
                 let lottieData = LottieBlock(
                     lottie_url: lottieUrl,
-                    lottie_json: nil,
                     autoplay: block.autoplay ?? true,
                     loop: block.loop ?? true,
                     speed: block.lottie_speed ?? 1.0,  // Editor now authors lottie_speed (decoupled from the overloaded string `speed` particle key)
@@ -1793,8 +1792,7 @@ struct ContentBlockRendererView: View {
                     height: block.lottie_height ?? block.height ?? 160,
                     alignment: block.icon_alignment ?? block.alignment ?? "center",  // Editor writes block.alignment
                     play_on_scroll: block.play_on_scroll,
-                    play_on_tap: block.play_on_tap,
-                    color_overrides: nil
+                    play_on_tap: block.play_on_tap
                 )
                 LottieBlockView(block: lottieData)
             } else {
@@ -1815,7 +1813,10 @@ struct ContentBlockRendererView: View {
                     autoplay: block.autoplay ?? true,
                     height: block.height ?? 160,
                     alignment: block.icon_alignment ?? block.alignment ?? "center",  // Editor writes block.alignment
-                    inputs: nil,
+                    // The authored state-machine inputs. This was `nil`, so `applyInputs` — which
+                    // exists, and maps bool/number/other to the three Rive input kinds — could
+                    // never run from an onboarding block.
+                    inputs: block.inputs,
                     trigger_on_step_complete: block.trigger_on_step_complete
                 )
                 RiveBlockView(block: riveData)

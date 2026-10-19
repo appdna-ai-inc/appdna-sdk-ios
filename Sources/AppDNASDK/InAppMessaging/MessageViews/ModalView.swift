@@ -42,10 +42,10 @@ struct ModalView: View {
                 // Lottie hero (takes priority over image)
                 if let lottieUrl = content.lottie_url {
                     LottieBlockView(block: LottieBlock(
-                        lottie_url: lottieUrl, lottie_json: nil,
+                        lottie_url: lottieUrl,
                         autoplay: true, loop: true, speed: 1.0,
                         width: nil, height: 160, alignment: "center",
-                        play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
+                        play_on_scroll: nil, play_on_tap: nil
                     ))
                 }
                 // Rive hero

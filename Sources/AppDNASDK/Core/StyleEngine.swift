@@ -549,12 +549,12 @@ enum StyleEngine {
             ZStack {
                 if let urlStr = bg?.lottie_url {
                     LottieBlockView(block: LottieBlock(
-                        lottie_url: urlStr, lottie_json: nil,
+                        lottie_url: urlStr,
                         autoplay: true, loop: bg?.animation_loop ?? true,
                         speed: 1.0, width: nil,
                         height: UIScreen.main.bounds.height,
                         alignment: "center",
-                        play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
+                        play_on_scroll: nil, play_on_tap: nil
                     ))
                     .ignoresSafeArea()
                 }

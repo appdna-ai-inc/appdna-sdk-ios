@@ -149,10 +149,10 @@ struct SurveyContainerView: View {
                 // Intro Lottie animation
                 if showIntro, let introUrl = theme?.intro_lottie_url {
                     LottieBlockView(block: LottieBlock(
-                        lottie_url: introUrl, lottie_json: nil,
+                        lottie_url: introUrl,
                         autoplay: true, loop: false, speed: 1.0,
                         width: nil, height: 120, alignment: "center",
-                        play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
+                        play_on_scroll: nil, play_on_tap: nil
                     ))
                     .onAppear {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -166,10 +166,10 @@ struct SurveyContainerView: View {
                     VStack(spacing: 16) {
                         if let thankUrl = theme?.thankyou_lottie_url {
                             LottieBlockView(block: LottieBlock(
-                                lottie_url: thankUrl, lottie_json: nil,
+                                lottie_url: thankUrl,
                                 autoplay: true, loop: false, speed: 1.0,
                                 width: nil, height: 140, alignment: "center",
-                                play_on_scroll: nil, play_on_tap: nil, color_overrides: nil
+                                play_on_scroll: nil, play_on_tap: nil
                             ))
                         }
                         // Interpolate thank-you text

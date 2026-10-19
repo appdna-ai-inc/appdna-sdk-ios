@@ -1175,7 +1175,6 @@ struct PaywallRenderer: View {
         if let lottieUrl = data?.lottieUrl {
             let block = LottieBlock(
                 lottie_url: lottieUrl,
-                lottie_json: nil,
                 autoplay: true,
                 loop: data?.lottieLoop ?? true,
                 speed: data?.lottieSpeed ?? 1.0,
@@ -1183,8 +1182,7 @@ struct PaywallRenderer: View {
                 height: Double(data?.lottieHeight ?? data?.height ?? 180),
                 alignment: "center",
                 play_on_scroll: nil,
-                play_on_tap: nil,
-                color_overrides: nil
+                play_on_tap: nil
             )
             LottieBlockView(block: block)
                 .applyContainerStyle(style?.container)
