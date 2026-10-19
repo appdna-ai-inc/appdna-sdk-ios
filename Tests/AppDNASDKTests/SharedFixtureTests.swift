@@ -40,6 +40,7 @@
 // © 2026 AppDNA AI, Inc.
 
 import Foundation
+import UserNotifications
 import XCTest
 @testable import AppDNASDK
 @_spi(AppDNAInternal) @testable import AppDNANotificationExtension
@@ -490,6 +491,7 @@ final class SharedFixtureTests: XCTestCase {
         case "get_variant":                    runGetVariant(fixture, harness)
         case "receive_push":                   await runReceivePush(fixture, harness)
         case "tap_push":                       await runTapPush(fixture, harness)
+        case "dismiss_push":                   await runDismissPush(fixture, harness)
         // The raw host-data pass (HostDataResolver) and the step pipeline around it.
         case "resolve_block":                  runResolveBlock(fixture, harness)
         case "host_data_scenario":             await runHostDataScenario(fixture, harness)
@@ -2341,6 +2343,50 @@ final class SharedFixtureTests: XCTestCase {
                 },
             ] as [String: Any]
         }
+    }
+
+    /**
+     #968 — a push swiped away, through the REAL entry point the system uses.
+
+     iOS routes a dismissal through the SAME `userNotificationCenter(_:didReceive:)` delegate
+     callback as a tap, distinguished only by `UNNotificationDismissActionIdentifier` — and it
+     delivers one at all only for a category registered with `.customDismissAction`, which is the
+     half that did not exist. So the driver calls `handleNotificationTap` with that identifier,
+     which is precisely what the system does, rather than calling `trackDismissed` directly and
+     asserting the thing it just called.
+
+     `taps_emitted` is the CONTROL, and it is the assertion that matters most: without the branch
+     under test every swipe-away would arrive as `push_tapped`, inflating the one number a push
+     campaign is judged on. A fixture that only counted dismissals would pass against that.
+     */
+    private func runDismissPush(_ f: Fixture, _ h: Harness) async {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] dismiss_push needs action.cases")
+        }
+        let manager = preparePushEntryPoints(h)
+        defer { withExtendedLifetime(manager) { finishPushEntryPoints() } }
+
+        var dismissals = 0
+        var taps = 0
+        // The harness records every SDK event through `EventTracker.eventSink`; count only what
+        // THIS driver caused, so a fixture run after another cannot inherit its numbers.
+        let before = h.events.count
+        for element in cases {
+            guard let c = element.objectValue, let pushId = c["push_id"]?.stringValue else {
+                return XCTFail("[\(f.id)] each dismiss_push case needs a push_id")
+            }
+            var userInfo: [AnyHashable: Any] = ["appdna": "1", "push_id": pushId]
+            if let deliveryId = c["delivery_id"]?.stringValue { userInfo["delivery_id"] = deliveryId }
+            // REAL: the identifier UNUserNotificationCenter hands us when the user swipes it away.
+            _ = AppDNA.pushModule.handleNotificationTap(userInfo, actionIdentifier: UNNotificationDismissActionIdentifier)
+            await settlePushMainQueue()
+        }
+        for event in h.events.dropFirst(before) {
+            if event.event_name == "push_dismissed" { dismissals += 1 }
+            if event.event_name == "push_tapped" { taps += 1 }
+        }
+        h.state["dismissals_emitted"] = dismissals
+        h.state["taps_emitted"] = taps
     }
 
     private func runTapPush(_ f: Fixture, _ h: Harness) async {
