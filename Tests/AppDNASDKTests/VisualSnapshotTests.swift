@@ -11,20 +11,56 @@ import XCTest
 /// Record the goldens (first run / after an intended render change):
 ///   xcodebuild test -scheme AppDNASDK-Package \
 ///     -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
-///     -only-testing:AppDNASDKTests/VisualSnapshotTests RECORD_SNAPSHOTS=YES
-/// Then commit Tests/__Snapshots__/. CI re-runs without RECORD_SNAPSHOTS and fails on pixel deltas.
+///     -only-testing:AppDNASDKTests/VisualSnapshotTests
+///
+/// 🔴 #1029 — record mode is a FILE, not an environment variable: `touch
+/// Tests/AppDNASDKTests/__Snapshots__/.record` before the run and delete it after. No env var
+/// reaches a SwiftPM test bundle running under `xctest` in a simulator (measured: neither
+/// `TEST_RUNNER_RECORD_SNAPSHOTS` nor `SIMCTL_CHILD_RECORD_SNAPSHOTS` arrives, and both runs
+/// leave every golden at its old timestamp while reporting the comparison failures that make it
+/// LOOK like a re-record). The sentinel is gitignored and
+/// `scripts/__tests__/snapshot-record-sentinel.test.ts` fails if one is ever tracked.
+///
+/// Then commit Tests/__Snapshots__/. A run without the sentinel compares and fails on pixel deltas.
 final class VisualSnapshotTests: XCTestCase {
 
-    /// Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
-    /// The bridge passes TEST_RUNNER_RECORD_SNAPSHOTS, which xcodebuild forwards to the sim
-    /// test process as RECORD_SNAPSHOTS (plain env vars don't reach the test runner).
+    /// Compare by default (a run without the sentinel fails on pixel drift); record only when
+    /// asked. The environment variable is kept for a direct `swift test` on a Mac, where it DOES
+    /// arrive; the sentinel below is what works through the bridge.
     ///
-    /// Seven tests from the batch asserted OUTSIDE this, so they could not be
-    /// re-recorded through the bridge at all — which is how the #541 golden stayed pinned to the
-    /// filter build after the render was corrected to section navigation, and the iOS suite sat
-    /// red on a golden nobody could refresh.
+    /// 🔴 FIFTY tests used to declare their OWN `recordMode` local, shadowing this one — so they
+    /// could not be re-recorded however record mode was requested. That is how the #541 golden
+    /// stayed pinned to the filter build after the render was corrected, and the iOS suite sat
+    /// red on a golden nobody could refresh. One property, read by every call site.
     private var recordMode: SnapshotTestingConfiguration.Record {
-        ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
+        if ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil { return .all }
+        return Self.recordSentinelExists ? .all : .never
+    }
+
+    /**
+     #1029 — A FILE, BECAUSE NO ENVIRONMENT VARIABLE SURVIVES THE TRIP INTO THE SIMULATOR.
+
+     The comment above promised `TEST_RUNNER_RECORD_SNAPSHOTS` reaches the test process. It does
+     not, for this scheme: a SwiftPM test bundle runs under `xctest` rather than a runner app, so
+     the `TEST_RUNNER_` prefix has nothing to forward it to. `SIMCTL_CHILD_RECORD_SNAPSHOTS` does
+     not reach it either — measured, twice, both runs leaving every golden untouched at its old
+     timestamp while reporting the four comparison failures that made it LOOK like a re-record.
+
+     What provably does cross is the FILE SYSTEM: `assertSnapshot` finds `__Snapshots__` from
+     `#filePath`, so the process can read the real directory on the Mac. The sentinel sits beside
+     the goldens it would rewrite.
+
+     🔴 It cannot be committed: `__Snapshots__/.record` is gitignored and
+     `scripts/__tests__/snapshot-record-sentinel.test.ts` fails if one is ever tracked. A stray
+     sentinel would silently re-record every golden and turn the only pixel gate on this platform
+     into a rubber stamp — which is a worse failure than the one it fixes, so it gets its own gate.
+     */
+    private static var recordSentinelExists: Bool {
+        let snapshots = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("__Snapshots__")
+            .appendingPathComponent(".record")
+        return FileManager.default.fileExists(atPath: snapshots.path)
     }
 
     private func render(_ json: String, inputs: [String: Any] = [:], pad: CGFloat = 16) throws -> some View {
@@ -324,10 +360,6 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         // Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
-        // The bridge passes TEST_RUNNER_RECORD_SNAPSHOTS, which xcodebuild forwards to the sim
-        // test process as RECORD_SNAPSHOTS (plain env vars don't reach the test runner).
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -347,10 +379,6 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         // Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
-        // The bridge passes TEST_RUNNER_RECORD_SNAPSHOTS, which xcodebuild forwards to the sim
-        // test process as RECORD_SNAPSHOTS (plain env vars don't reach the test runner).
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -369,8 +397,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -391,8 +417,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["sel4": "b"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -411,8 +435,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["sel5": "p"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -799,8 +821,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["tiles1": "lift"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -823,8 +843,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["bubble1": "running"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -845,8 +863,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["list1": "plus"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -864,8 +880,6 @@ final class VisualSnapshotTests: XCTestCase {
               "field_style": { "border_color": "#3B82F6", "background_color": "#1F2937", "text_color": "#FFFFFF", "placeholder_color": "#9CA3AF" } }
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -885,8 +899,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, inputs: ["glow1": "b"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -902,8 +914,6 @@ final class VisualSnapshotTests: XCTestCase {
           "bar_gradient_colors": ["#22C55E", "#EAB308", "#EF4444"]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -924,8 +934,6 @@ final class VisualSnapshotTests: XCTestCase {
           }
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -946,8 +954,6 @@ final class VisualSnapshotTests: XCTestCase {
           }
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -968,8 +974,6 @@ final class VisualSnapshotTests: XCTestCase {
           }
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -990,8 +994,6 @@ final class VisualSnapshotTests: XCTestCase {
           }
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1010,8 +1012,6 @@ final class VisualSnapshotTests: XCTestCase {
         .frame(width: 390)
         .background(Color(hex: "#0F1117"))
 
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1028,8 +1028,6 @@ final class VisualSnapshotTests: XCTestCase {
         .frame(width: 390, alignment: .leading)
         .background(Color(hex: "#0F1117"))
 
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1051,8 +1049,6 @@ final class VisualSnapshotTests: XCTestCase {
         .padding(.vertical, 20)
         .background(Color(hex: "#0F1117"))
 
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1078,8 +1074,6 @@ final class VisualSnapshotTests: XCTestCase {
             .frame(width: 390)
             .background(Color(hex: "#E5E7EB"))
 
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1094,8 +1088,6 @@ final class VisualSnapshotTests: XCTestCase {
           "show_percentage": true, "progress_color": "#6366F1"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1109,8 +1101,6 @@ final class VisualSnapshotTests: XCTestCase {
           "loading_variant": "cog", "progress_color": "#6366F1"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1124,8 +1114,6 @@ final class VisualSnapshotTests: XCTestCase {
           "loading_variant": "splash_bottom", "height": 360, "progress_color": "#6366F1"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1142,8 +1130,6 @@ final class VisualSnapshotTests: XCTestCase {
           "progress_color": "#6366F1"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1159,8 +1145,6 @@ final class VisualSnapshotTests: XCTestCase {
           "gallery_corner_radius": 14, "gallery_spacing": 10
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1177,8 +1161,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1202,8 +1184,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """, pad: 0)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1223,8 +1203,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1240,8 +1218,6 @@ final class VisualSnapshotTests: XCTestCase {
           "link_color": "#A5B4FC"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1263,8 +1239,6 @@ final class VisualSnapshotTests: XCTestCase {
           "link_color": "#A5B4FC"
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1281,8 +1255,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1302,8 +1274,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1321,8 +1291,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1339,8 +1307,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1361,8 +1327,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "no", "type": "text", "horizontal_align": "center", "text": "✗ You must be 18 or older", "visibility_condition": {"type": "when_lt", "variable": "responses.age", "value": "18"}, "style": {"font_size": 16, "font_weight": 600, "color": "#F87171", "alignment": "center"}}
             """,
         ], responses: ["user_name": "Alex", "age": "25"])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1378,8 +1342,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "b2", "type": "button", "text": "Get Started", "bg_color": "#10B981", "button_height": 72}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1390,8 +1352,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "otp", "type": "otp_input", "active_color": "#6366F1", "field_config": {"otp_length": 6, "otp_value": "1234"}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1410,8 +1370,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "s", "type": "warning_banner", "text": "Email verified successfully", "field_config": {"banner_variant": "success"}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1442,8 +1400,6 @@ final class VisualSnapshotTests: XCTestCase {
                               "banner_border_width": 0}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1468,8 +1424,6 @@ final class VisualSnapshotTests: XCTestCase {
              "image_frame": "phone_thin", "height": 260}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1508,8 +1462,6 @@ final class VisualSnapshotTests: XCTestCase {
           ]
         }
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1528,8 +1480,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "p3", "type": "password_strength", "field_config": {"strength_level": 4}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1540,8 +1490,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "sb", "type": "speech_bubble", "text": "Great job! You're on a 7-day streak 🔥", "bg_color": "#FFFFFF", "text_color": "#111827", "field_config": {"bubble_tail": "left"}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1557,8 +1505,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "fw", "type": "feedback_panel", "text": "Not quite", "field_config": {"feedback_state": "wrong", "feedback_detail": "Correct answer: Tokyo"}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1569,8 +1515,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "sum", "type": "summary_screen", "text": "Lesson complete!", "field_config": {"summary_stats": [{"value": "5:32", "label": "Time", "color": "#6366F1"}, {"value": "92%", "label": "Accuracy", "color": "#10B981"}, {"value": "+120", "label": "XP earned", "color": "#F59E0B"}, {"value": "7", "label": "Day streak", "color": "#EF4444"}]}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1581,8 +1525,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "ph", "type": "press_hold_confirm", "text": "Hold to confirm", "active_color": "#6366F1", "field_config": {"hold_progress": 0.65}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1599,8 +1541,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "h2", "type": "health_connect", "field_config": {"connected": true}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1616,8 +1556,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "sf2", "type": "settings_footer", "active_color": "#6366F1", "field_config": {"dark_mode": true, "language": "Español"}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1628,8 +1566,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "mm", "type": "memory_match", "active_color": "#6366F1", "field_config": {"match_columns": 3, "match_cards": [{"symbol": "🍎", "state": "up"}, {"state": "down"}, {"symbol": "🍌", "state": "matched"}, {"state": "down"}, {"symbol": "🍎", "state": "up"}, {"symbol": "🍌", "state": "matched"}]}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1640,8 +1576,6 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "cal", "type": "calendar_month", "active_color": "#6366F1", "field_config": {"month_label": "June 2026", "days_in_month": 30, "start_offset": 1, "selected_days": [12, 13, 14], "today": 15}}
         """)
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1657,8 +1591,6 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "t", "type": "text", "text": "This body is centered via style.alignment", "style": {"font_size": 15, "color": "#A5B4FC", "alignment": "center"}}
             """,
         ])
-        let recordMode: SnapshotTestingConfiguration.Record =
-            ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil ? .all : .never
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }

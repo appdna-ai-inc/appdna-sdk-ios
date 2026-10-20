@@ -2254,36 +2254,25 @@ struct ContentBlockRendererView: View {
         }
     }
 
+    /// #1030 — built FROM the hex table rather than restating it. Parity with Android
+    /// (`ContentBlockRenderer.kt`): email and unknown providers honour the block's `accent_color`
+    /// then `bg_color` before the brand accent, and that order now lives in one place.
     private func socialLoginBgColor(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> Color {
-        if style == "outlined" || style == "minimal" { return .clear }
-        switch type {
-        case "apple": return .black
-        case "google": return Color(hex: "#4285F4") // Google brand blue
-        case "facebook": return Color(hex: "#1877F2")
-        case "github": return Color(hex: "#24292E")
-        // Parity with Android (ContentBlockRenderer.kt:3656-3660): email/unknown provider
-        // honors block-level accent_color then bg_color before falling back to the brand accent.
-        default:
-            if let hex = blockAccent, !hex.isEmpty { return Color(hex: hex) }
-            if let hex = blockBg, !hex.isEmpty { return Color(hex: hex) }
-            return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
+        guard let hex = socialLoginBgHex(type, style: style, blockAccent: blockAccent, blockBg: blockBg) else {
+            return .clear
         }
+        return Color(hex: hex)
     }
 
-    /// #1030 — the hex the view above turns into a `Color`, kept beside it so the two cannot
-    /// drift. A `Color` carries no readable components, and the chip rule needs a luminance.
+    /// #1030 — the hex the view above turns into a `Color`. ONE table, in `SocialBrandDefaults`:
+    /// a `Color` carries no readable components, the chip rule needs a luminance, and two copies
+    /// of a constant list is how `#24292E` and `#24292F` ended up one character apart.
     private func socialLoginBgHex(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> String? {
-        if style == "outlined" || style == "minimal" { return nil }
-        switch type {
-        case "apple": return "#000000"
-        case "google": return "#4285F4"
-        case "facebook": return "#1877F2"
-        case "github": return "#24292E"
-        default:
-            if let hex = blockAccent, !hex.isEmpty { return hex }
-            if let hex = blockBg, !hex.isEmpty { return hex }
-            return AppDNA.brandAccentHex ?? "#6366F1"
-        }
+        SocialBrandDefaults.backgroundHex(
+            type: type, style: style,
+            blockAccent: blockAccent, blockBg: blockBg,
+            brandAccent: AppDNA.brandAccentHex,
+        )
     }
 
     private func socialLoginTextColor(_ type: String, style: String) -> Color {
