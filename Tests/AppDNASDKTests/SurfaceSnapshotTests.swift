@@ -217,6 +217,39 @@ final class SurfaceSnapshotTests: XCTestCase {
      animation rather than the gate.
      */
     func testAParticleEffectAuthoredOnPurchaseDraws() throws {
+        /*
+         🔴 A STATIC CAPTURE CANNOT SEE CONFETTI, and the first version of this test proved it by
+         failing on all four triggers — `on_appear` included, which has worked since the overlay
+         shipped. `write` renders `host.view.layer`, which holds MODEL values, and `startAnimation`
+         sets the model to the animation's END in the same turn it creates the particles: y is
+         `screenHeight + 50` and opacity is 0. The initial values are no better — y is -20, above
+         the frame. Confetti is only on screen mid-flight, so only an in-flight frame can show it.
+
+         `layer.presentation()` is that frame: the layer tree with the values CoreAnimation is
+         drawing right now. Same renderer, same view, one rung lower.
+        */
+        func inFlightFrame(of view: some View, named name: String) throws {
+            let sized = view.frame(width: size.width, height: size.height)
+            let host = UIHostingController(rootView: sized)
+            host.view.bounds = CGRect(origin: .zero, size: size)
+            host.view.backgroundColor = .clear
+            let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.setNeedsLayout()
+            host.view.layoutIfNeeded()
+            // Long enough for `onAppear` to have run and the animation to be a fifth of a second
+            // in; short enough that a 20-second effect is nowhere near its end.
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+
+            let layer = host.view.layer.presentation() ?? host.view.layer
+            let image = UIGraphicsImageRenderer(size: size).image { ctx in layer.render(in: ctx.cgContext) }
+            guard let png = image.pngData() else { XCTFail("[snapshot] \(name): nothing rendered"); return }
+            try FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+            try png.write(to: URL(fileURLWithPath: "\(outputDir)/\(name).png"))
+            print("[snapshot] wrote \(outputDir)/\(name).png (\(png.count) bytes)")
+        }
+
         func overlay(trigger: String) -> some View {
             ZStack {
                 Color.black
@@ -232,10 +265,10 @@ final class SurfaceSnapshotTests: XCTestCase {
 
         // 🔴 The control FIRST, and it is inside the same test on purpose: a harness that cannot
         // see green at all would pass every assertion below for the worst possible reason (#923).
-        // The white label is there so the control frame is not UNIFORM — `write` rejects a uniform
-        // frame as "nothing rendered", which would stop the control before it could prove anything.
-        try write(
-            ZStack { Color.black; Text("control").foregroundColor(.white) },
+        // The control goes through the SAME capture: a harness that cannot see green at all would
+        // pass every assertion below for the worst possible reason (#923).
+        try inFlightFrame(
+            of: ZStack { Color.black; Text("control").foregroundColor(.white) },
             named: "confetti_control_none",
         )
         XCTAssertFalse(
@@ -245,7 +278,7 @@ final class SurfaceSnapshotTests: XCTestCase {
 
         for trigger in ["on_appear", "on_purchase", "on_step_complete", "on_flow_complete"] {
             let name = "confetti_\(trigger)"
-            try write(overlay(trigger: trigger), named: name)
+            try inFlightFrame(of: overlay(trigger: trigger), named: name)
             XCTAssertTrue(
                 try frameContains(name, colour: "#00FF00", tolerance: 60),
                 "a particle effect authored \(trigger) drew nothing — the overlay re-gated its trigger",
