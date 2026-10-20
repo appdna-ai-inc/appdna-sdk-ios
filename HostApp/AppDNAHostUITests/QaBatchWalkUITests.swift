@@ -223,9 +223,42 @@ final class QaBatchWalkUITests: XCTestCase {
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 1)
         shot(app, "07-collapse-after")
 
-        // #997 — the particle effect fires on its authored trigger; the last tap ends the flow.
         app.buttons["Finish"].firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts["6 · A bound option set"].waitForExistence(timeout: 10),
+            "the option-set step never arrived",
+        )
+        shot(app, "08-option-set")
+
+        /*
+         * #1046 — AN OPTION SET, BOUND BY ID, RENDERED FROM THE SET AND NOT FROM THE BLOCK.
+         *
+         * The block carries no `field_options` at all: every label here came from
+         * `onboarding_option_sets` through `option_set_id`. Four words no other step in this flow
+         * contains, so a pass cannot be against the wrong screen.
+         *
+         * 🔴 It is worth asserting at all because the picker that binds one was UNREACHABLE until
+         * #1044 — it loaded through a bare `fetch` with no token, 401'd for every author on every
+         * load, and the empty list rendered as "No Option Sets yet". The decode was tested the
+         * whole time; nobody had joined the two ends.
+         */
+        for label in ["Marmalade", "Zeppelin", "Tungsten", "Quokka"] {
+            XCTAssertTrue(
+                app.staticTexts[label].waitForExistence(timeout: 5),
+                "option \"\(label)\" from the bound set is missing.\nTREE:\n"
+                    + String(app.debugDescription.prefix(2500)),
+            )
+        }
+
+        // Rule 24 — operate it. A list that draws and collects nothing is the defect this repo
+        // keeps shipping, so one option is chosen and read back as selected.
+        app.staticTexts["Tungsten"].tap()
+        _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 1)
+        shot(app, "09-option-selected")
+
+        // #997 — the particle effect fires on its authored trigger; the last tap ends the flow.
+        app.buttons["Done"].firstMatch.tap()
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 2)
-        shot(app, "08-after-finish-particles")
+        shot(app, "10-after-finish-particles")
     }
 }
