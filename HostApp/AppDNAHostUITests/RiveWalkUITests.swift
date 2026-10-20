@@ -23,7 +23,10 @@ final class RiveWalkUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
-    private var flowId: String? { TestCredentials.flowId.isEmpty ? nil : TestCredentials.flowId }
+    /// #1041 — ITS OWN flow, not the shared `flowId`. Three walks needed three different
+    /// flows and read one field, so two of them presented a flow they were not written for
+    /// and failed on a screen they were never looking at. Empty skips.
+    private var flowId: String? { TestCredentials.riveFlowId.isEmpty ? nil : TestCredentials.riveFlowId }
 
     func testTheRiveStepPresentsAndDraws() throws {
         guard let apiKey, let flowId else {

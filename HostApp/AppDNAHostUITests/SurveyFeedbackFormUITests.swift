@@ -14,7 +14,12 @@ final class SurveyFeedbackFormUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
-    private var surveyId: String? { TestCredentials.surveyId.isEmpty ? nil : TestCredentials.surveyId }
+    /// #1041 — ITS OWN survey. This walk waits for `survey.rating.1`, so it needs a survey whose
+    /// FIRST question is a NUMERIC rating. Sharing `surveyId` with the survey walk — whose
+    /// survey opens on an emoji scale — made it look for a control that cannot exist and
+    /// report "the survey never presented — config did not arrive": a sentence about the
+    /// network, for a problem about the survey's shape. Empty skips.
+    private var surveyId: String? { TestCredentials.feedbackSurveyId.isEmpty ? nil : TestCredentials.feedbackSurveyId }
 
     func testANegativeAnswerRaisesTheFeedbackForm() throws {
         guard let apiKey, let surveyId else {

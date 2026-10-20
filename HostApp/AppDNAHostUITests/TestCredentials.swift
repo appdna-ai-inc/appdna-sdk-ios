@@ -14,4 +14,13 @@ enum TestCredentials {
     static let surveyId = ""
     static let paywallId = ""
     static let flowId = ""
+    /// #1041 — the location walk's own flow. Empty = that test skips, rather than presenting
+    /// whatever `flowId` happens to name and failing on a screen it was never looking at.
+    static let locationFlowId = ""
+    /// #1041 — the Rive walk's own flow, for the same reason.
+    static let riveFlowId = ""
+    /// #1041 — the feedback-form walk's own survey. It waits for `survey.rating.1`, so it needs a
+    /// survey whose FIRST question is a numeric rating; the survey walk's is an emoji scale, and
+    /// pointing both at one survey made this test report a network problem it did not have.
+    static let feedbackSurveyId = ""
 }
