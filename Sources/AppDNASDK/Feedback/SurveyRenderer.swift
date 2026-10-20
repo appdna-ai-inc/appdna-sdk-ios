@@ -319,6 +319,13 @@ struct SurveyContainerView: View {
             YesNoView(question: q, answer: binding, accentColor: accentColor, buttonTextColor: buttonTextColor, textColor: textColor)
         case "emoji_scale":
             EmojiScaleView(question: q, answer: binding)
+        /*
+         #998 — `scale` is accepted beside `likert` because Android accepts both and a stored
+         question may carry either. A type this switch does not name falls to `default:` and draws
+         NOTHING, which is exactly how a likert question reached a respondent as empty space.
+        */
+        case "likert", "scale":
+            LikertQuestionView(question: q, answer: binding, accentColor: accentColor, buttonTextColor: buttonTextColor, textColor: textColor)
         default:
             EmptyView()
         }
@@ -354,7 +361,23 @@ struct SurveyContainerView: View {
             },
             emoji_config: question.emoji_config,
             free_text_config: question.free_text_config,
-            image_url: question.image_url
+            image_url: question.image_url,
+            /*
+             #998 — the anchor labels go through the SAME interpolation the NPS ones do, and they
+             have to be passed EXPLICITLY: this init defaults `likert_config` to nil, so every
+             rendered question would otherwise lose its labels on the way through the copy. That is
+             precisely the defect the `options`/`emoji` comment above records, and the reason the
+             resolved config is read here rather than the canonical field — a question authored
+             under the legacy `scale_config` keeps its labels too.
+            */
+            likert_config: question.resolvedLikertConfig.map { lk in
+                LikertConfig(
+                    min: lk.min,
+                    max: lk.max,
+                    low_label: lk.low_label.map { e.interpolate($0, context: ctx) },
+                    high_label: lk.high_label.map { e.interpolate($0, context: ctx) }
+                )
+            }
         )
     }
 

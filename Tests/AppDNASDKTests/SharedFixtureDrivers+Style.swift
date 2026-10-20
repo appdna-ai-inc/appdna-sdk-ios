@@ -49,6 +49,7 @@ extension SharedFixtureTests {
         case "resolve_celebration_palette": runCelebrationPalette(f, h)
         case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
+        case "resolve_likert_bounds": runLikertBounds(f, h)
         default:
             return false
         }
@@ -448,6 +449,35 @@ extension SharedFixtureTests {
                 answer: v?["answer"]?.foundation,
                 emojiScale: scale,
             ).analyticsName
+        }
+    }
+
+    // MARK: resolve_likert_bounds
+
+    /**
+     #998 — a likert scale's bounds and anchor visibility, through the REAL `LikertScaleRule` the
+     renderer calls.
+
+     🔴 Driven through the production rule, never re-stated: the clamp exists because a reversed
+     range TRAPS on this platform and draws nothing on the other, and a driver that computed its
+     own bounds could only ever agree with itself (Rule 25).
+     */
+    private func runLikertBounds(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_likert_bounds needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let mn = v?["min"]?.doubleValue.map { Int($0) }
+            let mx = v?["max"]?.doubleValue.map { Int($0) }
+            let b = LikertScaleRule.bounds(min: mn, max: mx)
+            let n = LikertScaleRule.count(min: mn, max: mx)
+            let anchors = LikertScaleRule.showsAnchors(
+                low: v?["low_label"]?.stringValue,
+                high: v?["high_label"]?.stringValue,
+            )
+            return "\(b.lo)-\(b.hi) n=\(n) anchors=\(anchors)"
         }
     }
 

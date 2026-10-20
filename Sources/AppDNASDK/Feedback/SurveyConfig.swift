@@ -50,24 +50,46 @@ public struct SurveyQuestion: Codable {
     @LenientArray private var _options: [SurveyQuestionOption]?  // Legacy flat format
     public let emoji_config: EmojiConfig?
     public let free_text_config: FreeTextConfig?
+    /*
+     #998 — the likert scale. Android has rendered one since its first survey release and iOS had
+     no field for it at all, so `SurveyRenderer`'s `default:` arm drew an EmptyView: the question
+     text appeared and the control did not. The owner's call was to make it real on every surface
+     rather than retire it.
+
+     Two spellings, as on Android: `likert_config` is canonical and `scale_config` is the legacy
+     alias, resolved by {@link resolvedLikertConfig} the same way `options` resolves against
+     `choice_config`.
+    */
+    public let likert_config: LikertConfig?
+    private let scale_config: LikertConfig?
     // Question-level image
     public let image_url: String?
 
     /// Resolved options — prefer choice_config.options, fall back to flat options
     public var options: [SurveyQuestionOption]? { choice_config?.options ?? _options }
 
+    /// Resolved likert config — prefer the canonical `likert_config`, fall back to `scale_config`.
+    public var resolvedLikertConfig: LikertConfig? { likert_config ?? scale_config }
+
     /// Convenience init for creating interpolated copies
     public init(
         id: String?, type: String?, text: String?, required: Bool?,
         show_if: ShowIfCondition?, nps_config: NPSConfig?, csat_config: CSATConfig?,
         rating_config: RatingConfig?, options: [SurveyQuestionOption]?,
-        emoji_config: EmojiConfig?, free_text_config: FreeTextConfig?, image_url: String?
+        emoji_config: EmojiConfig?, free_text_config: FreeTextConfig?, image_url: String?,
+        likert_config: LikertConfig? = nil
     ) {
         self.id = id; self.type = type; self.text = text; self.required = required
         self.show_if = show_if; self.nps_config = nps_config; self.csat_config = csat_config
         self.rating_config = rating_config; self.choice_config = nil; self._options = options
         self.emoji_config = emoji_config; self.free_text_config = free_text_config
         self.image_url = image_url
+        /*
+         The interpolated copy carries the RESOLVED config, so a question authored under the legacy
+         `scale_config` keeps its anchor labels through interpolation. Setting the alias to nil here
+         would silently drop them — the shape of defect #936 records on `options`.
+        */
+        self.likert_config = likert_config; self.scale_config = nil
     }
 
     enum CodingKeys: String, CodingKey {
@@ -75,6 +97,7 @@ public struct SurveyQuestion: Codable {
         case nps_config, csat_config, rating_config, choice_config
         case _options = "options"
         case emoji_config, free_text_config, image_url
+        case likert_config, scale_config
     }
 }
 
@@ -86,6 +109,22 @@ public struct ShowIfCondition: Codable {
 public struct NPSConfig: Codable {
     public let low_label: String?
     public let high_label: String?
+}
+
+/// #998 — likert scale bounds and anchor labels. Mirrors Android `LikertConfig`.
+public struct LikertConfig: Codable {
+    public let min: Int?
+    public let max: Int?
+    public let low_label: String?
+    public let high_label: String?
+
+    public init(min: Int?, max: Int?, low_label: String?, high_label: String?) {
+        self.min = min; self.max = max; self.low_label = low_label; self.high_label = high_label
+    }
+
+    /// Defaults match Android: 1...5 when the config says nothing.
+    public var resolvedMin: Int { min ?? 1 }
+    public var resolvedMax: Int { max ?? 5 }
 }
 
 public struct CSATConfig: Codable {
