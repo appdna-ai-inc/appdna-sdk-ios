@@ -149,9 +149,79 @@ final class QaBatchWalkUITests: XCTestCase {
             )
         }
 
-        // #997 — the particle effect fires on `on_flow_complete`, which is the last tap.
+        app.buttons["Next"].firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts["5 · A banner with a link"].waitForExistence(timeout: 10),
+            "the banner step never arrived",
+        )
+        shot(app, "05-banner")
+
+        /*
+         * #1005 — THE BANNER AN INFO BANNER IS SUPPOSED TO BE: a title, a subtitle, a link under
+         * it, and the app's OWN mark rather than an emoji.
+         */
+        XCTAssertTrue(app.staticTexts["Your trial ends soon"].exists, "the banner title is missing")
+        /*
+         * 🔴 A SwiftUI `Link` IS A BUTTON in the accessibility tree, not `app.links` and not a
+         * static text. The first version of this assertion checked the other two and failed on a
+         * screen where the link was drawn correctly and in blue — the attached frame said so. An
+         * assertion that is wrong about the element TYPE reads exactly like a missing feature.
+         */
+        let learnMore = app.buttons["Learn more"].firstMatch
+        XCTAssertTrue(
+            learnMore.exists || app.links["Learn more"].exists || app.staticTexts["Learn more"].exists,
+            "the banner link is missing — a link with an address should draw as one.\nTREE:\n"
+                + String(app.debugDescription.prefix(3000)),
+        )
+
+        /*
+         * Rule 24 — OPERATE IT. "Tapping the link text opens the URL entered for it" is half of
+         * what #1005 asked for, and a link that draws and goes nowhere is the defect this repo
+         * keeps shipping. The tap leaves the app, so Safari coming to the front IS the assertion;
+         * the walk then reactivates the host and carries on with the rest of the step.
+         */
+        if learnMore.exists {
+            learnMore.tap()
+            let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+            XCTAssertTrue(
+                safari.wait(for: .runningForeground, timeout: 15),
+                "tapping the banner link did not open anything — the authored URL went nowhere",
+            )
+            app.activate()
+            XCTAssertTrue(
+                app.staticTexts["5 · A banner with a link"].waitForExistence(timeout: 15),
+                "the flow did not come back after the link opened",
+            )
+        }
+
+        /*
+         * 🔴 THE UPLOAD HAS TO BEAT THE EMOJI, and the emoji is authored ALONGSIDE it precisely so
+         * this can be asserted. `banner_icon` is `ℹ️` and `banner_icon_url` is an image: if the
+         * precedence were the other way round — or if the image failed to load and the glyph were
+         * used as a placeholder — `ℹ️` would be a static text on this screen. Its ABSENCE is the
+         * claim; a screenshot alone could not tell a 56pt image from a 56pt emoji with certainty.
+         */
+        XCTAssertFalse(
+            app.staticTexts["\u{2139}\u{FE0F}"].exists,
+            "the authored emoji is still drawn, so the uploaded mark did not win",
+        )
+
+        /*
+         * #993 — `collapse_on_scroll`, which iOS has applied since Sprint 7. The drag is SMALL on
+         * purpose: a full scroll takes everything off the screen and proves nothing, while 120pt
+         * past a 40pt threshold moves the layout barely at all and takes the collapse past 1. The
+         * pair of frames is the evidence; XCUITest cannot read opacity.
+         */
+        shot(app, "06-collapse-before")
+        let banner = app.staticTexts["COLLAPSE ME — this line fades out as the step scrolls."]
+        XCTAssertTrue(banner.exists, "the collapsing block is missing")
+        app.swipeUp(velocity: .slow)
+        _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 1)
+        shot(app, "07-collapse-after")
+
+        // #997 — the particle effect fires on its authored trigger; the last tap ends the flow.
         app.buttons["Finish"].firstMatch.tap()
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 2)
-        shot(app, "05-after-finish-particles")
+        shot(app, "08-after-finish-particles")
     }
 }
