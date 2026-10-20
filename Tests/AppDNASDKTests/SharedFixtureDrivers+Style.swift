@@ -47,6 +47,7 @@ extension SharedFixtureTests {
         case "resolve_block_collapse": runBlockCollapse(f, h)
         case "resolve_banner_icon": runBannerIcon(f, h)
         case "resolve_celebration_palette": runCelebrationPalette(f, h)
+        case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
@@ -307,6 +308,32 @@ extension SharedFixtureTests {
                 enabled: v?["enabled"]?.boolValue ?? false,
                 scrollOffset: v?["scroll"]?.doubleValue ?? 0,
                 threshold: v?["threshold"]?.doubleValue,
+            )
+        }
+    }
+
+
+    // MARK: resolve_google_mark_chip
+
+    /**
+     WHETHER Google's mark needs a white chip, through the REAL `GoogleMarkChip` both renderers
+     call.
+
+     The unreadable-background cases are the ones that earn their place: an absent, empty or
+     malformed hex means the brand DEFAULT is what gets drawn, and that is `#4285F4` — so the
+     answer has to be "chip", not "leave the mark illegible on a colour nobody can measure".
+     */
+    private func runGoogleMarkChip(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_google_mark_chip needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return GoogleMarkChip.isNeeded(
+                buttonStyle: v?["style"]?.stringValue,
+                backgroundHex: v?["bg"]?.stringValue,
+                iconStyle: v?["icon_style"]?.stringValue,
             )
         }
     }

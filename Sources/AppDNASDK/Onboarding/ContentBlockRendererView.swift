@@ -2085,6 +2085,15 @@ struct ContentBlockRendererView: View {
             if let hex = provider.bg_color, !hex.isEmpty { return Color(hex: hex) }
             return socialLoginBgColor(providerType, style: btnStyle, blockAccent: blockAccentColor, blockBg: blockBgColor)
         }()
+        /*
+         * #1030 — the same background as a HEX, because `Color` cannot be measured back and the
+         * chip rule needs a luminance. Resolved through the same brand table the view uses, so the
+         * two cannot answer differently.
+         */
+        let bgHex: String? = {
+            if let hex = provider.bg_color, !hex.isEmpty { return hex }
+            return socialLoginBgHex(providerType, style: btnStyle, blockAccent: blockAccentColor, blockBg: blockBgColor)
+        }()
         let textColor: Color = {
             if let hex = provider.text_color, !hex.isEmpty { return Color(hex: hex) }
             return socialLoginTextColor(providerType, style: btnStyle)
@@ -2115,7 +2124,7 @@ struct ContentBlockRendererView: View {
                     // No glyph for the email provider (parity with Android): the
                     // envelope rendered awkwardly on the brand-tinted "Continue with Email"
                     // button and its reserved spacing offset the label. Plain centered CTA.
-                    socialLoginIcon(providerType, iconStyle: provider.icon_style, buttonTextColor: textColor, btnStyle: btnStyle)
+                    socialLoginIcon(providerType, iconStyle: provider.icon_style, buttonTextColor: textColor, btnStyle: btnStyle, backgroundHex: bgHex)
                 }
                 // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
                 // falling back to the authored label then the brand default.
@@ -2144,7 +2153,7 @@ struct ContentBlockRendererView: View {
     /// Social login icon with configurable style.
     /// icon_style: "default", "monochrome_light" (white icons), "monochrome_dark" (black icons),
     ///             "filled" (colored bg), "outline" (border only).
-    private func socialLoginIcon(_ type: String, iconStyle: String? = nil, buttonTextColor: Color = .primary, btnStyle: String = "filled") -> AnyView {
+    private func socialLoginIcon(_ type: String, iconStyle: String? = nil, buttonTextColor: Color = .primary, btnStyle: String = "filled", backgroundHex: String? = nil) -> AnyView {
         let style = iconStyle ?? "default"
         // Monochrome styles force icon color; default uses provider-native colors
         let monoColor: Color? = style == "monochrome_light" ? .white
@@ -2180,12 +2189,27 @@ struct ContentBlockRendererView: View {
             if let url = Bundle.module.url(forResource: "appdna_google_g", withExtension: "png"),
                let data = try? Data(contentsOf: url),
                let image = UIImage(data: data) {
-                return AnyView(
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(width: 18, height: 18)
-                )
+                /*
+                 * #1030 — A WHITE CHIP WHEN THE BUTTON IS TOO DARK TO READ A BLUE ARM AGAINST.
+                 *
+                 * The mark is red, yellow, green and BLUE, and the Google provider's default fill
+                 * is `#4285F4`: the blue arm and crossbar disappear into it and the mark reads as
+                 * a "C" — intact at 4×, illegible at 18pt. Google's guidelines put the mark on a
+                 * white surface, so the chip is what they ask for and it keeps the author's chosen
+                 * button colour, which tinting the asset would not (and the guidelines forbid).
+                 */
+                let mark = Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 18, height: 18)
+                if GoogleMarkChip.isNeeded(buttonStyle: btnStyle, backgroundHex: backgroundHex, iconStyle: iconStyle) {
+                    return AnyView(
+                        mark
+                            .padding(3)
+                            .background(Circle().fill(Color.white))
+                    )
+                }
+                return AnyView(mark)
             }
             return AnyView(Text("G")
                 .font(.system(size: 18, weight: .bold, design: .rounded)))
@@ -2243,6 +2267,22 @@ struct ContentBlockRendererView: View {
             if let hex = blockAccent, !hex.isEmpty { return Color(hex: hex) }
             if let hex = blockBg, !hex.isEmpty { return Color(hex: hex) }
             return Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
+        }
+    }
+
+    /// #1030 — the hex the view above turns into a `Color`, kept beside it so the two cannot
+    /// drift. A `Color` carries no readable components, and the chip rule needs a luminance.
+    private func socialLoginBgHex(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> String? {
+        if style == "outlined" || style == "minimal" { return nil }
+        switch type {
+        case "apple": return "#000000"
+        case "google": return "#4285F4"
+        case "facebook": return "#1877F2"
+        case "github": return "#24292E"
+        default:
+            if let hex = blockAccent, !hex.isEmpty { return hex }
+            if let hex = blockBg, !hex.isEmpty { return hex }
+            return AppDNA.brandAccentHex ?? "#6366F1"
         }
     }
 
