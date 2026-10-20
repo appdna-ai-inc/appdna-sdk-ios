@@ -45,6 +45,7 @@ extension SharedFixtureTests {
         case "resolve_button_label_colour": runButtonLabelColour(f, h)
         case "resolve_onboarding_celebration": runOnboardingCelebration(f, h)
         case "resolve_block_collapse": runBlockCollapse(f, h)
+        case "resolve_banner_icon": runBannerIcon(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
@@ -306,6 +307,42 @@ extension SharedFixtureTests {
                 scrollOffset: v?["scroll"]?.doubleValue ?? 0,
                 threshold: v?["threshold"]?.doubleValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_banner_icon
+
+    /**
+     WHICH mark a banner draws and at what size, through the REAL `BannerIconResolution` both
+     renderers call.
+
+     Flattened to one string per case so the two platforms are compared on the WHOLE answer at
+     once: a run that got the mark right and the size wrong would otherwise pass half a fixture.
+     The whitespace-only URL is the case that matters — an author who clears an upload can leave a
+     space behind, and " " is not an address, so the glyph has to come back.
+     */
+    private func runBannerIcon(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_banner_icon needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let mark = BannerIconResolution.mark(
+                hidden: v?["hidden"]?.boolValue ?? false,
+                iconURL: v?["icon_url"]?.stringValue,
+                glyph: v?["glyph"]?.stringValue,
+                variantDefault: v?["variant_default"]?.stringValue ?? "",
+            )
+            let size = BannerIconResolution.size(v?["size"]?.doubleValue)
+            let described: String
+            switch mark {
+            case .none: described = "none:"
+            case .image(let url): described = "image:\(url)"
+            case .glyph(let text): described = "glyph:\(text)"
+            }
+            return "\(described)@\(Int(size))"
         }
     }
 

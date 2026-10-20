@@ -1260,7 +1260,7 @@ struct ContentBlockRendererView: View {
         default: accentHex = "#F59E0B"; defaultIcon = "⚠️"
         }
         let accent = Color(hex: block.active_color ?? accentHex)
-        let icon = (block.field_config?["banner_icon"]?.value as? String) ?? defaultIcon
+        let authoredGlyph = block.field_config?["banner_icon"]?.value as? String
         let text = loc?("block.\(block.id).text", block.text ?? "") ?? block.text ?? ""
         // Device QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
         // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
@@ -1294,6 +1294,19 @@ struct ContentBlockRendererView: View {
          */
         let hideIcon = (fc?["banner_hide_icon"]?.value as? Bool) ?? false
         let iconAlign = (fc?["banner_icon_align"]?.value as? String) ?? "center"
+        /*
+         * #1005 — AN UPLOADED ICON, which is the half an emoji cannot cover: a real app's info
+         * banner carries its own mark, and "paste any emoji" is not a way to set one. A URL wins
+         * over the glyph; the size applies to BOTH, because an 18pt PNG is unreadable and the
+         * glyph has to stay at 18 for every banner already published.
+         */
+        let mark = BannerIconResolution.mark(
+            hidden: hideIcon,
+            iconURL: fc?["banner_icon_url"]?.value as? String,
+            glyph: authoredGlyph,
+            variantDefault: defaultIcon,
+        )
+        let iconSize = CGFloat(BannerIconResolution.size(cfgDouble(fc?["banner_icon_size"])))
         let rowAlign: VerticalAlignment = iconAlign == "top" ? .top : (iconAlign == "bottom" ? .bottom : .center)
         let titleColor = (fc?["banner_title_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
         let subtitleColor = (fc?["banner_subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
@@ -1305,8 +1318,23 @@ struct ContentBlockRendererView: View {
         let linkColor = (fc?["banner_link_color"]?.value as? String).map { Color(hex: $0) } ?? accent
         let linkFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_link_size"]) ?? 13, weight: 600)
         return HStack(alignment: rowAlign, spacing: 10) {
-            if !hideIcon {
-                Text(icon).font(.system(size: 18))
+            switch mark {
+            case .none:
+                EmptyView()
+            case .image(let urlString):
+                if let url = URL(string: urlString) {
+                    BundledAsyncImage(url: url) { image in
+                        image.resizable().aspectRatio(contentMode: .fit).frame(width: iconSize, height: iconSize)
+                    } placeholder: {
+                        // Reserve the square while it loads, so the message does not jump sideways.
+                        Color.clear.frame(width: iconSize, height: iconSize)
+                    }
+                } else {
+                    // An unparseable address falls back to the variant's glyph rather than a hole.
+                    Text(defaultIcon).font(.system(size: iconSize))
+                }
+            case .glyph(let text):
+                Text(text).font(.system(size: iconSize))
             }
             VStack(alignment: hAlign, spacing: 2) {
                 Text(text).font(titleFont).foregroundColor(titleColor).multilineTextAlignment(tAlign)
