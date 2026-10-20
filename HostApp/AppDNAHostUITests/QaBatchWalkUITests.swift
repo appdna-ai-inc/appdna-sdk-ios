@@ -53,17 +53,29 @@ final class QaBatchWalkUITests: XCTestCase {
          * lands in the middle of the window, on nothing in particular.
          */
         /*
-         * 🔴 #1014 IS HALF WORKING, AND THIS IS THE HALF THAT DOES — measured, not assumed.
+         * 🔴 THE TAP LANDS ON THE STEP'S OWN TEXT, and that is the assertion that matters.
          *
-         * A tap in EMPTY SPACE below the step's content advances it (this assertion, which passed
-         * on the first run of this walk). A tap ON the step's own text does NOT: three runs, three
-         * gesture shapes, nothing. The step's content lives inside a scroll view, which claims the
-         * touch sequence, so the gesture only sees taps that miss the content.
+         * A tap in EMPTY SPACE advanced this step from the first run of this walk. A tap ON the
+         * heading did not — three runs, three gesture shapes, nothing — because the step's content
+         * lives inside a `ScrollView`, which claims the touch sequence before any gesture wrapped
+         * around it sees the end of one. And that was the whole feature missing: a splash screen is
+         * usually a full-bleed image, the image IS the screen, so every tap lands on content.
          *
-         * That difference is the whole remaining defect — on a splash whose content is a
-         * full-bleed image, the image IS the screen and the feature would do nothing. It is
-         * recorded on #1014 rather than papered over here, and the walk taps where it works so the
-         * screens AFTER this one can be proven.
+         * The gesture now travels down in the environment and is attached INSIDE the scroll
+         * content, beside the blocks. Tapping the heading is therefore the test; a tap in empty
+         * space is the easy case and is checked second, on the way back.
+         */
+        /*
+         * 🔴 THE CONTENT TAP IS STILL UNPROVEN, and the walk taps where it works so the screens
+         * after this one can be proven at all (#1014).
+         *
+         * A tap ON the heading does not advance — two more runs with the gesture attached inside
+         * the scroll content and with the advance handed off from the keyboard-dismiss handler
+         * that actually receives taps on content. What the second run DID establish is that the
+         * ScrollView is innocent: the consumer is `ThreeZoneStepLayout`'s own
+         * `.contentShape(Rectangle()).onTapGesture { resignFirstResponder }`, which sits above
+         * everything the blocks carry. Empty space below the VStack is outside its frame, which is
+         * exactly why that tap has always worked and no other has.
          */
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
         XCTAssertTrue(

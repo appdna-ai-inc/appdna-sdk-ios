@@ -364,12 +364,15 @@ struct ContentBlockRendererView: View {
                         ),
                         fieldOptionsOverrides
                     )
+                // #993 — one shared rule with the Kotlin, which decoded both keys and acted on
+                // neither. `collapse_threshold` is how many points of scroll it takes; 50 is what
+                // shipped here, and a zero or negative one would divide by zero.
                 let shouldCollapse = resolvedBlock.collapse_on_scroll == true
-                // Collapse threshold: how many points of scroll before this block hides
-                let collapseThreshold = CGFloat(
-                    (cfgDouble(resolvedBlock.field_config?["collapse_threshold"])) ?? 50
-                )
-                let collapseProgress = shouldCollapse ? min(max(scrollOffset / collapseThreshold, 0), 1) : 0
+                let collapseProgress = CGFloat(BlockCollapseOnScroll.progress(
+                    enabled: shouldCollapse,
+                    scrollOffset: Double(scrollOffset),
+                    threshold: cfgDouble(resolvedBlock.field_config?["collapse_threshold"]),
+                ))
 
                 // Input blocks: skip element_height at the wrapper level — it's
                 // applied INSIDE each input view (to the field container directly).
@@ -1284,12 +1287,42 @@ struct ContentBlockRendererView: View {
         let family = fc?["banner_font_family"]?.value as? String
         let titleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_title_size"]) ?? 14, weight: 500)
         let subtitleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_subtitle_size"]) ?? 13, weight: 400)
-        return HStack(spacing: 10) {
-            Text(icon).font(.system(size: 18))
+        /*
+         * #1005 — the four things a real app's info banner needed and this did not have: the icon
+         * beside the FIRST line rather than always centred, a way to leave the icon out, a colour
+         * per text, and a link under the subtitle. Every default here is what was drawn before.
+         */
+        let hideIcon = (fc?["banner_hide_icon"]?.value as? Bool) ?? false
+        let iconAlign = (fc?["banner_icon_align"]?.value as? String) ?? "center"
+        let rowAlign: VerticalAlignment = iconAlign == "top" ? .top : (iconAlign == "bottom" ? .bottom : .center)
+        let titleColor = (fc?["banner_title_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
+        let subtitleColor = (fc?["banner_subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
+        let rawLink = (fc?["banner_link_text"]?.value as? String) ?? ""
+        let linkText = rawLink.isEmpty
+            ? ""
+            : (loc?("block.\(block.id).banner_link_text", rawLink) ?? rawLink)
+        let linkURL = (fc?["banner_link_url"]?.value as? String).flatMap { URL(string: $0) }
+        let linkColor = (fc?["banner_link_color"]?.value as? String).map { Color(hex: $0) } ?? accent
+        let linkFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_link_size"]) ?? 13, weight: 600)
+        return HStack(alignment: rowAlign, spacing: 10) {
+            if !hideIcon {
+                Text(icon).font(.system(size: 18))
+            }
             VStack(alignment: hAlign, spacing: 2) {
-                Text(text).font(titleFont).foregroundColor(textColor).multilineTextAlignment(tAlign)
+                Text(text).font(titleFont).foregroundColor(titleColor).multilineTextAlignment(tAlign)
                 if !subtitle.isEmpty {
-                    Text(subtitle).font(subtitleFont).foregroundColor(textColor).multilineTextAlignment(tAlign)
+                    Text(subtitle).font(subtitleFont).foregroundColor(subtitleColor).multilineTextAlignment(tAlign)
+                }
+                if !linkText.isEmpty {
+                    // A link with no URL still DRAWS — an author types the words first and the
+                    // address second, and a control that vanishes between the two reads as broken.
+                    if let linkURL {
+                        Link(linkText, destination: linkURL)
+                            .font(linkFont)
+                            .foregroundColor(linkColor)
+                    } else {
+                        Text(linkText).font(linkFont).foregroundColor(linkColor)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: fAlign)

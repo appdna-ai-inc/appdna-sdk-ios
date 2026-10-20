@@ -1669,6 +1669,15 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_banner_corner_radius"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_corner_radius"]))
             h.state["parsed_banner_title_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_title_size"]))
             h.state["parsed_banner_subtitle_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_subtitle_size"]))
+            // #1005 — icon placement, a colour per text, and the link under the subtitle.
+            h.state["parsed_banner_hide_icon"] = SharedFixtureTests.orNull(block.field_config?["banner_hide_icon"]?.value as? Bool)
+            h.state["parsed_banner_icon_align"] = SharedFixtureTests.orNull(block.field_config?["banner_icon_align"]?.value as? String)
+            h.state["parsed_banner_title_color"] = SharedFixtureTests.orNull(block.field_config?["banner_title_color"]?.value as? String)
+            h.state["parsed_banner_subtitle_color"] = SharedFixtureTests.orNull(block.field_config?["banner_subtitle_color"]?.value as? String)
+            h.state["parsed_banner_link_text"] = SharedFixtureTests.orNull(block.field_config?["banner_link_text"]?.value as? String)
+            h.state["parsed_banner_link_url"] = SharedFixtureTests.orNull(block.field_config?["banner_link_url"]?.value as? String)
+            h.state["parsed_banner_link_color"] = SharedFixtureTests.orNull(block.field_config?["banner_link_color"]?.value as? String)
+            h.state["parsed_banner_link_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_link_size"]))
             h.state["parsed_sound_icon"] = SharedFixtureTests.orNull(block.field_config?["sound_icon"]?.value as? String)
             h.state["parsed_sound_icon_color"] = SharedFixtureTests.orNull(block.field_config?["sound_icon_color"]?.value as? String)
             h.state["parsed_sound_icon_size"] = SharedFixtureTests.orNull(

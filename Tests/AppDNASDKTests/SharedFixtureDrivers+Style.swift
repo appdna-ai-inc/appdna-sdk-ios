@@ -44,6 +44,7 @@ extension SharedFixtureTests {
         case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
         case "resolve_button_label_colour": runButtonLabelColour(f, h)
         case "resolve_onboarding_celebration": runOnboardingCelebration(f, h)
+        case "resolve_block_collapse": runBlockCollapse(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
@@ -279,6 +280,32 @@ extension SharedFixtureTests {
                 textColor: v?["text_color"]?.stringValue,
                 styleColor: v?["style_color"]?.stringValue,
             ) ?? ""
+        }
+    }
+
+
+    // MARK: resolve_block_collapse
+
+    /**
+     HOW FAR a block authored `collapse_on_scroll` has collapsed, through the REAL
+     `BlockCollapseOnScroll` both renderers call.
+
+     The negative cases carry the weight: a non-positive threshold must fall back rather than
+     divide by zero, and a negative scroll offset (a rubber-band bounce at the top) must not read
+     as "collapsed".
+     */
+    private func runBlockCollapse(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_block_collapse needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return BlockCollapseOnScroll.progress(
+                enabled: (v?["enabled"]?.value as? Bool) ?? false,
+                scrollOffset: v?["scroll"]?.doubleValue ?? 0,
+                threshold: v?["threshold"]?.doubleValue,
+            )
         }
     }
 
