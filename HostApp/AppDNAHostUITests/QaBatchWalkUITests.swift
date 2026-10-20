@@ -45,6 +45,26 @@ final class QaBatchWalkUITests: XCTestCase {
             presented = app.staticTexts["1 · Tap anywhere to advance"].waitForExistence(timeout: 5)
         }
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
+
+        /*
+         * 🔴 #1033 — IS THIS THE FLOW THAT WAS JUST PUBLISHED, OR A CACHED ONE?
+         *
+         * A heading can be right while the body is three revisions old. When the SDK's bootstrap is
+         * refused — a dev key against the production API, say, which is a 401 and nothing more
+         * visible than a line of stdout the test cannot see — it falls back to "serving cached
+         * config only" and renders whatever it had. The walk then asserts today's expectations
+         * against a flow from another day and fails somewhere far from the cause: four separate
+         * code suspects were each excluded by a run of their own before this line existed.
+         *
+         * The body text changes whenever the probe changes, so it is the cheapest possible proof
+         * that the device is looking at THIS publish.
+         */
+        XCTAssertTrue(
+            app.staticTexts["A tap anywhere moves on. The button below is the walk's way past when it does not."].exists,
+            "the device is rendering a STALE copy of the flow — bootstrap was probably refused and "
+                + "the SDK is serving cached config. Run through scripts/sdk-host-ios.ts --uitest "
+                + "with --base-url pointing at a reachable API for the key's environment.",
+        )
         shot(app, "01-tap-anywhere")
 
         /*
@@ -78,9 +98,17 @@ final class QaBatchWalkUITests: XCTestCase {
          * exactly why that tap has always worked and no other has.
          */
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
+        /*
+         * 🔴 #1033 — THE TREE, IN THE FAILURE MESSAGE. The app's `print` output is invisible under
+         * `xcodebuild test`, so "the gesture never fired" and "the advance was refused" read
+         * identically from out here, and so does "the step never rendered what the walk is looking
+         * for". `debugDescription` is the one thing XCUITest can always answer with, and it says
+         * which of the three happened in a single run.
+         */
         XCTAssertTrue(
             app.staticTexts["2 · A faded label and a hairline border"].waitForExistence(timeout: 10),
-            "a tap in the empty area of a tap-anywhere step did not advance it",
+            "a tap in the empty area of a tap-anywhere step did not advance it.\nTREE:\n"
+                + String(app.debugDescription.prefix(4000)),
         )
         shot(app, "02-button-styling")
 
