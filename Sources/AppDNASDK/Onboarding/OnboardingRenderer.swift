@@ -162,6 +162,9 @@ struct OnboardingFlowHost: View {
                         onSkip: {
                             handleStepSkipped(step: step)
                         },
+                        // #1014 — the host's guarded advance, for the handler that actually
+                        // receives a tap on content.
+                        onContentTap: { tapAnywhereAdvance() },
                         flowId: flow.id,
                         currentStepIndex: currentIndex,
                         totalSteps: flow.steps.count,
@@ -224,35 +227,11 @@ struct OnboardingFlowHost: View {
                      * a tap that reaches both still advances once: `advanceOrComplete()` moves the
                      * index, and the guard re-reads the NEW step's flag.
                      */
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            guard currentIndex < flow.steps.count,
-                                  flow.steps[currentIndex].tap_anywhere_advances == true else { return }
-                            guard !isProcessing else { return }
-                            HapticEngine.triggerIfEnabled(
-                                flow.settings.haptic?.triggers?.on_step_advance,
-                                config: flow.settings.haptic,
-                            )
-                            advanceOrComplete()
-                        }
-                    )
+                    .simultaneousGesture(TapGesture().onEnded { tapAnywhereAdvance() })
                     .background(
                         Color.clear
                             .contentShape(Rectangle())
-                            .onTapGesture {
-                                // TEMPORARY DIAGNOSTIC (#1014) — distinguishes "the gesture never
-                                // fires" from "the advance is refused", which look identical.
-                                Log.warning("[DIAG] tap layer fired, index=\(currentIndex) processing=\(isProcessing)")
-                                guard currentIndex < flow.steps.count,
-                                      flow.steps[currentIndex].tap_anywhere_advances == true else { return }
-                                guard !isProcessing else { return }
-                                Log.warning("[DIAG] tap layer advancing")
-                                HapticEngine.triggerIfEnabled(
-                                    flow.settings.haptic?.triggers?.on_step_advance,
-                                    config: flow.settings.haptic,
-                                )
-                                advanceOrComplete()
-                            }
+                            .onTapGesture { tapAnywhereAdvance() }
                     )
 
                     // Error banner
@@ -1194,6 +1173,33 @@ struct OnboardingFlowHost: View {
         flowConfettiSerial += 1
     }
 
+    /**
+     #1014 — THE STEP'S TAP-ANYWHERE ADVANCE, in one place.
+
+     🔴 It had three call sites and three copies of the guard, and a fourth was needed the moment
+     the real consumer was found: the keyboard-dismiss handler inside `ThreeZoneStepLayout`, which
+     sits above everything the blocks carry and is what a tap ON CONTENT reaches. Before that,
+     only a tap that MISSED the content ever advanced the step — useless for the case the feature
+     exists for, because a splash is a full-bleed image and every tap lands on content.
+
+     🔴 And a splash takes that layout's `onlyCenterContent` branch, which had no tap handler of
+     any kind. So no gesture attached outside could have worked there, however it was shaped —
+     five device runs across three shapes, all of them looking for the bug in the wrong view.
+
+     A tap that reaches more than one call site still advances ONCE: `advanceOrComplete()` moves
+     the index, and the guard re-reads the NEW step's flag.
+     */
+    private func tapAnywhereAdvance() {
+        guard currentIndex < flow.steps.count,
+              flow.steps[currentIndex].tap_anywhere_advances == true else { return }
+        guard !isProcessing else { return }
+        HapticEngine.triggerIfEnabled(
+            flow.settings.haptic?.triggers?.on_step_advance,
+            config: flow.settings.haptic,
+        )
+        advanceOrComplete()
+    }
+
     private func advanceOrComplete() {
         // Console-configured step-advance haptic (mirrors Android's on_step_advance). iOS onboarding
         // fired no haptics at all before `settings.haptic` was wired.
@@ -1537,6 +1543,7 @@ enum OnboardingPresentation {
     static func serial(_ serial: Int, from currentIndex: Int, to targetIndex: Int) -> Int {
         targetIndex == currentIndex ? serial : serial + 1
     }
+
 }
 
 /// Routes to the appropriate step view based on step type.
@@ -1549,6 +1556,17 @@ struct OnboardingStepRouter: View {
     var hostDataPending: Bool = false
     let onNext: ([String: Any]?) -> Void
     let onSkip: () -> Void
+    /**
+     #1014 — WHAT A TAP ON THIS STEP'S CONTENT SHOULD DO.
+
+     🔴 The flow host owns the tap-anywhere flag and the advance; the step's content lives in
+     here. The host's own gesture only ever saw taps that MISSED the content, because the
+     keyboard-dismiss handler inside `ThreeZoneStepLayout` sits above everything the blocks carry
+     — and a splash, the case the feature exists for, is a full-bleed image where every tap lands
+     on content. So the action travels DOWN to the handler that receives the tap, rather than the
+     gesture being reshaped for a fifth time outside it.
+     */
+    var onContentTap: () -> Void = {}
     /// Flow ID for chat webhook context
     var flowId: String = ""
     /// Current step index (0-based) for auto-binding page_indicator / progress_bar.
@@ -1633,13 +1651,14 @@ struct OnboardingStepRouter: View {
     /// Memo of the step pipeline (raw pass → decode → override merge → layering).
     @State private var pipelineMemo = OnboardingStepPipelineMemo()
 
-    init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
+    init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
         self.configOverride = configOverride
         self.hostDataPending = hostDataPending
         self.pendingProvider = pendingProvider
         self.onNext = onNext
         self.onSkip = onSkip
+        self.onContentTap = onContentTap
         self.flowId = flowId
         self.currentStepIndex = currentStepIndex
         self.totalSteps = totalSteps
@@ -1928,6 +1947,11 @@ struct OnboardingStepRouter: View {
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
+            // #1014 — the step's tap-anywhere advance, handed to the handler that actually
+            // RECEIVES a tap on content. Same guard as the renderer's own gesture, so a tap that
+            // reaches both still advances once: `advanceOrComplete()` moves the index and the
+            // guard re-reads the NEW step's flag.
+            onContentTap: onContentTap,
             // Interaction options / patches are already layered into the ONE list
             // (`resolvedStep`), so nothing is layered again at draw time.
             rawResolvedIds: r.rawResolvedIds,

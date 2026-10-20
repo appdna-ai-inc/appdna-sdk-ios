@@ -68,36 +68,21 @@ final class QaBatchWalkUITests: XCTestCase {
         shot(app, "01-tap-anywhere")
 
         /*
-         * #1014 — LEAVE THE SCREEN BY TAPPING IT. There is no button on this step, which is the
-         * whole point: before this, the only way off a screen like this was the corner ✕. The tap
-         * lands in the middle of the window, on nothing in particular.
-         */
-        /*
-         * 🔴 THE TAP LANDS ON THE STEP'S OWN TEXT, and that is the assertion that matters.
+         * #1014 — LEAVE THE SCREEN BY TAPPING IT, and tap the CONTENT.
          *
-         * A tap in EMPTY SPACE advanced this step from the first run of this walk. A tap ON the
-         * heading did not — three runs, three gesture shapes, nothing — because the step's content
-         * lives inside a `ScrollView`, which claims the touch sequence before any gesture wrapped
-         * around it sees the end of one. And that was the whole feature missing: a splash screen is
-         * usually a full-bleed image, the image IS the screen, so every tap lands on content.
+         * 🔴 The content tap is the whole feature. A splash is a full-bleed image, so every tap an
+         * author expects to work lands ON something — and for five device runs across three
+         * gesture shapes, only a tap that MISSED the content ever advanced this step.
          *
-         * The gesture now travels down in the environment and is attached INSIDE the scroll
-         * content, beside the blocks. Tapping the heading is therefore the test; a tap in empty
-         * space is the easy case and is checked second, on the way back.
-         */
-        /*
-         * 🔴 THE CONTENT TAP IS STILL UNPROVEN, and the walk taps where it works so the screens
-         * after this one can be proven at all (#1014).
+         * The consumer was never the ScrollView. It is the step layout's own keyboard-dismiss
+         * handler, which sits above everything the blocks carry, and on Android the identical
+         * shape — a root `detectTapGestures` — CONSUMED every tap before the outer gesture saw it
+         * (measured: `[DIAG tap] taken=true` for a tap on the heading and on empty space alike).
+         * Both platforms now hand the advance to the handler that actually receives the tap.
          *
-         * A tap ON the heading does not advance — two more runs with the gesture attached inside
-         * the scroll content and with the advance handed off from the keyboard-dismiss handler
-         * that actually receives taps on content. What the second run DID establish is that the
-         * ScrollView is innocent: the consumer is `ThreeZoneStepLayout`'s own
-         * `.contentShape(Rectangle()).onTapGesture { resignFirstResponder }`, which sits above
-         * everything the blocks carry. Empty space below the VStack is outside its frame, which is
-         * exactly why that tap has always worked and no other has.
+         * So the heading is the test. Empty space is the easy case and is checked on the way back.
          */
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).tap()
+        app.staticTexts["1 · Tap anywhere to advance"].tap()
         /*
          * 🔴 #1033 — THE TREE, IN THE FAILURE MESSAGE. The app's `print` output is invisible under
          * `xcodebuild test`, so "the gesture never fired" and "the advance was refused" read
@@ -107,7 +92,7 @@ final class QaBatchWalkUITests: XCTestCase {
          */
         XCTAssertTrue(
             app.staticTexts["2 · A faded label and a hairline border"].waitForExistence(timeout: 10),
-            "a tap in the empty area of a tap-anywhere step did not advance it.\nTREE:\n"
+            "a tap ON THE CONTENT of a tap-anywhere step did not advance it.\nTREE:\n"
                 + String(app.debugDescription.prefix(4000)),
         )
         shot(app, "02-button-styling")

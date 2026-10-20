@@ -21,6 +21,22 @@ struct ThreeZoneStepLayout: View {
     var fieldConfigOverrides: [String: [String: Any]] = [:]
     /// #657 — per-block replacement options from a refresh interaction, threaded to the renderer.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
+    /**
+     #1014 — WHAT A TAP ON CONTENT SHOULD DO, besides dismissing the keyboard.
+
+     🔴 The tap-anywhere gesture lives on the renderer OUTSIDE this layout, and it only ever fired
+     for a tap that MISSED the content — five device runs, three gesture shapes. The consumer was
+     never the ScrollView: it is the `.contentShape(Rectangle()).onTapGesture` below, which exists
+     to dismiss the keyboard and sits above everything the blocks carry.
+
+     🔴 And the splash case — the one the issue is actually about, a screen that is only an image —
+     takes the `onlyCenterContent` branch, which had NO tap handler of any kind. So the gesture
+     could not have worked there however it was attached outside: there was nothing to attach to.
+
+     Handing the step's action to the handler that already RECEIVES the tap is the fix, on both
+     branches. The default is a no-op, so a step that does not ask for it behaves as before.
+     */
+    var onContentTap: () -> Void = {}
     /// Raw-resolved block ids and the step's ONE layered list (consent-CTA gate).
     var rawResolvedIds: Set<String> = []
     var gateBlocks: [ContentBlock]? = nil
@@ -62,6 +78,18 @@ struct ThreeZoneStepLayout: View {
                             Spacer(minLength: 0)
                         }
                         .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                        // #1014 — a splash is only centre content, and this branch had no tap
+                        // handler at all. The Spacers are part of the shape, so a tap above or
+                        // below the image counts as a tap on the screen, which is what an author
+                        // turning on "tap anywhere" means.
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            UIApplication.shared.sendAction(
+                                #selector(UIResponder.resignFirstResponder),
+                                to: nil, from: nil, for: nil
+                            )
+                            onContentTap()
+                        }
                     }
                 }
             } else {
@@ -84,6 +112,9 @@ struct ThreeZoneStepLayout: View {
                             #selector(UIResponder.resignFirstResponder),
                             to: nil, from: nil, for: nil
                         )
+                        // #1014 — this handler is what a tap ON CONTENT reaches; the renderer's
+                        // own gesture only ever saw the taps that missed it.
+                        onContentTap()
                     }
                 }
                 .coordinateSpace(name: "stepScroll")
