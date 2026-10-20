@@ -59,6 +59,20 @@ enum ConfigurationIssueReporter {
         lock.unlock()
         guard isNew else { return }
 
+        /*
+         * 🔴 LOG IT, because for its whole life this has been unreadable from a device.
+         *
+         * The detail goes to two places and neither is visible to anyone debugging: an analytics
+         * event property (`coding_path`, which has to reach a warehouse and be queried) and a host
+         * delegate most apps never register. A device walk on the other platform saw FOUR of these
+         * on every config fetch and could not learn which four keys they were.
+         *
+         * `warning` rather than `debug`, because this is published config that could not be used:
+         * every one is an element an author authored and the device threw away. Parity with the
+         * Android half, which gained the same line.
+         */
+        Log.warning("Config dropped [\(surface)\(id.map { "/" + $0 } ?? "")]: \(detail)")
+
         AppDNA.track(event: "sdk_decode_dropped", properties: [
             "surface": surface,
             "surface_id": id ?? "",
