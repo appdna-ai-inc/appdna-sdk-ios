@@ -46,6 +46,7 @@ extension SharedFixtureTests {
         case "resolve_onboarding_celebration": runOnboardingCelebration(f, h)
         case "resolve_block_collapse": runBlockCollapse(f, h)
         case "resolve_banner_icon": runBannerIcon(f, h)
+        case "resolve_celebration_palette": runCelebrationPalette(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
@@ -307,6 +308,31 @@ extension SharedFixtureTests {
                 scrollOffset: v?["scroll"]?.doubleValue ?? 0,
                 threshold: v?["threshold"]?.doubleValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_celebration_palette
+
+    /**
+     WHICH colours a celebration draws and whether it draws a glyph, through the REAL
+     `CelebrationPalette` both overlays call.
+
+     One string per case — the colours joined, then `|`, then the glyph — so the two platforms are
+     compared on the WHOLE answer. A run that got the palette right and the shape wrong would
+     otherwise pass half a fixture, and the shape is exactly where the unknown-type case diverged.
+     */
+    private func runCelebrationPalette(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_celebration_palette needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let type = v?["type"]?.stringValue
+            let authored = v?["colors"]?.arrayValue?.compactMap { $0.stringValue }
+            let colors = CelebrationPalette.colors(type: type, authored: authored)
+            return colors.joined(separator: ",") + "|" + CelebrationPalette.glyph(type: type)
         }
     }
 

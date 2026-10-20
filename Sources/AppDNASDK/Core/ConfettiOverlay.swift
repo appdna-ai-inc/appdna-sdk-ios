@@ -21,34 +21,25 @@ public struct ConfettiOverlay: View {
         }
     }
 
+    /*
+     * #1040 — ONE LIST, not a `switch` per platform. The semantic colours this used to return
+     * (`.red` is #FF3B30) and the Compose constants Android returned (`Color.Red` is #FF0000) are
+     * different colours, so an unauthored celebration drew differently on the two platforms. The
+     * hexes in `CelebrationPalette` are what these semantic values resolve to in the light
+     * appearance, so nothing already published changes here — Android moves to meet this.
+     */
     private var effectColors: [Color] {
-        if let customColors = effect.colors, !customColors.isEmpty {
-            return customColors.map { Color(hex: $0) }
-        }
-        switch effect.type ?? "confetti" {
-        case "hearts": return [.red, .pink, Color(hex: "#FF6B9D")]
-        case "snow": return [.white, Color(white: 0.95), Color(white: 0.9)]
-        case "sparkle": return [.yellow, .orange, Color(hex: "#FFD700")]
-        case "fireworks": return [.red, .blue, .green, .yellow, .purple, .orange]
-        default: return [.red, .blue, .green, .yellow, .purple, .orange, .pink]
-        }
+        CelebrationPalette.colors(type: effect.type, authored: effect.colors).map { Color(hex: $0) }
     }
 
-    private var particleShape: String {
-        switch effect.type ?? "confetti" {
-        case "hearts": return "\u{2764}\u{FE0F}"
-        case "snow": return "\u{2744}\u{FE0F}"
-        case "sparkle": return "\u{2728}"
-        case "fireworks": return "\u{1F386}"
-        default: return "\u{25CF}"
-        }
-    }
+    /// #1040 — the shared rule, so "circle or glyph" is one question with one answer.
+    private var particleShape: String { CelebrationPalette.glyph(type: effect.type) }
 
     public var body: some View {
         ZStack {
             if isActive {
                 ForEach(particles) { particle in
-                    if (effect.type ?? "confetti") == "confetti" {
+                    if particleShape.isEmpty {
                         Circle()
                             .fill(particle.color)
                             .frame(width: particle.size, height: particle.size)
