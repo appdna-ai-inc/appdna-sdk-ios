@@ -54,8 +54,19 @@ final class SurveyWalkUITests: XCTestCase {
          * the `show_if` on the next question, so one tap proves two behaviours and a miss on either
          * is unambiguous.
          */
-        let angry = app.staticTexts["😡"]
-        XCTAssertTrue(angry.waitForExistence(timeout: 5), "the authored emoji scale did not render")
+        /*
+         * 🔴 ANY element whose LABEL is the emoji, not `staticTexts`. The first run of this walk
+         * failed on `staticTexts["😡"]` while the scale was plainly on screen: the renderer wraps
+         * each emoji in a tappable element, so it is not a static text, and a query that names the
+         * wrong element type fails exactly like a scale that did not render.
+         */
+        let angry = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "😡"))
+            .firstMatch
+        XCTAssertTrue(
+            angry.waitForExistence(timeout: 5),
+            "the authored emoji scale did not render.\nTREE:\n" + String(app.debugDescription.prefix(3000)),
+        )
         angry.tap()
 
         let next = app.buttons["Next"].firstMatch
