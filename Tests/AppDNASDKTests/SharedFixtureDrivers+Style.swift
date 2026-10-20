@@ -302,7 +302,7 @@ extension SharedFixtureTests {
         h.state["results"] = cases.map { c -> Any in
             let v = c.objectValue?["value"]?.objectValue
             return BlockCollapseOnScroll.progress(
-                enabled: (v?["enabled"]?.value as? Bool) ?? false,
+                enabled: v?["enabled"]?.boolValue ?? false,
                 scrollOffset: v?["scroll"]?.doubleValue ?? 0,
                 threshold: v?["threshold"]?.doubleValue,
             )
