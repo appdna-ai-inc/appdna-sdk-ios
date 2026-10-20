@@ -61,12 +61,22 @@ struct OnboardingFlowHost: View {
     @State private var isInitialLoading = true
     // Dynamic color flash on step-advance (the progress fill briefly animates to flash_color).
     @State private var progressFlashing = false
+    /**
+     #1026 — the flow's celebration, armed by the renderer because the renderer is the only thing
+     that knows when a step appeared or completed.
+
+     It is a SERIAL rather than a Bool: `ConfettiOverlay` starts itself in `onAppear`, so a second
+     celebration on a view that is already mounted would draw nothing. Bumping the serial and
+     keying the overlay on it remounts the overlay, which is what makes a per-step celebration
+     actually fire on every step instead of only the first.
+    */
+    @State private var flowConfettiSerial = 0
     // The in-flight guard for element interactions now lives in the PER-PRESENTATION
     // `InteractionCoordinator`. The flow-level flag it replaced was held across
     // navigation, so a slow reply from a step the user had left blocked every interaction on the next.
 
     var body: some View {
-        content.overlay(alignment: .bottom) {
+        celebratedContent.overlay(alignment: .bottom) {
             if let message = errorToastMessage {
                 Text(message)
                     .font(.subheadline.weight(.medium))
@@ -86,6 +96,19 @@ struct OnboardingFlowHost: View {
         withAnimation { errorToastMessage = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             withAnimation { errorToastMessage = nil }
+        }
+    }
+
+    /// `content` with the flow's celebration over it. Over, not inside: the effect covers the whole
+    /// flow including the progress bar, and it must never take a tap (`allowsHitTesting(false)` is
+    /// in the overlay itself).
+    private var celebratedContent: some View {
+        content.overlay {
+            if flowConfettiSerial > 0, let effect = flow.settings.particle_effect {
+                ConfettiOverlay(effect: effect)
+                    .id(flowConfettiSerial)
+                    .ignoresSafeArea()
+            }
         }
     }
 
@@ -247,6 +270,9 @@ struct OnboardingFlowHost: View {
                 .frame(maxHeight: .infinity)
                 .onAppear {
                     handleStepAppear(step: step)
+                    // The container's `onAppear` fires once, for the first step — which is exactly
+                    // what `on_appear` means for a FLOW.
+                    celebrateIfAuthored(stepIndex: 0)
                 }
                 .onDisappear {
                     // The flow being dismissed must not advance a screen nobody is looking at.
@@ -262,6 +288,8 @@ struct OnboardingFlowHost: View {
                 .onChange(of: currentIndex) { _ in
                     guard currentIndex < flow.steps.count else { return }
                     handleStepAppear(step: flow.steps[currentIndex])
+                    // A genuine transition — the step the author just finished is complete.
+                    celebrateIfAuthored(stepIndex: currentIndex)
                 }
                 // Hide step content on the very first render until the initial
                 // image prefetch completes, so users never see an unstyled
@@ -1146,6 +1174,16 @@ struct OnboardingFlowHost: View {
 
     /// Evaluate next-step rules and route. All decision logic lives in the pure
     /// `OnboardingAdvance` state machine; this is the execute half.
+    /// Celebrate if the flow's authored effect asks for the moment THIS step index represents.
+    /// The decision is `OnboardingCelebration`, shared with the Kotlin, so the two platforms cannot
+    /// disagree about when an effect fires — which is what both previous particle defects were.
+    private func celebrateIfAuthored(stepIndex: Int) {
+        guard let effect = flow.settings.particle_effect else { return }
+        guard OnboardingCelebration.celebratedMoment(trigger: effect.trigger, stepIndex: stepIndex) != nil
+        else { return }
+        flowConfettiSerial += 1
+    }
+
     private func advanceOrComplete() {
         // Console-configured step-advance haptic (mirrors Android's on_step_advance). iOS onboarding
         // fired no haptics at all before `settings.haptic` was wired.

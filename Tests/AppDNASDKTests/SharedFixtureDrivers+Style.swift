@@ -43,6 +43,7 @@ extension SharedFixtureTests {
         case "parse_blocks_leniently": runLenientBlocks(f, h)
         case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
         case "resolve_button_label_colour": runButtonLabelColour(f, h)
+        case "resolve_onboarding_celebration": runOnboardingCelebration(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         default:
             return false
@@ -277,6 +278,31 @@ extension SharedFixtureTests {
             return ButtonLabelColour.resolve(
                 textColor: v?["text_color"]?.stringValue,
                 styleColor: v?["style_color"]?.stringValue,
+            ) ?? ""
+        }
+    }
+
+
+    // MARK: resolve_onboarding_celebration
+
+    /**
+     WHEN a flow's authored celebration fires, through the REAL `OnboardingCelebration` both
+     renderers call.
+
+     `""` for "no celebration at this index", so the nil case is asserted rather than skipped — the
+     defect being guarded is an effect that fires at the WRONG moment, which a test that only
+     checks the positive cases cannot see.
+     */
+    private func runOnboardingCelebration(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_onboarding_celebration needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return OnboardingCelebration.celebratedMoment(
+                trigger: v?["trigger"]?.stringValue,
+                stepIndex: Int(v?["step_index"]?.doubleValue ?? 0),
             ) ?? ""
         }
     }

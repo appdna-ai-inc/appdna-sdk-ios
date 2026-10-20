@@ -147,6 +147,18 @@ public struct OnboardingSettings: Codable {
     /// Console-configured haptic feedback (mirrors Android `flow.settings.haptic`). iOS onboarding
     /// previously had no such field and fired no haptics, so a flow's haptic config was iOS-ignored.
     public let haptic: HapticConfig?
+    /**
+     #1026 — the flow's own celebration. The console has offered a "Celebration Effect" in the flow
+     settings panel since it shipped; Android parsed it into its config object and drew it nowhere,
+     and iOS did not parse it at all. `ConfettiOverlay` existed the whole time — it was simply never
+     reached from onboarding.
+
+     `on_appear` (the flow's first step) and `on_step_complete` (each advance) are the two moments
+     onboarding has. `on_flow_complete` is NOT one of them: the host tears the renderer down when
+     `onFlowCompleted` fires, so celebrating there means HOLDING the completion for the effect's
+     duration — a change to every flow's completion timing, which needs its own proof.
+     */
+    public let particle_effect: ParticleEffect?
 
     public init(show_progress: Bool = true, allow_back: Bool = true, skip_to_step: String? = nil,
                 progress_style: String? = nil, progress_color: String? = nil, progress_track_color: String? = nil,
@@ -154,7 +166,8 @@ public struct OnboardingSettings: Codable {
                 progress_skip_label: String? = nil, progress_flash_color: String? = nil,
                 back_button_style: BackButtonStyle? = nil, dismiss_allowed: Bool? = nil,
                 dismiss_button_style: DismissButtonStyle? = nil,
-                content_padding: CGFloat? = nil, block_spacing: CGFloat? = nil, haptic: HapticConfig? = nil) {
+                content_padding: CGFloat? = nil, block_spacing: CGFloat? = nil, haptic: HapticConfig? = nil,
+                particle_effect: ParticleEffect? = nil) {
         self.show_progress = show_progress
         self.allow_back = allow_back
         self.skip_to_step = skip_to_step
@@ -171,6 +184,7 @@ public struct OnboardingSettings: Codable {
         self.content_padding = content_padding
         self.block_spacing = block_spacing
         self.haptic = haptic
+        self.particle_effect = particle_effect
     }
 
     public init(from decoder: Decoder) throws {
@@ -191,12 +205,13 @@ public struct OnboardingSettings: Codable {
         self.content_padding = c.lenient(CGFloat.self, .content_padding)
         self.block_spacing = c.lenient(CGFloat.self, .block_spacing)
         self.haptic = try c.decodeIfPresent(HapticConfig.self, forKey: .haptic)
+        self.particle_effect = try? c.decodeIfPresent(ParticleEffect.self, forKey: .particle_effect)
     }
 
     enum CodingKeys: String, CodingKey {
         case show_progress, allow_back, skip_to_step, progress_style
         case progress_color, progress_track_color, progress_height, progress_gradient_colors, progress_skip_label, progress_flash_color, back_button_style, dismiss_allowed, dismiss_button_style
-        case content_padding, block_spacing, haptic
+        case content_padding, block_spacing, haptic, particle_effect
     }
 }
 
