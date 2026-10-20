@@ -411,6 +411,13 @@ public struct OnboardingStep: Codable, Identifiable {
         try c.encodeIfPresent(request_store_review, forKey: .request_store_review)
         try c.encodeIfPresent(auto_advance_seconds, forKey: .auto_advance_seconds)
         try c.encodeIfPresent(wait_for_host, forKey: .wait_for_host)
+        /*
+         🔴 And the gate caught the NEXT one the same way: `tap_anywhere_advances` (#1014) was
+         decoded, from both the root and the layout rung, and never encoded. A splash authored
+         "tap anywhere to advance" would have advanced on the warm launch that wrote the cache and
+         had no way forward at all on the next cold one.
+        */
+        try c.encodeIfPresent(tap_anywhere_advances, forKey: .tap_anywhere_advances)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
         // Verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)

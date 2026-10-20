@@ -39,6 +39,7 @@ final class StepCacheRoundTripTests: XCTestCase {
           "request_store_review": true,
           "auto_advance_seconds": 3.5,
           "wait_for_host": false,
+          "tap_anywhere_advances": true,
           "next_step_rules": [{ "condition": "always", "target_step_id": "s_next" }],
           "content_blocks": [
             { "id": "b1", "type": "heading", "text": "Kept" },
@@ -55,6 +56,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(before.request_store_review, true)
         XCTAssertEqual(before.auto_advance_seconds, 3.5)
         XCTAssertEqual(before.wait_for_host, false)
+        XCTAssertEqual(before.tap_anywhere_advances, true)
         XCTAssertEqual(before.hide_back, true)
         XCTAssertEqual(before.hide_progress, false)
 
@@ -69,6 +71,10 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
         XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
         XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
+        // #1014's flag joined the ladder and not the encoder — a splash authored "tap anywhere to
+        // advance" advanced on the launch that wrote the cache and had no way forward on the next
+        // cold one. The #928 round-trip gate is what found it; this is the behaviour behind it.
+        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "#1014's gesture flag")
         XCTAssertEqual(after.next_step_rules?.count, before.next_step_rules?.count)
         XCTAssertEqual(after.next_step_rules?.first?.target_step_id, "s_next")
     }
@@ -89,6 +95,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertNotEqual(after.request_store_review, empty.request_store_review)
         XCTAssertNotEqual(after.auto_advance_seconds, empty.auto_advance_seconds)
         XCTAssertNotEqual(after.wait_for_host, empty.wait_for_host)
+        XCTAssertNotEqual(after.tap_anywhere_advances, empty.tap_anywhere_advances)
         XCTAssertNotNil(after.next_step_rules)
         XCTAssertNil(empty.next_step_rules)
     }
@@ -111,6 +118,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertNil(after.request_store_review)
         XCTAssertNil(after.auto_advance_seconds)
         XCTAssertNil(after.wait_for_host)
+        XCTAssertNil(after.tap_anywhere_advances)
         XCTAssertNil(after.hide_back)
     }
 
@@ -147,6 +155,7 @@ final class StepCacheRoundTripTests: XCTestCase {
                     "request_store_review": true,
                     "auto_advance_seconds": 2.5,
                     "wait_for_host": false,
+                    "tap_anywhere_advances": true,
                 ],
             ]],
         ]
@@ -164,6 +173,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(before.request_store_review, true, "layout.request_store_review")
         XCTAssertEqual(before.auto_advance_seconds, 2.5, "layout.auto_advance_seconds")
         XCTAssertEqual(before.wait_for_host, false, "layout.wait_for_host")
+        XCTAssertEqual(before.tap_anywhere_advances, true, "layout.tap_anywhere_advances")
 
         first.cacheAllFetchedConfigs()
 
@@ -190,6 +200,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
         XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
         XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
+        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "#1014's gesture flag")
         XCTAssertEqual(after.config.content_blocks?.first?.text, "Only in layout",
                        "and the content that rode in the same layout object")
     }

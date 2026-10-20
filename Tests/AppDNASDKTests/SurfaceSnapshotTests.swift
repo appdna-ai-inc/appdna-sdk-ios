@@ -195,6 +195,65 @@ final class SurfaceSnapshotTests: XCTestCase {
 
     // MARK: - Scenarios
 
+    /**
+     #997 — A PARTICLE EFFECT AUTHORED `on_purchase` DRAWS.
+
+     Both overlays used to gate twice: the parent decided when to show the overlay, and the overlay
+     then re-checked the authored trigger and refused anything that was not `on_appear`. So the
+     paywall armed its celebration after a purchase and `ConfettiOverlay.onAppear` declined to start
+     it — `startAnimation()` had exactly one live caller and it never fired. Three of the four
+     triggers the console offers, and the docs describe, had never done anything.
+
+     🔴 THE PROOF COULD NOT BE A DEVICE WALK, so it is a render (Rule 25). The moment this effect
+     exists for is a completed purchase, the simulator serves no StoreKit catalogue under
+     `xcodebuild test` (#934) and there is no device proof of a real purchase yet (#1018). What a
+     render CAN do is put the overlay on a key window with the authored trigger and read the pixels
+     back — which is the whole assertion, because the trigger is the only thing that changed.
+
+     The authored colour is a single flat `#00FF00`, which nothing else on the frame can produce,
+     and `intensity: heavy` asks for 120 of them. `duration_ms` is deliberately long: the particles
+     animate to `opacity: 0` at the bottom of the screen, so a short effect could legitimately be
+     finished by the time the frame is taken and the test would be measuring the end of the
+     animation rather than the gate.
+     */
+    func testAParticleEffectAuthoredOnPurchaseDraws() throws {
+        func overlay(trigger: String) -> some View {
+            ZStack {
+                Color.black
+                ConfettiOverlay(effect: ParticleEffect(
+                    type: "confetti",
+                    trigger: trigger,
+                    duration_ms: 20000,
+                    intensity: "heavy",
+                    colors: ["#00FF00"],
+                ))
+            }
+        }
+
+        // 🔴 The control FIRST, and it is inside the same test on purpose: a harness that cannot
+        // see green at all would pass every assertion below for the worst possible reason (#923).
+        // The white label is there so the control frame is not UNIFORM — `write` rejects a uniform
+        // frame as "nothing rendered", which would stop the control before it could prove anything.
+        try write(
+            ZStack { Color.black; Text("control").foregroundColor(.white) },
+            named: "confetti_control_none",
+        )
+        XCTAssertFalse(
+            try frameContains("confetti_control_none", colour: "#00FF00"),
+            "the control frame already contains the authored colour — this harness cannot tell",
+        )
+
+        for trigger in ["on_appear", "on_purchase", "on_step_complete", "on_flow_complete"] {
+            let name = "confetti_\(trigger)"
+            try write(overlay(trigger: trigger), named: name)
+            XCTAssertTrue(
+                try frameContains(name, colour: "#00FF00", tolerance: 60),
+                "a particle effect authored \(trigger) drew nothing — the overlay re-gated its trigger",
+            )
+        }
+    }
+
+
     /// #895 — a long header title with each dismiss style, which is the pair that disagreed.
     func testHeaderInsetAcrossDismissStyles() throws {
         let title = "Keep every habit you have built so far"
