@@ -104,11 +104,21 @@ struct OnboardingFlowHost: View {
     /// in the overlay itself).
     private var celebratedContent: some View {
         content.overlay {
-            if flowConfettiSerial > 0, let effect = flow.settings.particle_effect {
-                ConfettiOverlay(effect: effect)
-                    .id(flowConfettiSerial)
-                    .ignoresSafeArea()
+            /*
+             🔴 THE OVERLAY'S OWN CONTAINER REFUSES TOUCHES, not just the effect inside it.
+             `ConfettiOverlay` already sets `allowsHitTesting(false)` on its ZStack, and the
+             container that holds it is still a layer over the whole flow. Nothing in a celebration
+             is ever meant to take a touch — and `allowsHitTesting` on the RESULT of `.overlay`
+             would disable the flow itself, which is the mistake this comment exists to prevent.
+            */
+            Group {
+                if flowConfettiSerial > 0, let effect = flow.settings.particle_effect {
+                    ConfettiOverlay(effect: effect)
+                        .id(flowConfettiSerial)
+                        .ignoresSafeArea()
+                }
             }
+            .allowsHitTesting(false)
         }
     }
 
