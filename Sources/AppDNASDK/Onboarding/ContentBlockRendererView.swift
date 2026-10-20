@@ -1314,7 +1314,8 @@ struct ContentBlockRendererView: View {
         let linkText = rawLink.isEmpty
             ? ""
             : (loc?("block.\(block.id).banner_link_text", rawLink) ?? rawLink)
-        let linkURL = (fc?["banner_link_url"]?.value as? String).flatMap { URL(string: $0) }
+        let rawLinkURL = fc?["banner_link_url"]?.value as? String
+        let linkURL = rawLinkURL.flatMap { URL(string: $0) }
         let linkColor = (fc?["banner_link_color"]?.value as? String).map { Color(hex: $0) } ?? accent
         let linkFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_link_size"]) ?? 13, weight: 600)
         return HStack(alignment: rowAlign, spacing: 10) {
@@ -1344,10 +1345,30 @@ struct ContentBlockRendererView: View {
                 if !linkText.isEmpty {
                     // A link with no URL still DRAWS — an author types the words first and the
                     // address second, and a control that vanishes between the two reads as broken.
-                    if let linkURL {
-                        Link(linkText, destination: linkURL)
-                            .font(linkFont)
-                            .foregroundColor(linkColor)
+                    if linkURL != nil {
+                        /*
+                         * 🔴 A BUTTON THROUGH `URLSafety.open`, NOT A SwiftUI `Link`.
+                         *
+                         * This was `Link(linkText, destination:)`, and on a device it drew in blue,
+                         * reported itself to the accessibility tree as a button, and opened
+                         * NOTHING. Measured in the walk: after tapping it, Safari's state was 1
+                         * (not running) and the host app's was 4 (still foreground). A `Link`'s own
+                         * activation does not survive the step's tap handling — the same consumer
+                         * #1014 found sitting above everything the blocks carry.
+                         *
+                         * Routing it through `URLSafety.open` fixes the second half too, which the
+                         * walk could not see: Android's banner link goes through its own
+                         * `URLSafety.open` (the scheme allowlist), and a raw `Link` here bypassed
+                         * that entirely — a config-supplied `javascript:` or `file:` URL would have
+                         * been handed straight to the system. "Every config-driven open goes
+                         * through here" is what that helper's own comment says.
+                         */
+                        Button {
+                            URLSafety.open(rawLinkURL)
+                        } label: {
+                            Text(linkText).font(linkFont).foregroundColor(linkColor)
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         Text(linkText).font(linkFont).foregroundColor(linkColor)
                     }

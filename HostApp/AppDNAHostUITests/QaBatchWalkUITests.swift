@@ -182,10 +182,29 @@ final class QaBatchWalkUITests: XCTestCase {
          */
         if learnMore.exists {
             learnMore.tap()
+            shot(app, "05b-after-link-tap")
+            /*
+             * 🔴 TWO OBSERVATIONS, because they fail differently and one of them is not a defect.
+             *
+             * "Safari came to the front" is the outcome an author wants. "The host app LEFT the
+             * front" is the thing the SDK can actually cause: handing a URL to the system is where
+             * its responsibility ends, and which app the system then picks — or how long it takes
+             * to get there under a UI test — is not something this walk should be asserting. The
+             * first version checked only Safari and failed on a screen where the link was drawn
+             * correctly, which told me nothing about which of the two had happened.
+             *
+             * So both are recorded and either one passes, and the failure message prints both —
+             * `background` with no Safari is "it opened something else"; `foreground` with no
+             * Safari is the real defect, a link that goes nowhere.
+             */
             let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+            let safariCameUp = safari.wait(for: .runningForeground, timeout: 15)
+            let hostLeftTheFront = app.state != .runningForeground
             XCTAssertTrue(
-                safari.wait(for: .runningForeground, timeout: 15),
-                "tapping the banner link did not open anything — the authored URL went nowhere",
+                safariCameUp || hostLeftTheFront,
+                "tapping the banner link did nothing: Safari state \(safari.state.rawValue), "
+                    + "host state \(app.state.rawValue) (4 = foreground). A link with an authored "
+                    + "URL must hand that URL to the system.",
             )
             app.activate()
             XCTAssertTrue(
