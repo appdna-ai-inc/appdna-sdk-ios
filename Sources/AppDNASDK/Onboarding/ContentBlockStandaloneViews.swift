@@ -181,7 +181,10 @@ struct CountdownTimerBlockView: View {
     private var barFraction: CGFloat {
         // Denominator is the captured initial value (parity with Android's initialSeconds),
         // NOT duration_seconds — fixed_datetime bars would otherwise stay pinned at 100%.
-        return min(max(CGFloat(remainingSeconds) / CGFloat(max(initialSeconds, 1)), 0), 1)
+        return CGFloat(CountdownProgress.remainingFraction(
+            remainingSeconds: remainingSeconds,
+            initialSeconds: initialSeconds
+        ))
     }
 
     // Digital variant (default): HStack of time unit columns
@@ -229,7 +232,14 @@ struct CountdownTimerBlockView: View {
         let accentCol = accentColor
         return ZStack {
             Circle().stroke(Color(hex: "#E5E7EB"), lineWidth: 4)
-            Circle().trim(from: 0, to: 0.75)
+            /*
+             #1066 — the ring SWEEPS. `to:` was a hardcoded `0.75`, the console preview's static
+             mock ported into a renderer: the digits counted down while the ring never moved, and it
+             was still at 75% when the timer expired. A preview is allowed a frozen value because it
+             has no clock; a renderer is not, and `barFraction` — which the bar variant beside it
+             already uses — proves the data was there all along.
+             */
+            Circle().trim(from: 0, to: barFraction)
                 .stroke(accentCol, style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text(segmentStrings.joined(separator: ":"))

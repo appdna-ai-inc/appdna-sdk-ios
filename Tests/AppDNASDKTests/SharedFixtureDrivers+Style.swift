@@ -55,6 +55,7 @@ extension SharedFixtureTests {
         case "resolve_field_input_style": runFieldInputStyle(f, h)
         case "resolve_plan_order": runPlanOrder(f, h)
         case "resolve_progress_skip_target": runProgressSkipTarget(f, h)
+        case "resolve_countdown_progress": runCountdownProgress(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
@@ -195,6 +196,28 @@ extension SharedFixtureTests {
             let target = value?["skip_to_step"]?.foundation as? String
             let ids = (value?["step_ids"]?.foundation as? [Any])?.compactMap { $0 as? String } ?? []
             return SharedFixtureTests.orNull(ProgressSkipTarget.resolve(target, stepIds: ids))
+        }
+    }
+
+
+    // MARK: resolve_countdown_progress
+
+    /**
+     #1066 — how far a countdown has run, through the REAL `CountdownProgress` both indicators read.
+
+     The ring was frozen at 0.75 on BOTH platforms — the preview's mock in two renderers — so the
+     cases that matter are the ones a frozen value gets wrong: full, half, expired, and the clamps.
+     */
+    private func runCountdownProgress(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_countdown_progress needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let remaining = (v?["remaining"]?.foundation as? NSNumber)?.intValue ?? 0
+            let initial = (v?["initial"]?.foundation as? NSNumber)?.intValue ?? 0
+            return CountdownProgress.remainingFraction(remainingSeconds: remaining, initialSeconds: initial)
         }
     }
 
