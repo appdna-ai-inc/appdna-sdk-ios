@@ -767,11 +767,48 @@ struct ContentBlockRendererView: View {
         // Image preview only — video/gif/sound preview playback is net-new host media infra (deferred).
         let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
+        /*
+         #1021 — an optional title above the strip, belonging to the ELEMENT rather than to a
+         separate heading block an author has to add and keep aligned with it.
+
+         🔴 It sits INSIDE the empty check on purpose: a cleared gallery renders nothing at all,
+         and a lone title over no images is a worse artefact than no title. Unset it draws nothing,
+         so every gallery authored before this is pixel-identical.
+        */
         if images.isEmpty {
             // Parity with Android (ContentBlockRenderer.kt:1841 `if (images.isEmpty()) return`) and
             // preview: a cleared gallery renders nothing rather than reserving a blank itemH-tall gap.
             EmptyView()
-        } else if autoscroll {
+        } else if let title = block.gallery_title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            VStack(alignment: galleryTitleAlignment(block), spacing: 8) {
+                Text(title)
+                    .font(.headline)
+                    .foregroundColor(Color(hex: block.gallery_title_color ?? "#FFFFFF"))
+                    .frame(maxWidth: .infinity, alignment: Alignment(horizontal: galleryTitleAlignment(block), vertical: .center))
+                mediaGalleryStrip(block, images: images, itemW: itemW, itemH: itemH, cr: cr, spacing: spacing, fill: fill, autoscroll: autoscroll, cycle: cycle, previewOnSelect: previewOnSelect, galleryAlignment: galleryAlignment)
+            }
+        } else {
+            mediaGalleryStrip(block, images: images, itemW: itemW, itemH: itemH, cr: cr, spacing: spacing, fill: fill, autoscroll: autoscroll, cycle: cycle, previewOnSelect: previewOnSelect, galleryAlignment: galleryAlignment)
+        }
+    }
+
+    /// The title's horizontal alignment follows the gallery's own, so the two cannot disagree.
+    private func galleryTitleAlignment(_ block: ContentBlock) -> HorizontalAlignment {
+        switch block.gallery_align {
+        case "start": return .leading
+        case "end": return .trailing
+        default: return .center
+        }
+    }
+
+    /// The strip itself — extracted so the titled and untitled paths draw exactly the same thing.
+    @ViewBuilder
+    private func mediaGalleryStrip(
+        _ block: ContentBlock, images: [String], itemW: CGFloat, itemH: CGFloat, cr: CGFloat,
+        spacing: CGFloat, fill: Bool, autoscroll: Bool, cycle: Double, previewOnSelect: Bool,
+        galleryAlignment: Alignment
+    ) -> some View {
+        if autoscroll {
             MediaGalleryAutoScrollRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, cycleSeconds: cycle)
         } else if previewOnSelect {
             MediaGalleryPreviewRow(images: images, itemW: itemW, itemH: itemH, cornerRadius: cr, spacing: spacing, fill: fill, galleryAlignment: galleryAlignment)

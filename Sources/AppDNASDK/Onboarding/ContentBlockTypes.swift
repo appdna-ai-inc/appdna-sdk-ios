@@ -1394,6 +1394,11 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text_align: String?
     // media_gallery: horizontal row of image tiles.
     public let gallery_images: [String]?
+    /// #1021 — an optional title above the strip, belonging to the element rather than to a
+    /// separate heading block an author has to keep aligned with it. Unset draws nothing.
+    public let gallery_title: String?
+    /// The title's colour. Unset follows the step's own text colour via the renderer default.
+    public let gallery_title_color: String?
     public let gallery_item_width: Double?
     public let gallery_item_height: Double?
     public let gallery_corner_radius: Double?
@@ -1600,6 +1605,7 @@ public struct ContentBlock: Codable, Identifiable {
         case upcoming_color, show_line, compact, title_style, subtitle_style
         case loading_variant, loading_text, loading_text_position, loading_text_size, loading_text_color, loading_text_align, loading_items, progress_color, check_color
         case gallery_images, gallery_item_width, gallery_item_height, gallery_corner_radius, gallery_spacing, gallery_align
+        case gallery_title, gallery_title_color
         case gallery_fill, gallery_autoscroll, gallery_autoscroll_speed
         case total_duration_ms, auto_advance, show_percentage
         // Phase F: new block fields
@@ -1773,6 +1779,9 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text_align = c.lenient(String.self, .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)
         self.gallery_images = try c.decodeIfPresent([String].self, forKey: .gallery_images)
+        // #1021 — the gallery's own header.
+        self.gallery_title = try c.decodeIfPresent(String.self, forKey: .gallery_title)
+        self.gallery_title_color = try c.decodeIfPresent(String.self, forKey: .gallery_title_color)
         self.gallery_item_width = c.lenient(Double.self, .gallery_item_width)
         self.gallery_item_height = c.lenient(Double.self, .gallery_item_height)
         self.gallery_corner_radius = c.lenient(Double.self, .gallery_corner_radius)
