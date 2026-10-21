@@ -277,6 +277,10 @@ struct ContentBlockRendererView: View {
     var hookData: [String: Any]? = nil
     /// Input values for form input blocks. Key = field_id, Value = field value.
     @Binding var inputValues: [String: Any]
+    /// #1013 — the presented step's id, so a `visibility_condition` naming a field on THIS step
+    /// evaluates against what the control holds right now (`VisibilityScope`). Empty = no merge,
+    /// which is what Screens, SDUI and option sheets get.
+    var stepId: String = ""
     /// Current step index in the onboarding flow (0-based). Used for auto-binding page_indicator and progress_bar.
     var currentStepIndex: Int = 0
     /// Total number of steps in the onboarding flow. Used for auto-binding progress_bar.
@@ -329,7 +333,9 @@ struct ContentBlockRendererView: View {
             evaluateVisibilityCondition(
                 block.visibility_condition,
                 responses: responses,
-                hookData: hookData
+                hookData: hookData,
+                stepId: stepId,
+                stepInputs: inputValues
             )
             // `empty_state.mode == hidden` hides the whole block (raw-pass blocks only).
             && !OnboardingStepPipeline.isHiddenByEmptyState(block, rawResolved: isRawResolved(block))

@@ -19,6 +19,9 @@ enum TestCredentials {
     static let locationFlowId = ""
     /// #1041 — the Rive walk's own flow, for the same reason.
     static let riveFlowId = ""
+    /// #1013 — the category-bubbles walk's own flow: a scrolling row of eight bubbles filtering
+    /// three selects, plus a Segmented element authored `bubble` next to a plain one. Empty = skip.
+    static let categoryFlowId = ""
     /// #1041 — the feedback-form walk's own survey. It waits for `survey.rating.1`, so it needs a
     /// survey whose FIRST question is a numeric rating; the survey walk's is an emoji scale, and
     /// pointing both at one survey made this test report a network problem it did not have.

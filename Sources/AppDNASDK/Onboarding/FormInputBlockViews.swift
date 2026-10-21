@@ -884,6 +884,9 @@ struct FormInputSelectBlock: View {
                 imageTilesSelectView(options: options, fieldId: fieldId)
             case "bubble":
                 bubbleSelectView(options: options, fieldId: fieldId)
+            // #1013 — the category row: the same pills in ONE horizontally scrolling line.
+            case "bubble_scroll":
+                bubbleSelectView(options: options, fieldId: fieldId, scrolls: true)
             case "list":
                 listSelectView(options: options, fieldId: fieldId)
             default: // "dropdown"
@@ -905,6 +908,26 @@ struct FormInputSelectBlock: View {
             }
             if selectedValues.isEmpty, let saved = inputValues[fieldId] as? [String] {
                 selectedValues = saved
+            }
+            /*
+             * #1013 — A CATEGORY ROW OPENS ON ITS FIRST CATEGORY.
+             *
+             * `bubble_scroll` exists to filter the blocks beneath it, so a row with nothing chosen
+             * filters all of them away: the step opens EMPTY, and the author has authored a screen
+             * whose first frame shows a row of pills over nothing. Measured on the device walk —
+             * the row drew, all eight bubbles were there, and the three conditioned selects were
+             * correctly absent, which is right and useless.
+             *
+             * Only this presentation, and only single-select: every other Select still opens
+             * unanswered, which is what a question wants. The rule is `SegmentedDefault`, the one
+             * the Segmented control has always used — a first option is written only when nothing
+             * is answered, so a restored answer and a host-patched value of another type both
+             * stand.
+             */
+            if displayStyle == "bubble_scroll", !isMultiSelect, selectedValue.isEmpty,
+               let first = SegmentedDefault.pick(current: inputValues[fieldId], options: block.field_options ?? []) {
+                selectedValue = first
+                inputValues[fieldId] = first
             }
         }
         // The step cleared a selection its rendered options no longer contain:
@@ -1002,8 +1025,12 @@ struct FormInputSelectBlock: View {
 
     // MARK: - Bubble / chip
 
+    /// `scrolls` → ONE row that runs off the screen edge (`display_style: "bubble_scroll"`),
+    /// rather than pills that wrap onto as many lines as they need. Same chip, same colours, same
+    /// per-option overrides: only the container differs, which is the whole difference an author
+    /// asked for when they wanted a category row instead of a block of tags.
     @ViewBuilder
-    private func bubbleSelectView(options: [InputOption], fieldId: String) -> some View {
+    private func bubbleSelectView(options: [InputOption], fieldId: String, scrolls: Bool = false) -> some View {
         let cfg = block.field_config
         let accentHex = block.field_style?.fill_color ?? block.field_style?.focused_border_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
         let fillCol = Color(hex: accentHex)
@@ -1014,8 +1041,7 @@ struct FormInputSelectBlock: View {
         let selectedBorderW = CGFloat((cfgDouble(cfg?["selected_border_width"])) ?? 2)
         let unselectedBorderW = CGFloat((cfgDouble(cfg?["unselected_border_width"])) ?? 1)
         let spacing = CGFloat((cfgDouble(cfg?["option_spacing"])) ?? 8)
-        ChipFlowLayout(spacing: spacing) {
-            ForEach(Array(options.enumerated()), id: \.offset) { _, option in
+        let chips = ForEach(Array(options.enumerated()), id: \.offset) { _, option in
                 let isSelected = isMultiSelect ? selectedValues.contains(option.resolvedValue) : selectedValue == option.resolvedValue
                 let _ = pageInIfNeeded(after: option)
                 let chipBorder = isSelected ? ((option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol) : (option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol)
@@ -1035,9 +1061,19 @@ struct FormInputSelectBlock: View {
                     .overlay(Capsule().strokeBorder(chipBorder, lineWidth: isSelected ? selectedBorderW : unselectedBorderW))
                     .contentShape(Capsule())
                     .onTapGesture { toggleSelection(option: option, fieldId: fieldId) }
-            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        if scrolls {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: spacing) { chips }
+                    // The row is inset by the step's own padding, so a chip must be able to sit
+                    // flush against the leading edge and the last one must not be clipped.
+                    .padding(.vertical, 2)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            ChipFlowLayout(spacing: spacing) { chips }
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
     // MARK: - Image-fill tiles
@@ -2139,7 +2175,23 @@ struct FormInputSegmentedBlock: View {
 
     @State private var selectedValue: String = ""
 
+    /// #1013 — the one authored key that decides whether this is a segmented control at all.
+    /// See `SegmentedPresentation`: a Select presentation renders through the Select, which draws
+    /// all seven of them; absent / `segmented` / unknown keeps the control, as before.
+    private var displayStyle: String? {
+        block.field_config?["display_style"]?.value as? String
+    }
+
     var body: some View {
+        if SegmentedPresentation.drawsSegmentedControl(displayStyle: displayStyle) {
+            segmentedControl
+        } else {
+            FormInputSelectBlock(block: block, inputValues: $inputValues)
+        }
+    }
+
+    @ViewBuilder
+    private var segmentedControl: some View {
         let fieldId = block.field_id ?? block.id
         let options = block.field_options ?? []
 

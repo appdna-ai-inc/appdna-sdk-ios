@@ -51,6 +51,8 @@ extension SharedFixtureTests {
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
+        case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
+        case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         default:
             return false
         }
@@ -474,6 +476,61 @@ extension SharedFixtureTests {
                 numeric: v?["numeric"]?.doubleValue,
                 token: v?["token"]?.stringValue,
             ))
+        }
+    }
+
+    // MARK: visibility_in_step_scope
+
+    /**
+     #1013 — whether a block is drawn, through the REAL `evaluateVisibilityCondition` the renderer
+     calls, with the step's live inputs in scope.
+
+     🔴 Driven through the production evaluator, never re-stated: the whole point is that this
+     platform and Android now agree on when an in-step condition flips, and a driver computing its
+     own answer could only ever agree with itself (Rule 25).
+     */
+    private func runVisibilityInStepScope(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] visibility_in_step_scope needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue
+            // The condition is decoded through the production DTO, so a shape the SDK cannot read
+            // fails here rather than being quietly re-typed by the driver.
+            var condition: VisibilityCondition?
+            if let raw = obj?["condition"]?.foundation as? [String: Any],
+               JSONSerialization.isValidJSONObject(raw),
+               let data = try? JSONSerialization.data(withJSONObject: raw) {
+                condition = try? JSONDecoder().decode(VisibilityCondition.self, from: data)
+                if condition == nil { XCTFail("[\(f.id)] a condition did not decode") }
+            }
+            let responses = (obj?["responses"]?.foundation as? [String: Any]) ?? [:]
+            let stepInputs = obj?["step_inputs"]?.foundation as? [String: Any]
+            return evaluateVisibilityCondition(
+                condition,
+                responses: responses,
+                hookData: nil,
+                stepId: obj?["step_id"]?.stringValue,
+                stepInputs: stepInputs
+            )
+        }
+    }
+
+    // MARK: segmented_presentation
+
+    /**
+     #1013 — whether a Segmented input draws a segmented control, through the REAL
+     `SegmentedPresentation` the renderer calls.
+     */
+    private func runSegmentedPresentation(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] segmented_presentation needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return SegmentedPresentation.drawsSegmentedControl(displayStyle: v?["display_style"]?.stringValue)
         }
     }
 

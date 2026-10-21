@@ -261,37 +261,51 @@ func summaryStatFieldId(blockId: String, index: Int, stat: [String: Any]) -> Str
     return "\(blockId)_stat_\(index)"
 }
 
+/// #1013 — `stepId` + `stepInputs` are what make a condition react WHILE the step is open.
+///
+/// `responses` holds completed steps only, so "show this when the category above is Modern" could
+/// never be true: the category is chosen while the step is still on screen, which is the only
+/// moment the condition matters. `VisibilityScope` merges the live inputs in under the step's own
+/// id (live winning), so `responses.<thisStep>.<field>` resolves to what the control holds right
+/// now — and `step.<field>` resolves too, the root the template engine and bindings have always
+/// had and a condition never did.
+///
+/// Both default to nil, so every caller that cannot supply them — a Screens surface, an option
+/// sheet — behaves exactly as before.
 func evaluateVisibilityCondition(
     _ condition: VisibilityCondition?,
     responses: [String: Any],
     hookData: [String: Any]?,
     userTraits: [String: Any]? = nil,
-    sessionData: [String: Any]? = nil
+    sessionData: [String: Any]? = nil,
+    stepId: String? = nil,
+    stepInputs: [String: Any]? = nil
 ) -> Bool {
     guard let cond = condition else { return true }
+    let responses = VisibilityScope.merge(responses: responses, stepId: stepId, stepInputs: stepInputs)
 
     switch cond.type {
     case "always":
         return true
     case "when_equals":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         let expected = cond.value?.value
         return valuesEqual(resolved, expected)
     case "when_not_equals":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         let expected = cond.value?.value
         return !valuesEqual(resolved, expected)
     case "when_not_empty":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         return resolved.map { "\($0)" != "" } ?? false
     case "when_empty":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         return resolved.map { "\($0)" == "" } ?? true
     case "when_gt":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         return compareNumeric(resolved, cond.value?.value) == .orderedDescending
     case "when_lt":
-        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData)
+        let resolved = resolveDotPath(cond.variable, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
         return compareNumeric(resolved, cond.value?.value) == .orderedAscending
     default:
         return true // unknown condition types default to visible

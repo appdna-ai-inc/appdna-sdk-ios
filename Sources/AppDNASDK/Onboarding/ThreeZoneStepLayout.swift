@@ -13,6 +13,9 @@ struct ThreeZoneStepLayout: View {
     var responses: [String: Any] = [:]
     var hookData: [String: Any]? = nil
     @Binding var inputValues: [String: Any]
+    /// #1013 — the presented step's id, so a `visibility_condition` naming a field on THIS step
+    /// evaluates against what the control holds right now (`VisibilityScope`). Empty = no merge.
+    var stepId: String = ""
     var currentStepIndex: Int = 0
     var totalSteps: Int = 1
     /// Fired by an interactive block; carries (blockId, action, value) to the step scope.
@@ -46,7 +49,8 @@ struct ThreeZoneStepLayout: View {
 
     var body: some View {
         let visible = blocks.filter {
-            evaluateVisibilityCondition($0.visibility_condition, responses: responses, hookData: hookData)
+            evaluateVisibilityCondition($0.visibility_condition, responses: responses, hookData: hookData,
+                                        stepId: stepId, stepInputs: inputValues)
                 // `empty_state.mode == hidden` hides the block (raw-pass blocks only).
                 && !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolvedIds.contains($0.id))
         }
@@ -157,6 +161,7 @@ struct ThreeZoneStepLayout: View {
             responses: responses,
             hookData: hookData,
             inputValues: $inputValues,
+            stepId: stepId,
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             isZoneManaged: true,

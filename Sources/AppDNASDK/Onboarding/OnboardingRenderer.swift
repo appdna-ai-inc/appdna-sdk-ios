@@ -1921,6 +1921,7 @@ struct OnboardingStepRouter: View {
             responses: accumulatedResponses,
             hookData: hostDataContext,
             inputValues: $inputValues,
+            stepId: step.id,
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
@@ -1944,6 +1945,8 @@ struct OnboardingStepRouter: View {
             responses: accumulatedResponses,
             hookData: hostDataContext,
             inputValues: $inputValues,
+            // #1013 — so a condition naming a field on THIS step reacts while the step is open.
+            stepId: step.id,
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
