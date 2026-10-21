@@ -112,6 +112,60 @@ func fieldBorderWidth(_ block: ContentBlock) -> CGFloat {
     return CGFloat(block.field_style?.border_width ?? 1)
 }
 
+/// The input text's size — `field_style.font_size` first (#1053), then the two `field_config`
+/// spellings the console writes, then 14.
+///
+/// 🔴 THREE SPELLINGS OF ONE IDEA, and `field_style.font_size` was the one nothing read. The
+/// console's "Font Size" slider writes `field_config.font_size` and its "Input Text Size" slider
+/// writes `field_config.input_text_size`; both renderers read that pair and ignored the
+/// `field_style` key they both DECODE. So a document carrying it — a generator's output, an import,
+/// a hand-written flow — rendered at 14 with no sign that an authored value had been dropped. It is
+/// the FIRST rung rather than a fourth control, because a fourth control over the same pixel is how
+/// the three got here.
+func fieldInputFontSize(_ block: ContentBlock) -> CGFloat {
+    CGFloat(
+        block.field_style?.font_size
+            ?? cfgDouble(block.field_config?["input_text_size"])
+            ?? cfgDouble(block.field_config?["font_size"])
+            ?? 14
+    )
+}
+
+/// The input text's weight from `field_style.font_weight` (#1053). `nil` means "leave the system
+/// default", which is not the same as `.regular` for a UIFont.
+func fieldInputFontWeight(_ block: ContentBlock) -> UIFont.Weight? {
+    switch block.field_style?.font_weight?.lowercased() {
+    case "thin": return .thin
+    case "light": return .light
+    case "regular", "normal", "400": return .regular
+    case "medium", "500": return .medium
+    case "semibold", "600": return .semibold
+    case "bold", "700": return .bold
+    case "heavy", "800": return .heavy
+    case "black", "900": return .black
+    default: return nil
+    }
+}
+
+/// The font for an input's text, size and weight together.
+func fieldInputFont(_ block: ContentBlock) -> UIFont {
+    let size = fieldInputFontSize(block)
+    if let weight = fieldInputFontWeight(block) {
+        return UIFont.systemFont(ofSize: size, weight: weight)
+    }
+    return UIFont.systemFont(ofSize: size)
+}
+
+/// A field's border colour, swapping to `field_style.error_border_color` while it is in error
+/// (#1053).
+///
+/// `error_text_color` was already drawn beside it on both platforms; the border was not, so an
+/// authored error colour showed on the message and not on the field it belonged to.
+func fieldBorderColor(_ block: ContentBlock, hasError: Bool = false) -> Color {
+    if hasError, let hex = block.field_style?.error_border_color { return Color(hex: hex) }
+    return Color(hex: block.field_style?.border_color ?? "#D1D5DB")
+}
+
 /// Generic text-based input (text, number, email, phone, url).
 struct FormInputTextBlock: View {
     let block: ContentBlock
@@ -134,7 +188,7 @@ struct FormInputTextBlock: View {
         // Honor field_config.input_text_size (preferred) /
         // font_size (default 14), mirroring preview precedence. Was no font set +
         // a fixed inner height of 24 that clipped larger fonts.
-        let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
+        let inputFontSize = fieldInputFontSize(block)
         // SPEC — focused_background_color swaps the field fill while editing;
         // falls back to background_color when unset. Parity with Android.
         let baseBg = Color(hex: block.field_style?.background_color ?? "transparent")
@@ -149,7 +203,7 @@ struct FormInputTextBlock: View {
                 keyboardType: keyboardType,
                 keyboardAppearance: .from(keyboardAppearanceRaw),
                 returnKeyType: .done,
-                font: UIFont.systemFont(ofSize: inputFontSize),
+                font: fieldInputFont(block),
                 textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
                 placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) },
                 isFocused: $isFocused
@@ -199,6 +253,10 @@ struct FormInputTextAreaBlock: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
                     .foregroundColor(textColor)
+                    // #1053 — the authored field font applies to a textarea as well, which is
+                    // where a larger size is most visible. `Font(UIFont)` keeps one source for the
+                    // size/weight ladder rather than a second SwiftUI-side copy of it.
+                    .font(Font(fieldInputFont(block)))
                     .frame(minHeight: textAreaMinHeight)
                     .padding(4)
                     .background(Color(hex: block.field_style?.background_color ?? "transparent"))
@@ -239,7 +297,7 @@ struct FormInputPasswordBlock: View {
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String
         // Mirror FormInputTextBlock font sizing onto the password sibling.
-        let inputFontSize = CGFloat(cfgDouble(block.field_config?["input_text_size"]) ?? cfgDouble(block.field_config?["font_size"]) ?? 14)
+        let inputFontSize = fieldInputFontSize(block)
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -254,7 +312,7 @@ struct FormInputPasswordBlock: View {
                     autocorrection: false,
                     autocapitalization: .none,
                     returnKeyType: .done,
-                    font: UIFont.systemFont(ofSize: inputFontSize),
+                    font: fieldInputFont(block),
                     textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
                     placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) }
                 )
@@ -432,10 +490,22 @@ struct FormInputDateBlock: View {
                     // when the author clicks a color picker without touching
                     // the width slider.
                     let authoredBorderColor = block.field_style?.border_color
-                    let borderColorHex = authoredBorderColor ?? "#D1D5DB"
+                    /*
+                     #1053 — `field_style.error_border_color` while the field IS in error. The error
+                     MESSAGE already honoured `error_text_color` here on both platforms; the border
+                     did not, so an authored error colour showed on the text and not on the field it
+                     belonged to. `dateError` is the one real per-field error state either renderer
+                     has — the required-field gate raises a toast rather than marking a field.
+                     */
+                    let errorBorderColor = dateError != nil ? block.field_style?.error_border_color : nil
+                    let borderColorHex = errorBorderColor ?? authoredBorderColor ?? "#D1D5DB"
+                    /*
+                     An error border must be VISIBLE even when the author set no ordinary border, or
+                     the colour they chose for the error state would draw at width 0.
+                     */
                     let borderWidth = block.field_style?.border_width
                         .map { CGFloat($0) }
-                        ?? (authoredBorderColor != nil ? 1 : 0)
+                        ?? ((authoredBorderColor ?? errorBorderColor) != nil ? 1 : 0)
                     let bg = Color(hex: fieldBgHex ?? "transparent")
                     let fgColor: Color = {
                         if let hex = block.field_style?.text_color { return Color(hex: hex) }
