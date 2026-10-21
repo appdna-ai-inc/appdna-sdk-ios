@@ -53,6 +53,7 @@ extension SharedFixtureTests {
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
+        case "resolve_rive_input_kind": runRiveInputKind(f, h)
         default:
             return false
         }
@@ -531,6 +532,29 @@ extension SharedFixtureTests {
         h.state["results"] = cases.map { c -> Any in
             let v = c.objectValue?["value"]?.objectValue
             return SegmentedPresentation.drawsSegmentedControl(displayStyle: v?["display_style"]?.stringValue)
+        }
+    }
+
+    // MARK: resolve_rive_input_kind
+
+    /**
+     #1024 — which kind of Rive input an authored value means, through the REAL `RiveInputKind`
+     the renderer calls.
+
+     🔴 The cases come out of the fixture's JSON through `AnyCodable`, which is the SAME path a
+     published document takes — so a bool that this platform's JSON decoder hands back as an
+     `NSNumber` is tested as it really arrives, not as a Swift literal the driver chose.
+     */
+    private func runRiveInputKind(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_rive_input_kind needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let raw = c.objectValue?["value"]
+            // An absent key and an explicit null are the same instruction: none.
+            guard let raw, !(raw.foundation is NSNull) else { return NSNull() }
+            return RiveInputKind.of(raw.foundation).map { $0.rawValue } ?? NSNull()
         }
     }
 

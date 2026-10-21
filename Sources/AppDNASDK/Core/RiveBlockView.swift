@@ -66,9 +66,69 @@ private struct RiveBlockHost: View {
         Group {
             if let viewModel = model.viewModel {
                 viewModel.view()
-                    .onAppear {
+                    /*
+                     🔴 #1024 — AFTER THE FILE HAS LOADED, NOT ON APPEAR.
+                     *
+                     `RiveViewModel(webURL:)` fetches over the network, so at `.onAppear` there is
+                     no artboard and no state machine to set an input on: every `setInput` went
+                     nowhere and the animation drew its default state. Measured on a device —
+                     three artboards authored `BlendAmount` 0 / 100 / 0 came back PIXEL-IDENTICAL
+                     on this platform (mean |diff| 0.0 on every channel) while Android, which
+                     applies inputs in its load callback, drew the 0 and the 100 differently with
+                     an exactly-0.0 control between the two 0s.
+                     *
+                     The wait is bounded: a file that never loads draws nothing anyway, and
+                     blocking forever on it would leak a task per block.
+                     *
+                     `task(id:)` re-runs when the authored inputs change, which is the parity for
+                     Android's `update` block re-applying them on recomposition — a question answer
+                     driving an input is the case both exist for.
+                     */
+                    .task(id: inputsSignature) {
                         guard let inputs = block.inputs, !inputs.isEmpty else { return }
-                        applyInputs(inputs, to: viewModel)
+                        /*
+                         🔴 A FEW SPACED ATTEMPTS, NOT A TIGHT POLL. The first version of this
+                         looped every 50ms until the artboard appeared, and TWO OF THREE artboards
+                         on the walk's screen stopped drawing at all — three views each waking the
+                         main actor twenty times a second is exactly the window in which Rive is
+                         parsing and standing up its Metal view. Measured: one artboard drew where
+                         three had before.
+                         *
+                         Applying an input twice is harmless (it is a set, not an increment), so
+                         the cheap and safe shape is a handful of attempts over a few seconds.
+                         */
+                        for delayMs in RiveInputApply.attemptDelaysMs {
+                            if delayMs > 0 {
+                                try? await Task.sleep(nanoseconds: UInt64(delayMs) * 1_000_000)
+                            }
+                            if Task.isCancelled { return }
+                            /*
+                             🔴 THE STATE MACHINE, NOT THE ARTBOARD. An artboard exists before the
+                             machine is instantiated, and an input set in that window lands
+                             somewhere between the two: measured, the three artboards on the walk's
+                             screen each caught a different moment and came back at three different
+                             poses — two that should have been identical 29px apart, and the third
+                             still at its default. Waiting for the thing the input is actually set
+                             ON makes all three deterministic.
+                             *
+                             A block with no `state_machine` named has no machine to wait for, and
+                             its inputs cannot apply at all (Rive's setters are per machine) — so
+                             the artboard is the right thing to wait for there, and the apply below
+                             is what logs the failure.
+                             */
+                            let ready = block.state_machine?.isEmpty == false
+                                ? viewModel.riveModel?.stateMachine != nil
+                                : viewModel.riveModel?.artboard != nil
+                            guard ready else { continue }
+                            applyInputs(inputs, to: viewModel)
+                            return
+                        }
+                        Log.warning(
+                            "RiveBlockView: \(inputs.count) authored input(s) were SKIPPED — "
+                            + "\(block.rive_url) had no artboard after "
+                            + "\(RiveInputApply.attemptDelaysMs.reduce(0, +))ms, so there was "
+                            + "nothing to set them on.",
+                        )
                     }
             } else {
                 // Not loaded (bad URL, wrong artboard, failed fetch) — draw nothing, as a missing
@@ -87,13 +147,39 @@ private struct RiveBlockHost: View {
      expects, and the only interpretation that cannot silently do nothing.
     */
     private func applyInputs(_ inputs: [String: AnyCodable], to viewModel: RiveViewModel) {
+        /*
+         🔴 #1024 — THE KIND COMES FROM `RiveInputKind`, which Android calls too. The mapping was
+         written twice in two languages and the two disagreed: a STRING fired a trigger here and
+         was ignored entirely on Android, so one authored document produced two behaviours and the
+         silent one was the other platform's.
+         */
         for (name, value) in inputs {
-            switch value.value {
-            case let flag as Bool: viewModel.setInput(name, value: flag)
-            case let number as Double: viewModel.setInput(name, value: number)
-            case let number as Int: viewModel.setInput(name, value: Double(number))
-            default: viewModel.triggerInput(name)
+            switch RiveInputKind.of(value.value) {
+            case .boolean: viewModel.setInput(name, value: (value.value as? Bool) ?? false)
+            case .number: viewModel.setInput(name, value: riveNumber(value.value) ?? 0)
+            case .trigger: viewModel.triggerInput(name)
+            case nil: continue  // a null is not an instruction
             }
+        }
+    }
+
+    /// A value that changes when the AUTHORED inputs do, so `task(id:)` re-applies them.
+    /// Sorted, because a dictionary's order is not stable and an unstable id would re-run forever.
+    private var inputsSignature: String {
+        (block.inputs ?? [:])
+            .map { "\($0.key)=\(String(describing: $0.value.value))" }
+            .sorted()
+            .joined(separator: "\u{1F}")
+    }
+
+    /// Every JSON number shape this can arrive as, as a `Double`.
+    private func riveNumber(_ value: Any?) -> Double? {
+        switch value {
+        case let d as Double: return d
+        case let i as Int: return Double(i)
+        case let f as Float: return Double(f)
+        case let n as NSNumber: return n.doubleValue
+        default: return nil
         }
     }
 }
