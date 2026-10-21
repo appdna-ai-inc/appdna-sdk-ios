@@ -20,12 +20,20 @@ targets:
   AppDNAHost:
     type: application
     platform: iOS
-    sources: [AppDNAHost]
+    sources:
+      - AppDNAHost
     info:
       path: AppDNAHost/Info.plist
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: AppDNA Host
+        # 🔴 WRITTEN EXPLICITLY, not left to Xcode's implicit injection. A target with its own
+        # INFOPLIST_FILE and `GENERATE_INFOPLIST_FILE: NO` gets `CFBundleIdentifier` only if the
+        # key is in the file; when it is absent the build still SUCCEEDS and the install fails at
+        # `Simulator device failed to install the application. Missing bundle ID.` — which reads
+        # like a broken simulator rather than a missing key, and cost a simulator erase and six
+        # runs to pin down. Measured 2026-10-21.
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         # Honoured only in a debuggable build (APIBaseURL.infoPlistKey). Patched at RUN time by
         # `scripts/sdk-host-ios.ts`, never committed with a real value — this directory is mirrored
         # to the public SDK repo.
@@ -61,6 +69,42 @@ targets:
     dependencies:
       - package: AppDNASDK
         product: AppDNASDK
+  # #934 / #933 / #1018 — AN APP-HOSTED UNIT-TEST TARGET.
+  #
+  # 🔴 The package's own test target is HOSTLESS, and that is the whole limitation these three
+  # issues kept hitting: `SKTestSession.buyProduct(identifier:)` and `Product.purchase()` both fail
+  # there with an unknown StoreKit error, so a trial could never be CONSUMED to manufacture the
+  # ineligible state, and a purchase could never be driven. `StoreKitSessionTests.probePurchasesWork`
+  # already probes for it and skips.
+  #
+  # A unit-test bundle with a TEST_HOST runs INSIDE the app process, which is the condition those
+  # APIs want. It is a separate target from the UI tests on purpose: a UI test drives the app from
+  # OUTSIDE it, so it cannot hold an `SKTestSession` at all.
+  AppDNAHostTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppDNAHostTests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.tests
+        # Run inside the host app's process — the point of the target.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AppDNAHost.app/AppDNAHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+    dependencies:
+      # 🔴 THE HOST ONLY. Adding `package: AppDNASDK` here makes the test bundle re-link the whole
+      # SDK and its transitive Firebase/gRPC, which fails at `ld: symbol(s) not found for
+      # architecture arm64` — measured. A hosted test bundle resolves the app's symbols through
+      # BUNDLE_LOADER at load time; it must not link them a second time.
+      - target: AppDNAHost
+      # `link: false` is the hosted-test pattern: the module is on the search path so
+      # `@testable import AppDNASDK` resolves, and the SYMBOLS come from the host at load time.
+      # Linking it here instead re-links Firebase/gRPC into the bundle and fails at
+      # `ld: symbol(s) not found for architecture arm64` — measured.
+      - package: AppDNASDK
+        product: AppDNASDK
+        link: false
+
   AppDNAHostUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -81,6 +125,7 @@ schemes:
     build:
       targets:
         AppDNAHost: all
+        AppDNAHostTests: [test]
         AppDNAHostUITests: [test]
     run:
       config: Debug
@@ -97,4 +142,4 @@ schemes:
       testPlans:
         - path: HostApp.xctestplan
           defaultPlan: true
-      targets: [AppDNAHostUITests]
+      targets: [AppDNAHostTests, AppDNAHostUITests]
