@@ -27,6 +27,24 @@ final class DeferredDeepLinkManager {
 
     private static let firstLaunchKey = "ai.appdna.sdk.first_launch_completed"
     private static let expiryHours: TimeInterval = 72
+
+    /// Failed attempts so far, so a transport error does not spend the one chance (#1063).
+    private static let failedAttemptsKey = "ai.appdna.sdk.ddl_failed_attempts"
+
+    /// 🔴 A TRANSPORT FAILURE IS NOT AN ANSWER. `markLaunched()` used to run on every path out of
+    /// the fetch, error included — so a user who installed from a link and opened the app with no
+    /// network (a lift, a plane, a carrier handover, or simply before Firestore's first connection
+    /// completed) lost the destination and the referrer PERMANENTLY, and silently: the host got
+    /// `nil`, which is indistinguishable from "this install did not come from a link".
+    ///
+    /// The chance survives a failure now, bounded so a permanently offline device does not read
+    /// Firestore on every launch for the life of the install. A SUCCESSFUL read — document present,
+    /// or genuinely absent — is still an answer and still spends it.
+    ///
+    /// Four, not one: the link expires after `expiryHours` anyway, so the attempts only need to
+    /// cover the launches a user plausibly makes inside three days while something is wrong with
+    /// their connection.
+    static let maxFailedAttempts = 4
     init(orgId: String, appId: String, eventTracker: EventTracker?) {
         self.orgId = orgId
         self.appId = appId
@@ -54,13 +72,26 @@ final class DeferredDeepLinkManager {
         let path = "orgs/\(orgId)/apps/\(appId)/config/deferred_deep_links/visitors/\(visitorId)"
         Log.debug("DeferredDeepLink: checking \(path)")
 
-        guard let db = AppDNA.firestoreDB else { completion(nil); return }
+        // 🔴 NOT an answer either: without a Firestore handle nothing was asked (#1063).
+        guard let db = AppDNA.firestoreDB else {
+            recordFailedAttempt(reason: "Firestore is not available")
+            completion(nil)
+            return
+        }
         db.document(path).getDocument { [weak self] snapshot, error in
             guard let self else {
                 completion(nil)
                 return
             }
 
+            // The fetch never reached the server: keep the chance for the next launch.
+            if let error {
+                self.recordFailedAttempt(reason: error.localizedDescription)
+                completion(nil)
+                return
+            }
+
+            // From here the server answered, so the chance is spent whatever it said.
             self.markLaunched()
 
             guard let data = snapshot?.data() else {
@@ -151,5 +182,22 @@ final class DeferredDeepLinkManager {
 
     private func markLaunched() {
         UserDefaults.standard.set(true, forKey: Self.firstLaunchKey)
+        UserDefaults.standard.removeObject(forKey: Self.failedAttemptsKey)
+    }
+
+    /// Count a check that never got an answer, and give up once it has happened `maxFailedAttempts`
+    /// times — at which point the chance IS spent, so the SDK stops asking (#1063).
+    private func recordFailedAttempt(reason: String) {
+        let attempts = UserDefaults.standard.integer(forKey: Self.failedAttemptsKey) + 1
+        if attempts >= Self.maxFailedAttempts {
+            Log.warning(
+                "DeferredDeepLink: giving up after \(attempts) failed attempts (\(reason)) — "
+                    + "no deferred link will be resolved for this install"
+            )
+            markLaunched()
+            return
+        }
+        UserDefaults.standard.set(attempts, forKey: Self.failedAttemptsKey)
+        Log.debug("DeferredDeepLink: attempt \(attempts) of \(Self.maxFailedAttempts) failed (\(reason)) — will retry next launch")
     }
 }
