@@ -54,6 +54,7 @@ extension SharedFixtureTests {
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
+        case "track_events_with_observer": runEventObserver(f, h)
         default:
             return false
         }
@@ -533,6 +534,63 @@ extension SharedFixtureTests {
             let v = c.objectValue?["value"]?.objectValue
             return SegmentedPresentation.drawsSegmentedControl(displayStyle: v?["display_style"]?.stringValue)
         }
+    }
+
+    // MARK: track_events_with_observer
+
+    /**
+     #1047 — `onEventTracked` fires for every event, through the REAL `EventTracker.track` and the
+     REAL `AppDNA.lifecycleDelegate`.
+
+     🔴 Driven through the production chokepoint, never re-stated: the claim is that a host sees
+     what the SDK queues, and a driver that called the delegate itself would prove only that the
+     driver can call a delegate.
+     */
+    private func runEventObserver(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] track_events_with_observer needs action.cases")
+            return
+        }
+        final class Observer: AppDNALifecycleDelegate {
+            var names: [String] = []
+            var props: [[String: Any]] = []
+            var throwOn: Set<String> = []
+            func onEventTracked(name: String, properties: [String: Any]) {
+                names.append(name)
+                props.append(properties)
+                /*
+                 🔴 A Swift protocol method that is not `throws` CANNOT throw, which is this
+                 platform's half of the observer guarantee. The fixture's `observer_throws` is
+                 modelled here as the nearest thing a host can actually do wrong — a handler that
+                 does work and returns — so the case still asserts that the NEXT event arrives.
+                 */
+                _ = throwOn.contains(name)
+            }
+        }
+        let observer = Observer()
+        observer.throwOn = Set(cases.compactMap { c -> String? in
+            guard c.objectValue?["observer_throws"]?.boolValue == true else { return nil }
+            return c.objectValue?["event"]?.stringValue
+        })
+
+        let previous = AppDNA.lifecycleDelegate
+        AppDNA.lifecycleDelegate = observer
+        defer { AppDNA.lifecycleDelegate = previous }
+
+        let tracker = EventTracker(identityManager: IdentityManager(keychainStore: KeychainStore(service: "fx.\(UUID())")))
+        var queued = 0
+        tracker.eventSink = { _ in queued += 1 }
+        for c in cases {
+            guard let event = c.objectValue?["event"]?.stringValue else { continue }
+            let props = (c.objectValue?["properties"]?.foundation as? [String: Any]) ?? [:]
+            tracker.track(event: event, properties: props)
+        }
+
+        h.state["observed"] = observer.names
+        h.state["observed_properties"] = observer.props.map { dict in
+            dict.mapValues { "\($0)" }
+        }
+        h.state["queued"] = queued
     }
 
     // MARK: resolve_rive_input_kind

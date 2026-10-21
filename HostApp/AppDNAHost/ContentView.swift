@@ -22,6 +22,23 @@ struct ContentView: View {
     */
     @State private var storeProbe = "—"
 
+    /*
+     #1047 — EVERY EVENT THE SDK TRACKS, RENDERED WHERE A UI TEST CAN READ IT.
+
+     🔴 A UI test can only assert what is DRAWN. The SDK's stdout is invisible under
+     `xcodebuild test` (the #1033 lesson, which is why `simctl launch --console-pty` exists here),
+     so an event that renders nothing — a survey follow-up branch, a dismissal, a permission
+     outcome — could be read out of logcat on Android and only INFERRED on this platform.
+
+     `AppDNA.lifecycleDelegate.onEventTracked` makes every one of them observable, and this label
+     is the bridge from the delegate to `XCUIApplication`. It keeps the last eight names, newest
+     first, so a test can assert an event fired several steps ago without racing the next one.
+
+     Hidden: the label carries no visible UI. A UI test reads a zero-opacity element perfectly well,
+     and the host must look the same on a screenshot as it did before.
+     */
+    @StateObject private var events = TrackedEventLog.shared
+
     private let surfaces: [(id: String, title: String)] = [
         ("onboarding", "Present Onboarding"),
         ("paywall", "Show Paywall"),
@@ -48,10 +65,15 @@ struct ContentView: View {
             Text(storeProbe)
                 .font(.caption2.monospaced())
                 .accessibilityIdentifier("host.storeProducts")
+            Text(events.joined)
+                .accessibilityIdentifier("host.lastEvents")
+                .opacity(0)
+                .frame(height: 0)
             Spacer()
         }
         .padding(20)
         .onAppear {
+            AppDNA.lifecycleDelegate = TrackedEventLog.shared
             Launch.autoPresentIfAsked()
             probeStoreIfAsked()
         }

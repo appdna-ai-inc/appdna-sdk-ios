@@ -97,6 +97,21 @@ public final class AppDNA: @unchecked Sendable {
     /// banner and to trigger a one-shot event-queue retry on unlock.
     public static weak var lifecycleDelegate: AppDNALifecycleDelegate?
 
+    /**
+     #1047 — hand every tracked event to the host's observer, if it set one.
+
+     🔴 `onEventTracked` is an OBSERVER, and on this platform the protocol enforces it: the method
+     is not `throws`, so a host cannot throw out of it, and it is called AFTER the event is already
+     in the queue, so there is nothing left for a slow or wrong handler to affect. (Kotlin has no
+     checked exceptions, so Android wraps the call in a `runCatching` to get the same guarantee.)
+
+     Internal because the SDK fires it; the protocol method is public and the delegate is public.
+     */
+    static func notifyEventTracked(name: String, properties: [String: Any]) {
+        guard let delegate = lifecycleDelegate else { return }
+        delegate.onEventTracked(name: name, properties: properties)
+    }
+
     /// Current backend-driven SDK lock state. `nil` when active;
     /// a non-nil value means the SDK is in locked mode and UI render paths
     /// (paywall_trigger, messages, surveys) should pause. Set by the

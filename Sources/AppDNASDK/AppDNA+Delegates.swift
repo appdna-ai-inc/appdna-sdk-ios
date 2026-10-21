@@ -119,6 +119,23 @@ public protocol AppDNALifecycleDelegate: AnyObject {
     /// `sdk_decode_dropped` with the same three values, so the fleet answer does not depend on a
     /// host implementing this.
     func onConfigurationIssue(surface: String, id: String?, detail: String)
+
+    /// #1047 — EVERY event the SDK tracks, with the properties sent with it, immediately after the
+    /// event is queued.
+    ///
+    /// Integrators asked for this to forward AppDNA analytics into their own pipeline without
+    /// re-instrumenting. It is also the only way a host can observe an event that RENDERS NOTHING,
+    /// which is why a survey follow-up branch could be read out of logcat on Android and only
+    /// inferred here: a UI test can see what is drawn and the SDK's stdout is invisible to it.
+    ///
+    /// 🔴 Fires on whatever thread tracked the event, which is deliberately not the main thread —
+    /// `track` is called from renderers, timers and background queues, and hopping would reorder
+    /// events against the queue they were just written to. Do not block it, and dispatch to the
+    /// main thread yourself if your handler touches UI.
+    ///
+    /// 🔴 It is an OBSERVER. Returning does not affect whether the event is sent, and a throw is
+    /// swallowed, so a host bug cannot lose analytics.
+    func onEventTracked(name: String, properties: [String: Any])
 }
 
 /// Default no-op extensions — hosts that don't care stay zero-config.
@@ -126,6 +143,7 @@ public extension AppDNALifecycleDelegate {
     func onSdkRuntimeLocked(reason: String, lockedAt: String) {}
     func onSdkRuntimeUnlocked() {}
     func onConfigurationIssue(surface: String, id: String?, detail: String) {}
+    func onEventTracked(name: String, properties: [String: Any]) {}
 }
 
 /// Delegate for server-driven screen events.

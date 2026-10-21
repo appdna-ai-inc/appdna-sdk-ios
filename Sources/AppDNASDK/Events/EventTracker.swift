@@ -109,6 +109,21 @@ final class EventTracker {
         eventQueue?.enqueue(sdkEvent)
         eventSink?(sdkEvent)
         Log.debug("Tracked event: \(event)")
+
+        /*
+         #1047 — the host's analytics observer, fired from the ONE place every event passes
+         through, immediately after the event is durable in the queue.
+         *
+         🔴 After the enqueue, not before. A host that throws, blocks or re-enters must not be able
+         to stop an event reaching the queue, which is the whole reason the call is last and its
+         result is ignored.
+         *
+         🔴 And NOT for the `_sdk_events_dropped` meta-event: that one is built and enqueued
+         directly in `emitDroppedMeta` rather than through here, deliberately, to avoid
+         re-entrancy — so a host observing events never sees the SDK's own loss counter and cannot
+         mistake it for one of its own.
+         */
+        AppDNA.notifyEventTracked(name: event, properties: properties ?? [:])
     }
 
     /// Build + enqueue the _sdk_events_dropped meta-event directly (NOT via track(),
