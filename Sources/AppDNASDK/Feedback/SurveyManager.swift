@@ -507,37 +507,11 @@ final class SurveyManager {
             guard let field = condition.field, let propValue = properties[field] else { return false }
             guard let op = condition.`operator` else { return false }
             guard let condValue = condition.value?.value else { return false }
-            return evaluateOperator(op, propValue: propValue, condValue: condValue)
+            return op.matches(propValue, condValue)
         }
     }
 
-    private func evaluateOperator(_ op: TriggerCondition.ConditionOperator, propValue: Any, condValue: Any) -> Bool {
-        switch op {
-        case .eq:
-            return "\(propValue)" == "\(condValue)"
-        case .gte:
-            guard let pNum = toDouble(propValue), let cNum = toDouble(condValue) else { return false }
-            return pNum >= cNum
-        case .lte:
-            guard let pNum = toDouble(propValue), let cNum = toDouble(condValue) else { return false }
-            return pNum <= cNum
-        case .gt:
-            guard let pNum = toDouble(propValue), let cNum = toDouble(condValue) else { return false }
-            return pNum > cNum
-        case .lt:
-            guard let pNum = toDouble(propValue), let cNum = toDouble(condValue) else { return false }
-            return pNum < cNum
-        case .contains:
-            return "\(propValue)".contains("\(condValue)")
-        }
-    }
 
-    private func toDouble(_ value: Any) -> Double? {
-        if let n = value as? Double { return n }
-        if let n = value as? Int { return Double(n) }
-        if let s = value as? String { return Double(s) }
-        return nil
-    }
 
     // MARK: - Min sessions
 

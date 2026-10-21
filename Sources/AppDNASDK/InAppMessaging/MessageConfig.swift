@@ -248,16 +248,79 @@ public struct TriggerCondition: Codable {
 
     public enum ConditionOperator: String, Codable {
         case eq
+        case neq
         case gte
         case lte
         case gt
         case lt
         case contains
+        case `in`
+        case not_in
+
+        /// An operator this build does not know. Evaluates FALSE — see `matches`.
+        case unknown
 
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
             let rawValue = try container.decode(String.self)
-            self = ConditionOperator(rawValue: rawValue) ?? .eq
+            /*
+             🔴 `.unknown`, NOT `.eq`. This used to be `?? .eq`, which did not merely lose the
+             operator — it silently substituted a DIFFERENT one. A condition authored `neq`
+             therefore selected precisely the audience the author had excluded, on iOS only;
+             Android's `else -> false` never matched it. Measured on #1064, where the console's
+             survey schema allowed three operators no SDK implemented.
+             *
+             An unrecognised operator is a configuration error, and the safe reading of one is "this
+             condition does not match" — a survey or message that never appears is noticed and
+             diagnosed, while one shown to the wrong audience is silent.
+             */
+            self = ConditionOperator(rawValue: rawValue) ?? .unknown
+        }
+
+        /// Does `propValue` satisfy this operator against `condValue`?
+        ///
+        /// 🔴 ONE implementation, called by both `SurveyManager` and `MessageManager`. They each
+        /// carried a private copy of this switch, identical by hand — the shape that let a shared
+        /// rule diverge between Swift and Kotlin before. A new operator added here reaches both
+        /// surfaces or neither.
+        public func matches(_ propValue: Any, _ condValue: Any) -> Bool {
+            func numbers() -> (Double, Double)? {
+                guard let p = Self.toDouble(propValue), let c = Self.toDouble(condValue) else { return nil }
+                return (p, c)
+            }
+            switch self {
+            case .eq: return "\(propValue)" == "\(condValue)"
+            case .neq: return "\(propValue)" != "\(condValue)"
+            case .gte: return numbers().map { $0 >= $1 } ?? false
+            case .lte: return numbers().map { $0 <= $1 } ?? false
+            case .gt: return numbers().map { $0 > $1 } ?? false
+            case .lt: return numbers().map { $0 < $1 } ?? false
+            case .contains: return "\(propValue)".contains("\(condValue)")
+            /*
+             `in` / `not_in` take a LIST. A non-list condition value is compared as a single
+             member rather than refused, so `{ operator: "in", value: "pro" }` behaves as `eq` —
+             a one-element list is what the author meant and the alternative is a condition that
+             silently never matches.
+             */
+            case .in: return Self.members(condValue).contains("\(propValue)")
+            case .not_in: return !Self.members(condValue).contains("\(propValue)")
+            case .unknown: return false
+            }
+        }
+
+        /// The condition value as a set of string members, for `in` / `not_in`.
+        private static func members(_ condValue: Any) -> [String] {
+            if let array = condValue as? [Any] { return array.map { "\($0)" } }
+            if let codables = condValue as? [AnyCodable] { return codables.map { "\($0.value)" } }
+            return ["\(condValue)"]
+        }
+
+        private static func toDouble(_ value: Any) -> Double? {
+            if let n = value as? Double { return n }
+            if let n = value as? Int { return Double(n) }
+            if let n = value as? Float { return Double(n) }
+            if let s = value as? String { return Double(s) }
+            return nil
         }
     }
 }

@@ -160,8 +160,16 @@ final class InAppMessagingTests: XCTestCase {
         XCTAssertEqual(config.priority, 10)
     }
 
-    // MARK: - Helper (mirrors MessageManager's condition evaluation)
+    // MARK: - Helper
 
+    /// Evaluate a condition the way the SDK does.
+    ///
+    /// 🔴 CALLS THE PRODUCTION RULE. This used to be a hand-written copy of `MessageManager`'s
+    /// switch, headed "mirrors MessageManager's condition evaluation" — a test that re-implements
+    /// the thing under test can only ever agree with it, and this one did: it reproduced the old
+    /// six-operator set, so neither the `neq` inversion nor the missing `in` / `not_in` could ever
+    /// have failed here (#1064). The evaluation now lives on the operator itself and both managers
+    /// call it, so this calls it too.
     private func evaluateCondition(
         field: String,
         op: TriggerCondition.ConditionOperator,
@@ -169,24 +177,6 @@ final class InAppMessagingTests: XCTestCase {
         properties: [String: Any]
     ) -> Bool {
         guard let propValue = properties[field] else { return false }
-
-        switch op {
-        case .eq:
-            return "\(propValue)" == "\(value)"
-        case .gte:
-            if let pv = propValue as? Int, let cv = value as? Int { return pv >= cv }
-            return false
-        case .lte:
-            if let pv = propValue as? Int, let cv = value as? Int { return pv <= cv }
-            return false
-        case .gt:
-            if let pv = propValue as? Int, let cv = value as? Int { return pv > cv }
-            return false
-        case .lt:
-            if let pv = propValue as? Int, let cv = value as? Int { return pv < cv }
-            return false
-        case .contains:
-            return "\(propValue)".contains("\(value)")
-        }
+        return op.matches(propValue, value)
     }
 }
