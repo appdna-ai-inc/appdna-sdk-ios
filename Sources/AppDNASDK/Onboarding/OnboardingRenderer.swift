@@ -427,7 +427,7 @@ struct OnboardingFlowHost: View {
             }
             .frame(maxWidth: .infinity)
             if let skip = progressSkipLabel {
-                Button { advanceOrComplete() } label: {
+                Button { skipFromProgress() } label: {
                     Text(skip)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(fillColor)
@@ -1198,6 +1198,39 @@ struct OnboardingFlowHost: View {
             config: flow.settings.haptic,
         )
         advanceOrComplete()
+    }
+
+    /**
+     What the progress bar's "Skip" link does — #1056.
+
+     🔴 `settings.skip_to_step` WAS DECODED BY BOTH PLATFORMS AND READ BY NEITHER. It sits one field
+     away from `progress_skip_label` in `OnboardingSettings`, and this link was the only thing it
+     could have meant: Skip advanced ONE step, which is indistinguishable from pressing the CTA, so
+     a flow that offered "Skip" walked the user through the rest of it anyway.
+
+     With a target set, Skip jumps there through `OnboardingAdvance.skipTo` — the same path a
+     `skip_to` button action takes, so the jump emits `step_skipped` with its `from`/`to` and the
+     funnel can tell a step that was jumped over from one the user never reached. An unknown target
+     falls through to an ordinary advance inside `skipTo`, so a stale step id degrades to today's
+     behaviour rather than trapping the user.
+     */
+    private func skipFromProgress() {
+        guard let target = ProgressSkipTarget.resolve(
+            flow.settings.skip_to_step,
+            stepIds: flow.steps.map { $0.id }
+        ) else {
+            advanceOrComplete()
+            return
+        }
+        HapticEngine.triggerIfEnabled(flow.settings.haptic?.triggers?.on_step_advance, config: flow.settings.haptic)
+        applyOutcome(OnboardingAdvance.skipTo(
+            flow: flow,
+            currentIndex: currentIndex,
+            targetStepId: target,
+            responses: responses,
+            configOverrides: configOverrides,
+            previousStepId: previousStepId
+        ))
     }
 
     private func advanceOrComplete() {

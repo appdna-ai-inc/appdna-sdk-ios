@@ -58,7 +58,8 @@ struct PaywallRenderer: View {
     /// The currently selected plan (matches `onAppear`'s resolution: section plans, then top-level).
     private var selectedPlan: PaywallPlan? {
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-        let plans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+        // #1056 — the authored rank, which both platforms decoded and neither read.
+        let plans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
         return plans.first(where: { $0.id == selectedPlanId })
     }
 
@@ -476,7 +477,8 @@ struct PaywallRenderer: View {
         .onAppear {
             // Select default plan — try section.data.plans, then top-level config.plans
             let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-            let plans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+            // #1056 — the authored rank, which both platforms decoded and neither read.
+            let plans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
             if !plans.isEmpty {
                 selectedPlanId = plans.first(where: { $0.isDefault == true })?.id ?? plans.first?.id
             }

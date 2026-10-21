@@ -52,6 +52,9 @@ extension SharedFixtureTests {
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
+        case "resolve_field_input_style": runFieldInputStyle(f, h)
+        case "resolve_plan_order": runPlanOrder(f, h)
+        case "resolve_progress_skip_target": runProgressSkipTarget(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
@@ -59,6 +62,140 @@ extension SharedFixtureTests {
             return false
         }
         return true
+    }
+
+
+    // MARK: resolve_field_input_style
+
+    /**
+     #1053 — the three `field_style` keys both natives DECODED, neither drew, and no console
+     control wrote, through the resolvers the renderers actually call.
+
+     🔴 The font size is a ladder of THREE spellings of one pixel. The console's two sliders write
+     `field_config.input_text_size` and `field_config.font_size`, both renderers read that pair, and
+     `field_style.font_size` — which both DTOs declare — was the one nothing read. A document
+     carrying it rendered at 14 with no sign an authored value had been dropped.
+
+     Each case answers `[size, weight-or-null, border when clean, border when in error]`, so the
+     error swap is measured against its own non-error control in the same row — "the error colour
+     appeared" proves nothing unless the clean border is known not to be it.
+     */
+    private func runFieldInputStyle(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_field_input_style needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let dict = c.objectValue?["value"]?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a block did not decode")
+                return NSNull()
+            }
+            return [
+                Double(fieldInputFontSize(block)),
+                SharedFixtureTests.orNull(Self.weightName(fieldInputFontWeight(block))),
+                Self.hex(fieldBorderColor(block, hasError: false), block),
+                Self.hex(fieldBorderColor(block, hasError: true), block),
+            ] as [Any]
+        }
+    }
+
+    /**
+     The authored name for a resolved weight, so the fixture reads in the author's vocabulary rather
+     than in `UIFont.Weight`'s raw values — and so Android can assert the SAME strings.
+     */
+    private static func weightName(_ weight: UIFont.Weight?) -> String? {
+        guard let weight else { return nil }
+        switch weight {
+        case .thin: return "thin"
+        case .light: return "light"
+        case .regular: return "regular"
+        case .medium: return "medium"
+        case .semibold: return "semibold"
+        case .bold: return "bold"
+        case .heavy: return "heavy"
+        case .black: return "black"
+        default: return nil
+        }
+    }
+
+    /**
+     Which authored string the resolver's colour actually IS.
+
+     🔴 MATCHED against the resolver's return value, not re-derived from the block. The first
+     version of this helper reproduced `fieldBorderColor`'s own ladder from the authored keys — and
+     a test that re-implements the thing under test can only ever agree with it. It would have
+     reported the right hex for a resolver that always returned the default.
+
+     A SwiftUI `Color` has no portable hex accessor, so the resolved colour is compared against each
+     candidate instead; `Color` is `Equatable`, and both sides are built by the same `Color(hex:)`,
+     so the comparison asks exactly "which of these did it pick".
+     */
+    private static func hex(_ resolved: Color, _ block: ContentBlock) -> Any {
+        let fallback = "#D1D5DB"
+        var candidates: [String] = [fallback]
+        if let b = block.field_style?.border_color { candidates.append(b) }
+        if let e = block.field_style?.error_border_color { candidates.append(e) }
+        for candidate in candidates where resolved == Color(hex: candidate) { return candidate }
+        // Not one of the colours it was allowed to choose — report it rather than guessing, so the
+        // fixture names the row instead of passing on a near-miss.
+        return NSNull()
+    }
+
+
+    // MARK: resolve_plan_order
+
+    /**
+     #1056 — the order a paywall's plans draw in, through the REAL `PaywallPlanOrder` the renderer
+     calls on both of its plan-resolution sites.
+
+     🔴 `sort_order` was DECODED by both platforms and read by NEITHER, so order came from the
+     array's own order and a document carrying an explicit rank drew its plans in whatever order
+     they happened to be serialised in.
+
+     Each case is a plain array of plans — the shape a published document carries — decoded through
+     `PaywallPlan` so the rank arrives as the DTO coerces it, not as a literal the driver chose.
+     */
+    private func runPlanOrder(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_plan_order needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let array = c.objectValue?["value"]?.foundation as? [[String: Any]],
+                  let data = try? JSONSerialization.data(withJSONObject: array),
+                  let plans = try? JSONDecoder().decode([PaywallPlan].self, from: data) else {
+                XCTFail("[\(f.id)] a plan array did not decode")
+                return NSNull()
+            }
+            return PaywallPlanOrder.sorted(plans).map { SharedFixtureTests.orNull($0.id) }
+        }
+    }
+
+
+    // MARK: resolve_progress_skip_target
+
+    /**
+     #1056 — where the progress bar's "Skip" link goes, through the REAL `ProgressSkipTarget` both
+     renderers call.
+
+     The three `nil` reasons are the point: no target, an empty/whitespace target, and a target
+     naming a step that is not in the flow. Each must behave the same on both platforms, and a
+     stale id must degrade to advancing rather than leaving Skip doing nothing.
+     */
+    private func runProgressSkipTarget(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_progress_skip_target needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let value = c.objectValue?["value"]?.objectValue
+            let target = value?["skip_to_step"]?.foundation as? String
+            let ids = (value?["step_ids"]?.foundation as? [Any])?.compactMap { $0 as? String } ?? []
+            return SharedFixtureTests.orNull(ProgressSkipTarget.resolve(target, stepIds: ids))
+        }
     }
 
     // MARK: resolve_element_container
