@@ -783,7 +783,9 @@ final class PaywallConfigDecodingTests: XCTestCase {
         XCTAssertEqual(section.data?.labelColorVal, "#FFFFFF")
         XCTAssertEqual(section.data?.descriptionColor, "#AAAAAA")
         XCTAssertEqual(section.data?.icon, "calendar")
-        XCTAssertEqual(section.data?.affectsPrice, true)
+        // #992 — `affects_price` was removed from the model. The wire key STAYS in the JSON
+        // above on purpose: a published paywall may still carry it, and the decoder must ignore
+        // an unknown key rather than failing the section.
     }
 
     // 20. Reviews carousel section
@@ -1188,7 +1190,6 @@ final class PaywallConfigDecodingTests: XCTestCase {
         XCTAssertEqual(config.sections[2].type, "plans")
         XCTAssertEqual(config.sections[3].type, "toggle")
         XCTAssertEqual(config.sections[3].data?.label, "Family plan")
-        XCTAssertEqual(config.sections[3].data?.affectsPrice, true)
         XCTAssertEqual(config.sections[4].type, "legal")
         XCTAssertEqual(config.sections[4].data?.links?.count, 1)
         XCTAssertEqual(config.sections[5].type, "sticky_footer")

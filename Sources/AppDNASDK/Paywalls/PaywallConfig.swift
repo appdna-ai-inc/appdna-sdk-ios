@@ -412,7 +412,16 @@ struct PaywallSectionData: Codable {
     let labelColorVal: String?
     let descriptionColor: String?
     let icon: String?
-    let affectsPrice: Bool?
+    /*
+     #992 — `affects_price` was REMOVED here. It was declared on this model and on Android's,
+     read by NEITHER renderer, and written by no console control: a dead key in a PUBLIC model.
+     *
+     The owner's call (2026-10-22) was to remove rather than build, and the reason is worth keeping
+     where someone would be tempted to re-add it: unlike the styling keys #1053 built out, a toggle
+     that recomposes a DISPLAYED PRICE is money. A wrong composition rule misquotes what a user is
+     charged, and the store-price ladder would have to compose too. It is only a decode, so it
+     comes back cheaply the day add-on pricing is actually designed.
+     */
 
     // Reviews carousel section
     let reviews: [PaywallReview]?
@@ -593,7 +602,6 @@ struct PaywallSectionData: Codable {
         case labelColorVal = "toggle_label_color"
         case descriptionColor = "description_color"
         case icon
-        case affectsPrice = "affects_price"
         case reviews
         case showRatingStars = "show_rating_stars"
         case starColor = "star_color"
