@@ -362,17 +362,13 @@ struct FormInputDateBlock: View {
         // heights set by the picker itself). Accepts a numeric `input_height`
         // or `height` in field_config, or the semantic `sm | md | lg` shorthand
         // on field_style.height.
+        // #1052 — through CompactPickerHeight, which the shared fixture drives and Android now
+        // calls too. Never re-stated here.
         let numericHeight: Double? = cfgDouble(block.field_config?["input_height"])
             ?? cfgDouble(block.field_config?["height"])
-        let semanticHeight: Double? = {
-            switch block.field_style?.height?.lowercased() {
-            case "sm": return 36
-            case "md": return 44
-            case "lg": return 56
-            default: return nil
-            }
-        }()
-        let compactHeight: CGFloat? = (numericHeight ?? semanticHeight).map { CGFloat($0) }
+        let compactHeight: CGFloat? = (numericHeight != nil || block.field_style?.height != nil)
+            ? CompactPickerHeight.resolve(numeric: numericHeight, token: block.field_style?.height)
+            : nil
 
         // Honor picker_border_color/_width/_corner_radius/_padding
         // + wheel_text_color on ALL date variants (was standalone date_wheel_picker only).

@@ -50,6 +50,7 @@ extension SharedFixtureTests {
         case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
+        case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         default:
             return false
         }
@@ -449,6 +450,30 @@ extension SharedFixtureTests {
                 answer: v?["answer"]?.foundation,
                 emojiScale: scale,
             ).analyticsName
+        }
+    }
+
+    // MARK: resolve_compact_picker_height
+
+    /**
+     #1052 — how tall a compact date pill is, through the REAL `CompactPickerHeight` the renderer
+     calls.
+
+     🔴 Driven through the production rule, never re-stated: the whole point is that this platform
+     and Android now agree, and a driver computing its own answer could only ever agree with
+     itself (Rule 25).
+     */
+    private func runCompactPickerHeight(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_compact_picker_height needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return Double(CompactPickerHeight.resolve(
+                numeric: v?["numeric"]?.doubleValue,
+                token: v?["token"]?.stringValue,
+            ))
         }
     }
 
