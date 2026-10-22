@@ -200,6 +200,11 @@ final class PaywallManager {
                 },
                 onPromoCodeSubmit: delegate == nil ? nil : { code, completion in
                     delegate?.onPromoCodeSubmit(paywallId: id, code: code, completion: completion)
+                },
+                // #1074 — the one wire that was missing. Android has emitted CTA_TAPPED since its
+                // manager was written; iOS declared the callback and called it from nowhere.
+                onAction: { action in
+                    delegate?.onPaywallAction(paywallId: id, action: action)
                 }
             )
             let hostingController = UIHostingController(rootView: paywallView)

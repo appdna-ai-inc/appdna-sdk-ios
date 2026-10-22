@@ -9,6 +9,18 @@ struct PaywallRenderer: View {
     /// Callback for promo code validation. Returns true if code is valid, false otherwise.
     var onPromoCodeSubmit: ((String, @escaping (Bool) -> Void) -> Void)? = nil
 
+    /*
+     * #1074 — WHAT THE USER DID, reported separately from what it achieved.
+     *
+     * `AppDNAPaywallDelegate.onPaywallAction` was declared on iOS and called from nowhere, while
+     * Android fired `CTA_TAPPED` — so a host implementing it heard the tap on one platform and
+     * silence on the other, from the same published paywall.
+     *
+     * Optional with a default so every existing construction of this view keeps compiling; the
+     * manager supplies it.
+     */
+    var onAction: ((PaywallAction) -> Void)? = nil
+
     @State private var selectedPlanId: String?
     /// #903 — the pinned group's measured height, the viewport's, and the latched verdict.
     @State private var pinnedZoneHeight: CGFloat = 0
@@ -2697,6 +2709,15 @@ struct PaywallRenderer: View {
     // MARK: - CTA handler
 
     private func handleCTATap() {
+        /*
+         * 🔴 #1074 — REPORTED BEFORE THE GUARDS, and that ordering is the whole point. The two
+         * `guard`s below return SILENTLY: no delegate call, no event, no log. A user sees a button
+         * do nothing, the host learns nothing, and from outside the app a swallowed tap is
+         * indistinguishable from a purchase the store refused — which is exactly why #1072 could
+         * not be diagnosed. The action means "the user tapped the CTA", so it fires whenever they
+         * did, whatever happens next.
+         */
+        onAction?(.ctaTapped)
         guard let planId = selectedPlanId else { return }
         // Plans can be in section.data.plans OR top-level config.plans
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []

@@ -166,5 +166,17 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             outcome, .completed,
             "the CTA did not complete a purchase — events were: \(events.label)",
         )
+
+        /*
+         🔴 #1074 — AND THE HOST WAS TOLD THE USER TAPPED, as a fact of its own. `onPaywallAction`
+         was declared on iOS and called from nowhere, while Android emitted `CTA_TAPPED` — so the
+         same published paywall reported the tap on one platform and nothing on the other. It is
+         reported BEFORE the renderer's plan guards, which is what makes a tap that cannot become a
+         purchase distinguishable from one the SDK never received (#1072).
+         */
+        XCTAssertTrue(
+            events.label.contains("action:cta_tapped"),
+            "the host was never told the CTA was tapped — events were: \(events.label)",
+        )
     }
 }

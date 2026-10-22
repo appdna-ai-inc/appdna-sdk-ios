@@ -74,6 +74,9 @@ struct ContentView: View {
         .padding(20)
         .onAppear {
             AppDNA.lifecycleDelegate = TrackedEventLog.shared
+            // #1074 — the paywall delegate is a SEPARATE registration, and the action it carries
+            // is the only report of a CTA tap that could not become a purchase.
+            AppDNA.paywall.setDelegate(TrackedEventLog.shared)
             Launch.autoPresentIfAsked()
             probeStoreIfAsked()
         }
