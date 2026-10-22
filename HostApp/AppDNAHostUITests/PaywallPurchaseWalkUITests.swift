@@ -75,17 +75,50 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
         // Open the paywall the way a user does.
         let open = app.buttons["host.paywall"]
         XCTAssertTrue(open.waitForExistence(timeout: 10), "the host has no paywall button")
-        open.tap()
 
         /*
          The CTA, found by its LABEL rather than an identifier: it is the SDK's own rendered button,
          not the host's, so the host cannot give it one. The published fixture's CTA reads
          "Start Free Trial".
+         *
+         🔴 TAPPED AND RETRIED, BECAUSE ONE TAP IS A RACE (#1068). `showPaywall` presents whatever
+         config has ALREADY landed, and the SDK fetches it after `configure()` — a tap that arrives
+         first does nothing and says nothing. One tap then spent its whole timeout waiting for a
+         paywall nobody had asked for a second time, and failed as "the paywall never drew its CTA".
+         `StorePriceUITests` has carried this loop since #923, for the same reason.
          */
         let cta = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch
-        XCTAssertTrue(cta.waitForExistence(timeout: 25), "the paywall never drew its CTA")
+        for attempt in 0..<12 where !cta.exists {
+            // Only while the host is still in front: once the paywall covers it, another tap here
+            // would land on the paywall's own controls.
+            if open.isHittable { open.tap() }
+            if !cta.waitForExistence(timeout: 5) { NSLog("[#1018] paywall not up yet, attempt \(attempt + 1)") }
+        }
+        XCTAssertTrue(cta.exists, "the paywall never drew its CTA after 12 attempts")
         NSLog("[#1018] tapping the CTA: \(cta.label)")
         cta.tap()
+
+        /*
+         🔴 STOREKIT'S OWN LEDGER FIRST, because it is readable whatever the screen is doing. The
+         event mirror below lives in the HOST's view, underneath the presented paywall, so reading
+         it needs the paywall out of the way — and when that fails, "no purchase happened" and "the
+         paywall would not dismiss" look identical. `allTransactions()` is held by THIS process and
+         separates them. Measured: a run where the paywall stayed up reported "could not get back
+         to the host" for a purchase that had in fact completed.
+         */
+        var bought: [SKTestTransaction] = []
+        let storeDeadline = Date().addingTimeInterval(45)
+        while Date() < storeDeadline {
+            bought = session.allTransactions()
+            if !bought.isEmpty { break }
+            Thread.sleep(forTimeInterval: 1)
+        }
+        NSLog("[#1018] StoreKit recorded: \(bought.map(\.productIdentifier).joined(separator: ", "))")
+        XCTAssertEqual(
+            bought.map(\.productIdentifier), ["premium_monthly"],
+            "the CTA did not reach StoreKit — its ledger holds "
+                + "\(bought.map(\.productIdentifier).joined(separator: ", "))",
+        )
 
         /*
          🔴 THE ASSERTION IS THE EVENT, not the screen. A paywall may dismiss, stay, or route
@@ -106,7 +139,17 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             // The paywall stayed up — close it so the host's event mirror is reachable. A paywall
             // that does not auto-dismiss on purchase is a legitimate authoring choice, not a
             // failure, so this is a step rather than an assertion.
-            let close = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "close")).firstMatch
+            /*
+             🔴 `xmark`, NOT `close`. The dismiss control is `Image(systemName: "xmark")` inside a
+             Button with no explicit accessibility label, and SwiftUI derives the button's label
+             from the SYMBOL NAME — so a predicate looking for "close" matched nothing, the
+             `swipeDown` fallback did nothing to a full-screen cover, and the test failed on a
+             purchase that had completed. Measured 2026-10-22.
+             */
+            let close = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@",
+                            "xmark", "close", "dismiss"),
+            ).firstMatch
             if close.exists { close.tap() } else { app.swipeDown() }
             XCTAssertTrue(hostTitle.waitForExistence(timeout: 20), "could not get back to the host")
         }
