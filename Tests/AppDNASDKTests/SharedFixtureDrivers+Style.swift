@@ -57,6 +57,7 @@ extension SharedFixtureTests {
         case "resolve_progress_skip_target": runProgressSkipTarget(f, h)
         case "resolve_countdown_progress": runCountdownProgress(f, h)
         case "resolve_countdown_variant": runCountdownVariant(f, h)
+        case "resolve_named_icon_library": runNamedIconLibrary(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
@@ -241,6 +242,27 @@ extension SharedFixtureTests {
                 v?["variant"]?.foundation as? String,
                 timerVariant: v?["timer_variant"]?.foundation as? String
             )
+        }
+    }
+
+
+    // MARK: resolve_named_icon_library
+
+    /**
+     #1067 — which library a BARE icon string belongs to, through the REAL `NamedIcon` both feature
+     renderers call.
+
+     The unknown-name case is the one that matters: it must answer `lucide` and never `emoji`,
+     because the emoji arm prints the name as prose — which is the defect this fixes.
+     */
+    private func runNamedIconLibrary(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_named_icon_library needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let raw = c.objectValue?["value"]?.objectValue?["icon"]?.foundation as? String
+            return SharedFixtureTests.orNull(NamedIcon.reference(raw)?.library)
         }
     }
 

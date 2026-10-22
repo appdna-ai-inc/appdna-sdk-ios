@@ -200,12 +200,18 @@ struct FeatureList: View {
         let icon: some View = Group {
             if let emoji = item?.emoji, !emoji.isEmpty {
                 Text(emoji).font(.body)
-            } else if let iconName = item?.icon, !iconName.isEmpty {
-                Image(systemName: iconName)
+            } else if let ref = NamedIcon.reference(item?.icon) {
+                /*
+                 #1067 — THROUGH THE RESOLVER, not `Image(systemName:)`. The console writes
+                 `icon: "check"`, which is a LUCIDE name and not an SF Symbol (`checkmark` is), so
+                 this drew nothing at all and the icon vanished silently. `IconView` maps the name
+                 through the lucide/material tables and falls back to an emoji and then a visible
+                 placeholder, so an unmapped name is SEEN rather than lost.
+                 */
+                IconView(ref: ref, size: 17)
                     .foregroundColor(iconColor ?? (isIncluded
                         ? Color(hex: (AppDNA.brandAccentHex ?? "#6366F1"))
                         : Color(hex: itemExcludedColor ?? "#EF4444")))
-                    .font(.body)
             } else if let imageUrl = item?.image_url, let url = URL(string: imageUrl) {
                 BundledAsyncImage(url: url) { img in
                     img.resizable().scaledToFit()
