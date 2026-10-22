@@ -198,6 +198,27 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
                 if !recorded.isEmpty { break }
                 Thread.sleep(forTimeInterval: 1)
             }
+            /*
+             🔴 #1072 — THE SPLIT THAT NAMES WHICH HALF FAILED, taken WHILE the paywall is still up.
+             `handleCTATap` sets `isPurchasing`, and the CTA then draws a spinner INSTEAD of its
+             label. So one reading separates the two explanations for an empty ledger:
+
+               the label is still there  → `handleCTATap` never ran: the tap was swallowed, by a
+                                           disabled button or by one of its two silent `guard`s;
+               the label is gone         → it DID run and the purchase is in flight or stuck, and
+                                           the fault is below the renderer.
+
+             It has to be read before the dismissal `eventsSeenByTheHost` performs, because that
+             takes the paywall — and the spinner — off the screen.
+             */
+            if recorded.isEmpty {
+                let stillLabelled = app.buttons
+                    .containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch.exists
+                NSLog("[#1072] nothing recorded after attempt \(attempt). The CTA "
+                    + (stillLabelled
+                       ? "STILL SHOWS ITS LABEL → handleCTATap never ran; the tap was swallowed"
+                       : "SHOWS A SPINNER → handleCTATap ran; the purchase is in flight or stuck"))
+            }
         }
         XCTAssertEqual(
             recorded.count, 1,
