@@ -246,10 +246,18 @@ final class PaywallManager {
                 let detail = "UIKit refused the presentation — the host controller "
                     + "(\(type(of: host))) could not present at the moment it was asked"
                 Log.warning("Paywall \(id): \(detail)")
-                self.eventTracker.track(event: "paywall_present_failed", properties: [
-                    "paywall_id": id,
-                    "reason": "host_could_not_present",
-                ])
+                /*
+                 * 🔴 NO NEW TRACKED EVENT HERE, and the gates are why. A `paywall_present_failed`
+                 * event is a CROSS-PLATFORM CONTRACT: `check:event-name-parity` requires Android
+                 * to emit it too, and the module registry has to declare it — and Android has no
+                 * equivalent failure, because it presents by `startActivity` rather than by asking
+                 * a view controller that might refuse. Inventing a one-platform event to carry a
+                 * one-platform fault would buy a metric that means different things on each side.
+                 *
+                 * `onConfigurationIssue` is the channel that already exists for "this surface
+                 * could not do its job", on both platforms, and it reaches the host without
+                 * claiming to be analytics.
+                 */
                 AppDNA.lifecycleDelegate?.onConfigurationIssue(surface: "paywall", id: id, detail: detail)
             }
         }

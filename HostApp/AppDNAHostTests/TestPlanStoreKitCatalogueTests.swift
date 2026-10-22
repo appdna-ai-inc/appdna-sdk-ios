@@ -2,20 +2,44 @@
 //
 // DOES THE TEST PLAN ACTIVATE THE SIMULATOR'S STORE UNDER `xcodebuild test`?
 //
-// #934 measured that it did not: the host's own probe answered `store:0` for the two ids sitting in
-// `AppDNAHost/Products.storekit`, and the SDK's lookup agreed — "the store knows none of 2
-// product(s)". Every generated-scheme attempt was a guess at the attribute Xcode writes, which is
-// why that issue asked for the GUI diff.
+// **No — and the reason every earlier answer disagreed with the last one is worth more than the
+// answer.**
 //
-// 🔴 THIS ASKS THE QUESTION FROM INSIDE THE APP PROCESS, which the earlier probe could not: it ran
-// from `simctl launch`, where no test plan applies at all. A unit-test bundle with a TEST_HOST runs
-// under the test action, so the test plan's `storeKitConfigurationFileReference` — already in
-// `HostApp.xctestplan` — is in force if it is in force anywhere.
+// 🔴 `SKTestSession` PERSISTS ITS CATALOGUE ON THE SIMULATOR, PER BUNDLE ID, ACROSS RUNS. It
+// writes:
 //
-// 🔴 NO `SKTestSession` HERE, deliberately. A session serves its OWN catalogue, which would answer
-// this question with the wrong catalogue and look like a pass. That also means this file must not
-// share a process with `StoreTrialEligibilityHostedTests`, whose session would shadow the host's
-// configuration — run it with its own `-only-testing`, which is how it is measured.
+//     <device>/data/Containers/Shared/AppGroup/<id>/Documents/Persistence/Octane/
+//         ai.appdna.appdnaSdkExample/Configuration.storekit
+//         com.apple.dt.xctest.tool/Configuration.storekit
+//
+// and that file OUTLIVES the process, the test run and the xcodebuild invocation. So the store the
+// app sees is whatever session wrote last — not what the test plan says, and not what this run
+// asked for. Measured by reading those files: after the eligibility test, the app's copy held
+// `ai.appdna.test.*`; after a paywall walk, it held `premium_monthly`/`premium_annual`.
+//
+// That is why this test answered `0 — []` all day, then `2 — [premium_annual, premium_monthly]`
+// with real prices, then `0` again, on the same machine with no code change between. Every reading
+// was of a leftover.
+//
+// 🔴 THE UNCONTAMINATED MEASUREMENT, taken after deleting those files, is the only one that means
+// anything:
+//
+//     [#934] test-plan catalogue: asked for 2, store answered 0 — []
+//     Test skipped - the test plan's StoreKit configuration served nothing AND no other catalogue
+//     is active — neither the plan nor a session is in force (#934).
+//
+// So `storeKitConfigurationFileReference` in `HostApp.xctestplan` is inert on Xcode 26.2, and
+// Xcode's GUI cannot write one either: its StoreKit plugin ships exactly one scheme-option view
+// controller, `IDEStoreKitLaunchActionOptionViewController.nib`, and `IDETestPlanEditor.framework`
+// contains no StoreKit reference at all.
+//
+// 🔴 WHAT TO DO INSTEAD, and this is the part that matters for every test here: a test that needs
+// a catalogue must OPEN ITS OWN `SKTestSession`. It cannot rely on the plan, and it must not rely
+// on what a previous test left behind — which looks identical right up until the run order
+// changes.
+//
+// This test now reports WHICH of the three states it is in rather than collapsing two of them into
+// "the plan does not work", because collapsing them is what kept #934 open on a false premise.
 import XCTest
 import StoreKit
 
@@ -24,6 +48,10 @@ final class TestPlanStoreKitCatalogueTests: XCTestCase {
     /// The two ids in `AppDNAHost/Products.storekit`, which the test plan references.
     private let hostCatalogueIds = ["premium_monthly", "premium_annual"]
 
+    /// One id from `AppDNAHost/AppDNATestProducts.storekit` — the OTHER catalogue, which only an
+    /// `SKTestSession` opened by another test in this bundle can make active.
+    private let foreignCatalogueId = "ai.appdna.test.monthly"
+
     func testTheTestPlanServesTheHostCatalogue() async throws {
         let products = try await Product.products(for: hostCatalogueIds)
         let found = products.map(\.id).sorted()
@@ -31,32 +59,35 @@ final class TestPlanStoreKitCatalogueTests: XCTestCase {
         for p in products {
             print("[#934]   \(p.id) displayPrice=\(p.displayPrice) period=\(String(describing: p.subscription?.subscriptionPeriod))")
         }
-        /*
-         🔴 MEASURED EMPTY, AND IT SKIPS RATHER THAN FAILS. The answer on Xcode 26 / iOS 26 is
-         `store answered 0 — []`: the test plan's `storeKitConfigurationFileReference` does NOT reach
-         the app process under `xcodebuild test`, so #934's mechanism is real and the scheme
-         attribute Xcode writes in its GUI is still the only way to activate it that route.
-         *
-         This is a skip because the thing being measured is XCODE's behaviour, not ours. A red test
-         here would be a standing failure nobody can fix from this repo, and Rule 17's lesson is that
-         a gate loud about something you cannot act on is a gate you learn to ignore. The assertion
-         below turns into a real one the day the answer is non-empty.
-         *
-         🔴 AND IT IS NO LONGER A BLOCKER. `SKTestSession(contentsOf:)` serves a catalogue in this
-         same app process — `StoreTrialEligibilityHostedTests` reads `P1W` and a `displayPrice` out
-         of one — so an app-process store proof is available by the other route. What is unavailable
-         is the SCHEME route, which nothing needs.
-         */
-        try XCTSkipIf(
-            products.isEmpty,
-            "the test plan's StoreKit configuration did not reach the app process: the store answered "
-                + "0 of \(hostCatalogueIds.count) (#934). Use SKTestSession(contentsOf:) to serve a "
-                + "catalogue in-process instead — that route works and is what the eligibility test uses.",
-        )
+
+        if products.isEmpty {
+            /*
+             🔴 EMPTY HAS TWO CAUSES AND THEY ARE OPPOSITE. Either the test plan served nothing — a
+             real finding about Xcode — or another test's session swapped the catalogue out from
+             under this one, which is a finding about this bundle and says nothing about the plan.
+             Asking the other catalogue separates them, and reporting them as the same thing is what
+             kept #934 open on a false premise.
+             */
+            let foreign = try await Product.products(for: [foreignCatalogueId])
+            if !foreign.isEmpty {
+                throw XCTSkip(
+                    "another test's SKTestSession has replaced the simulator's catalogue — "
+                        + "`\(foreignCatalogueId)` answered instead, which is "
+                        + "AppDNATestProducts.storekit, not the test plan's Products.storekit. This "
+                        + "says NOTHING about the test plan. Run this test with its own "
+                        + "`-only-testing:AppDNAHostTests/TestPlanStoreKitCatalogueTests`.",
+                )
+            }
+            throw XCTSkip(
+                "the test plan's StoreKit configuration served nothing AND no other catalogue is "
+                    + "active — neither the plan nor a session is in force (#934).",
+            )
+        }
+
         XCTAssertEqual(
             found, hostCatalogueIds.sorted(),
-            "the test plan served SOME of the catalogue but not all of it, which is neither of the two "
-                + "outcomes #934 measured — read the ids above before trusting either half.",
+            "the test plan served SOME of the catalogue but not all of it — read the ids above "
+                + "before trusting either half.",
         )
     }
 }

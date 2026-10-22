@@ -76,6 +76,17 @@ final class PresentableHostTests: XCTestCase {
         let orphan = UIViewController()
         let chosen = PaywallManager.presentableHost(preferring: orphan)
         XCTAssertFalse(chosen === orphan, "a controller outside the window hierarchy cannot present")
-        XCTAssertTrue(chosen === root, "the one in the key window is the one that can")
+        /*
+         🔴 NOT `chosen === root`. Inside the HOST APP there is already a real key window with the
+         app's own root controller, and `topViewController()` finds that one rather than the window
+         this test just made — which is correct, and is the whole point of falling back to what is
+         actually on screen. The property that matters is that whatever comes back CAN present.
+         */
+        XCTAssertNotNil(
+            chosen.view.window,
+            "the fallback must return a controller that is in a window — one that is not would be "
+                + "refused by UIKit exactly like the orphan",
+        )
+        XCTAssertNil(chosen.presentedViewController, "…and that is not already presenting")
     }
 }

@@ -701,14 +701,15 @@ struct PaywallRenderer: View {
             }
         case "purchase":
             handleCTATap()
+        // #1076 — AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
+        // because that is what every unauthored CTA has always done and changing it would break
+        // paywalls that rely on it — but the host is told, which is the whole point of `.custom`:
+        // an action "defined in the paywall config" that only the host can mean anything by.
+        //
+        // Line comments, not a block: `scripts/__tests__/cta-extra-buttons.test.ts` strips `//`
+        // and asserts on the resulting SHAPE of this switch, so a block comment inside the arm
+        // hides the code from the gate that guards it.
         default:
-            /*
-             * #1076 — AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
-             * because that is what every unauthored CTA has always done and changing it would
-             * break paywalls that rely on it — but the host is told, which is the whole point of
-             * `.custom`: an action "defined in the paywall config" that only the host can mean
-             * anything by.
-             */
             onAction?(.custom)
             handleCTATap()
         }
