@@ -116,6 +116,11 @@ targets:
       # package's, so `Bundle(for:).url(forResource:)` found nothing and the test skipped.
       - path: AppDNAHost/AppDNATestProducts.storekit
         buildPhase: resources
+      # #1018 — the HOST's catalogue too, because the purchase walk buys a product a real paywall
+      # plan references (`premium_monthly`), and the session has to serve that id rather than the
+      # trial fixture's.
+      - path: AppDNAHost/Products.storekit
+        buildPhase: resources
     settings:
       base:
         # A UI-test bundle is code-signed and so needs an Info.plist. The app target brings its own
