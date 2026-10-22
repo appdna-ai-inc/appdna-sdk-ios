@@ -209,8 +209,48 @@ final class PaywallManager {
             )
             let hostingController = UIHostingController(rootView: paywallView)
             hostingController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
-            viewController.present(hostingController, animated: true) {
+
+            /*
+             * 🔴 #1078 — THE HOST IS CHOSEN HERE, AT PRESENT TIME, NOT WHERE THE CALL CAME FROM.
+             *
+             * `AppDNA.showPaywall` resolves `topViewController()` synchronously and then
+             * `presentPaywall` dispatches this block onto the main queue. In between, that
+             * controller can begin dismissing or start presenting something else — and UIKit then
+             * REFUSES the call by logging and doing nothing. The completion never runs, so
+             * `onPaywallPresented` never fires, and the caller was already told `true` because
+             * `presentPaywall` returns `hasPaywall(id:)` resolved before the dispatch.
+             *
+             * Measured in 2 of 2 stress runs of the plan-selection walk: twelve taps over sixty
+             * seconds with no paywall, in a process that had already presented the same paywall
+             * about twenty times and whose StoreKit probe answered `store:2` seconds earlier.
+             *
+             * So the captured controller is used only if it can still present; otherwise the one
+             * that can is found NOW.
+             */
+            let host = Self.presentableHost(preferring: viewController)
+            host.present(hostingController, animated: true) {
                 delegate?.onPaywallPresented(paywallId: id)
+            }
+
+            /*
+             * 🔴 AND A PRESENTATION THAT DID NOT TAKE IS REPORTED. `present(_:animated:)` returns
+             * nothing and its completion simply never runs when UIKit refuses, so the only way to
+             * know is to look afterwards. A paywall that does not appear earns nothing, and until
+             * now nobody was told: no delegate call, no event, no log.
+             *
+             * One second, because the modal transition is ~0.35s — long enough that a presentation
+             * which took has set `presentingViewController`, short enough to be useless to nobody.
+             */
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak hostingController] in
+                guard let hostingController, hostingController.presentingViewController == nil else { return }
+                let detail = "UIKit refused the presentation — the host controller "
+                    + "(\(type(of: host))) could not present at the moment it was asked"
+                Log.warning("Paywall \(id): \(detail)")
+                self.eventTracker.track(event: "paywall_present_failed", properties: [
+                    "paywall_id": id,
+                    "reason": "host_could_not_present",
+                ])
+                AppDNA.lifecycleDelegate?.onConfigurationIssue(surface: "paywall", id: id, detail: detail)
             }
         }
 
@@ -319,6 +359,33 @@ final class PaywallManager {
     // MARK: - Purchase flow
 
     /// Internal (not private) so the shared fixtures drive the REAL tap path.
+    /**
+     The controller a modal can actually be presented on, chosen at the moment of presenting.
+
+     A controller that is already presenting something, is being dismissed, or is not in a window
+     cannot present — UIKit refuses and does nothing. `topViewController()` walks to the deepest
+     presented controller, which is the one that can.
+
+     Prefers the caller's own controller when it is usable, so a host that passes a specific
+     controller still gets it.
+     */
+    static func presentableHost(preferring viewController: UIViewController) -> UIViewController {
+        /*
+         * Descend through whatever it is ALREADY presenting first. A controller with a modal up
+         * cannot present a second one, and the deepest modal is the one that can — so this is the
+         * answer in the common case, and it needs no scene lookup, which matters because
+         * `topViewController()` finds nothing in a test process that has no connected window
+         * scene.
+         */
+        var vc = viewController
+        while let presented = vc.presentedViewController, !presented.isBeingDismissed {
+            vc = presented
+        }
+        if vc.view.window != nil, !vc.isBeingDismissed { return vc }
+        // Detached or mid-dismissal: fall back to whatever the app currently has on screen.
+        return AppDNA.topViewController() ?? vc
+    }
+
     func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
         // Evaluated BEFORE anything else in the handler. This used to be a bare
         // `Log.error("No billing bridge configured"); return`: a tap on a paywall plan did NOTHING — no

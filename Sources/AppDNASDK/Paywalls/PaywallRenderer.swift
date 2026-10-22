@@ -688,16 +688,28 @@ struct PaywallRenderer: View {
     /// back to the caller's default, which keeps an unauthored CTA purchasing and an unauthored
     /// restore link restoring.
     private func performButtonAction(_ action: String?, url: String?, default defaultAction: String) {
-        switch action ?? defaultAction {
+        let resolved = action ?? defaultAction
+        switch resolved {
         case "restore":
             onRestore()
         case "dismiss":
             triggerDismiss()
         case "link":
+            onAction?(.linkTapped)
             if let raw = url, let parsed = URL(string: raw) {
                 InAppBrowser.present(url: parsed)
             }
-        default: // purchase
+        case "purchase":
+            handleCTATap()
+        default:
+            /*
+             * #1076 — AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
+             * because that is what every unauthored CTA has always done and changing it would
+             * break paywalls that rely on it — but the host is told, which is the whole point of
+             * `.custom`: an action "defined in the paywall config" that only the host can mean
+             * anything by.
+             */
+            onAction?(.custom)
             handleCTATap()
         }
     }
@@ -1376,6 +1388,7 @@ struct PaywallRenderer: View {
                             // launches Safari — we want a sheet-style in-app browser
                             // so users stay in the app.
                             Button {
+                                onAction?(.linkTapped)   // #1076
                                 InAppBrowser.present(url: url)
                             } label: {
                                 Text(link.label ?? "")
@@ -1394,6 +1407,7 @@ struct PaywallRenderer: View {
         // link in the legal paragraph launches Safari. OpenURLAction
         // returns .handled so SwiftUI doesn't pass the URL to UIApplication.
         .environment(\.openURL, OpenURLAction { url in
+            onAction?(.linkTapped)   // #1076 — a markdown link inside the legal paragraph counts
             InAppBrowser.present(url: url)
             return .handled
         })
@@ -2710,6 +2724,12 @@ struct PaywallRenderer: View {
     /// Helper to select a plan and trigger haptic.
     private func selectPlan(_ planId: String) {
         selectedPlanId = planId
+        /*
+         * #1076 — the user CHOSE this plan. Only reached from a tap: `.onAppear` seeds
+         * `selectedPlanId` directly rather than through here, so the default selection is not
+         * reported as a change the user made.
+         */
+        onAction?(.planChanged)
         HapticEngine.triggerIfEnabled(config.haptic?.triggers?.on_plan_select, config: config.haptic)
     }
 
