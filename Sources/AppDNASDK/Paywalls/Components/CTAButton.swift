@@ -26,7 +26,22 @@ func resolvePaywallFontWeight(_ raw: String?, default fallback: Font.Weight) -> 
 struct CTAButton: View {
     let cta: PaywallCTA?
     let isPurchasing: Bool
+    /*
+     * 🔴 #1075 — WHETHER THERE IS ANYTHING TO BUY, which this button used to ignore.
+     *
+     * It was `.disabled(isPurchasing)` and nothing else, so a paywall whose plans are empty or
+     * unresolvable drew a full-strength "Subscribe" that accepted the tap and did nothing:
+     * `handleCTATap` returns on its first `guard`. Android has always disabled and dimmed it
+     * (`enabled = !isPurchasing && selectedPlanId != null`, `alpha 0.5`), and iOS's OWN root-`cta`
+     * fallback already carried `|| selectedPlanId == nil` — so the two iOS renderers of the same
+     * control disagreed with each other as well as with Android.
+     *
+     * Defaulted to `true` so every existing construction keeps its behaviour; the renderer
+     * supplies `selectedPlanId != nil`.
+     */
+    var canPurchase: Bool = true
     let onTap: () -> Void
+
     var loc: ((String, String) -> String)? = nil
     /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
@@ -142,7 +157,10 @@ struct CTAButton: View {
                 }
             )
         }
-        .disabled(isPurchasing)
+        .disabled(isPurchasing || !canPurchase)
+        // #1075 — and it has to LOOK unavailable, not merely behave so. Android's 0.5, because a
+        // control that refuses a tap while looking normal is the harder defect to report.
+        .opacity(canPurchase ? 1 : 0.5)
         // #910 — the rest of the button's authored container. Its background is already resolved
         // into `buttonBgColor` and painted above, so only the other halves are applied here.
         .applyElementStyle(buttonContainer?.withoutBackground)

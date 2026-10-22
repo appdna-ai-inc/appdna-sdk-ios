@@ -306,6 +306,10 @@ struct PaywallRenderer: View {
                             CTAButton(
                                 cta: config.cta,
                                 isPurchasing: isPurchasing,
+                                // #1075 — the same condition the root-`cta` fallback has always
+                                // carried, and the one Android has always carried. Without it this
+                                // button accepted a tap it could do nothing with.
+                                canPurchase: selectedPlanId != nil,
                                 // The CTA's action is authorable; unset still purchases.
                                 onTap: { performButtonAction(ctaSec.data?.ctaAction, url: nil, default: "purchase") },
                                 loc: loc,
@@ -1514,7 +1518,10 @@ struct PaywallRenderer: View {
                 .frame(height: data?.ctaHeight ?? 52)
                 .background(Color(hex: data?.ctaBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                 .clipShape(RoundedRectangle(cornerRadius: data?.ctaCornerRadius ?? 14))
-                .disabled(isPurchasing)
+                // #1075 — the sticky footer's own CTA, under the same rule as the section one and
+                // Android's: a button that cannot resolve a plan refuses the tap and shows it.
+                .disabled(isPurchasing || selectedPlanId == nil)
+                .opacity(selectedPlanId == nil ? 0.5 : 1)
             }
 
             // Secondary action

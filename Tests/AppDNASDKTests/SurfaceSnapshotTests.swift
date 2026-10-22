@@ -662,4 +662,58 @@ final class SurfaceSnapshotTests: XCTestCase {
             XCTFail("both styles must have been measured — the sweep list changed without this check")
         }
     }
+
+    /**
+     #1075 — A CTA THAT CANNOT BUY MUST LOOK LIKE IT CANNOT BUY.
+
+     `CTAButton` — the button a `cta` SECTION renders — was `.disabled(isPurchasing)` and nothing
+     else. So a paywall whose plans are empty or unresolvable drew a full-strength "Subscribe"
+     that accepted the tap and did nothing: `handleCTATap` returns on its first `guard`. Android
+     has always disabled AND dimmed it (`enabled = !isPurchasing && selectedPlanId != null`,
+     `alpha 0.5`), and iOS's own root-`cta` fallback already carried `|| selectedPlanId == nil` —
+     so the two iOS renderers of the same control disagreed with each other as well as with
+     Android.
+
+     🔴 TWO RENDERS, ONE VARIABLE CHANGED, which is the only honest way to say "it is dimmer".
+     The same document twice: once with a plan, once with none. A single frame cannot tell a
+     dimmed fill from an authored one.
+
+     🔴 AND THE FIRST ASSERTION IS THE CONTROL. "The authored colour is absent" passes against a
+     harness that renders nothing at all (#923 paid for that lesson twice), so the WITH-a-plan
+     frame has to show the authored colour before the WITHOUT frame is allowed to mean anything.
+     */
+    func testACTAThatCannotBuyIsDimmed() throws {
+        // A deliberately unmistakable fill: nothing else on the page is near it, so its presence
+        // or absence is the button and not the chrome.
+        let fill = "#1E90FF"
+        func document(plans: String) -> String {
+            """
+            {"id":"pw_1075","name":"Dim","cta":{"text":"Subscribe","style":{"bg_color":"\(fill)"}},
+             "plans":[\(plans)],
+             "layout":{"type":"stack","sections":[
+               {"id":"s1","type":"header","config":{"title":"Unlock"}},
+               {"id":"s2","type":"cta","config":{}}
+             ]}}
+            """
+        }
+        let withPlan = """
+            {"id":"p1","product_id":"app.premium.monthly","label":"Monthly",
+             "price_display":"A-11.11","is_default":true}
+            """
+
+        try write(render(try paywall(document(plans: withPlan))), named: "cta_1075_with_plan")
+        try write(render(try paywall(document(plans: ""))), named: "cta_1075_no_plan")
+
+        XCTAssertTrue(
+            try frameContains("cta_1075_with_plan", colour: fill),
+            "the control failed: the authored CTA fill was not drawn even WITH a plan, so this "
+                + "harness cannot see the button and nothing below means anything",
+        )
+        XCTAssertFalse(
+            try frameContains("cta_1075_no_plan", colour: fill, tolerance: 8),
+            "with no plan to buy the CTA must be dimmed — it still drew its authored fill at full "
+                + "strength, which is a button that refuses the tap while looking available",
+        )
+    }
+
 }
