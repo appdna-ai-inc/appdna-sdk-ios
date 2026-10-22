@@ -56,6 +56,7 @@ extension SharedFixtureTests {
         case "resolve_plan_order": runPlanOrder(f, h)
         case "resolve_progress_skip_target": runProgressSkipTarget(f, h)
         case "resolve_countdown_progress": runCountdownProgress(f, h)
+        case "resolve_countdown_variant": runCountdownVariant(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
@@ -218,6 +219,28 @@ extension SharedFixtureTests {
             let remaining = (v?["remaining"]?.foundation as? NSNumber)?.intValue ?? 0
             let initial = (v?["initial"]?.foundation as? NSNumber)?.intValue ?? 0
             return CountdownProgress.remainingFraction(remainingSeconds: remaining, initialSeconds: initial)
+        }
+    }
+
+
+    // MARK: resolve_countdown_variant
+
+    /**
+     #980 — which variant a paywall countdown draws, through the REAL `PaywallCountdownVariant` the
+     renderer dispatches on. The fallback is the part that would diverge between platforms, so the
+     off-list and empty-string cases carry as much weight as the four real values.
+     */
+    private func runCountdownVariant(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_countdown_variant needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return PaywallCountdownVariant.resolve(
+                v?["variant"]?.foundation as? String,
+                timerVariant: v?["timer_variant"]?.foundation as? String
+            )
         }
     }
 

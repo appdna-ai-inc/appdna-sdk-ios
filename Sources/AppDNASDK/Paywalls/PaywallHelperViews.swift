@@ -45,6 +45,18 @@ struct CountdownTimerView: View {
     var digitFontSize: CGFloat? = nil
     var digitFontWeight: String? = nil
     var digitColorHex: String? = nil
+    /*
+     * #980 — `digital` | `circular` | `flip` | `bar`. The console's Variant select offered all four,
+     * `CountdownConfigSchema` persisted all four, the generator wrote one on every countdown it
+     * produced, and NO renderer on any platform read it: every paywall countdown drew `digital`.
+     *
+     * The four designs are ported from the ONBOARDING countdown block, which has implemented them
+     * on both platforms all along — so the same authored value now looks the same on a paywall as
+     * it does in a flow, rather than two surfaces inventing two looks.
+     *
+     * Unset is `digital`, which is what every published paywall drew, so nothing restyles.
+     */
+    var variant: String? = nil
 
     @State private var remaining: Int
     @State private var countdownTimer: Timer?
@@ -62,7 +74,8 @@ struct CountdownTimerView: View {
         onExpire: (() -> Void)? = nil,
         digitFontSize: CGFloat? = nil,
         digitFontWeight: String? = nil,
-        digitColorHex: String? = nil
+        digitColorHex: String? = nil,
+        variant: String? = nil
     ) {
         self.seconds = seconds
         self.valueTextStyle = valueTextStyle
@@ -76,6 +89,7 @@ struct CountdownTimerView: View {
         self.digitFontSize = digitFontSize
         self.digitFontWeight = digitFontWeight
         self.digitColorHex = digitColorHex
+        self.variant = variant
         self._remaining = State(initialValue: seconds)
     }
 
@@ -99,7 +113,13 @@ struct CountdownTimerView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
             } else {
-                digits
+                // #980 — the authored variant, through the shared rule that owns the fallback.
+                switch PaywallCountdownVariant.resolve(variant) {
+                case "circular": circularTimer
+                case "flip": flipTimer
+                case "bar": barTimer
+                default: digits
+                }
             }
         }
         .onAppear {
@@ -153,6 +173,119 @@ struct CountdownTimerView: View {
     private var digitInk: Color {
         if let hex = digitColorHex, !hex.isEmpty { return Color(hex: hex) }
         return PaywallTextDefaults.readable(on: pageBackgroundHex)
+    }
+
+
+    /*
+     * #980 — the three variants beyond `digital`, ported from the onboarding countdown block so an
+     * authored value looks the same on a paywall as it does in a flow.
+     *
+     * Each reuses this view's own ink, digit font and segment maths rather than re-deriving them:
+     * `valueTextStyle`, `digitFontSize`/`digitFontWeight` and the units ladder are authored once and
+     * must not mean one thing in `digital` and another in `flip`.
+     */
+
+    /// The segments as zero-padded strings, in the order the units ladder selects them.
+    private var segmentStrings: [String] {
+        let u = units
+        let days = remaining / 86_400
+        let hours = u.days ? (remaining % 86_400) / 3600 : remaining / 3600
+        let minutes = (remaining % 3600) / 60
+        let secs = remaining % 60
+        var out: [String] = []
+        if u.days { out.append(String(format: "%02d", days)) }
+        if u.hours { out.append(String(format: "%02d", hours)) }
+        if u.minutes { out.append(String(format: "%02d", minutes)) }
+        if u.seconds { out.append(String(format: "%02d", secs)) }
+        return out
+    }
+
+    /// The unit labels matching `segmentStrings`, one per segment.
+    private var segmentLabels: [String] {
+        let u = units
+        var out: [String] = []
+        if u.days { out.append("d") }
+        if u.hours { out.append("h") }
+        if u.minutes { out.append("m") }
+        if u.seconds { out.append("s") }
+        return out
+    }
+
+    /// How much of the countdown is left, 0…1 — the ring's sweep and the bar's width.
+    ///
+    /// 🔴 One shared rule with Android and with the onboarding block (#1066): this was a frozen
+    /// `0.75` in the onboarding renderers, the preview's mock, and the ring never moved.
+    private var progressFraction: CGFloat {
+        CGFloat(CountdownProgress.remainingFraction(remainingSeconds: remaining, initialSeconds: seconds))
+    }
+
+    /// A ring that empties as the timer runs, with the joined time centred in it.
+    private var circularTimer: some View {
+        ZStack {
+            // The TRACK, derived from the page-readable ink rather than a hardcoded light grey:
+            // #946's lesson, which `check:authorability` caught as an orphan literal here. A fixed
+            // `#E5E7EB` is invisible on a light page and a bright band on a dark one.
+            Circle().stroke(digitInk.opacity(0.2), lineWidth: 4)
+            Circle().trim(from: 0, to: progressFraction)
+                .stroke(digitInk, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text(segmentStrings.joined(separator: ":"))
+                .font(.system(size: 14, weight: .bold, design: .monospaced))
+                .foregroundColor(digitInk)
+        }
+        .frame(width: 80, height: 80)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// Each segment on its own tinted card, with the unit label beneath.
+    private var flipTimer: some View {
+        let labels = segmentLabels
+        return HStack(spacing: 8) {
+            ForEach(Array(segmentStrings.enumerated()), id: \.offset) { i, seg in
+                VStack(spacing: 4) {
+                    Text(seg)
+                        .font(.system(size: digitFontSize ?? 24, weight: resolvePaywallFontWeight(digitFontWeight, default: .bold), design: .monospaced))
+                        .foregroundColor(digitInk)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(digitInk.opacity(0.1)))
+                    Text(i < labels.count ? labels[i] : "")
+                        .font(.caption2)
+                        .foregroundColor(digitInk.opacity(0.7))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The time on one line with a bar beneath it that shrinks as the timer runs.
+    private var barTimer: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text(segmentStrings.joined(separator: ":"))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(digitInk)
+                Spacer()
+                /*
+                 * Plain text, matching the onboarding block and Android's `Text("remaining")`
+                 * exactly. The renderer's `loc(_:_:)` is private to `PaywallRenderer` and there is
+                 * no SDK-wide string table, so localising it HERE would make one of three places
+                 * translatable and leave two in English — a worse state than three consistent ones.
+                 * Tracked as its own gap rather than fixed unevenly.
+                 */
+                Text("remaining")
+                    .font(.subheadline)
+                    .foregroundColor(digitInk.opacity(0.7))
+            }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4).fill(digitInk.opacity(0.2)).frame(height: 8)
+                    RoundedRectangle(cornerRadius: 4).fill(digitInk).frame(width: geo.size.width * progressFraction, height: 8)
+                }
+            }
+            .frame(height: 8)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var separator: some View {

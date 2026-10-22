@@ -1296,7 +1296,9 @@ struct PaywallRenderer: View {
             onExpire: { onDismiss(.programmatic) },
             digitFontSize: data?.digitFontSize,
             digitFontWeight: data?.digitFontWeight,
-            digitColorHex: data?.textColor
+            digitColorHex: data?.textColor,
+            // #980 — the Variant the console offers and no renderer read.
+            variant: data?.variant
         )
     }
 
