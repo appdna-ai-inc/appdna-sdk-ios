@@ -108,7 +108,14 @@ targets:
   AppDNAHostUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [AppDNAHostUITests]
+    sources:
+      - AppDNAHostUITests
+      # #934 — the catalogue, as a RESOURCE of the UI-test bundle, so a UI test can hold an
+      # `SKTestSession` over it. The hosted unit-test target reaches the copy inside the host .app;
+      # a UI-test bundle is installed separately and sees neither the host's resources nor the
+      # package's, so `Bundle(for:).url(forResource:)` found nothing and the test skipped.
+      - path: AppDNAHost/AppDNATestProducts.storekit
+        buildPhase: resources
     settings:
       base:
         # A UI-test bundle is code-signed and so needs an Info.plist. The app target brings its own
