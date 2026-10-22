@@ -854,6 +854,8 @@ struct PaywallRenderer: View {
         case "features":
             return AnyView(FeatureList(
                 features: (section.data?.features ?? []).enumerated().map { i, f in loc("feature.\(i)", f) },
+                // #1076 — a feature row now reports that the user tapped it.
+                onFeatureSelected: { onAction?(.featureSelected) },
                 richItems: section.data?.items,
                 columns: Int(section.data?.featureColumns ?? 1),
                 gap: section.data?.featureGap ?? 12,

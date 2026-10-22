@@ -22,6 +22,22 @@ struct FeatureList: View {
     @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
 
     let features: [String]
+
+    /*
+     * #1076 — a feature row is TAPPABLE, and reports `.featureSelected`.
+     *
+     * Rows were decorative until now, which is why `featureSelected` had no emitter on either
+     * platform. The owner asked for all four cases, so the rows gain a tap.
+     *
+     * 🔴 `.onTapGesture`, NOT a `Button` or a drag-capable gesture. A paywall's feature list sits
+     * inside a ScrollView, and this repo has already shipped a tap handler that swallowed every
+     * gesture in a step on both platforms (the keyboard-dismiss handler). A tap gesture coexists
+     * with the scroll's drag; a Button would also change the rows' appearance and give them a
+     * pressed state they are not designed for.
+     *
+     * Nothing visual changes: a row looks and reads exactly as it did.
+     */
+    var onFeatureSelected: (() -> Void)? = nil
     var richItems: [PaywallGenericItem]? = nil
     var columns: Int = 1
     var gap: CGFloat = 12
@@ -109,6 +125,10 @@ struct FeatureList: View {
                         featureIcon()
                         itemText(feature)
                     }
+                    // The whole row, not just the text: a tap target the width of one word is a
+                    // tap target nobody hits.
+                    .contentShape(Rectangle())
+                    .onTapGesture { onFeatureSelected?() }
                 }
             }
             if let items = richItems, !items.isEmpty {
@@ -118,12 +138,16 @@ struct FeatureList: View {
                     LazyVGrid(columns: gridColumns, spacing: gap) {
                         ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                             richItemRow(item)
+                                .contentShape(Rectangle())
+                                .onTapGesture { onFeatureSelected?() }
                         }
                     }
                 } else {
                     // Single column rich items
                     ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                         richItemRow(item)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onFeatureSelected?() }
                     }
                 }
             }
