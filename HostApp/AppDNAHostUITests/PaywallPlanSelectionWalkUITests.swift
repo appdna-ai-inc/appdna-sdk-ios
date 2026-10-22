@@ -185,7 +185,12 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
          */
         var recorded: [SKTestTransaction] = []
         for attempt in 1...3 where recorded.isEmpty {
-            NSLog("[#1068] tapping the CTA (attempt \(attempt)): \(cta.label)")
+            // #1072 — `isEnabled` goes in the line, not just the label. The renderer disables the
+            // CTA while `selectedPlanId` is nil or a purchase is in flight, and a tap on a
+            // disabled SwiftUI button SUCCEEDS silently — so a run that records nothing needs this
+            // value to say whether the button was ever live when it was pressed.
+            NSLog("[#1068] tapping the CTA (attempt \(attempt)): \(cta.label) "
+                + "[enabled=\(cta.isEnabled) hittable=\(cta.isHittable)]")
             if cta.isHittable { cta.tap() }
             let deadline = Date().addingTimeInterval(25)
             while Date() < deadline {
