@@ -117,13 +117,42 @@ struct PaywallRenderer: View {
      nothing depending on the layout.
      */
     private func ctaLabel(_ authored: String?) -> String? {
-        if let perPlan = selectedPlanCtaText { return perPlan }
-        guard let authored, !authored.trimmingCharacters(in: .whitespaces).isEmpty else { return authored }
+        selectedPlanCtaText ?? authored
+    }
+
+    /**
+     The selected plan's name to append to the CTA, or nil to leave the CTA alone (#1100 / #1102).
+
+     🔴 IT IS A SUFFIX RATHER THAN PART OF THE LABEL, and #1102 is why. The label is the FALLBACK to
+     `loc("cta.text", …)`, so a paywall with a translation got the translation and lost the appended
+     name — the mitigation disappearing on exactly the paywalls hardest to check, since a device walk
+     in the default locale would never show it. The suffix is composed AFTER localisation instead
+     (`CTAButton.displayText`, and the two sites that draw their own `Text`), and the name itself
+     goes through `loc("plan.<idx>.name", …)`, the key Android's plan rows already use, so both
+     halves are translated.
+
+     Three guards, the same three on every surface:
+       - nil for a SINGLE-plan paywall — there is no choice to get wrong;
+       - nil when the plan carries its own `cta_text`, which wins outright and says it exactly;
+       - the already-contains-the-name check lives with the composition, so "Start Annual" cannot
+         become "Start Annual — Annual" whichever string localisation produced.
+    */
+    private var planNameSuffix: String? {
+        guard selectedPlanCtaText == nil else { return nil }
         let plans = resolvedPlans
-        guard plans.count > 1 else { return authored }
-        let name = (selectedPlan?.displayName ?? "").trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, !authored.localizedCaseInsensitiveContains(name) else { return authored }
-        return "\(authored) — \(name)"
+        guard plans.count > 1,
+              let idx = plans.firstIndex(where: { $0.id == selectedPlanId }) else { return nil }
+        let name = loc("plan.\(idx).name", plans[idx].displayName)
+            .trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : name
+    }
+
+    /// Localise `authored` as the CTA, then append the plan's name — for the two sites that draw
+    /// their own `Text` instead of going through `CTAButton`.
+    private func ctaDisplayText(_ authored: String?, locKey: String = "cta.text", fallback: String) -> String {
+        let base = loc(locKey, ctaLabel(authored) ?? fallback)
+        guard let suffix = planNameSuffix, !base.localizedCaseInsensitiveContains(suffix) else { return base }
+        return "\(base) — \(suffix)"
     }
 
     /// Sections that should render INSIDE the pinned bottom area, BELOW the
@@ -360,6 +389,7 @@ struct PaywallRenderer: View {
                                 sectionStyle: ctaSec.style,
                                 ctaGradient: ctaSec.data?.ctaGradient,
                                 textOverride: ctaText,
+                                planNameSuffix: planNameSuffix,
                                 ctaFontSize: ctaSec.data?.ctaFontSize,
                                 ctaFontWeight: ctaSec.data?.ctaFontWeight,
                                 restoreText: nil,          // rendered outside
@@ -401,7 +431,7 @@ struct PaywallRenderer: View {
                             if isPurchasing {
                                 ProgressView().tint(.white)
                             } else {
-                                Text(ctaLabel(cta.text) ?? "Continue")
+                                Text(ctaDisplayText(cta.text, fallback: "Continue"))
                                     .font(cta.resolvedFontSize.map { .system(size: CGFloat($0), weight: .semibold) } ?? .headline)
                                     .foregroundColor(Color(hex: cta.resolvedTextColor))
                             }
@@ -986,10 +1016,18 @@ struct PaywallRenderer: View {
             return AnyView(plansSection(plans: effectivePlans, style: section.style)
                 .applyContainerStyle(section.style?.container))
         case "cta":
-            // CTA section: top-level cta.text takes priority, then section config text
+            /*
+             * CTA section: top-level cta.text takes priority, then section config text.
+             *
+             * 🔴 THROUGH `ctaLabel` LIKE THE OTHER THREE. This arm resolved the text itself, so it
+             * got neither the selected plan's own `cta_text` (#1081) nor the multi-plan default
+             * (#1100). Whether it is reachable today is beside the point: a CTA site that resolves
+             * its own label is how #1081 happened, and a fourth one sitting here would be the next
+             * one. The `ctaLabel(` count is pinned by a test so a fifth cannot appear quietly.
+             */
             let topLevelText = config.cta?.text
             let sectionText = section.data?.ctaText ?? section.data?.text
-            let ctaText = topLevelText ?? sectionText
+            let ctaText = ctaLabel(topLevelText ?? sectionText)
             return AnyView(CTAButton(
                 cta: config.cta,
                 isPurchasing: isPurchasing,
@@ -998,6 +1036,7 @@ struct PaywallRenderer: View {
                 sectionStyle: section.style,
                 ctaGradient: section.data?.ctaGradient,
                 textOverride: ctaText,
+                planNameSuffix: planNameSuffix,
                 ctaFontSize: section.data?.ctaFontSize,
                 ctaFontWeight: section.data?.ctaFontWeight,
                 restoreText: section.data?.restoreText,
@@ -1635,7 +1674,7 @@ struct PaywallRenderer: View {
                         ProgressView()
                             .tint(.white)
                     } else {
-                        Text(loc("sticky_footer.cta", ctaText))
+                        Text(ctaDisplayText(data?.ctaText, locKey: "sticky_footer.cta", fallback: ctaText))
                             .font(.system(size: data?.ctaFontSize ?? 17, weight: resolveCTAFontWeight(data?.ctaFontWeight)))
                             .foregroundColor(Color(hex: data?.ctaTextColor ?? "#FFFFFF"))
                     }

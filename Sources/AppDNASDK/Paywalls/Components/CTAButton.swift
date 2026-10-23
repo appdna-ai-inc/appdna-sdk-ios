@@ -49,6 +49,22 @@ struct CTAButton: View {
     var ctaGradient: PaywallGradient? = nil
     /// Override CTA text (from section config.text)
     var textOverride: String? = nil
+    /**
+     The selected plan's name, appended AFTER localisation — #1102.
+
+     🔴 WHY IT CANNOT BE PART OF `textOverride`. #1100 made a multi-plan CTA name the plan it will
+     buy, and the first version built the whole string ("Subscribe — Annual") and passed it as
+     `textOverride` — which is the FALLBACK to `loc("cta.text", …)`. A paywall carrying a translation
+     for `cta.text` therefore got the translation and LOST the plan name, so the mitigation vanished
+     on exactly the paywalls hardest to check: a device walk in the default locale would never show
+     it. Measured when this was found, 0 of 51 multi-plan paywalls were localised, so it was a
+     future regression rather than a live one.
+
+     Composing it here, after `loc`, means a localised CTA keeps its translation AND names the plan.
+     The caller passes the plan's own localised name (`plan.<idx>.name`), so both halves are
+     translated.
+    */
+    var planNameSuffix: String? = nil
     /// CTA text font size (console "Section Font Size" = cta_font_size). Applied only when no
     /// Style-tab button text_style is set. Parity with Android (PaywallActivity.kt:2548, 17f
     /// baseline) + preview (PaywallPreview.tsx:1385).
@@ -123,6 +139,18 @@ struct CTAButton: View {
     }
 
     @ViewBuilder
+    /// The label the button draws: localised first, THEN the plan's name appended (#1100 / #1102).
+    ///
+    /// The already-contains-the-name guard lives here as well, so a translation that happens to
+    /// include the plan's name does not receive it twice.
+    private var displayText: String {
+        let base = loc?("cta.text", textOverride ?? cta?.text ?? "Subscribe")
+            ?? textOverride ?? cta?.text ?? "Subscribe"
+        guard let suffix = planNameSuffix?.trimmingCharacters(in: .whitespaces), !suffix.isEmpty,
+              !base.localizedCaseInsensitiveContains(suffix) else { return base }
+        return "\(base) — \(suffix)"
+    }
+
     private var subscribeButton: some View {
         Button(action: onTap) {
             HStack(spacing: 8) {
@@ -131,10 +159,10 @@ struct CTAButton: View {
                         .tint(.white)
                 }
                 if let ts = buttonTextStyle {
-                    Text(isPurchasing ? "Processing..." : (loc?("cta.text", textOverride ?? cta?.text ?? "Subscribe") ?? textOverride ?? cta?.text ?? "Subscribe"))
+                    Text(isPurchasing ? "Processing..." : displayText)
                         .applyTextStyle(ts)
                 } else {
-                    Text(isPurchasing ? "Processing..." : (loc?("cta.text", textOverride ?? cta?.text ?? "Subscribe") ?? textOverride ?? cta?.text ?? "Subscribe"))
+                    Text(isPurchasing ? "Processing..." : displayText)
                         .font(.system(size: ctaFontSize ?? 17, weight: resolveCTAFontWeight(ctaFontWeight)))
                         .foregroundColor(buttonTextColor)
                 }
