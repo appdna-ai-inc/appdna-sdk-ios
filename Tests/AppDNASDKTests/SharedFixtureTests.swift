@@ -888,9 +888,20 @@ final class SharedFixtureTests: XCTestCase {
         // the completion performs, so the fixture also proves the route is CONSUMED. A helper that
         // only peeked would let a route leak into the next flow and still pass.
         case PendingCompletionRoute.actionName:
+            /*
+             #1096 — the step's own answers travel with this advance, because production ends in
+             `advanceCollectingStepData()` exactly like `next`. This branch used to pass
+             setup-only responses, so no fixture could see the payload half: the sibling fixture
+             proves the route is recorded and the flow advances, and neither notices the answers
+             being dropped. The payload comes from the SDK's own assembly, not a copy.
+             */
             PendingCompletionRoute.shared.record(buttonValue)
+            var routeResponses = sessionResponses(f)
+            if let payload = StepAdvancePayload.build(inputValues: formData, toggleValues: [:]) {
+                routeResponses[step.id] = payload
+            }
             applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
-                         responses: sessionResponses(f), result: .proceed, hookRan: false)
+                         responses: routeResponses, result: .proceed, hookRan: false)
             h.state["pending_completion_route"] = PendingCompletionRoute.shared.take() ?? NSNull()
 
         default:
