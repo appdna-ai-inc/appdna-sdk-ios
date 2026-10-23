@@ -46,6 +46,59 @@ struct ContentView: View {
         ("screen", "Show Screen"),
     ]
 
+    /*
+     #1086 — the STORED location answer, recomputed on demand rather than as a plain computed
+     property.
+
+     🔴 A computed property here would be read during body evaluation and then never again, because
+     nothing in it is observable. On a cold launch that races `SessionDataStore`'s first read of
+     `UserDefaults`, so a walk could poll the label twenty times and see the same stale
+     "UNANSWERED" — nothing would re-evaluate the view. Refreshing explicitly on appear, and again
+     whenever the event mirror changes, removes the hidden dependency.
+     */
+    @State private var locationReadback = "not read yet"
+
+    private func refreshLocationReadback() {
+        guard let fieldId = Launch.locationFieldId else { locationReadback = "no field asked for"; return }
+        guard let d = AppDNA.getLocationData(fieldId: fieldId) else {
+            /*
+             🔴 SAY WHAT IS ACTUALLY STORED. "UNANSWERED" has three causes that need different
+             fixes — the write never happened, it happened under a different key, or
+             `LocationData.fromStoredAnswer` cannot parse the shape — and they are
+             indistinguishable from the API's nil. The raw bucket is readable here because this is
+             the app's own `UserDefaults` and this is a test host, so one failing run names the
+             cause instead of costing another round trip.
+             */
+            /*
+             🔴 `data(forKey:)`, NOT `dictionary(forKey:)`. `SessionDataStore.persistDict` stores
+             JSON **Data**, so `dictionary(forKey:)` returns nil for a bucket that is present —
+             which made this diagnostic report "(no bucket)" for three runs while the real question
+             was whether the write had flushed. A diagnostic that can be wrong in the same
+             direction as the defect is worse than none.
+             */
+            let raw = UserDefaults.standard.data(forKey: "appdna.session.onboarding_responses")
+                .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+            let shape = raw.map { dict in
+                dict.map { step, value in
+                    "\(step):[\((value as? [String: Any])?.keys.sorted().joined(separator: ",") ?? "not-a-dict")]"
+                }.sorted().joined(separator: " ")
+            } ?? "(no bucket in UserDefaults)"
+            locationReadback = "field=\(fieldId) UNANSWERED stored=\(shape)"
+            return
+        }
+        var parts: [String] = ["field=\(fieldId)"]
+        if !d.formatted_address.isEmpty { parts.append("addr=\(d.formatted_address)") }
+        if let v = d.city, !v.isEmpty { parts.append("city=\(v)") }
+        if let v = d.country, !v.isEmpty { parts.append("country=\(v)") }
+        if let v = d.country_code, !v.isEmpty { parts.append("cc=\(v)") }
+        if let v = d.latitude { parts.append("lat=\(v)") }
+        if let v = d.longitude { parts.append("lng=\(v)") }
+        if let v = d.timezone, !v.isEmpty { parts.append("tz=\(v)") }
+        if let v = d.timezone_offset { parts.append("tzoff=\(v)") }
+        if let v = d.raw_query, !v.isEmpty { parts.append("typed=\(v)") }
+        locationReadback = parts.joined(separator: " | ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("AppDNA SDK Host")
@@ -69,15 +122,35 @@ struct ContentView: View {
                 .accessibilityIdentifier("host.lastEvents")
                 .opacity(0)
                 .frame(height: 0)
+
+            /*
+             #1086 — the STORED location answer, read back from the SDK rather than from the screen.
+             A dropdown that drew "Lisbon, Portugal" proves the provider answered; it says nothing
+             about whether the city, country, coordinates and zone were persisted in the shape both
+             SDKs decode. This reads `getLocationData(fieldId:)`, which is the host-facing API an
+             integrator would use, so the walk asserts the same thing a real app would see.
+
+             Zero-height and transparent, like the event mirror above: it must not change the
+             layout the other walks assert against.
+             */
+            Text(locationReadback)
+                .accessibilityIdentifier("host.locationData")
+                .opacity(0)
+                .frame(height: 0)
             Spacer()
         }
         .padding(20)
+        // The single-parameter form on purpose: `onChange(of:initial:_:)` is iOS 17+, and this host
+        // targets lower — the two-parameter version fails the build with
+        // "'onChange(of:initial:_:)' is only available in iOS 17.0 or newer".
+        .onChange(of: events.joined) { _ in refreshLocationReadback() }
         .onAppear {
             AppDNA.lifecycleDelegate = TrackedEventLog.shared
             // #1074 — the paywall delegate is a SEPARATE registration, and the action it carries
             // is the only report of a CTA tap that could not become a purchase.
             AppDNA.paywall.setDelegate(TrackedEventLog.shared)
             Launch.autoPresentIfAsked()
+            refreshLocationReadback()
             probeStoreIfAsked()
         }
     }

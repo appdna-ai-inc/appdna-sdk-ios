@@ -46,6 +46,15 @@ enum Launch {
     static var surveyId: String { arg("appdnaSurvey") ?? "demo_survey" }
     static var screenId: String { arg("appdnaScreen") ?? "demo_screen" }
 
+    /*
+     #1086 — the field id whose STORED location answer the host reads back.
+     `getLocationData(fieldId:)` scans every onboarding response for that key, so the walk can
+     assert what was persisted rather than what the dropdown drew. Without it the only evidence a
+     suggestion was really selected is a screenshot of the suggestion, which says nothing about
+     whether the city, country, coordinates and zone reached the store.
+     */
+    static var locationFieldId: String? { arg("appdnaLocationField") }
+
     static func configureSDK() {
         // An absent key still configures: the SDK then fails its bootstrap loudly, which is a
         // better state to debug than an app that quietly did nothing at launch.
