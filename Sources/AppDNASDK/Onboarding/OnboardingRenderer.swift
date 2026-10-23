@@ -2253,8 +2253,30 @@ struct OnboardingStepRouter: View {
              "delete_account", "update_profile":
             emitAuthAction(action, actionValue: actionValue)
 
+        /*
+         #1091 — `continue` is an authored SYNONYM of `next`, and it used to fall to the default
+         below and throw the step's answers away. The #963 walk flow authors its CTA exactly this
+         way, and a selected location was lost every time.
+         */
+        case "continue":
+            advanceCollectingStepData()
+
         default:
-            onNext(nil)
+            /*
+             🔴 COLLECT, DO NOT DISCARD. This was `onNext(nil)`, which advanced the step and threw
+             away everything the user had entered on it — because the SDK did not recognise the
+             BUTTON's action name. The answers belong to the step, not to the button: there is no
+             action for which losing them is the right behaviour, and advancing with the data is
+             otherwise identical.
+
+             It is the structural half of #1091 and the larger one. A new action the console ships
+             before an SDK release supports it, an action one platform has and the other does not,
+             or a plain typo all took this branch, and the cost was the user's answers — silently.
+             Same silence class as #1074 and #1080, so it says so now.
+             */
+            Log.warning("Onboarding: unrecognised block action \"\(action)\" — advancing and "
+                + "keeping the step's answers")
+            advanceCollectingStepData()
         }
     }
 
