@@ -2247,6 +2247,7 @@ struct PaywallRenderer: View {
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
                     }
+                    .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
                 }
@@ -2276,6 +2277,7 @@ struct PaywallRenderer: View {
                                 Capsule().fill(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.clear)
                             )
                         }
+                        .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                         .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     }
@@ -2333,6 +2335,7 @@ struct PaywallRenderer: View {
                         .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 10)
                             .stroke(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.clear, lineWidth: 2))
                     }
+                    .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
                 }
@@ -2381,6 +2384,7 @@ struct PaywallRenderer: View {
                             }
                             .frame(maxWidth: .infinity)
                         }
+                        .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                         .buttonStyle(.plain)
                     }
                 }
@@ -2458,6 +2462,7 @@ struct PaywallRenderer: View {
                                     .stroke(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.gray.opacity(0.2), lineWidth: selectedPlanId == plan.id ? 2 : 1)
                             )
                         }
+                        .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                         .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     }
@@ -2481,6 +2486,7 @@ struct PaywallRenderer: View {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
                         }
+                        .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                         .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     }
@@ -2573,6 +2579,7 @@ struct PaywallRenderer: View {
                     .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 16)
                         .stroke(Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")), lineWidth: 2))
                 }
+                .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                 .contentShape(Rectangle())
                     .buttonStyle(.plain)
                 .padding(.horizontal)
@@ -2633,6 +2640,7 @@ struct PaywallRenderer: View {
                                 .stroke(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.gray.opacity(0.2), lineWidth: selectedPlanId == plan.id ? 2 : 1))
                             .padding(.horizontal, 8)
                         }
+                        .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                         .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     }
@@ -2698,6 +2706,7 @@ struct PaywallRenderer: View {
                         .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 10)
                             .stroke(isExpanded ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.gray.opacity(0.2), lineWidth: isExpanded ? 2 : 1))
                     }
+                    .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
                     .animation(.easeInOut(duration: 0.25), value: isExpanded)
@@ -2748,11 +2757,33 @@ struct PaywallRenderer: View {
          * did, whatever happens next.
          */
         onAction?(.ctaTapped)
-        guard let planId = selectedPlanId else { return }
+        guard let planId = selectedPlanId else {
+            // #1072 / #1081 — a CTA that buys nothing used to be silent. Say which guard stopped it.
+            Log.warning("Paywall CTA tapped with no plan selected — nothing to purchase")
+            return
+        }
         // Plans can be in section.data.plans OR top-level config.plans
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
         let allPlans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
-        guard let plan = allPlans.first(where: { $0.id == planId }) else { return }
+        /*
+         * #1081 — a plan tap can fail to take, and the CTA then buys the plan selected BEFORE it:
+         * measured once in roughly ten runs, with the row's own label in the log and the CTA
+         * recorded enabled and hittable. The selection state at the instant of the press is the
+         * one fact that separates the two possible halves — a tap that never reached `selectPlan`
+         * (the id here is the OLD plan) from a purchase path reading a stale value (the id here is
+         * the NEW plan while the bought product is the old one). Neither is visible from outside.
+         *
+         * It also names which collection resolved the plan, because the rows and this lookup can
+         * read DIFFERENT arrays — root `plans` versus a `plans` section — and that mismatch buys a
+         * product the row never showed (the shape behind #923).
+         */
+        Log.debug("Paywall CTA: selectedPlanId=\(planId) resolvedFrom=\(sectionPlans.isEmpty ? "config.plans" : "section.data.plans") "
+            + "candidates=\(allPlans.map { $0.id }.joined(separator: ","))")
+        guard let plan = allPlans.first(where: { $0.id == planId }) else {
+            // The selected row is not in the array this resolves from — a silent no-op before.
+            Log.warning("Paywall CTA: selected plan \(planId) is not among \(allPlans.map { $0.id }.joined(separator: ",")) — nothing purchased")
+            return
+        }
         // Haptic on CTA tap
         HapticEngine.triggerIfEnabled(config.haptic?.triggers?.on_button_tap, config: config.haptic)
         // Trigger particle effect on purchase

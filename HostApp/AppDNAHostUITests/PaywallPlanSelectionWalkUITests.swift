@@ -55,14 +55,16 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         let app = XCUIApplication()
 
         // PASS 1 — the control: the CTA with nothing selected, which is #1018's walk.
-        let boughtByDefault = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: false)
+        let pass1 = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: false)
+        let boughtByDefault = pass1.bought
         NSLog("[#1068] default selection bought: \(boughtByDefault ?? "nothing")")
 
         session.clearTransactions()
         app.terminate()
 
         // PASS 2 — the same fixture, the same CTA, one variable changed.
-        let boughtAfterTap = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: true)
+        let pass2 = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: true)
+        let boughtAfterTap = pass2.bought
         NSLog("[#1068] after tapping the annual plan bought: \(boughtAfterTap ?? "nothing")")
 
         XCTAssertEqual(
@@ -70,10 +72,31 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             "the fixture's default plan is the monthly one, so an untouched paywall must buy it — "
                 + "StoreKit recorded \(boughtByDefault ?? "no transaction")",
         )
+        // Spelled out rather than mapped over the Optional, so the three states are explicit.
+        let selectionReading: String
+        switch pass2.selectionTook {
+        case .some(true): selectionReading = "true"
+        case .some(false): selectionReading = "false"
+        case .none: selectionReading = "unread"
+        }
+
+        /*
+         🔴 #1081 — the selection state is IN the message, so a recurrence names its own half
+         instead of needing another run to find out. `selected=false` means the tap never reached
+         `selectPlan`; `selected=true` with the wrong product means the purchase path read a stale
+         value and the user was charged for a plan they had changed away from.
+         */
         XCTAssertEqual(
             boughtAfterTap, "premium_annual",
             "tapping the annual plan must change what the CTA buys — StoreKit recorded "
-                + "\(boughtAfterTap ?? "no transaction")",
+                + "\(boughtAfterTap ?? "no transaction")"
+                + ", and the annual row reported selected="
+                + "\(selectionReading) at the moment the CTA was pressed",
+        )
+        XCTAssertEqual(
+            pass2.selectionTook, true,
+            "the annual row did not report itself selected after being tapped, so the plan tap was "
+                + "lost before the CTA was ever pressed (#1081)",
         )
         /*
          The contrast, stated as its own assertion so a failure reads as what it is. If both passes
@@ -95,7 +118,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         apiKey: String,
         paywallId: String,
         tappingAnnual: Bool,
-    ) throws -> String? {
+    ) throws -> (bought: String?, selectionTook: Bool?) {
         app.launchArguments = [
             "-appdnaApiKey", apiKey,
             "-appdnaPaywall", paywallId,
@@ -159,9 +182,60 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             "no plan row was drawn at the monthly store price (\(Self.monthlyPrice))",
         )
 
+        /*
+         🔴 THE NEGATIVE CONTROL FOR THE INSTRUMENT ITSELF, and it is not optional. #923's first
+         render test read an EMPTY accessibility tree, so "the authored price is absent" passed for
+         the worst possible reason. The same trap is live here: if the `.isSelected` trait were
+         never applied, every row would read `selected=false` forever — and a check that only ever
+         asserts "the annual row is NOT selected yet" would sail through on a dead instrument.
+         *
+         So the DEFAULT row is read first. The fixture's default is the monthly plan, so before any
+         tap exactly one row must report itself selected, and it must be that one. That reading is
+         what proves this harness can distinguish selected from unselected at all.
+         */
+        if let monthlyRow = rowShowing(app, Self.monthlyPrice, timeout: 10) {
+            NSLog("[#1081] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
+                + "annual selected=\(annualRow.isSelected)")
+            XCTAssertTrue(
+                monthlyRow.isSelected,
+                "the fixture's DEFAULT plan row does not report itself selected, so this walk cannot "
+                    + "tell a selected row from an unselected one and its #1081 reading would be "
+                    + "meaningless (the `.isSelected` trait is missing from the plan rows)",
+            )
+            XCTAssertFalse(
+                annualRow.isSelected,
+                "the annual row reports itself selected before it was ever tapped",
+            )
+        }
+
+        var selectionTook: Bool?
         if tappingAnnual {
             NSLog("[#1068] tapping the annual plan: \(annualRow.label)")
             annualRow.tap()
+            /*
+             🔴 #1081 — READ THE SELECTION BACK, before the CTA is pressed. A run bought
+             `premium_monthly` after a tap whose log carried the ANNUAL row's own label and a CTA
+             recorded `[enabled=true hittable=true]`, once in roughly ten. From outside, two very
+             different faults produce that line:
+
+               the row is NOT selected here → the tap never reached `selectPlan`: it was swallowed
+                                              or landed on something that is not the row;
+               the row IS selected here     → the selection took and the purchase path still bought
+                                              the previous plan — a mischarge, the serious half.
+
+             Every plan row now carries the `.isSelected` trait (Android has reported
+             `selected = isSelected` on its rows all along; iOS reported nothing), so this is a
+             direct read of the renderer's own state rather than an inference from pixels.
+
+             It is POLLED, not read once: the tap returns before SwiftUI has committed the
+             re-evaluated body, and a single immediate read would measure the harness, not the app.
+             */
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline && !annualRow.isSelected {
+                Thread.sleep(forTimeInterval: 0.25)
+            }
+            selectionTook = annualRow.isSelected
+            NSLog("[#1081] the annual row reports selected=\(annualRow.isSelected) before the CTA is pressed")
         }
 
         let cta = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch
@@ -226,7 +300,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
                 + recorded.map(\.productIdentifier).joined(separator: ", ")
                 + " — the SDK's own view of it was: \(eventsSeenByTheHost(app))",
         )
-        return recorded.first?.productIdentifier
+        return (recorded.first?.productIdentifier, selectionTook)
     }
 
     /// What the SDK TRACKED, read only when the ledger is empty — so a run that bought nothing

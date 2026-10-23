@@ -160,6 +160,7 @@ struct PlanCard: View {
                 .padding(.vertical, 6)
                 .contentShape(Rectangle())
         }
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .buttonStyle(.plain)
     }
 
@@ -174,7 +175,7 @@ struct PlanCard: View {
     @ViewBuilder
     private var cardBody: some View {
         Button(action: {
-            print("[PlanCard] Tapped plan: \(plan.id ?? "nil")")
+            Log.debug("[PlanCard] tapped plan \(plan.id ?? "nil")")
             onSelect()
         }) {
             VStack(spacing: 0) {
@@ -372,6 +373,7 @@ struct PlanCard: View {
                 }
             }
         }
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         .contentShape(Rectangle())
         .buttonStyle(.plain)
         // Reserve vertical space for the badge's overhang so it doesn't get
