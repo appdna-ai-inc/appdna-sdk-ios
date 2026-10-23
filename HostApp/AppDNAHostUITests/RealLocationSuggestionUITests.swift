@@ -163,6 +163,76 @@ final class RealLocationSuggestionUITests: XCTestCase {
         )
     }
 
+    /**
+     🔴 NOT YET COMPILED OR RUN — the Mac bridge wedged before it could be. Build it before
+     trusting anything it says, and read its result as the A/B described below.
+
+     #1091 — THE A/B THAT LOCALISES THE LOSS: type, and advance WITHOUT selecting.
+
+     The docs say typed-but-unselected text stores `{formatted_address, raw_query}` with null
+     coordinates. So this exercises the same content-block → `inputValues` → advance → responses
+     path as the selection test, with the selection removed as the only variable:
+
+       typed stores, selected does not → the loss is in the SELECTION write specifically;
+       neither stores                  → the whole content-block answer path is broken on iOS,
+                                         which is a much larger defect than #1086 was chasing.
+
+     Either answer is worth having, and it costs one run instead of a guess.
+     */
+    func testATypedAnswerIsStoredWithoutSelecting() throws {
+        guard let apiKey, let flowId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest --location-flow <id>")
+        }
+
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-appdnaApiKey", apiKey, "-appdnaFlow", flowId, "-appdnaLocationField", Self.fieldId,
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+
+        var presented = false
+        for attempt in 0..<12 where !presented {
+            app.buttons["host.onboarding"].tap()
+            presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
+            if !presented { NSLog("[#1091] flow not up yet, attempt \(attempt + 1)") }
+        }
+        XCTAssertTrue(presented, "the flow never presented — config did not arrive")
+
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the step has no location field")
+        type(Self.query, into: field, in: app)
+
+        // No selection. Advance with the typed text only.
+        app.buttons["Next"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Type = City"].waitForExistence(timeout: 15),
+            "the step did not advance, so nothing could have been stored",
+        )
+        app.buttons["Close"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20), "the flow did not close")
+
+        let mirror = app.staticTexts["host.locationData"]
+        XCTAssertTrue(mirror.waitForExistence(timeout: 15), "the host has no location readback surface")
+        var value = mirror.label
+        for _ in 0..<12 where value.contains("UNANSWERED") {
+            Thread.sleep(forTimeInterval: 0.5)
+            value = mirror.label
+        }
+        NSLog("[#1091] TYPED-ONLY readback: \(value)")
+
+        /*
+         Asserted, because the documented contract is that typed text IS stored — "typed text
+         without a selection returns `formatted_address` and `raw_query` only (null coordinates)".
+         If this fails, the content-block answer path loses everything, not just selections.
+         */
+        XCTAssertFalse(
+            value.contains("UNANSWERED"),
+            "typed-but-unselected text was not stored either, so the whole content-block answer "
+                + "path is losing values — not only the selection write (#1091). Readback: \(value)",
+        )
+    }
+
     // MARK: - helpers
 
     /*
