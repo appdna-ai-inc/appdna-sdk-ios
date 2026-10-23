@@ -861,10 +861,18 @@ final class SharedFixtureTests: XCTestCase {
         // responses, AND the flow goes exactly where it would have gone without it. Reimplementing
         // either half here would let the fixture pass with the SDK's copy deleted.
         case OnboardingCTAFlag.actionName:
-            var merged = formData
-            if let flag = OnboardingCTAFlag.parse(buttonValue) {
-                merged[flag.key] = flag.value
-            }
+            /*
+             #1095 — the PAYLOAD comes from the SDK's own `StepAdvancePayload.build`, not a copy
+             assembled here. This branch used to merge the flag into its own dictionary, so the iOS
+             suite passed 1542 tests / 0 failures with the renderer's merge deleted. The runner was
+             driving the real `parse` and `applyTo` and nothing about what an advance carries.
+             */
+            let flag = OnboardingCTAFlag.parse(buttonValue)
+            let merged = StepAdvancePayload.build(
+                inputValues: formData,
+                toggleValues: [:],
+                extra: flag.map { [$0.key: $0.value] } ?? [:]
+            ) ?? [:]
             var responses = sessionResponses(f)
             responses[step.id] = merged
             responses = OnboardingCTAFlag.applyTo(responses: responses, step: step, stepData: merged)

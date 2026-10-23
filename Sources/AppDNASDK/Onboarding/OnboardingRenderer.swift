@@ -2110,19 +2110,10 @@ struct OnboardingStepRouter: View {
             }
             return
         }
-        // Collect toggle values and input values into response
-        var data: [String: Any] = [:]
-        for (key, value) in toggleValues {
-            data["toggle_\(key)"] = value
-        }
-        // Include form input values in step response
-        for (key, value) in inputValues {
-            data[key] = value
-        }
-        for (key, value) in extra {
-            data[key] = value
-        }
-        onNext(data.isEmpty ? nil : data)
+        // #1095 — the assembly itself lives in `StepAdvancePayload` so a unit test can reach the
+        // SAME code the device runs. The fixture runner used to keep its own copy, which is why the
+        // iOS suite passed 1542/0 with this merge deleted.
+        onNext(StepAdvancePayload.build(inputValues: inputValues, toggleValues: toggleValues, extra: extra))
     }
 
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
