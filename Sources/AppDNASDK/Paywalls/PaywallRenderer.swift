@@ -67,12 +67,19 @@ struct PaywallRenderer: View {
         config.sections.first(where: { $0.type == "cta" })
     }
 
-    /// The currently selected plan (matches `onAppear`'s resolution: section plans, then top-level).
-    private var selectedPlan: PaywallPlan? {
+    /// The plans this paywall offers, in the order they draw — the ONE resolution every site shares.
+    ///
+    /// #1097 was four copies of these three lines drifting apart: two applied the authored rank and
+    /// two did not, and the one that drew was among those that did not.
+    private var resolvedPlans: [PaywallPlan] {
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
         // #1056 — the authored rank, which both platforms decoded and neither read.
-        let plans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
-        return plans.first(where: { $0.id == selectedPlanId })
+        return PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
+    }
+
+    /// The currently selected plan (matches `onAppear`'s resolution: section plans, then top-level).
+    private var selectedPlan: PaywallPlan? {
+        resolvedPlans.first(where: { $0.id == selectedPlanId })
     }
 
     /// The selected plan's per-plan CTA text, when non-empty. Wired into the pinned CTA + sticky
@@ -81,6 +88,42 @@ struct PaywallRenderer: View {
     private var selectedPlanCtaText: String? {
         guard let t = selectedPlan?.cta_text, !t.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return t
+    }
+
+    /**
+     The CTA's label, resolved once for all three places a CTA is drawn (#1100).
+
+     🔴 WHY THE BUTTON NAMES THE PLAN. A tap on a plan row that drifts ~14pt is claimed by the
+     `ScrollView` the rows live in, so the selection does not change and the CTA buys the plan chosen
+     BEFORE it — measured under #1081, and iOS's own convention, so the tolerance is deliberately
+     left alone. What made that a wrong purchase rather than a visible mistake is that nothing on
+     screen named what was about to be bought. A button reading "Subscribe — Annual" shows a stale
+     selection before the money moves instead of on the receipt after.
+
+     An author can already say it exactly, per plan, with `plans[].cta_text`, and that still wins.
+     This is the default for the paywalls where nobody did: measured on dev when #1100 was written,
+     6 of 129 plans carried the field and 27 of 30 ACTIVE multi-plan paywalls had none.
+
+     Deliberately conservative, because it changes copy on live paywalls:
+       - a single-plan paywall is never touched — there is no choice to get wrong;
+       - an authored per-plan label wins outright, untouched;
+       - a CTA whose own text already contains the plan's name is left alone, so "Start Annual" does
+         not become "Start Annual — Annual";
+       - the plan's `displayName` is `label ?? name`, which is the short word an author typed
+         ("Annual"), not a price string.
+
+     It is one function rather than three because #1081 WAS the three drifting apart: the section arm
+     resolved the per-plan label, the root arm did not, and the same authored field worked or did
+     nothing depending on the layout.
+     */
+    private func ctaLabel(_ authored: String?) -> String? {
+        if let perPlan = selectedPlanCtaText { return perPlan }
+        guard let authored, !authored.trimmingCharacters(in: .whitespaces).isEmpty else { return authored }
+        let plans = resolvedPlans
+        guard plans.count > 1 else { return authored }
+        let name = (selectedPlan?.displayName ?? "").trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !authored.localizedCaseInsensitiveContains(name) else { return authored }
+        return "\(authored) — \(name)"
     }
 
     /// Sections that should render INSIDE the pinned bottom area, BELOW the
@@ -268,8 +311,9 @@ struct PaywallRenderer: View {
                     if let ctaSec = ctaSection {
                         let topLevelText = config.cta?.text
                         let sectionText = ctaSec.data?.ctaText ?? ctaSec.data?.text
-                        // Selected plan's per-plan CTA overrides the section/top-level label.
-                        let ctaText = selectedPlanCtaText ?? topLevelText ?? sectionText
+                        // #1100 — one resolution for all three CTA sites: the plan's own label,
+                        // else the authored text, else the authored text naming the plan.
+                        let ctaText = ctaLabel(topLevelText ?? sectionText)
                         let showRestore = ctaSec.data?.showRestore ?? false
                         let restorePosition = ctaSec.data?.restorePosition ?? "below"
                         // Restore button rendered OUTSIDE `.applyContainerStyle`
@@ -357,7 +401,7 @@ struct PaywallRenderer: View {
                             if isPurchasing {
                                 ProgressView().tint(.white)
                             } else {
-                                Text(selectedPlanCtaText ?? cta.text ?? "Continue")
+                                Text(ctaLabel(cta.text) ?? "Continue")
                                     .font(cta.resolvedFontSize.map { .system(size: CGFloat($0), weight: .semibold) } ?? .headline)
                                     .foregroundColor(Color(hex: cta.resolvedTextColor))
                             }
@@ -449,9 +493,40 @@ struct PaywallRenderer: View {
                     .background(Color.red.opacity(0.9))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 80)
+                    /*
+                     🔴 ABOVE THE PINNED ZONE, MEASURED — it used to be a hardcoded `80`.
+                     *
+                     * The pinned group is the CTA plus whatever is pinned with it: a restore link,
+                     * legal text, and since #884 ANY section authored `zone: "bottom"` — the plan
+                     * tiles included. Its real height is already measured into `pinnedZoneHeight`
+                     * (`recordPinnedHeight`), and was used only to decide overflow. The banner
+                     * guessed it as 80, so on any paywall whose pinned group is taller the banner
+                     * covered the button that buys: the banner's background is opaque and
+                     * hit-testable, so a tap aimed at the CTA reached no action — and a SwiftUI
+                     * `Button` that receives no touch logs nothing, emits nothing and calls no
+                     * delegate, which is indistinguishable from a store that refused.
+                     *
+                     * Measured on the two-plan walk fixture, whose pinned group is short: the CTA
+                     * label sits at y=788 in an 874-point window and the banner's top edge at 794,
+                     * so they overlap by ~6 points there. The overlap grows with the pinned group,
+                     * which is why the fix is the measurement rather than a bigger constant.
+                     *
+                     * `max(80, …)` keeps the old spacing as a floor for the case the measurement has
+                     * not landed yet (`pinnedZoneHeight` starts at 0), so a banner shown in the
+                     * first frames cannot sit lower than it used to.
+                     */
+                    .padding(.bottom, max(80, pinnedZoneHeight + 16))
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
+                /*
+                 🔴 And tapping the banner DISMISSES it, so a tap aimed at a covered CTA recovers
+                 instead of doing nothing. Whatever still overlaps — a long message, a narrow
+                 screen, a pinned group measured a frame late — the user's instinctive second tap
+                 now clears the obstruction rather than vanishing into it. `contentShape` is what
+                 makes the whole banner tappable rather than only its text.
+                 */
+                .contentShape(Rectangle())
+                .onTapGesture { withAnimation { showErrorBanner = false } }
             }
 
             // #652 — the Back button, rendered INDEPENDENTLY of the close control.
@@ -1551,8 +1626,8 @@ struct PaywallRenderer: View {
         let bgColor = Color(hex: data?.backgroundColor ?? "#FFFFFF")
 
         VStack(spacing: 8) {
-            // CTA button — selected plan's per-plan CTA overrides the footer's configured label.
-            if let ctaText = selectedPlanCtaText ?? data?.ctaText {
+            // CTA button — #1100's one resolution, as the other two sites use.
+            if let ctaText = ctaLabel(data?.ctaText) {
                 Button {
                     handleCTATap()
                 } label: {

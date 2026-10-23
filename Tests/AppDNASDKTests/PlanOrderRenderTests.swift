@@ -196,6 +196,62 @@ final class PlanOrderRenderTests: XCTestCase {
         )
     }
 
+    /// 🔴 #1100 — ON A MULTI-PLAN PAYWALL THE CTA NAMES THE PLAN, when nothing else does.
+    ///
+    /// #1081 measured that a plan tap drifting ~14pt is claimed by the ScrollView, so the selection
+    /// does not change and the CTA buys the plan chosen before it. That is iOS's own convention and
+    /// is deliberately left alone; what made it a wrong purchase rather than a visible mistake is
+    /// that nothing named what was about to be bought. Measured on dev: 6 of 129 plans carried a
+    /// `cta_text`, and 27 of 30 ACTIVE multi-plan paywalls had none — so the authorable mitigation
+    /// reached almost nothing, and this is the default for the rest.
+    ///
+    /// The comparison is the same three-render shape: a paywall that gets the suffix appended must be
+    /// pixel-identical to one that simply authors that whole string, and different from one that does
+    /// not name the plan at all. A blank render cannot satisfy both.
+    func testAMultiPlanCTANamesTheSelectedPlan() throws {
+        // Two plans, no per-plan `cta_text` → the suffix is appended to the root CTA's text.
+        let appended = try renderPNG(try twoPlanRootCtaConfig(rootCtaText: "GENERIC"))
+        // The same string authored outright. It already contains "Alpha", so nothing is appended —
+        // which is the guard against "Start Alpha — Alpha", exercised here rather than asserted.
+        let authored = try renderPNG(try twoPlanRootCtaConfig(rootCtaText: "GENERIC — Alpha"))
+        // One plan: there is no choice to get wrong, so the CTA is left exactly as authored.
+        let singlePlan = try renderPNG(try rootCtaConfig(rootCtaText: "GENERIC", planCtaText: nil))
+
+        XCTAssertEqual(
+            appended, authored,
+            "a two-plan paywall whose CTA reads \"GENERIC\" must draw the same pixels as one "
+                + "authoring \"GENERIC — Alpha\" — that is what 'the button names the plan' means, "
+                + "and it also proves the already-contains-the-name guard leaves the second alone"
+        )
+        XCTAssertNotEqual(
+            appended, singlePlan,
+            "appending the plan name must CHANGE the screen — if a two-plan CTA draws the same as a "
+                + "single-plan one, the suffix was not applied. This is the harness's negative "
+                + "control as well: a render that cannot show the label makes these equal."
+        )
+    }
+
+    /// Two plans, a ROOT `cta`, and no per-plan `cta_text` — the shape #1100's default is for.
+    private func twoPlanRootCtaConfig(rootCtaText: String) throws -> PaywallConfig {
+        let json = """
+        {
+          "id": "render_two_plan_root_cta",
+          "layout": {
+            "type": "stack",
+            "background": { "type": "color", "value": "#FFFFFF" },
+            "sections": [
+              { "type": "plans", "config": { "plan_display_style": "vertical_stack", "plans": [
+                  { "product_id": "plan_alpha", "label": "Alpha", "price_display": "$1.11", "is_default": true },
+                  { "product_id": "plan_bravo", "label": "Bravo", "price_display": "$2.22" }
+              ] } }
+            ]
+          },
+          "cta": { "text": "\(rootCtaText)" }
+        }
+        """
+        return try JSONDecoder().decode(PaywallConfig.self, from: Data(json.utf8))
+    }
+
     /// The common shape, pinned so the fix cannot reorder anything that does not ask to be
     /// reordered: no plan carries a rank, so the array's own order is the drawing order.
     func testPlansWithNoAuthoredRankDrawInTheArrayOrder() throws {
