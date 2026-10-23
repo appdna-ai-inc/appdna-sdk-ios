@@ -873,7 +873,23 @@ struct PaywallRenderer: View {
         case "plans":
             // Plans can be in section.data.plans OR top-level config.plans
             let sectionPlans = section.data?.plans ?? []
-            let effectivePlans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+            /*
+             * 🔴 #1097 — THE SORT BELONGS HERE, because this is the only site that DRAWS.
+             *
+             * #1056 added `PaywallPlanOrder.sorted` for "the order a paywall's plans draw in" and
+             * wired it into `selectedPlan` and `onAppear` — both of which resolve a plan with
+             * `first(where: { $0.id == … })`, where order is irrelevant by construction. This site,
+             * the one where order IS the entire question, did not call it, so an authored rank
+             * reordered nothing on screen and plans drew in whatever order they were serialised in.
+             * Android has always sorted at its own render site (`PaywallActivity.kt`, `"plans" ->`),
+             * so the same document drew in two different orders on the two platforms.
+             *
+             * `sorted` is a no-op unless some plan carries `sort_order`, so nothing published
+             * without a rank moves. Measured by `PlanOrderRenderTests`, which compares RENDERS
+             * rather than calling the sorter — the shared fixture calls it directly and therefore
+             * could not see that no renderer did.
+             */
+            let effectivePlans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
             return AnyView(plansSection(plans: effectivePlans, style: section.style)
                 .applyContainerStyle(section.style?.container))
         case "cta":
@@ -2764,7 +2780,10 @@ struct PaywallRenderer: View {
         }
         // Plans can be in section.data.plans OR top-level config.plans
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-        let allPlans = sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans
+        // #1097 — sorted for the same reason Android's `effectivePlans()` is: this lookup is by id
+        // and so cannot care about order TODAY, but every one of these four resolution sites now
+        // reads the same order, which is what stopped being true and cost #1097.
+        let allPlans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
         /*
          * #1081 — a plan tap can fail to take, and the CTA then buys the plan selected BEFORE it:
          * measured once in roughly ten runs, with the row's own label in the log and the CTA

@@ -151,12 +151,19 @@ extension SharedFixtureTests {
     // MARK: resolve_plan_order
 
     /**
-     #1056 — the order a paywall's plans draw in, through the REAL `PaywallPlanOrder` the renderer
-     calls on both of its plan-resolution sites.
+     #1056 — the order a paywall's plans draw in, through the REAL `PaywallPlanOrder`.
 
      🔴 `sort_order` was DECODED by both platforms and read by NEITHER, so order came from the
      array's own order and a document carrying an explicit rank drew its plans in whatever order
      they happened to be serialised in.
+
+     🔴 WHAT THIS DRIVER DOES NOT PROVE, stated because it previously claimed otherwise. It called
+     the sorter "the renderer calls on both of its plan-resolution sites" — and a driver that calls
+     `PaywallPlanOrder.sorted` directly can see that the SORTER sorts and nothing about whether any
+     renderer calls it. #1097 is what that bought: the sort was wired into the two sites that look a
+     plan up BY ID, never into the one that draws, and this fixture stayed green throughout. The
+     render-order claim is `PlanOrderRenderTests` (iOS) and `PlanOrderRenderTest` (Android), which
+     compare what was DRAWN; this one pins the ordering rule itself, which is still worth pinning.
 
      Each case is a plain array of plans — the shape a published document carries — decoded through
      `PaywallPlan` so the rank arrives as the DTO coerces it, not as a literal the driver chose.
