@@ -664,6 +664,19 @@ struct PaywallRenderer: View {
                 },
                 onFailure: { notif in
                     let info = notif.userInfo ?? [:]
+                    /*
+                     * 🔴 #1103 — STOP CELEBRATING. `handleCTATap` starts the particle effect when
+                     * the CTA is TAPPED (it reads `trigger == "on_purchase"` and fires on the one
+                     * moment that is definitely not a purchase), and nothing ever set it back. So a
+                     * user who cancelled the sheet or had a card declined watched a congratulatory
+                     * animation run on top of a payment-failed message, indefinitely.
+                     *
+                     * Clearing it here removes that, which is the user-visible half. Moving the
+                     * trigger to the success path proper is the other half and needs plumbing the
+                     * three `post_purchase.on_success` branches that dismiss without posting
+                     * `.paywallPurchaseSuccess` — recorded on #1103 rather than rushed here.
+                     */
+                    confetti.wrappedValue = false
                     errorText.wrappedValue = info["message"] as? String ?? "Payment failed."
                     retryText.wrappedValue = info["retry_text"] as? String ?? "Try Again"
                     let canRetry = (info["action"] as? String) == "retry"
