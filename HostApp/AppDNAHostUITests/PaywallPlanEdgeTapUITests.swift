@@ -57,7 +57,21 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
             throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
         }
 
-        let session = try SKTestSession(configurationFileNamed: "AppDNATestProducts")
+        /*
+         🔴 `Bundle(for: Self.self)` AND THE NAME `Products`, both load-bearing. A UI-test bundle
+         sees neither the host app's resources nor the package's, so the `.storekit` is a `resources`
+         entry on the UI-TEST target and has to be looked up in that bundle. The first version of
+         this file used `SKTestSession(configurationFileNamed: "AppDNATestProducts")`, which reads
+         the MAIN bundle for a file that is not in it: the session came up with an empty catalogue
+         and the run skipped with `probe said store:0`, which reads exactly like a simulator with no
+         StoreKit configuration. Copied from `PaywallPurchaseWalkUITests`, which is the pattern that
+         works.
+        */
+        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
+            throw XCTSkip("Products.storekit is not in the UI-test bundle — add it to the target's "
+                + "`resources` in HostApp/project.yml")
+        }
+        let session = try SKTestSession(contentsOf: url)
         session.resetToDefaultState()
         session.disableDialogs = true
         session.clearTransactions()
@@ -107,6 +121,18 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
          tree and its absence assertion sailed through. The fixture's default is the monthly plan, so
          before any tap exactly one row reports itself selected and it must be that one.
         */
+        /*
+         🔴 THE FRAMES ARE LOGGED BECAUSE A COORDINATE TAP IS ONLY AS GOOD AS THE FRAME IT IS
+         RELATIVE TO. `app.buttons.containing(…)` matches a button by its DESCENDANTS, so it can
+         resolve an enclosing container rather than the row — and then a "centre" tap lands between
+         two rows and the 0.04 insets land outside both. That is indistinguishable from a row that
+         refuses taps, which is exactly the confusion this walk exists to avoid, so the geometry is
+         recorded before any conclusion is drawn from a reading.
+        */
+        NSLog("[#1081] geometry: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
+            + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable) "
+            + "| window=\(app.windows.firstMatch.frame) "
+            + "| rows matching the annual price=\(app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", Self.annualPrice)).count)")
         NSLog("[#1081] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
             + "annual selected=\(annualRow.isSelected)")
         XCTAssertTrue(
@@ -114,6 +140,31 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
             "the DEFAULT row does not report itself selected, so this walk cannot tell a selected "
                 + "row from an unselected one and every reading below would be meaningless",
         )
+
+        /*
+         🔴 SCROLL FIRST, AND THIS IS THE WHOLE REASON THE FIRST VERSION OF THIS WALK WAS WRONG.
+
+         `XCUIElement.tap()` scrolls an element into view before tapping it. `coordinate(withNormalized
+         Offset:).tap()` does NOT — it taps an absolute screen point, computed from the element's
+         frame wherever that frame happens to be. Measured on this fixture:
+
+             monthly frame=(20.0, 975.7, 362.0, 74.3) hittable=false
+             annual  frame=(20.0, 1062.0, 362.0, 74.3) hittable=false
+             window=(0.0, 0.0, 402.0, 874.0)
+
+         Both rows sit BELOW an 874-point window, so every one of the nine offsets — 0.5 included —
+         addressed a point off the bottom of the screen and nothing was tapped. All nine read
+         `selected=false`, which is indistinguishable from a row that refuses taps, and the only
+         reason that was knowable is that `PaywallPlanSelectionWalkUITests` passed in the same run
+         twenty seconds later using plain `.tap()`.
+
+         Accessibility traits read fine on an off-screen element, which is why the control assertion
+         above still passed while every tap missed — a combination worth remembering.
+        */
+        try scrollIntoView(app, annualRow, label: "the annual row")
+        try scrollIntoView(app, monthlyRow, label: "the monthly row")
+        NSLog("[#1081] after scrolling: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
+            + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable)")
 
         var failures: [String] = []
         for spot in Self.spots {
@@ -158,6 +209,23 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
             .containing(NSPredicate(format: "label CONTAINS[c] %@", price))
             .firstMatch
         return button.waitForExistence(timeout: timeout) ? button : nil
+    }
+
+    /// Swipe until `element` is actually on screen, because a coordinate tap will not do it.
+    ///
+    /// Bounded, and it fails rather than giving up quietly: an element that never becomes hittable
+    /// would otherwise send every tap below to an off-screen point and read as nine refusals.
+    private func scrollIntoView(_ app: XCUIApplication, _ element: XCUIElement, label: String) throws {
+        guard !element.isHittable else { return }
+        for _ in 0..<8 {
+            app.swipeUp()
+            if element.isHittable { return }
+        }
+        // Still not hittable: say so with the geometry, so the reading cannot be mistaken for the
+        // defect this walk is looking for.
+        throw XCTSkip("\(label) never became hittable — frame=\(element.frame) "
+            + "window=\(app.windows.firstMatch.frame). Every coordinate tap would address an "
+            + "off-screen point, so this walk can prove nothing about where a row takes a tap.")
     }
 
     /// Polls rather than sleeping, so a slow simulator costs time instead of a false negative.
