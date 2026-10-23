@@ -651,6 +651,9 @@ struct PaywallRenderer: View {
             let retryText = $errorRetryText
             let allowRetry = $errorAllowRetry
             let errorBanner = $showErrorBanner
+            // A plain value, not `self`: these blocks must not capture the view (see
+            // `PaywallPurchaseObservers` — a captured view keeps the holder alive).
+            let particleTrigger = config.particle_effect?.trigger
             purchaseObservers.register(
                 onSuccess: { notif in
                     let info = notif.userInfo ?? [:]
@@ -661,6 +664,11 @@ struct PaywallRenderer: View {
                 // The purchase ended with the paywall still up: re-enable the CTA.
                 onEnded: { _ in
                     purchasing.wrappedValue = false
+                },
+                // #1103 — the purchase SUCCEEDED, whichever `on_success` branch runs next.
+                onCelebrate: { _ in
+                    guard let effect = particleTrigger, effect == "on_purchase" else { return }
+                    confetti.wrappedValue = true
                 },
                 onFailure: { notif in
                     let info = notif.userInfo ?? [:]
@@ -2950,10 +2958,14 @@ struct PaywallRenderer: View {
         }
         // Haptic on CTA tap
         HapticEngine.triggerIfEnabled(config.haptic?.triggers?.on_button_tap, config: config.haptic)
-        // Trigger particle effect on purchase
-        if let effect = config.particle_effect, effect.trigger == "on_purchase" {
-            showConfetti = true
-        }
+        /*
+         * 🔴 #1103 — THE CELEBRATION DOES NOT START HERE ANY MORE. This read
+         * `trigger == "on_purchase"` and fired on the CTA TAP, which is the one moment that is
+         * definitely not a purchase — so a user who cancelled the sheet or had a card declined
+         * watched a congratulatory animation, and nothing ever stopped it. It now fires from
+         * `.paywallPurchaseCelebrate`, posted once by `handlePostPurchaseSuccess` before it
+         * branches, so every `on_success` action celebrates and no failure does.
+         */
         isPurchasing = true
         // Include toggle states in purchase metadata
         var metadata: [String: Any] = [:]

@@ -9,6 +9,22 @@ extension Notification.Name {
     /// (whatever `on_failure` says), and a success with no `on_success` config. The renderer re-enables
     /// its CTA (`isPurchasing = false`). Mirrors Android's `PaywallActivity.purchaseEndedSignal`.
     static let paywallPurchaseEnded = Notification.Name("ai.appdna.paywallPurchaseEnded")
+    /**
+     A purchase SUCCEEDED and an authored `particle_effect` should now celebrate it — #1103.
+
+     🔴 IT IS ITS OWN SIGNAL, and the four branches of `on_success` are why. The effect used to start
+     in `handleCTATap`, which reads `trigger == "on_purchase"` and fires on the one moment that is
+     definitely NOT a purchase: a user who cancelled the sheet or had a card declined watched a
+     congratulatory animation, and nothing ever stopped it.
+
+     Celebrating from the existing `.paywallPurchaseSuccess` instead would have covered only
+     `on_success.action == "show_message"`, because that is the sole branch that posts it — and
+     `dismiss`, `deep_link` and `next_step` are exactly the branches where a celebration during
+     `delay_ms` is the point. Posting `.paywallPurchaseSuccess` from those would have raised the
+     success OVERLAY too, which a `dismiss` branch never asked for. Hence one more name, posted once
+     before the switch, carrying nothing: the renderer already knows what effect was authored.
+    */
+    static let paywallPurchaseCelebrate = Notification.Name("ai.appdna.paywallPurchaseCelebrate")
 }
 
 /// Per-presentation guard that prevents double-dismiss
@@ -548,6 +564,10 @@ final class PaywallManager {
     // MARK: - Post-purchase actions
 
     private func handlePostPurchaseSuccess(config: PostPurchaseSuccessConfig?, paywallId: String, delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
+        // #1103 — the purchase really did succeed, so an authored `on_purchase` effect fires HERE,
+        // before any branch. Every branch reaches this line; only one of them posts
+        // `.paywallPurchaseSuccess`, which is why this is a signal of its own.
+        NotificationCenter.default.post(name: .paywallPurchaseCelebrate, object: nil)
         guard let config = config else {
             // No config = legacy behavior (delegate-only): the paywall stays up for the host to close,
             // so its CTA stops spinning (as Android).

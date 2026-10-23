@@ -1,7 +1,7 @@
 import Foundation
 import Combine
 
-/// Owns `PaywallRenderer`'s three post-purchase observer tokens for exactly the life
+/// Owns `PaywallRenderer`'s four post-purchase observer tokens for exactly the life
 /// of the view (a `@StateObject`), and removes them in `deinit`.
 ///
 /// They used to be removed in `.onDisappear` (to stop a leak). But `.onDisappear` also fires when the
@@ -20,10 +20,14 @@ final class PaywallPurchaseObservers: ObservableObject {
         self.center = center
     }
 
-    /// Registers the three observers, replacing any this holder already has (a repeated `onAppear`).
+    /// Registers the four observers, replacing any this holder already has (a repeated `onAppear`).
+    ///
+    /// `onCelebrate` is separate from `onSuccess` because only one of the four `on_success` branches
+    /// posts `.paywallPurchaseSuccess`, while a celebration belongs to all of them (#1103).
     func register(
         onSuccess: @escaping (Notification) -> Void,
         onEnded: @escaping (Notification) -> Void,
+        onCelebrate: @escaping (Notification) -> Void,
         onFailure: @escaping (Notification) -> Void
     ) {
         removeAll()
@@ -31,10 +35,11 @@ final class PaywallPurchaseObservers: ObservableObject {
             center.addObserver(forName: .paywallPurchaseSuccess, object: nil, queue: .main, using: onSuccess),
             center.addObserver(forName: .paywallPurchaseEnded, object: nil, queue: .main, using: onEnded),
             center.addObserver(forName: .paywallPurchaseFailure, object: nil, queue: .main, using: onFailure),
+            center.addObserver(forName: .paywallPurchaseCelebrate, object: nil, queue: .main, using: onCelebrate),
         ]
     }
 
-    /// How many observers are registered (0 or 3). For tests.
+    /// How many observers are registered (0 or 4). For tests.
     var registeredCount: Int { tokens.count }
 
     private func removeAll() {

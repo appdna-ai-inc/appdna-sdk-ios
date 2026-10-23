@@ -19,8 +19,10 @@ final class PaywallPurchaseObserversTests: XCTestCase {
     private func register(_ holder: PaywallPurchaseObservers,
                           success: @escaping () -> Void = {},
                           ended: @escaping () -> Void = {},
+                          celebrate: @escaping () -> Void = {},
                           failure: @escaping () -> Void = {}) {
-        holder.register(onSuccess: { _ in success() }, onEnded: { _ in ended() }, onFailure: { _ in failure() })
+        holder.register(onSuccess: { _ in success() }, onEnded: { _ in ended() },
+                        onCelebrate: { _ in celebrate() }, onFailure: { _ in failure() })
     }
 
     /// A post made at any point while the holder is alive (e.g. while a cover hides the paywall) still resets
@@ -30,11 +32,37 @@ final class PaywallPurchaseObserversTests: XCTestCase {
         let ended = expectation(description: "ended delivered")
         let failed = expectation(description: "failure delivered")
         register(holder, ended: { ended.fulfill() }, failure: { failed.fulfill() })
-        XCTAssertEqual(holder.registeredCount, 3)
+        XCTAssertEqual(holder.registeredCount, 4)
 
         center.post(name: .paywallPurchaseEnded, object: nil)
         center.post(name: .paywallPurchaseFailure, object: nil, userInfo: ["message": "x"])
         wait(for: [ended, failed], timeout: 2)
+    }
+
+
+    /// #1103 — the CELEBRATE signal reaches the renderer, and it is a FOURTH observer rather than a
+    /// reading of `.paywallPurchaseSuccess`.
+    ///
+    /// 🔴 The distinction is the whole fix. Only `on_success.action == "show_message"` posts
+    /// `.paywallPurchaseSuccess`; `dismiss`, `deep_link` and `next_step` post neither it nor
+    /// `.paywallPurchaseEnded`, and those three are exactly where a celebration during `delay_ms` is
+    /// the point. So the celebration cannot ride on the success notification — this asserts the two
+    /// are delivered independently, which is what lets `handlePostPurchaseSuccess` post the
+    /// celebration once, before it branches.
+    func testTheCelebrateSignalIsDeliveredIndependentlyOfTheSuccessOverlay() {
+        let holder = PaywallPurchaseObservers(center: center)
+        let celebrated = expectation(description: "celebrate delivered")
+        var successFired = false
+        register(holder, success: { successFired = true }, celebrate: { celebrated.fulfill() })
+
+        center.post(name: .paywallPurchaseCelebrate, object: nil)
+        wait(for: [celebrated], timeout: 2)
+        XCTAssertFalse(
+            successFired,
+            "the celebrate signal also raised the SUCCESS overlay — then it is not a separate signal "
+                + "and a `dismiss` branch would show an overlay it never asked for, which is why "
+                + "#1103 did not simply reuse `.paywallPurchaseSuccess`",
+        )
     }
 
     /// The observers are removed at `deinit` — the leak stays fixed. NEGATIVE CONTROL: without the
@@ -70,7 +98,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
         second.assertForOverFulfill = true
         register(holder, ended: { first.fulfill() })
         register(holder, ended: { second.fulfill() })
-        XCTAssertEqual(holder.registeredCount, 3)
+        XCTAssertEqual(holder.registeredCount, 4)
 
         center.post(name: .paywallPurchaseEnded, object: nil)
         wait(for: [first, second], timeout: 0.5)
