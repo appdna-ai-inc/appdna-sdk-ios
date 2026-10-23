@@ -141,6 +141,61 @@ final class PlanOrderRenderTests: XCTestCase {
         )
     }
 
+    /// A paywall with a ROOT `cta` and NO `cta` section — the arm that ignored the per-plan label.
+    ///
+    /// `rootCtaText` is the top-level button text; `planCtaText`, when given, is the selected plan's
+    /// own override. The plans section carries no CTA, so this exercises
+    /// `} else if let cta = config.cta {` rather than the section arm.
+    private func rootCtaConfig(rootCtaText: String, planCtaText: String?) throws -> PaywallConfig {
+        let planCta = planCtaText.map { ", \"cta_text\": \"\($0)\"" } ?? ""
+        let json = """
+        {
+          "id": "render_root_cta",
+          "layout": {
+            "type": "stack",
+            "background": { "type": "color", "value": "#FFFFFF" },
+            "sections": [
+              { "type": "plans", "config": { "plan_display_style": "vertical_stack", "plans": [
+                  { "product_id": "plan_alpha", "label": "Alpha", "price_display": "$1.11",
+                    "is_default": true\(planCta) }
+              ] } }
+            ]
+          },
+          "cta": { "text": "\(rootCtaText)" }
+        }
+        """
+        return try JSONDecoder().decode(PaywallConfig.self, from: Data(json.utf8))
+    }
+
+    /// 🔴 #1081 — THE ROOT CTA DRAWS THE SELECTED PLAN'S OWN LABEL, which it did not before.
+    ///
+    /// The section arm resolved `selectedPlanCtaText ?? topLevelText ?? sectionText`; this arm read
+    /// `cta.text ?? "Continue"`, so the same authored `plans[].cta_text` worked or did nothing
+    /// depending on whether the layout happened to contain a `cta` section. Android never had the
+    /// split — it synthesises a `__root_cta__` section so both cases share one chain.
+    ///
+    /// It matters for #1081: a tap that drifts far enough for the scroll view to claim it leaves the
+    /// selection alone, and the CTA then buys the plan chosen BEFORE it with nothing on screen naming
+    /// what is about to be bought. A CTA reading "Start Annual" is what makes that visible first.
+    func testTheRootCTADrawsTheSelectedPlansOwnLabel() throws {
+        let planOverride = try renderPNG(try rootCtaConfig(rootCtaText: "GENERIC", planCtaText: "Start Alpha"))
+        let authoredAtRoot = try renderPNG(try rootCtaConfig(rootCtaText: "Start Alpha", planCtaText: nil))
+        let genericOnly = try renderPNG(try rootCtaConfig(rootCtaText: "GENERIC", planCtaText: nil))
+
+        XCTAssertNotEqual(
+            planOverride, genericOnly,
+            "a plan's own `cta_text` must CHANGE the root CTA — if these two renders are identical "
+                + "the per-plan label was dropped, which is what #1081's fix is about. This is also "
+                + "the harness's negative control: a render that cannot show the label at all makes "
+                + "these equal."
+        )
+        XCTAssertEqual(
+            planOverride, authoredAtRoot,
+            "what the root CTA drew must be pixel-identical to a paywall that simply authors that "
+                + "text at the top level — that is what 'the per-plan label reached the button' means"
+        )
+    }
+
     /// The common shape, pinned so the fix cannot reorder anything that does not ask to be
     /// reordered: no plan carries a rank, so the array's own order is the drawing order.
     func testPlansWithNoAuthoredRankDrawInTheArrayOrder() throws {

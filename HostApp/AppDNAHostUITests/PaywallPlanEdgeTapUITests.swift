@@ -57,63 +57,11 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
             throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
         }
 
-        /*
-         🔴 `Bundle(for: Self.self)` AND THE NAME `Products`, both load-bearing. A UI-test bundle
-         sees neither the host app's resources nor the package's, so the `.storekit` is a `resources`
-         entry on the UI-TEST target and has to be looked up in that bundle. The first version of
-         this file used `SKTestSession(configurationFileNamed: "AppDNATestProducts")`, which reads
-         the MAIN bundle for a file that is not in it: the session came up with an empty catalogue
-         and the run skipped with `probe said store:0`, which reads exactly like a simulator with no
-         StoreKit configuration. Copied from `PaywallPurchaseWalkUITests`, which is the pattern that
-         works.
-        */
-        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
-            throw XCTSkip("Products.storekit is not in the UI-test bundle — add it to the target's "
-                + "`resources` in HostApp/project.yml")
-        }
-        let session = try SKTestSession(contentsOf: url)
-        session.resetToDefaultState()
-        session.disableDialogs = true
-        session.clearTransactions()
-        defer { session.clearTransactions() }
-
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-appdnaApiKey", apiKey,
-            "-appdnaPaywall", paywallId,
-            "-appdnaProbeStore", "premium_monthly,premium_annual",
-        ]
-        app.launch()
-        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
-
-        // The harness check first: an empty catalogue makes every row draw its authored price, and
-        // then nothing about selection can be proved from the screen (#1018).
-        let probe = app.staticTexts["host.storeProducts"]
-        XCTAssertTrue(probe.waitForExistence(timeout: 15))
-        let sawBoth = XCTNSPredicateExpectation(
-            predicate: NSPredicate(format: "label BEGINSWITH %@", "store:2"),
-            object: probe,
-        )
-        try XCTSkipIf(
-            XCTWaiter().wait(for: [sawBoth], timeout: 25) != .completed,
-            "the session served fewer than both products (probe said \(probe.label))",
-        )
-
-        // Tap-and-retry, because `showPaywall` presents whatever config has already landed and a
-        // tap that arrives first does nothing and says nothing.
-        let open = app.buttons["host.paywall"]
-        XCTAssertTrue(open.waitForExistence(timeout: 10), "the host has no paywall button")
-        var annual: XCUIElement?
-        for attempt in 0..<12 where annual == nil {
-            if open.isHittable { open.tap() }
-            annual = row(app, Self.annualPrice, timeout: 5)
-            if annual == nil { NSLog("[#1081] paywall not up yet, attempt \(attempt + 1)") }
-        }
-        let annualRow = try XCTUnwrap(annual, "no plan row drew at the annual price (\(Self.annualPrice))")
-        let monthlyRow = try XCTUnwrap(
-            row(app, Self.monthlyPrice, timeout: 10),
-            "no plan row drew at the monthly price (\(Self.monthlyPrice))",
-        )
+        let opened = try openPaywall(apiKey: apiKey, paywallId: paywallId)
+        defer { opened.session.clearTransactions() }
+        let app = opened.app
+        let annualRow = opened.annual
+        let monthlyRow = opened.monthly
 
         /*
          🔴 THE INSTRUMENT'S OWN CONTROL, because "the tap did not take" passes for free on a
@@ -198,6 +146,183 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
         // Leave the app as the other walks expect to find it.
         let close = app.buttons["paywall.close"]
         if close.exists { close.tap() } else { app.swipeDown() }
+    }
+
+    /// How far the touch moves between press and lift, in points, and along which axis.
+    ///
+    /// A `Button` inside a `ScrollView` does not fire if the touch drifts far enough for the scroll
+    /// view to claim the gesture. `XCUIElement.tap()` never moves at all, which is why 39 clean
+    /// runs and nine hittable positions say nothing about this — a thumb on a phone drifts a few
+    /// points as a matter of course.
+    private static let drifts: [CGFloat] = [0, 2, 4, 6, 8, 10, 14, 20]
+
+    /// 🔴 THE DISCRIMINATING EXPERIMENT for #1081, and the reason it tests BOTH axes.
+    ///
+    /// The paywall's content sits in `ScrollView(showsIndicators: false)` (PaywallRenderer.swift:206)
+    /// and every plan row is a SwiftUI `Button`. If the scroll view is what swallows a drifting tap,
+    /// then drift along its own axis — VERTICAL — must break selection at a smaller distance than
+    /// drift ACROSS it, because only the vertical pan competes for the gesture. If both axes behave
+    /// identically the scroll view is exonerated and the cause is something else.
+    ///
+    /// Either way the answer is a number, which is what #1081 has been missing: "a plan tap can fail
+    /// to take" with no idea what distinguishes the failures.
+    @available(iOS 17.0, *)
+    func testHowFarATapMayDriftBeforeThePlanRowStopsTakingIt() throws {
+        guard let apiKey, let paywallId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+        let opened = try openPaywall(apiKey: apiKey, paywallId: paywallId)
+        defer { opened.session.clearTransactions() }
+        let app = opened.app
+        let annualRow = opened.annual
+        let monthlyRow = opened.monthly
+
+        try scrollIntoView(app, annualRow, label: "the annual row")
+        try scrollIntoView(app, monthlyRow, label: "the monthly row")
+
+        for axis in ["vertical (the scroll axis)", "horizontal (across it)"] {
+            let vertical = axis.hasPrefix("vertical")
+            for drift in Self.drifts {
+                // Re-settle before every attempt: a drift that DOES scroll moves the rows.
+                try scrollIntoView(app, annualRow, label: "the annual row")
+                if !monthlyRow.isSelected {
+                    monthlyRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                    _ = waitUntil(timeout: 3) { monthlyRow.isSelected }
+                }
+                guard monthlyRow.isSelected, !annualRow.isSelected else {
+                    NSLog("[#1081] drift \(drift)pt \(axis): could not reset; skipping this reading")
+                    continue
+                }
+
+                let start = annualRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                let end = start.withOffset(CGVector(dx: vertical ? 0 : drift, dy: vertical ? drift : 0))
+                start.press(forDuration: 0.05, thenDragTo: end)
+                let took = waitUntil(timeout: 3) { annualRow.isSelected }
+                NSLog("[#1081] drift \(Int(drift))pt \(axis) -> selected=\(took) "
+                    + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable)")
+
+                /*
+                 🔴 THE CONTROL RUNS AFTER EVERY FAILURE, and the first version of this walk is why
+                 it has to. With one control at the END, the readings went
+                 `0,2,4,6,8,10pt -> true` then `14,20pt -> false` then EVERY horizontal reading
+                 false including 0pt, and the final zero-drift control failed — so the harness had
+                 entered a state where nothing selected and stayed there. That makes "14pt is the
+                 threshold" and "14pt is where it got stuck" indistinguishable, which is no result
+                 at all.
+
+                 So a failure is immediately re-tested with a plain `.tap()`, which is the idiom 39
+                 clean runs establish as reliable. If THAT works, the drift reading stands: the row
+                 is fine and the drift is what lost the tap. If it does not, the harness is unusable
+                 from here and the loop stops rather than filling the log with meaningless `false`s.
+                */
+                if !took {
+                    annualRow.tap()
+                    let recovered = waitUntil(timeout: 3) { annualRow.isSelected }
+                    NSLog("[#1081]   ↳ control after that failure: a plain .tap() "
+                        + (recovered ? "STILL WORKS, so the \(Int(drift))pt drift is what lost it"
+                                     : "ALSO FAILS — the view is in a stuck state, readings stop here"))
+                    if !recovered {
+                        NSLog("[#1081]   ↳ stuck-state geometry: annual frame=\(annualRow.frame) "
+                            + "hittable=\(annualRow.isHittable) monthly=\(monthlyRow.frame) "
+                            + "window=\(app.windows.firstMatch.frame)")
+                        throw XCTSkip("the paywall stopped responding to any tap after a "
+                            + "\(Int(drift))pt \(axis) drift — recorded above; the remaining drift "
+                            + "readings would all be false for that reason rather than their own")
+                    }
+                }
+            }
+        }
+
+        /*
+         🔴 ONE ASSERTION ONLY, and it is the instrument's control rather than the finding. A zero
+         drift is an ordinary tap, so it MUST select — if it does not, every reading above is
+         measuring a broken harness and none of them means anything. The drift thresholds themselves
+         are reported to the log rather than asserted, because what the right tolerance IS is a
+         product decision, and a test that pinned today's number would pass whether or not it is the
+         number a thumb needs.
+        */
+        try scrollIntoView(app, annualRow, label: "the annual row")
+        if !monthlyRow.isSelected {
+            monthlyRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            _ = waitUntil(timeout: 3) { monthlyRow.isSelected }
+        }
+        let zero = annualRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        zero.press(forDuration: 0.05, thenDragTo: zero)
+        XCTAssertTrue(
+            waitUntil(timeout: 3) { annualRow.isSelected },
+            "a press-and-lift with ZERO drift did not select the row, so this harness cannot "
+                + "distinguish a swallowed tap from a working one and every drift reading above is "
+                + "meaningless",
+        )
+
+        let close = app.buttons["paywall.close"]
+        if close.exists { close.tap() } else { app.swipeDown() }
+    }
+
+    /// Launch the host, check the store is real, present the paywall and resolve both plan rows.
+    ///
+    /// Shared by both walks so neither can drift from the other's setup — and so the SKTestSession
+    /// lookup, which is the part that is easy to get wrong, exists once.
+    @available(iOS 17.0, *)
+    private func openPaywall(apiKey: String, paywallId: String) throws
+        -> (app: XCUIApplication, session: SKTestSession, annual: XCUIElement, monthly: XCUIElement) {
+        /*
+         🔴 `Bundle(for: Self.self)` AND THE NAME `Products`, both load-bearing. A UI-test bundle
+         sees neither the host app's resources nor the package's, so the `.storekit` is a `resources`
+         entry on the UI-TEST target and has to be looked up in that bundle. The first version of
+         this file used `SKTestSession(configurationFileNamed: "AppDNATestProducts")`, which reads
+         the MAIN bundle for a file that is not in it: the session came up with an empty catalogue
+         and the run skipped with `probe said store:0`, which reads exactly like a simulator with no
+         StoreKit configuration. Copied from `PaywallPurchaseWalkUITests`, which is the pattern that
+         works.
+        */
+        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
+            throw XCTSkip("Products.storekit is not in the UI-test bundle — add it to the target's "
+                + "`resources` in HostApp/project.yml")
+        }
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-appdnaApiKey", apiKey,
+            "-appdnaPaywall", paywallId,
+            "-appdnaProbeStore", "premium_monthly,premium_annual",
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+
+        // The harness check first: an empty catalogue makes every row draw its authored price, and
+        // then nothing about selection can be proved from the screen (#1018).
+        let probe = app.staticTexts["host.storeProducts"]
+        XCTAssertTrue(probe.waitForExistence(timeout: 15))
+        let sawBoth = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label BEGINSWITH %@", "store:2"),
+            object: probe,
+        )
+        try XCTSkipIf(
+            XCTWaiter().wait(for: [sawBoth], timeout: 25) != .completed,
+            "the session served fewer than both products (probe said \(probe.label))",
+        )
+
+        // Tap-and-retry, because `showPaywall` presents whatever config has already landed and a
+        // tap that arrives first does nothing and says nothing.
+        let open = app.buttons["host.paywall"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10), "the host has no paywall button")
+        var annual: XCUIElement?
+        for attempt in 0..<12 where annual == nil {
+            if open.isHittable { open.tap() }
+            annual = row(app, Self.annualPrice, timeout: 5)
+            if annual == nil { NSLog("[#1081] paywall not up yet, attempt \(attempt + 1)") }
+        }
+        let annualRow = try XCTUnwrap(annual, "no plan row drew at the annual price (\(Self.annualPrice))")
+        let monthlyRow = try XCTUnwrap(
+            row(app, Self.monthlyPrice, timeout: 10),
+            "no plan row drew at the monthly price (\(Self.monthlyPrice))",
+        )
+        return (app, session, annualRow, monthlyRow)
     }
 
     // MARK: - helpers

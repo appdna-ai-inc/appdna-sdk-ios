@@ -334,12 +334,30 @@ struct PaywallRenderer: View {
                         }
                         .padding(.bottom, 8)
                     } else if let cta = config.cta {
-                        // Fallback: top-level CTA button (when no CTA section exists in layout)
+                        /*
+                         * Fallback: top-level CTA button (when no CTA section exists in layout).
+                         *
+                         * 🔴 #1081 — `selectedPlanCtaText` FIRST, because this arm used to ignore it
+                         * and that made an authored label work or not depending on the layout. The
+                         * SECTION arm above resolves `selectedPlanCtaText ?? topLevelText ??
+                         * sectionText`; this one read `cta.text ?? "Continue"`, so a paywall whose
+                         * plans carry a per-plan `cta_text` and whose layout has no `cta` SECTION
+                         * drew the generic label. Android has never had the split: it synthesises a
+                         * `__root_cta__` section for exactly this case, so the root CTA goes through
+                         * its one resolution chain and the per-plan label wins there too.
+                         *
+                         * It matters for #1081 specifically. A tap that drifts far enough for the
+                         * scroll view to claim it does not change the selection, and the CTA then
+                         * buys the plan selected BEFORE it — silently, because nothing on screen
+                         * names what is about to be bought. A CTA that reads "Start Annual — $34.99"
+                         * makes a stale selection visible before the purchase instead of after, and
+                         * this is the arm where that was impossible to author.
+                         */
                         Button(action: handleCTATap) {
                             if isPurchasing {
                                 ProgressView().tint(.white)
                             } else {
-                                Text(cta.text ?? "Continue")
+                                Text(selectedPlanCtaText ?? cta.text ?? "Continue")
                                     .font(cta.resolvedFontSize.map { .system(size: CGFloat($0), weight: .semibold) } ?? .headline)
                                     .foregroundColor(Color(hex: cta.resolvedTextColor))
                             }
