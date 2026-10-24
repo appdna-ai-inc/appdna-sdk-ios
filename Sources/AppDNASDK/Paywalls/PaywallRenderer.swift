@@ -138,6 +138,8 @@ struct PaywallRenderer: View {
          become "Start Annual — Annual" whichever string localisation produced.
     */
     private var planNameSuffix: String? {
+        // #1104 — the author can switch naming off for the whole paywall (it defaults on).
+        guard config.cta?.name_plan != false else { return nil }
         guard selectedPlanCtaText == nil else { return nil }
         let plans = resolvedPlans
         guard plans.count > 1,
@@ -150,9 +152,12 @@ struct PaywallRenderer: View {
     /// Localise `authored` as the CTA, then append the plan's name — for the two sites that draw
     /// their own `Text` instead of going through `CTAButton`.
     private func ctaDisplayText(_ authored: String?, locKey: String = "cta.text", fallback: String) -> String {
-        let base = loc(locKey, ctaLabel(authored) ?? fallback)
-        guard let suffix = planNameSuffix, !base.localizedCaseInsensitiveContains(suffix) else { return base }
-        return "\(base) — \(suffix)"
+        CTAPlanName.compose(base: loc(locKey, ctaLabel(authored) ?? fallback), plan: planNameSuffix, format: planNameFormat)
+    }
+
+    /// #1104 — where the CTA text and the plan's name go, localised so a locale can reorder them.
+    private var planNameFormat: String {
+        loc("cta.plan_format", config.cta?.plan_format ?? CTAPlanName.defaultFormat)
     }
 
     /// Sections that should render INSIDE the pinned bottom area, BELOW the
@@ -390,6 +395,7 @@ struct PaywallRenderer: View {
                                 ctaGradient: ctaSec.data?.ctaGradient,
                                 textOverride: ctaText,
                                 planNameSuffix: planNameSuffix,
+                                planNameFormat: planNameFormat,
                                 ctaFontSize: ctaSec.data?.ctaFontSize,
                                 ctaFontWeight: ctaSec.data?.ctaFontWeight,
                                 restoreText: nil,          // rendered outside
@@ -1065,6 +1071,7 @@ struct PaywallRenderer: View {
                 ctaGradient: section.data?.ctaGradient,
                 textOverride: ctaText,
                 planNameSuffix: planNameSuffix,
+                planNameFormat: planNameFormat,
                 ctaFontSize: section.data?.ctaFontSize,
                 ctaFontWeight: section.data?.ctaFontWeight,
                 restoreText: section.data?.restoreText,

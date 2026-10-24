@@ -484,6 +484,7 @@ final class SharedFixtureTests: XCTestCase {
         case "refresh_step_interaction":       runRefreshStepInteraction(fixture, harness)
         case "multi_buttons_layout":           runMultiButtonsLayout(fixture, harness)
         case "compose_map_url":                runComposeMapUrl(fixture, harness)
+        case "compose_cta_plan_name":          runComposeCtaPlanName(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "report_paying_user":             runReportPayingUser(fixture, harness)
@@ -1579,6 +1580,24 @@ final class SharedFixtureTests: XCTestCase {
                 SharedFixtureTests.orNull(untouched.field_config?["map_mode"]?.value as? String)
         }
         h.state["merged_heading_text"] = blocks.first(where: { $0.id == "intro_heading" })?.text
+    }
+
+    // MARK: - Driver: compose_cta_plan_name
+    //
+    // REAL: CTAPlanName.compose(base:plan:format:) — the one function both CTA text sites and
+    // CTAButton call (#1104).
+    private func runComposeCtaPlanName(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] compose_cta_plan_name needs action.cases")
+        }
+        h.state["labels"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            return CTAPlanName.compose(
+                base: o["base"]?.stringValue ?? "",
+                plan: o["plan"]?.stringValue,
+                format: o["format"]?.stringValue
+            )
+        }
     }
 
     // MARK: - Driver: compose_map_url

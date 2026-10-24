@@ -968,6 +968,10 @@ struct PaywallCTA: Codable {
     let height: Double?
     let font_size: Double?
     let padding_vertical: Double?
+    /// #1104 — `false` stops a multi-plan CTA naming the selected plan (default: it does, #1100).
+    let name_plan: Bool?
+    /// #1104 — where the CTA text and the plan's name go: `{cta}` and `{plan}`, default `{cta} — {plan}`.
+    let plan_format: String?
 
     /// Resolved bg_color — from style object, direct field, or default
     var resolvedBgColor: String { styleObj?.bg_color ?? bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1") }
@@ -991,6 +995,8 @@ struct PaywallCTA: Codable {
         height = container.lenient(Double.self, .height)
         font_size = container.lenient(Double.self, .font_size)
         padding_vertical = container.lenient(Double.self, .padding_vertical)
+        name_plan = container.lenient(Bool.self, .name_plan)
+        plan_format = container.lenient(String.self, .plan_format)
         // Try decoding style as object first, then as string (ignore string variant)
         styleObj = try? container.decodeIfPresent(PaywallCTAStyle.self, forKey: .styleObj)
     }
@@ -1004,12 +1010,15 @@ struct PaywallCTA: Codable {
         try container.encodeIfPresent(height, forKey: .height)
         try container.encodeIfPresent(font_size, forKey: .font_size)
         try container.encodeIfPresent(padding_vertical, forKey: .padding_vertical)
+        try container.encodeIfPresent(name_plan, forKey: .name_plan)
+        try container.encodeIfPresent(plan_format, forKey: .plan_format)
         try container.encodeIfPresent(styleObj, forKey: .styleObj)
     }
 
     enum CodingKeys: String, CodingKey {
         case text, bg_color, text_color, corner_radius
         case height, font_size, padding_vertical
+        case name_plan, plan_format
         case styleObj = "style"
     }
 }

@@ -65,6 +65,8 @@ struct CTAButton: View {
      translated.
     */
     var planNameSuffix: String? = nil
+    /// #1104 — the localised `{cta}` / `{plan}` format; nil = the default.
+    var planNameFormat: String? = nil
     /// CTA text font size (console "Section Font Size" = cta_font_size). Applied only when no
     /// Style-tab button text_style is set. Parity with Android (PaywallActivity.kt:2548, 17f
     /// baseline) + preview (PaywallPreview.tsx:1385).
@@ -146,9 +148,7 @@ struct CTAButton: View {
     private var displayText: String {
         let base = loc?("cta.text", textOverride ?? cta?.text ?? "Subscribe")
             ?? textOverride ?? cta?.text ?? "Subscribe"
-        guard let suffix = planNameSuffix?.trimmingCharacters(in: .whitespaces), !suffix.isEmpty,
-              !base.localizedCaseInsensitiveContains(suffix) else { return base }
-        return "\(base) — \(suffix)"
+        return CTAPlanName.compose(base: base, plan: planNameSuffix, format: planNameFormat)
     }
 
     private var subscribeButton: some View {

@@ -355,6 +355,53 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         XCTAssertGreaterThan(peak, before + 300, "no confetti in the authored green after a successful purchase (#1109)")
     }
 
+    /*
+     #1104 — WHAT THE CTA SAYS, READ OFF THE DEVICE. The walk paywall is published by
+     `scripts/spec502/probe-1104-cta-plan-name-walk.ts` with a format, naming switched off, and/or a
+     sticky footer; this logs every CTA label (the pinned CTA and the sticky footer's) with the default
+     plan and then with Monthly selected. The invariant asserted here holds for every configuration:
+     a label that named the default plan names Monthly once Monthly is selected. The exact strings are
+     compared against the published configuration in the closing evidence.
+    */
+    @available(iOS 17.0, *)
+    func testTheCtaLabelsAsAuthored() throws {
+        guard let apiKey, let paywallId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-appdnaApiKey", apiKey, "-appdnaPaywall", paywallId]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+        let events = app.staticTexts["host.lastEvents"]
+        _ = waitUntil(timeout: 45) { events.exists && events.label.contains("config_fetched") }
+        let open = app.buttons["host.paywall"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        let ctaLabels: () -> [String] = {
+            app.buttons.allElementsBoundByIndex.map(\.label)
+                .filter { $0.contains("Continue") || $0.contains("Get it") }
+        }
+        for _ in 0..<12 where ctaLabels().isEmpty {
+            if open.isHittable { open.tap() }
+            _ = app.buttons.firstMatch.waitForExistence(timeout: 5)
+        }
+        sleep(1)
+        let before = ctaLabels()
+        shot(app, "l1-default-plan")
+        let monthly = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Monthly")).firstMatch
+        XCTAssertTrue(monthly.waitForExistence(timeout: 5), "no Monthly plan row")
+        monthly.tap()
+        sleep(1)
+        let after = ctaLabels()
+        shot(app, "l2-monthly-selected")
+        NSLog("[#1104] CTA labels, default plan: \(before)")
+        NSLog("[#1104] CTA labels, Monthly selected: \(after)")
+        XCTAssertFalse(before.isEmpty, "no CTA was found")
+        for label in before where label.contains("Annual") {
+            XCTAssertTrue(after.contains(label.replacingOccurrences(of: "Annual", with: "Monthly")),
+                          "'\(label)' did not follow the selection to Monthly: \(after)")
+        }
+    }
+
     /// Pixels close to `#34C759` (52, 199, 89) — the walk effect's own colour.
     private func greenPixels(_ image: UIImage) -> Int {
         guard let cg = image.cgImage else { return 0 }
