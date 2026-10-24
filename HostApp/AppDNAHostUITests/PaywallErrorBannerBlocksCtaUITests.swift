@@ -146,23 +146,131 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         )
     }
 
+    /*
+     #1105 — THE FAILURE BANNER, OPERATED. iOS's banner is the presentation both platforms now draw,
+     so this walks the paywall the way a user whose card is declined would, against a paywall that
+     authors `on_failure: retry` with text no default could produce
+     (`scripts/spec502/probe-1105-failure-banner-walk.ts`):
+
+       refused purchase → the authored banner, ABOVE the CTA, which stays usable
+       → tap the banner → it is gone, and stays gone
+       → refused AGAIN (the same failure twice — what resurrected Android's banner) → banner
+       → tap the banner once → gone and stays gone.
+
+     Every step saves a frame to the Mac's /tmp (and attaches it), because "rendered correctly" is
+     half a result: the frames are what the closing evidence shows.
+    */
+    @available(iOS 17.0, *)
+    func testTheFailureBannerIsAboveTheCtaAndTapsAway() throws {
+        guard let apiKey, let paywallId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
+            throw XCTSkip("Products.storekit is not in the UI-test bundle")
+        }
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.failTransactionsEnabled = false }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-appdnaApiKey", apiKey, "-appdnaPaywall", paywallId]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+        // Open the paywall only once the WHOLE remote config has landed, so the walk measures the
+        // published document rather than whatever was in memory before the fetch completed.
+        let events = app.staticTexts["host.lastEvents"]
+        let fetched = waitUntil(timeout: 45) { events.exists && events.label.contains("config_fetched") }
+        NSLog("[#1105] config_fetched before opening the paywall: \(fetched) — events: \(events.exists ? events.label : "(absent)")")
+        let open = app.buttons["host.paywall"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        var cta: XCUIElement?
+        for _ in 0..<12 where cta == nil {
+            if open.isHittable { open.tap() }
+            _ = app.buttons.firstMatch.waitForExistence(timeout: 5)
+            cta = ctaButton(app)
+        }
+        let button = try XCTUnwrap(cta, "no CTA button was found on the paywall")
+        shot(app, "01-paywall")
+
+        // 1 — a refused purchase draws the AUTHORED banner, above the CTA.
+        session.failTransactionsEnabled = true
+        button.tap()
+        let start = Date()
+        let up = waitUntil(timeout: 60) { self.authoredBanner(app).exists }
+        NSLog("[#1105] banner up=\(up) after \(String(format: "%.1f", Date().timeIntervalSince(start)))s; cta enabled=\(ctaButton(app)?.isEnabled ?? false)")
+        shot(app, "02-banner")
+        if !up {
+            // Say WHY before failing: close the paywall and read what the host app recorded.
+            app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "close")).firstMatch.tap()
+            let events = app.staticTexts["host.lastEvents"]
+            _ = events.waitForExistence(timeout: 5)
+            NSLog("[#1105] host events after the refusal: \(events.exists ? events.label : "(absent)")")
+        }
+        XCTAssertTrue(up, "no banner within 60s of a refused purchase")
+        guard up else { return }
+        let banner = authoredBanner(app)
+        let after = try XCTUnwrap(ctaButton(app))
+        NSLog("[#1105] banner text frame=\(banner.frame) cta frame=\(after.frame)")
+        XCTAssertLessThanOrEqual(banner.frame.maxY, after.frame.minY, "the banner's text overlaps the CTA")
+        XCTAssertTrue(after.isEnabled && after.isHittable, "the CTA is not usable with the banner up")
+        // The retry control is a Button, so it is matched among buttons, by its authored label.
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Try again now")).firstMatch.exists,
+                      "the authored retry text is not on the banner")
+
+        // 2 — one tap on the banner hides it, and it stays hidden.
+        banner.tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { !self.authoredBanner(app).exists }, "the banner did not go on tap")
+        sleep(3)
+        XCTAssertFalse(authoredBanner(app).exists, "the banner came back after it was tapped away")
+        shot(app, "03-tapped-away")
+
+        // 3 — the SAME failure twice, then one tap: still gone.
+        after.tap()
+        XCTAssertTrue(waitUntil(timeout: 15) { self.authoredBanner(app).exists }, "no banner after the second refusal")
+        shot(app, "04-second-refusal")
+        authoredBanner(app).tap()
+        sleep(3)
+        XCTAssertFalse(authoredBanner(app).exists, "after a second identical failure, one tap did not keep the banner away")
+        shot(app, "05-tapped-away-again")
+    }
+
     // MARK: - helpers
+
+    /// The banner's authored message on the #1105 walk paywall.
+    private func authoredBanner(_ app: XCUIApplication) -> XCUIElement {
+        app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Walk 1105")).firstMatch
+    }
+
+    /// A frame on the Mac's /tmp for the closing evidence, and attached to the result bundle.
+    private func shot(_ app: XCUIApplication, _ name: String) {
+        let png = app.screenshot().pngRepresentation
+        let a = XCTAttachment(data: png, uniformTypeIdentifier: "public.png")
+        a.name = name
+        a.lifetime = .keepAlways
+        add(a)
+        try? png.write(to: URL(fileURLWithPath: "/tmp/ios-walk-1105-\(name).png"))
+    }
 
     /// The pinned CTA. Matched by its accessibility identifier where the renderer sets one, else by
     /// being the paywall's purchase button — never by position, which is what this test measures.
+    /// #1100 appends the selected plan's name ("Continue — Annual"), so a label PREFIX is accepted.
     private func ctaButton(_ app: XCUIApplication) -> XCUIElement? {
         let byId = app.buttons["paywall.cta"]
         if byId.exists { return byId }
         for label in ["Start Free Trial", "Continue", "Subscribe", "Start My Plan"] {
             let b = app.buttons[label]
             if b.exists { return b }
+            let prefixed = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", label + " — ")).firstMatch
+            if prefixed.exists { return prefixed }
         }
         return nil
     }
 
     private func bannerElement(_ app: XCUIApplication) -> XCUIElement? {
         // The banner draws `errorMessage` as a static text over the bottom of the screen.
-        for fragment in ["Payment failed", "failed", "error", "Try Again"] {
+        for fragment in ["Payment failed", "failed", "declined", "error", "Try Again"] {
             let t = app.staticTexts.containing(
                 NSPredicate(format: "label CONTAINS[c] %@", fragment)).firstMatch
             if t.exists { return t }
