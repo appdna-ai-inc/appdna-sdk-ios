@@ -634,9 +634,12 @@ final class PaywallManager {
 
         case "show_error", "retry":
             // Show error inline via notification (PaywallRenderer listens)
+            // #1105 — an EMPTY message or retry text falls back to the default, as on Android and in
+            // the console preview. `??` alone kept "" and drew an empty red banner here, while Android
+            // drew no banner at all for the same document.
             NotificationCenter.default.post(name: .paywallPurchaseFailure, object: nil, userInfo: [
-                "message": config.message ?? "Payment failed. Please try again.",
-                "retry_text": config.retry_text ?? "Try Again",
+                "message": config.message.flatMap { $0.isEmpty ? nil : $0 } ?? "Payment failed. Please try again.",
+                "retry_text": config.retry_text.flatMap { $0.isEmpty ? nil : $0 } ?? "Try Again",
                 "allow_dismiss": config.allow_dismiss ?? true,
                 "action": config.action,
             ])

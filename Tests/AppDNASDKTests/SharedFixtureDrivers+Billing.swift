@@ -103,6 +103,15 @@ extension SharedFixtureTests {
         )
         let delegate = TapPathPaywallDelegateSpy(harness: h)
 
+        // #1105 — what the authored `on_failure` route hands the renderer: the banner's text.
+        let failureObserver = NotificationCenter.default.addObserver(
+            forName: .paywallPurchaseFailure, object: nil, queue: nil
+        ) { note in
+            h.state["failure_banner_message"] = SharedFixtureTests.orNull(note.userInfo?["message"] as? String)
+            h.state["failure_banner_retry_text"] = SharedFixtureTests.orNull(note.userInfo?["retry_text"] as? String)
+        }
+        defer { NotificationCenter.default.removeObserver(failureObserver) }
+
         await MainActor.run {
             manager.handlePurchase(
                 paywallId: paywallId,
@@ -117,6 +126,9 @@ extension SharedFixtureTests {
             try? await Task.sleep(nanoseconds: 20_000_000)
             await MainActor.run {}
         }
+        // The failure route runs in the same main-queue block as the delegate call, after it — drain
+        // that block so a reader of the delegate call cannot race ahead of the route.
+        await MainActor.run {}
         return true
     }
 
