@@ -1923,6 +1923,14 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_post_purchase_success_confetti"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_success?.confetti)
             h.state["parsed_post_purchase_failure_action"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_failure?.action)
             h.state["parsed_post_purchase_failure_allow_dismiss"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_failure?.allow_dismiss)
+            // #1109 — the console now persists and publishes these; read off the decoded paywall.
+            h.state["parsed_particle_effect_type"] = SharedFixtureTests.orNull(paywall.particle_effect?.type)
+            h.state["parsed_particle_effect_trigger"] = SharedFixtureTests.orNull(paywall.particle_effect?.trigger)
+            h.state["parsed_particle_effect_intensity"] = SharedFixtureTests.orNull(paywall.particle_effect?.intensity)
+            h.state["parsed_particle_effect_colors_count"] = SharedFixtureTests.orNull(paywall.particle_effect?.colors?.count)
+            h.state["parsed_haptic_enabled"] = SharedFixtureTests.orNull(paywall.haptic?.enabled)
+            h.state["parsed_haptic_on_button_tap"] = SharedFixtureTests.orNull(paywall.haptic?.triggers?.on_button_tap?.rawValue)
+            h.state["parsed_haptic_on_plan_select"] = SharedFixtureTests.orNull(paywall.haptic?.triggers?.on_plan_select?.rawValue)
             // Reviews live INSIDE a section's data (`PaywallSectionData.reviews`), and the CTA's corner
             // radius comes off the real `cta` model's resolver — both are console-published shapes, both
             // are read from the SDK's decoded object, neither is a top-level field.

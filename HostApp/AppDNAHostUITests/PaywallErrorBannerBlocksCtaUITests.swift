@@ -294,6 +294,87 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         XCTAssertTrue(attempted, "tapping the retry button started no purchase — it only hid the banner (#1107)")
     }
 
+    /*
+     #1109 — A PAYWALL'S PURCHASE CELEBRATION REACHES THE DEVICE. The effect could not be stored
+     before, so no published paywall carried one. The walk paywall is given confetti in `#34C759` (a
+     green it has nowhere else) by `scripts/spec502/probe-1109-paywall-effect-persists.ts --keep`; a
+     purchase that succeeds must then put that green on screen. The confetti is not in the
+     accessibility tree, so the PIXELS are read; run against the paywall with the effect cleared, the
+     same test must fail — that is its control.
+    */
+    @available(iOS 17.0, *)
+    func testThePurchaseCelebrationDraws() throws {
+        guard let apiKey, let paywallId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
+            throw XCTSkip("Products.storekit is not in the UI-test bundle")
+        }
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions() }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-appdnaApiKey", apiKey, "-appdnaPaywall", paywallId]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+        let events = app.staticTexts["host.lastEvents"]
+        _ = waitUntil(timeout: 45) { events.exists && events.label.contains("config_fetched") }
+        let open = app.buttons["host.paywall"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        var cta: XCUIElement?
+        for _ in 0..<12 where cta == nil {
+            if open.isHittable { open.tap() }
+            _ = app.buttons.firstMatch.waitForExistence(timeout: 5)
+            cta = ctaButton(app)
+        }
+        let button = try XCTUnwrap(cta, "no CTA button was found on the paywall")
+        sleep(1)
+        let before = greenPixels(app.screenshot().image)
+        shot(app, "c1-before-purchase")
+
+        button.tap()
+        var peak = 0
+        let start = Date()
+        while Date().timeIntervalSince(start) < 8 {
+            let frame = app.screenshot()
+            let n = greenPixels(frame.image)
+            if n > peak {
+                peak = n
+                let a = XCTAttachment(data: frame.pngRepresentation, uniformTypeIdentifier: "public.png")
+                a.name = "c2-celebration-peak"; a.lifetime = .keepAlways; add(a)
+                try? frame.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/ios-walk-1109-c2-celebration-peak.png"))
+            }
+            usleep(150_000)
+        }
+        let purchased = session.allTransactions().filter { $0.state == .purchased }.map(\.productIdentifier)
+        NSLog("[#1109] green pixels before=\(before) peak after purchase=\(peak) purchased=\(purchased)")
+        XCTAssertFalse(purchased.isEmpty, "the purchase did not complete, so there was nothing to celebrate")
+        XCTAssertGreaterThan(peak, before + 300, "no confetti in the authored green after a successful purchase (#1109)")
+    }
+
+    /// Pixels close to `#34C759` (52, 199, 89) — the walk effect's own colour.
+    private func greenPixels(_ image: UIImage) -> Int {
+        guard let cg = image.cgImage else { return 0 }
+        let w = cg.width, h = cg.height
+        var bytes = [UInt8](repeating: 0, count: w * h * 4)
+        let ok: Bool = bytes.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+            return true
+        }
+        guard ok else { return 0 }
+        var n = 0
+        for i in stride(from: 0, to: bytes.count, by: 4) {
+            if abs(Int(bytes[i]) - 52) < 30 && abs(Int(bytes[i + 1]) - 199) < 30 && abs(Int(bytes[i + 2]) - 89) < 30 { n += 1 }
+        }
+        return n
+    }
+
     // MARK: - helpers
 
     /// The banner's authored message on the #1105 walk paywall.
