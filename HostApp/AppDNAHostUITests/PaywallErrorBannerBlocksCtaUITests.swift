@@ -236,6 +236,64 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         shot(app, "05-tapped-away-again")
     }
 
+    /*
+     #1107 — THE RETRY BUYS. A refused purchase, then the store is allowed to accept, then the
+     banner's retry pill is tapped: a StoreKit transaction must follow. The old pill only hid the
+     banner, so nothing was bought until the user found the purchase button themselves.
+    */
+    @available(iOS 17.0, *)
+    func testTheRetryButtonBuysAgain() throws {
+        guard let apiKey, let paywallId else {
+            throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest")
+        }
+        guard let url = Bundle(for: Self.self).url(forResource: "Products", withExtension: "storekit") else {
+            throw XCTSkip("Products.storekit is not in the UI-test bundle")
+        }
+        let session = try SKTestSession(contentsOf: url)
+        session.resetToDefaultState()
+        session.disableDialogs = true
+        session.clearTransactions()
+        defer { session.clearTransactions(); session.failTransactionsEnabled = false }
+
+        let app = XCUIApplication()
+        app.launchArguments = ["-appdnaApiKey", apiKey, "-appdnaPaywall", paywallId]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+        let events = app.staticTexts["host.lastEvents"]
+        _ = waitUntil(timeout: 45) { events.exists && events.label.contains("config_fetched") }
+        let open = app.buttons["host.paywall"]
+        XCTAssertTrue(open.waitForExistence(timeout: 10))
+        var cta: XCUIElement?
+        for _ in 0..<12 where cta == nil {
+            if open.isHittable { open.tap() }
+            _ = app.buttons.firstMatch.waitForExistence(timeout: 5)
+            cta = ctaButton(app)
+        }
+        let button = try XCTUnwrap(cta, "no CTA button was found on the paywall")
+
+        session.failTransactionsEnabled = true
+        button.tap()
+        XCTAssertTrue(waitUntil(timeout: 30) { self.authoredBanner(app).exists }, "no banner after the refusal")
+        // The session records the refused attempt too (as a failed transaction), so count PURCHASES.
+        let purchased = { session.allTransactions().filter { $0.state == .purchased } }
+        XCTAssertTrue(purchased().isEmpty, "a purchase was recorded for the REFUSED attempt")
+        shot(app, "r1-banner")
+
+        session.failTransactionsEnabled = false
+        // Measured: a purchase sent straight after re-enabling still came back failed, so give the
+        // session a moment. Whatever the outcome, an ATTEMPT is what the old pill never made.
+        sleep(2)
+        let attemptsBefore = session.allTransactions().count
+        let retry = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Try again now")).firstMatch
+        XCTAssertTrue(retry.exists, "no retry button on the banner")
+        retry.tap()
+        let attempted = waitUntil(timeout: 20) { session.allTransactions().count > attemptsBefore }
+        _ = waitUntil(timeout: 10) { !purchased().isEmpty }
+        shot(app, "r2-after-retry")
+        NSLog("[#1107] after the retry tap: all=\(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }) purchased=\(purchased().map { $0.productIdentifier })")
+        XCTAssertTrue(attempted, "tapping the retry button started no purchase — it only hid the banner (#1107)")
+    }
+
     // MARK: - helpers
 
     /// The banner's authored message on the #1105 walk paywall.

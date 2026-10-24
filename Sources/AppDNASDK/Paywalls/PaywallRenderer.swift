@@ -505,8 +505,15 @@ struct PaywallRenderer: View {
                             .multilineTextAlignment(.center)
                         if errorAllowRetry {
                             Button {
+                                /*
+                                 #1107 — the retry RETRIES. It used to hide the banner and stop
+                                 there, so a user who tapped "Try Again" saw the banner vanish and
+                                 nothing else happen, while Android started the purchase again. It
+                                 now runs the CTA's own path — the selected plan, the in-progress
+                                 state, the same metadata — exactly as a second tap on the CTA would.
+                                */
                                 showErrorBanner = false
-                                isPurchasing = false
+                                handleCTATap()
                             } label: {
                                 Text(errorRetryText)
                                     .font(.subheadline.weight(.semibold))
