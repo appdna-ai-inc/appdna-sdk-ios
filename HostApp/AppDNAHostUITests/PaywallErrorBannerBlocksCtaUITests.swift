@@ -94,10 +94,16 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         before.tap()
         NSLog("[#1072] first CTA tap sent, with the store set to refuse")
 
-        // Give the refusal time to land and the banner time to animate in.
-        _ = waitUntil(timeout: 10) { self.bannerIsUp(app) }
+        /*
+         Give the refusal time to land and the banner time to animate in — and say how long it took.
+         This waited 10 seconds, and one slow run in six (72s end to end, against ~45s) logged
+         `banner up=false` while #1108 was being chased: a refusal that lands at second 11 and a
+         banner that never comes printed the same line. 30 seconds, with the elapsed time.
+        */
+        let tappedAt = Date()
+        _ = waitUntil(timeout: 30) { self.bannerIsUp(app) }
         let bannerUp = bannerIsUp(app)
-        NSLog("[#1072] after the refusal: banner up=\(bannerUp)")
+        NSLog("[#1072] after the refusal: banner up=\(bannerUp) after \(String(format: "%.1f", Date().timeIntervalSince(tappedAt)))s")
 
         session.failTransactionsEnabled = false
 
