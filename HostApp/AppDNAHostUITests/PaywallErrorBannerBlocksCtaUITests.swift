@@ -131,17 +131,22 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         /*
          And hittable is not the same as working — a tap on a view that LOOKS like the CTA can land on
          an overlay above it and XCUITest reports no error (the disabled-button lesson). So the tap is
-         actually sent and the host's own event readout is checked for a second purchase attempt.
+         actually sent and STOREKIT'S OWN LEDGER is checked for a second attempt.
+
+         🔴 The ledger, not `host.lastEvents`. This step used to wait for "purchase" in the host's
+         event mirror — which is drawn in the host's view, UNDERNEATH the presented paywall, so it is
+         not in the accessibility tree while the paywall is up. The step failed on every run (7 of 7
+         on 2026-10-24, whatever the SDK did), which made this test unable to tell #1072 from a
+         working CTA. A refused attempt is recorded too, so ANY new transaction is the attempt.
         */
+        sleep(2) // measured (#1107): a purchase sent straight after re-enabling can still come back failed
+        let attemptsBefore = session.allTransactions().count
         after.tap()
-        let events = app.staticTexts["host.lastEvents"]
-        let sawRetry = waitUntil(timeout: 12) {
-            events.exists && events.label.contains("purchase")
-        }
-        NSLog("[#1072] after the retry tap, host events: \(events.exists ? events.label : "(absent)")")
+        let sawRetry = waitUntil(timeout: 20) { session.allTransactions().count > attemptsBefore }
+        NSLog("[#1072] after the retry tap, the ledger: \(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" })")
         XCTAssertTrue(
             sawRetry,
-            "tapping the CTA after a failed purchase produced no purchase event at all — the tap "
+            "tapping the CTA after a failed purchase put no new transaction in the ledger — the tap "
                 + "reached no action. That is #1072: no transaction, and no sign of why.",
         )
     }
@@ -220,7 +225,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
                       "the authored retry text is not on the banner")
 
         // 2 — one tap on the banner hides it, and it stays hidden.
-        banner.tap()
+        tapWhenSettled(banner)
         XCTAssertTrue(waitUntil(timeout: 5) { !self.authoredBanner(app).exists }, "the banner did not go on tap")
         sleep(3)
         XCTAssertFalse(authoredBanner(app).exists, "the banner came back after it was tapped away")
@@ -230,7 +235,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         after.tap()
         XCTAssertTrue(waitUntil(timeout: 15) { self.authoredBanner(app).exists }, "no banner after the second refusal")
         shot(app, "04-second-refusal")
-        authoredBanner(app).tap()
+        tapWhenSettled(authoredBanner(app))
         sleep(3)
         XCTAssertFalse(authoredBanner(app).exists, "after a second identical failure, one tap did not keep the banner away")
         shot(app, "05-tapped-away-again")
@@ -465,6 +470,27 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     }
 
     private func bannerIsUp(_ app: XCUIApplication) -> Bool { bannerElement(app) != nil }
+
+    /*
+     #1111 — TAP THE BANNER WHERE IT IS DRAWN, NOT WHERE IT IS ARRIVING FROM. The banner slides in
+     from the bottom edge, and it is in the accessibility tree from the first frame of that
+     transition — screenshot `04-second-refusal` shows it "existing" with nothing yet on screen. A tap
+     sent then lands on the empty space it is moving through. That used to dismiss it anyway, because
+     the dismiss gesture covered the whole SCREEN — which is the #1111 defect: the same catcher ate
+     every tap on the CTA. With the gesture scoped to the card, the tap has to hit the card, so the
+     frame is polled until it stops moving.
+    */
+    private func tapWhenSettled(_ element: XCUIElement) {
+        var last = element.frame
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.3)
+            let now = element.frame
+            if now == last && element.isHittable { break }
+            last = now
+        }
+        element.tap()
+    }
 
     private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)

@@ -535,6 +535,22 @@ struct PaywallRenderer: View {
                     .frame(maxWidth: .infinity)
                     .background(Color.red.opacity(0.9))
                     .clipShape(RoundedRectangle(cornerRadius: 16))
+                    /*
+                     🔴 Tapping the BANNER dismisses it, so a tap aimed at a covered CTA recovers
+                     instead of doing nothing — whatever still overlaps (a long message, a narrow
+                     screen, a pinned group measured a frame late), the user's instinctive second tap
+                     clears the obstruction rather than vanishing into it.
+
+                     #1111 — and ONLY the banner. This gesture used to sit on the outer
+                     `VStack { Spacer(); banner }`, whose `contentShape(Rectangle())` is the whole
+                     SCREEN: while the banner was up, a tap on the CTA, a plan row, anything, only
+                     hid the banner, so a user retrying a failed purchase bought nothing and saw
+                     nothing (5 of 5 walks). The card's own shape is the hit area; the empty space
+                     around it stays transparent to touches. The retry button inside keeps its own
+                     action — a Button wins over its container's tap gesture.
+                    */
+                    .contentShape(RoundedRectangle(cornerRadius: 16))
+                    .onTapGesture { withAnimation { showErrorBanner = false } }
                     .padding(.horizontal, 16)
                     /*
                      🔴 ABOVE THE PINNED ZONE, MEASURED — it used to be a hardcoded `80`.
@@ -561,15 +577,6 @@ struct PaywallRenderer: View {
                     .padding(.bottom, max(80, pinnedZoneHeight + 16))
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                /*
-                 🔴 And tapping the banner DISMISSES it, so a tap aimed at a covered CTA recovers
-                 instead of doing nothing. Whatever still overlaps — a long message, a narrow
-                 screen, a pinned group measured a frame late — the user's instinctive second tap
-                 now clears the obstruction rather than vanishing into it. `contentShape` is what
-                 makes the whole banner tappable rather than only its text.
-                 */
-                .contentShape(Rectangle())
-                .onTapGesture { withAnimation { showErrorBanner = false } }
             }
 
             // #652 — the Back button, rendered INDEPENDENTLY of the close control.
