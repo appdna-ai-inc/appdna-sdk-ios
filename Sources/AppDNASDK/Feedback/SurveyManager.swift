@@ -64,19 +64,9 @@ final class SurveyManager {
                 maxDisplays: config.trigger_rules?.max_displays
             ) else { continue }
 
-            // 4. Love score range check. No SDK computes a love score yet, so the stored value is always 0 and a
-            // range with min > 0 never passes; the debug line says so instead of skipping silently.
-            if let range = config.trigger_rules?.love_score_range {
-                let loveScore = UserDefaults.standard.integer(forKey: "ai.appdna.sdk.love_score")
-                guard loveScore >= (range.min ?? 0) && loveScore <= (range.max ?? 100) else {
-                    Log.debug("Survey \(surveyId) skipped — love_score_range not met (the device has no love score)")
-                    continue
-                }
-            }
-
-            // 5. Min sessions check
-            guard meetsMinSessions(config.trigger_rules?.min_sessions) else {
-                Log.debug("Survey \(surveyId) skipped — min_sessions not reached")
+            // 4–5. Love score range, min sessions: a skip says why in the debug log.
+            if let reason = eligibilitySkipReason(surveyId: surveyId, rules: config.trigger_rules) {
+                Log.debug(reason)
                 continue
             }
 
@@ -521,6 +511,22 @@ final class SurveyManager {
 
 
     // MARK: - Min sessions
+
+    /// Why a survey whose event matched is not shown, or nil when it may be. No SDK computes a love score yet, so the
+    /// stored value is always 0 and a `love_score_range` with min > 0 never passes; the reason says so instead of the
+    /// survey being skipped silently.
+    func eligibilitySkipReason(surveyId: String, rules: SurveyTriggerRules?) -> String? {
+        if let range = rules?.love_score_range {
+            let loveScore = UserDefaults.standard.integer(forKey: "ai.appdna.sdk.love_score")
+            if !(loveScore >= (range.min ?? 0) && loveScore <= (range.max ?? 100)) {
+                return "Survey \(surveyId) skipped — love_score_range not met (the device has no love score)"
+            }
+        }
+        if !meetsMinSessions(rules?.min_sessions) {
+            return "Survey \(surveyId) skipped — min_sessions not reached"
+        }
+        return nil
+    }
 
     private func meetsMinSessions(_ minSessions: Int?) -> Bool {
         guard let min = minSessions, min > 0 else { return true }
