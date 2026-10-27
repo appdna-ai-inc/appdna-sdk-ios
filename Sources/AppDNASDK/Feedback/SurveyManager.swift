@@ -64,14 +64,21 @@ final class SurveyManager {
                 maxDisplays: config.trigger_rules?.max_displays
             ) else { continue }
 
-            // 4. Love score range check
+            // 4. Love score range check. No SDK computes a love score yet, so the stored value is always 0 and a
+            // range with min > 0 never passes; the debug line says so instead of skipping silently.
             if let range = config.trigger_rules?.love_score_range {
                 let loveScore = UserDefaults.standard.integer(forKey: "ai.appdna.sdk.love_score")
-                guard loveScore >= (range.min ?? 0) && loveScore <= (range.max ?? 100) else { continue }
+                guard loveScore >= (range.min ?? 0) && loveScore <= (range.max ?? 100) else {
+                    Log.debug("Survey \(surveyId) skipped — love_score_range not met (the device has no love score)")
+                    continue
+                }
             }
 
             // 5. Min sessions check
-            guard meetsMinSessions(config.trigger_rules?.min_sessions) else { continue }
+            guard meetsMinSessions(config.trigger_rules?.min_sessions) else {
+                Log.debug("Survey \(surveyId) skipped — min_sessions not reached")
+                continue
+            }
 
             // 5. Present with optional delay
             let delay = config.trigger_rules?.delay_seconds ?? 0
