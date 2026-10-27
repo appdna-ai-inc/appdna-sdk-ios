@@ -563,6 +563,10 @@ final class SharedFixtureTests: XCTestCase {
         if let stepInput = session["current_step_input"]?.objectValue {
             responses["current_step"] = stepInput.mapValues { $0.foundation }
         }
+        // #1158 — stored step responses, for the `onboarding.*` / `responses.*` roots.
+        for (stepId, step) in (session["responses"]?.objectValue ?? [:]) {
+            if let fields = step.objectValue { responses[stepId] = fields.mapValues { $0.foundation } }
+        }
 
         let ctx = TemplateContext(
             userTraits: (f.setup.user_traits?.objectValue ?? [:]).mapValues { $0.foundation },

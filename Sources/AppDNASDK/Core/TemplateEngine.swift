@@ -111,8 +111,16 @@ final class TemplateEngine {
                 return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap(Self.stringify)
             }
             let stepId = parts[1]
-            let fieldId = parts[2]
-            return (context.onboardingResponses[stepId])?[fieldId].flatMap(Self.stringify)
+            let fieldPath = parts[2]
+            guard let step = context.onboardingResponses[stepId] else { return nil }
+            if let exact = step[fieldPath] { return exact is NSNull ? nil : Self.stringify(exact) }
+            // #1158 — `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
+            // structured answer (a location selection) arrives as `field.city`. Walk it.
+            let keys = fieldPath.split(separator: ".").map(String.init)
+            var value: Any? = step[keys[0]]
+            for key in keys.dropFirst() { value = (value as? [String: Any])?[key] }
+            guard let found = value, !(found is NSNull) else { return nil }
+            return Self.stringify(found)
 
         case "input":
             // Shorthand: {{input.fieldId}} — searches all step responses for the field
