@@ -241,6 +241,8 @@ extension SharedFixtureTests {
         SessionDataStore.shared.clearAll()
         defer { SessionDataStore.shared.clearAll() }
         SessionDataStore.shared.setOnboardingResponses(responses)
+        // #1150 — read it back from the persisted copy, the way a cold start does.
+        if f.action.raw["relaunch"]?.boolValue == true { SessionDataStore.shared.reloadFromDisk() }
 
         guard let loc = AppDNA.getLocationData(fieldId: fieldId) else {
             h.state["location_data"] = NSNull()
