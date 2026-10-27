@@ -26,4 +26,7 @@ enum TestCredentials {
     /// survey whose FIRST question is a numeric rating; the survey walk's is an emoji scale, and
     /// pointing both at one survey made this test report a network problem it did not have.
     static let feedbackSurveyId = ""
+    /// #1158 — a location flow whose SECOND step's heading interpolates the first step's answer
+    /// (`{{responses.<step>.<field>.city}} · …timezone}}`). Empty = that test skips.
+    static let templateFlowId = ""
 }

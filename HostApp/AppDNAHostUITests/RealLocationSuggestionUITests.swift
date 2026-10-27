@@ -179,6 +179,50 @@ final class RealLocationSuggestionUITests: XCTestCase {
 
      Either answer is worth having, and it costs one run instead of a guess.
      */
+    /// #1158 — a selected answer interpolates into the NEXT step's copy. The flow's step-2 heading is
+    /// `Welcome from {{responses.<step>.<field>.city}} · {{responses.<step>.<field>.timezone}}`, the form
+    /// the docs give; selecting Porto must make step 2 read the place, not the raw token or nothing.
+    func testASelectedAnswerInterpolatesIntoTheNextStep() throws {
+        guard let apiKey, !TestCredentials.templateFlowId.isEmpty else {
+            throw XCTSkip("no template flow — run via scripts/sdk-host-ios.ts --uitest --template-flow <id>")
+        }
+        let app = XCUIApplication()
+        app.launchArguments += [
+            "-appdnaApiKey", apiKey, "-appdnaFlow", TestCredentials.templateFlowId, "-appdnaLocationField", Self.fieldId,
+        ]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
+        var presented = false
+        for attempt in 0..<12 where !presented {
+            app.buttons["host.onboarding"].tap()
+            presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
+            if !presented { NSLog("[#1158] flow not up yet, attempt \(attempt + 1)") }
+        }
+        XCTAssertTrue(presented, "the flow never presented — config did not arrive")
+
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the step has no location field")
+        type(Self.query, into: field, in: app)
+        let suggestion = try realSuggestion(in: app)
+        let beforeTap = (field.value as? String) ?? ""
+        suggestion.tap()
+        var afterTap = (field.value as? String) ?? ""
+        for _ in 0..<12 where afterTap == beforeTap {
+            Thread.sleep(forTimeInterval: 0.25)
+            afterTap = (field.value as? String) ?? ""
+        }
+        XCTAssertNotEqual(afterTap, beforeTap, "the suggestion tap did not register")
+        app.buttons["Next"].tap()
+
+        // The heading as DRAWN on step 2. Assert the interpolated values, and that no raw token survived.
+        let drawn = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Welcome from'")).firstMatch
+        XCTAssertTrue(drawn.waitForExistence(timeout: 15), "step 2 drew no 'Welcome from' heading")
+        let shown = drawn.label
+        NSLog("[#1158] step 2 heading reads: \(shown)")
+        XCTAssertEqual(shown, "Welcome from Porto · Europe/Lisbon", "step 2 did not interpolate the step-1 answer")
+        XCTAssertFalse(shown.contains("{{"), "a raw token reached the screen")
+    }
+
     func testATypedAnswerIsStoredWithoutSelecting() throws {
         guard let apiKey, let flowId else {
             throw XCTSkip("TestCredentials is empty — run via scripts/sdk-host-ios.ts --uitest --location-flow <id>")
