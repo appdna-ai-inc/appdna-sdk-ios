@@ -10,7 +10,7 @@
 // Location field calls.
 //
 // 🔴 HOW THIS IS READABLE. The proxy checks a cache BEFORE calling its provider, and the cache key
-// carries the type: `geocode:v2:<query>:<type ?? 'all'>:<country>:<language>`. The walk's backend
+// carries the type: `geocode:v3:<provider>:<query>:<type ?? 'all'>:<country>:<language>` (provider `mapbox` for the walk app). The walk's backend
 // has those entries seeded with text that NAMES the key it was stored under, so the suggestion the
 // device draws is a direct read-out of the type the SDK sent:
 //

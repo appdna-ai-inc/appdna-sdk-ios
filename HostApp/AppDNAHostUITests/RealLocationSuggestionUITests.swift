@@ -297,7 +297,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
             .map(\.label).filter { !$0.isEmpty }.prefix(25)
         XCTFail(
             "no real suggestion for \"\(Self.query)\" appeared. Either the provider returned nothing "
-                + "— check MAPBOX_ACCESS_TOKEN reaches the server and that geocode:v2:* holds no "
+                + "— check the app is served (its own key, or MAPBOX_ACCESS_TOKEN for an internal or demo-mode org) and that geocode:v3:mapbox:* holds no "
                 + "stale empty entry for this query — or the dropdown drew a seeded read-out. "
                 + "Drawn: \(Array(drawn))",
         )
