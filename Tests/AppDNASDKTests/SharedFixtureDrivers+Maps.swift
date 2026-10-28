@@ -49,6 +49,10 @@ extension SharedFixtureTests {
         // The ONE location state holder (SharedFixtureDrivers+LocationResolve.swift).
         case "location_resolve_request":  runLocationResolveRequest(f, h)
         case "location_field_text":       runLocationFieldText(f, h)
+        // Google's attribution: the field's, and an onboarding step's credit
+        // (SharedFixtureDrivers+GoogleAttribution.swift).
+        case "location_field_attribution": runLocationFieldAttribution(f, h)
+        case "onboarding_google_credit":  runOnboardingGoogleCredit(f, h)
         case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
         case "parse_window_date":         runParseWindowDate(f, h)

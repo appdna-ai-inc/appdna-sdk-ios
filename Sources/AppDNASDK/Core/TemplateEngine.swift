@@ -1,5 +1,20 @@
 import Foundation
 
+/// Which surface a template is drawn on. It decides what a Google location answer resolves to.
+///
+/// Google's terms require attribution in the same visual container wherever a Google answer's
+/// content is shown without a Google map. An onboarding step draws that attribution itself, in its
+/// container (`GoogleCredit`), so onboarding keeps the answer's values. No other surface can: a push
+/// has no container at all, and a paywall, message or survey would need attribution UI of its own.
+/// So everywhere else a Google answer resolves to `raw_query`, the text the user typed, which is not
+/// Google content.
+enum TemplateSurface {
+    /// An onboarding step's own text: the answer's values, with the step's credit.
+    case onboarding
+    /// Every other surface, and anything sent off the device: a Google answer's typed text.
+    case other
+}
+
 /// Context for variable resolution across all SDK modules.
 struct TemplateContext {
     let userTraits: [String: Any]?
@@ -8,6 +23,8 @@ struct TemplateContext {
     let computedData: [String: Any]
     let sessionData: [String: Any]
     let deviceInfo: [String: String]
+    /// Where the template is drawn. A context built by hand defaults to the restrictive surface.
+    var surface: TemplateSurface = .other
 }
 
 /// Shared template interpolation engine for all SDK modules.
@@ -29,7 +46,11 @@ final class TemplateEngine {
     private init() {}
 
     /// Build a TemplateContext from current SDK state.
-    func buildContext() -> TemplateContext {
+    ///
+    /// `surface` has no default on purpose: every caller states where its text goes. Only an
+    /// onboarding step's own text passes `.onboarding`; a paywall, message, survey, push, or a value
+    /// sent to the customer's server (a hook header) passes `.other`.
+    func buildContext(surface: TemplateSurface) -> TemplateContext {
         let identity = AppDNA.identityManagerRef?.currentIdentity
         let sessionStore = SessionDataStore.shared
 
@@ -39,7 +60,8 @@ final class TemplateEngine {
             onboardingResponses: sessionStore.onboardingResponses,
             computedData: sessionStore.computedData,
             sessionData: sessionStore.sessionData,
-            deviceInfo: Self.deviceInfo()
+            deviceInfo: Self.deviceInfo(),
+            surface: surface
         )
     }
 
@@ -108,19 +130,23 @@ final class TemplateEngine {
                 let remaining = path.dropFirst("onboarding.".count)
                 let subParts = remaining.split(separator: ".", maxSplits: 1).map(String.init)
                 guard subParts.count >= 2 else { return nil }
-                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap(Self.stringify)
+                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap { answerText($0, context) }
             }
             let stepId = parts[1]
             let fieldPath = parts[2]
             guard let step = context.onboardingResponses[stepId] else { return nil }
-            if let exact = step[fieldPath] { return exact is NSNull ? nil : Self.stringify(exact) }
+            if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context) }
             // #1158 — `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
             // structured answer (a location selection) arrives as `field.city`. Walk it.
             let keys = fieldPath.split(separator: ".").map(String.init)
             var value: Any? = step[keys[0]]
-            for key in keys.dropFirst() { value = (value as? [String: Any])?[key] }
+            for key in keys.dropFirst() {
+                // A key inside a Google answer, off onboarding: the user's typed text instead.
+                if context.surface == .other, LocationAnswer.carriesPlaceId(value) { return Self.typedText(of: value) }
+                value = (value as? [String: Any])?[key]
+            }
             guard let found = value, !(found is NSNull) else { return nil }
-            return Self.stringify(found)
+            return answerText(found, context)
 
         case "input":
             // Shorthand: {{input.fieldId}} — searches all step responses for the field
@@ -128,7 +154,7 @@ final class TemplateEngine {
             let fieldId = parts[1]
             for (_, stepData) in context.onboardingResponses {
                 if let value = stepData[fieldId] {
-                    return Self.stringify(value)
+                    return answerText(value, context)
                 }
             }
             return nil
@@ -154,6 +180,34 @@ final class TemplateEngine {
     }
 
     // MARK: - Helpers
+
+    /// An onboarding answer as template text. Off onboarding, a Google answer (one carrying
+    /// `place_id`) is its `raw_query`, and a step or list holding one has it replaced the same way
+    /// before it is stringified — so the whole-answer token never prints Google content either.
+    private func answerText(_ value: Any, _ context: TemplateContext) -> String? {
+        guard context.surface == .other else { return Self.stringify(value) }
+        if LocationAnswer.carriesPlaceId(value) { return Self.typedText(of: value) }
+        return Self.stringify(Self.typedTextForGoogleAnswers(in: value))
+    }
+
+    /// A Google answer's `raw_query`, or nil when it has none (the token then takes its fallback).
+    static func typedText(of answer: Any?) -> String? {
+        let dict = (answer as? [String: Any]) ?? (answer as? NSDictionary).map { d in
+            var out: [String: Any] = [:]
+            for (k, v) in d { if let key = k as? String { out[key] = v } }
+            return out
+        }
+        guard let q = dict?["raw_query"] as? String, !q.isEmpty else { return nil }
+        return q
+    }
+
+    /// `value` with every Google answer inside it, at any depth, replaced by its `raw_query`.
+    static func typedTextForGoogleAnswers(in value: Any) -> Any {
+        if LocationAnswer.carriesPlaceId(value) { return typedText(of: value) ?? "" }
+        if let d = value as? [String: Any] { return d.mapValues { typedTextForGoogleAnswers(in: $0) } }
+        if let a = value as? [Any] { return a.map { typedTextForGoogleAnswers(in: $0) } }
+        return value
+    }
 
     static func stringify(_ value: Any) -> String? {
         switch value {

@@ -91,7 +91,21 @@ let package = Package(
                  *
                  * Provenance and terms: `Resources/appdna_google_g.png.LICENSE`.
                  */
-                .copy("Resources/appdna_google_g.png")
+                .copy("Resources/appdna_google_g.png"),
+                /*
+                 * Google's "Google Maps" attribution logo, UNMODIFIED, in the four variants Google
+                 * publishes: plain gray (light surfaces), plain white (dark surfaces), and the two
+                 * outlined variants for busy backgrounds. A location dropdown listing Google
+                 * suggestions draws one under the rows, and a field holding a Google answer keeps one
+                 * beside it, because Google's terms require attribution wherever its data is shown
+                 * without a Google map. `.copy` for the same reason as the "G" above.
+                 *
+                 * Provenance and terms: `NOTICE.md`, "Google Maps attribution logo".
+                 */
+                .copy("Resources/appdna_google_maps_logo_gray.png"),
+                .copy("Resources/appdna_google_maps_logo_white.png"),
+                .copy("Resources/appdna_google_maps_logo_light_outline.png"),
+                .copy("Resources/appdna_google_maps_logo_dark_outline.png")
             ]
         ),
         .target(

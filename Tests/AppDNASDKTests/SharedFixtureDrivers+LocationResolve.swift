@@ -100,6 +100,10 @@ extension SharedFixtureTests {
         case "autocomplete_queries": return rig.autocompleteQueries
         case "autocomplete_calls": return rig.autocompleteQueries.count
         case "resolve_bodies": return rig.resolveBodies
+        // What the two location views read to draw Google's logo: under a Google list, and beside a
+        // field whose answer came from Google.
+        case "list_google_logo": return holder.showsGoogleLogo
+        case "field_google_attribution": return LocationAnswer.carriesPlaceId(rig.stored)
         default: return nil
         }
     }

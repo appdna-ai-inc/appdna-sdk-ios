@@ -125,7 +125,7 @@ enum PushPayloadParser {
         }
 
         // Interpolate push title, body, and action button labels via TemplateEngine.
-        let ctx = TemplateEngine.shared.buildContext()
+        let ctx = TemplateEngine.shared.buildContext(surface: .other)
 
         var actions: [PushAction] = []
         for entry in userInfo["actions"] as? [[String: Any]] ?? [] {

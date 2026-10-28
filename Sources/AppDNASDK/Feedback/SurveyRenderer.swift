@@ -175,7 +175,7 @@ struct SurveyContainerView: View {
                         // Interpolate thank-you text
                         Text(TemplateEngine.shared.interpolate(
                             theme?.thank_you_text ?? "Thank you!",
-                            context: TemplateEngine.shared.buildContext()
+                            context: TemplateEngine.shared.buildContext(surface: .other)
                         ))
                             .font(.title2.bold())
                             .foregroundColor(textColor)
@@ -333,7 +333,7 @@ struct SurveyContainerView: View {
 
     /// Create an interpolated copy of a survey question.
     private func interpolatedQuestion(_ question: SurveyQuestion) -> SurveyQuestion {
-        let ctx = TemplateEngine.shared.buildContext()
+        let ctx = TemplateEngine.shared.buildContext(surface: .other)
         let e = TemplateEngine.shared
         return SurveyQuestion(
             id: question.id,

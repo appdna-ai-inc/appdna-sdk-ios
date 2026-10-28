@@ -54,7 +54,7 @@ struct PaywallRenderer: View {
 
     // Cached template context (built once per render cycle)
     private var templateContext: TemplateContext {
-        TemplateEngine.shared.buildContext()
+        TemplateEngine.shared.buildContext(surface: .other)
     }
 
     // Extract sticky_footer section if present

@@ -1064,7 +1064,10 @@ struct OnboardingFlowHost: View {
     // MARK: - Variable interpolation (delegates to shared TemplateEngine)
 
     private func interpolateVariables(_ value: String) -> String {
-        let ctx = TemplateEngine.shared.buildContext()
+        // The hook's headers go to the customer's server, not to this screen, so nothing here can
+        // carry the step's Google credit: a Google answer is its typed text, as on every surface
+        // other than an onboarding step's own text.
+        let ctx = TemplateEngine.shared.buildContext(surface: .other)
         return TemplateEngine.shared.interpolate(value, context: ctx)
     }
 
@@ -1562,7 +1565,8 @@ struct OnboardingFlowHost: View {
 extension String {
     func interpolated() -> String {
         guard self.contains("{{") else { return self }
-        let ctx = TemplateEngine.shared.buildContext()
+        // An onboarding step's own text: the step's container draws the Google credit (`GoogleCredit`).
+        let ctx = TemplateEngine.shared.buildContext(surface: .onboarding)
         return TemplateEngine.shared.interpolate(self, context: ctx)
     }
 }
@@ -1734,7 +1738,7 @@ struct OnboardingStepRouter: View {
             pending: livePending,
             inputValues: inputValues,
             responses: accumulatedResponses,
-            templateContext: TemplateEngine.shared.buildContext(),
+            templateContext: TemplateEngine.shared.buildContext(surface: .onboarding),
             selected: SelectedOptionStore.shared.snapshot,
             fieldConfigOverrides: fieldConfigOverrides,
             fieldOptionsOverrides: fieldOptionsOverrides,
@@ -1750,7 +1754,7 @@ struct OnboardingStepRouter: View {
     // Also interpolates {{variables}} after localization
     // …except for a raw-resolved block, where it is LOOKUP-ONLY (no re-scan).
     private func loc(_ key: String, _ fallback: String) -> String {
-        OnboardingStepPipeline.loc(key, fallback, resolved: resolvedStep, context: { TemplateEngine.shared.buildContext() })
+        OnboardingStepPipeline.loc(key, fallback, resolved: resolvedStep, context: { TemplateEngine.shared.buildContext(surface: .onboarding) })
     }
 
     /// Drop selections a host-data-scoped Select no longer renders.
@@ -1771,22 +1775,72 @@ struct OnboardingStepRouter: View {
         }.joined(separator: ";")
     }
 
+    // MARK: - Google credit
+
+    /// The answers each template root reads on this step (`GoogleCredit.Answers`).
+    private var googleCreditAnswers: GoogleCredit.Answers {
+        GoogleCredit.Answers(
+            accumulated: accumulatedResponses,
+            stepInputs: inputValues,
+            sessionStore: SessionDataStore.shared.onboardingResponses
+        )
+    }
+
+    /// Whether this step's text templates a Google answer: computed here, from the step's own source
+    /// and the answers, before anything renders — so there is no child-to-parent report and no stale
+    /// first frame.
+    private var showsGoogleCredit: Bool {
+        GoogleCredit.shows(
+            step: step, override: liveConfigOverride,
+            fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides,
+            answers: googleCreditAnswers
+        )
+    }
+
+    /// What the option sheets on this step need to decide their own credit.
+    private var googleCreditSheetContext: GoogleCreditSheetContext {
+        let step = step, override = liveConfigOverride
+        let fieldConfigOverrides = fieldConfigOverrides, fieldOptionsOverrides = fieldOptionsOverrides
+        return GoogleCreditSheetContext(
+            sources: {
+                GoogleCredit.stepSources(
+                    step: step, override: override,
+                    fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
+                )
+            },
+            answers: googleCreditAnswers
+        )
+    }
+
     var body: some View {
-        Group {
-            if let blocks = effectiveConfig.content_blocks, !blocks.isEmpty {
-                blockBasedStepView(blocks: blocks)
-                    // The step's interaction channel for `refresh_step` buttons at
-                    // any depth (three zones, lifted maps, containers, carousel pages). Rebuilt on
-                    // every change of the coordinator's published state.
-                    .environment(\.appdnaStepInteraction, StepInteraction.make(
-                        presentation: presentation, coordinator: coordinator,
-                        pending: livePending, fire: handleInteract
-                    ))
-                    .environment(\.locationAdvanceSettlement, locationSettlement)
-            } else {
-                legacyStepView
+        // ONE container for both branches, always present, so the credit appearing never changes the
+        // content's identity (a field's state would be rebuilt if it did).
+        VStack(spacing: 0) {
+            Group {
+                if let blocks = effectiveConfig.content_blocks, !blocks.isEmpty {
+                    blockBasedStepView(blocks: blocks)
+                        // The step's interaction channel for `refresh_step` buttons at
+                        // any depth (three zones, lifted maps, containers, carousel pages). Rebuilt on
+                        // every change of the coordinator's published state.
+                        .environment(\.appdnaStepInteraction, StepInteraction.make(
+                            presentation: presentation, coordinator: coordinator,
+                            pending: livePending, fire: handleInteract
+                        ))
+                        .environment(\.locationAdvanceSettlement, locationSettlement)
+                } else {
+                    legacyStepView
+                }
+            }
+            // Google's attribution, in the step's own container, when its text shows a Google
+            // answer's content.
+            if showsGoogleCredit {
+                GoogleMapsTextAttribution(backdrop: GoogleMapsAttribution.backdrop(of: effectiveConfig.background))
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
             }
         }
+        .environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(of: effectiveConfig.background))
+        .environment(\.googleCreditSheetContext, googleCreditSheetContext)
         // Background is rendered at the OnboardingFlowHost level (full-screen behind nav bar)
         // Keyboard dismiss handled by ScrollView .scrollDismissesKeyboard in ThreeZoneStepLayout
         // Intercept links to open in-app instead of Safari

@@ -138,14 +138,17 @@ struct LocationFieldView: View {
     /// The form step's settlement: Continue settles this field before it submits (a resolve in
     /// flight stores the typed text). `onDisappear` runs only after the answers were submitted.
     @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
+    /// What is behind the field, for the Google logo kept beside a Google answer.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var attributionBackdrop
 
-    init(field: FormField, value: Binding<Any?>, apiClient: APIClient?) {
+    /// `search` is a test seam: a render test hands in a holder it drives. Production builds its own.
+    init(field: FormField, value: Binding<Any?>, apiClient: APIClient?, search: LocationSuggestionSearch? = nil) {
         self.field = field
         self._value = value
         self.apiClient = apiClient
         // Built once per field (a `@StateObject`'s autoclosure): the answer held when the step is
         // entered is restored into the text at once; one seeded later is restored reactively.
-        _locationSearch = StateObject(wrappedValue: LocationSuggestionSearch(
+        _locationSearch = StateObject(wrappedValue: search ?? LocationSuggestionSearch(
             storedAnswer: value.wrappedValue,
             client: { apiClient }
         ))
@@ -253,6 +256,13 @@ struct LocationFieldView: View {
                             Divider().padding(.leading, 36)
                         }
                     }
+                    // Google's attribution under Google suggestions, inside the dropdown: the list
+                    // is Google content shown without a Google map. The dropdown's surface is the
+                    // system background, so the plain variant follows the appearance.
+                    if locationSearch.showsGoogleLogo {
+                        GoogleMapsLogoView(backdrop: .plain(hex: nil))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .background(Color(.systemBackground))
                 .cornerRadius(10)
@@ -261,6 +271,10 @@ struct LocationFieldView: View {
                         .stroke(Color.gray.opacity(0.2), lineWidth: 1)
                 )
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+            } else if LocationAnswer.carriesPlaceId(value) {
+                // A Google answer keeps its attribution after the dropdown closes, and when it is
+                // restored on returning to the step: the field shows Google content.
+                GoogleMapsLogoView(backdrop: attributionBackdrop)
             }
         }
         .onChange(of: isFocused) { focused in

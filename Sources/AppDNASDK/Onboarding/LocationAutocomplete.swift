@@ -213,6 +213,13 @@ final class LocationSuggestionSearch: ObservableObject {
     @Published private(set) var isResolving = false
     @Published private(set) var isDropdownOpen = false
 
+    /// Whether the list on screen holds Google suggestions: the dropdown then draws Google's logo
+    /// under the rows. Read from each suggestion's own `provider`, so a list replaced by a newer search
+    /// decides for itself.
+    var showsGoogleLogo: Bool {
+        results.contains { $0.suggestion.provider == "google" }
+    }
+
     /// The answer as the holder last wrote or was told it is (`storedAnswerChanged`). Only its
     /// presence is read, for the reactive restore.
     private(set) var storedAnswer: Any?

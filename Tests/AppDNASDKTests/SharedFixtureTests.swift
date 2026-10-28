@@ -568,7 +568,7 @@ final class SharedFixtureTests: XCTestCase {
             if let fields = step.objectValue { responses[stepId] = fields.mapValues { $0.foundation } }
         }
 
-        let ctx = TemplateContext(
+        var ctx = TemplateContext(
             userTraits: (f.setup.user_traits?.objectValue ?? [:]).mapValues { $0.foundation },
             remoteConfig: { _ in nil },
             onboardingResponses: responses,
@@ -576,6 +576,14 @@ final class SharedFixtureTests: XCTestCase {
             sessionData: session.mapValues { $0.foundation },
             deviceInfo: deviceInfo
         )
+        // The surface the template is drawn on — what a Google answer resolves to. `buildContext`
+        // takes the same value; only this hand-built context needs it read from the fixture.
+        switch f.action.raw["surface"]?.stringValue {
+        case "onboarding": ctx.surface = .onboarding
+        case "other": ctx.surface = .other
+        case nil: break
+        case let other?: return XCTFail("[\(f.id)] unknown surface '\(other)'")
+        }
 
         guard let template = f.action.raw["template"]?.stringValue else {
             return XCTFail("[\(f.id)] action.template missing")

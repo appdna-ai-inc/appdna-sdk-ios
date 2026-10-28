@@ -134,6 +134,23 @@ enum LocationAnswer {
         return line
     }
 
+    /// Whether a stored answer came from Google: a selection carrying a non-blank `place_id`, which
+    /// only a Google resolve reply fills. Google's terms require attribution wherever such an
+    /// answer's content is shown without a Google map, so this one rule decides the logo kept beside
+    /// a field, the credit an onboarding step draws for text templating the answer, and the typed
+    /// text every other surface's templates show in its place.
+    static func carriesPlaceId(_ value: Any?) -> Bool {
+        let dict: [String: Any]
+        if let d = value as? [String: Any] { dict = d }
+        else if let d = value as? NSDictionary {
+            var out: [String: Any] = [:]
+            for (k, v) in d { if let key = k as? String { out[key] = v } }
+            dict = out
+        } else { return false }
+        guard let id = dict["place_id"] as? String else { return false }
+        return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
 }
 
 /// One autocomplete suggestion as the tap path needs it: the decoded display data,

@@ -969,7 +969,7 @@ struct FormInputSelectBlock: View {
         // sheet when picked. The blocks render through the ordinary renderer, which is what
         // lets one engine serve both the chooser and the detail screens.
         .sheet(item: $sheetOption) { opt in
-            OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil }, rawResolved: rawResolved)
+            OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil }, rawResolved: rawResolved, blockId: block.id)
         }
         .onAppear {
             let fieldId = block.field_id ?? block.id
@@ -2684,11 +2684,14 @@ struct FormInputLocationPlaceholderBlock: View {
     /// The step's settlement: the step settles this field when it advances (a resolve in flight
     /// stores the typed text). `onDisappear` runs only after the step has handed its answers on.
     @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
+    /// What is behind the field, for the Google logo kept beside a Google answer.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var attributionBackdrop
 
-    init(block: ContentBlock, inputValues: Binding<[String: Any]>) {
+    /// `search` is a test seam: a render test hands in a holder it drives. Production builds its own.
+    init(block: ContentBlock, inputValues: Binding<[String: Any]>, search: LocationSuggestionSearch? = nil) {
         self.block = block
         self._inputValues = inputValues
-        _searchCompleter = StateObject(wrappedValue: LocationSuggestionSearch(
+        _searchCompleter = StateObject(wrappedValue: search ?? LocationSuggestionSearch(
             storedAnswer: inputValues.wrappedValue[block.field_id ?? block.id],
             client: { AppDNA.geocodeClient }
         ))
@@ -2845,6 +2848,13 @@ struct FormInputLocationPlaceholderBlock: View {
                             Divider()
                         }
                     }
+                    // Google's attribution under Google suggestions, inside the dropdown. The
+                    // authored dropdown colour decides the plain variant; a translucent dropdown lets
+                    // the step show through, which is a busy surface.
+                    if searchCompleter.showsGoogleLogo {
+                        GoogleMapsLogoView(backdrop: ddOpacity < 1 ? .busy : .plain(hex: ddBgHex))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .background(ddBg.opacity(ddOpacity))
                 .cornerRadius(cornerRadius)
@@ -2853,6 +2863,10 @@ struct FormInputLocationPlaceholderBlock: View {
                         .strokeBorder(borderColor, lineWidth: borderWidth)
                 )
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+            } else if LocationAnswer.carriesPlaceId(inputValues[fieldId]) {
+                // A Google answer keeps its attribution after the dropdown closes, and when it is
+                // restored on returning to the step: the field shows Google content.
+                GoogleMapsLogoView(backdrop: attributionBackdrop)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -3153,9 +3167,23 @@ struct OptionBottomSheetView: View {
     /// resolved, so the sheet renderer must not re-scan them (only `sheet_step_paths` resolve here,
     /// against the sheet's own inputs).
     var rawResolved: Bool = false
+    /// The block whose option opened the sheet: with the option's id, it finds the sheet's SOURCE in
+    /// the step, which the sheet's Google credit is decided from.
+    var blockId: String? = nil
 
     @State private var sheetToggles: [String: Bool] = [:]
     @State private var sheetInputs: [String: Any] = [:]
+    /// The step's credit context. The sheet is a modal above the step, so it draws its own credit.
+    @SwiftUI.Environment(\.googleCreditSheetContext) private var creditContext
+
+    /// Whether the sheet's own blocks template a Google answer — their `step` root read against the
+    /// sheet's own inputs.
+    private var showsGoogleCredit: Bool {
+        creditContext?.shows(
+            blockId: blockId, optionId: option.id,
+            presentedSheetBlocks: option.sheet_blocks ?? [], sheetInputs: sheetInputs
+        ) ?? false
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -3184,6 +3212,11 @@ struct OptionBottomSheetView: View {
                 .environment(\.appdnaStepInteraction, nil)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
+            }
+            // Google's attribution inside the sheet, the container its text is drawn in.
+            if showsGoogleCredit {
+                GoogleMapsTextAttribution(backdrop: .plain(hex: nil))
+                    .padding(.bottom, 12)
             }
         }
         .presentationDetents([.medium, .large])

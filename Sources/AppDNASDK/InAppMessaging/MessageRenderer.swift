@@ -16,7 +16,7 @@ struct MessageRenderer: View {
     /// Preserves the `dark` override object so `resolved(for:)` can use
     /// it downstream.
     private var interpolatedContent: MessageContent {
-        let ctx = TemplateEngine.shared.buildContext()
+        let ctx = TemplateEngine.shared.buildContext(surface: .other)
         let e = TemplateEngine.shared
         return MessageContent(
             title: config.content?.title.map { e.interpolate($0, context: ctx) },

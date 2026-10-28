@@ -69,3 +69,32 @@ resized by hand, not recoloured, and not offered as a general-purpose icon.
 stays byte-identical to what Google publishes. On Android it must live in `res/` as a `.png` and
 NOTHING else: a sidecar file beside it fails `packageDebugResources` with "The file name must end
 with .xml or .png", which is why this note is here rather than next to the asset.
+
+### Google Maps attribution logo — `appdna_google_maps_logo_*.png`
+
+Google's official **"Google Maps"** attribution logo, shipped UNMODIFIED, in four variants. Each
+file is the `_4x.png` of one folder of Google's attribution asset pack, renamed only:
+
+| File | Google's file | MD5 |
+|---|---|---|
+| `appdna_google_maps_logo_gray.png` | `GoogleMaps_Logo_Gray/GoogleMaps_Logo_Gray_4x.png` | `0b8fbbf64bde9f21511269bfabe8db4b` |
+| `appdna_google_maps_logo_white.png` | `GoogleMaps_Logo_White/GoogleMaps_Logo_White_4x.png` | `bc9597c52f21db85bf265fb1a5979253` |
+| `appdna_google_maps_logo_light_outline.png` | `GoogleMaps_Logo_WithLightOutline/GoogleMaps_Logo_WithLightOutline_4x.png` | `863468e90a39e1fa8a69d1601af49ec4` |
+| `appdna_google_maps_logo_dark_outline.png` | `GoogleMaps_Logo_WithDarkOutline/GoogleMaps_Logo_WithDarkOutline_4x.png` | `2b7fc9319332b0b1ddafed9d72c221f3` |
+
+- Source: https://developers.google.com/static/maps/documentation/images/Google_Maps_Attribution_Assets.zip
+  (linked from the attribution guidelines below)
+- Fetched: 2026-10-28 · zip MD5 `ea6c3d1f85f2f0ef6d337dc25bdeaac3` · 91,462 bytes
+- Terms and usage rules: https://developers.google.com/maps/documentation/geocoding/policies
+  (the "Google Maps attribution" section, shared with the Places API policies)
+
+Google requires this attribution wherever Places or Geocoding content is shown without a Google
+map. The SDK draws it in exactly two places: under a location dropdown that lists Google
+suggestions, and beside a location field whose answer came from Google. It is drawn 16 pt high
+(Google's range is 16–19 dp), with 10 pt clear space on the left, right and top and 5 pt below,
+with the accessibility label "Google Maps". The plain gray and white variants go on plain light and
+dark surfaces; the outlined variants on busy ones (an image or gradient behind the field), as the
+guidelines direct. Where a logo cannot be drawn, the SDK spells out "Google Maps" in text, which
+the guidelines also allow.
+
+🔴 Do not edit the files. Re-fetch the asset pack from the URL above if they ever need updating.
