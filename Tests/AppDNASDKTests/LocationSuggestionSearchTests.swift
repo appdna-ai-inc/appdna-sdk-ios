@@ -262,6 +262,8 @@ final class LocationSuggestionSearchTests: XCTestCase {
             // Fails closed: a "resolved" answer without its provenance would be stored as permanent on
             // the device while ingest treats it as legacy.
             ("resolved without mapbox_id", { $0.reply(status: 200, body: Self.resolvedReply("Porto, Portugal", mapboxId: nil)) }),
+            // A blank id is no provenance either (Android reads ids as non-blank only).
+            ("resolved with a blank mapbox_id", { $0.reply(status: 200, body: Self.resolvedReply("Porto, Portugal", mapboxId: "  ")) }),
             // Fails closed too: a "resolved" answer with no display line would leave the field blank.
             ("resolved without a line", { $0.reply(status: 200, body: Self.resolvedReply("", mapboxId: Self.portoId)) }),
         ]

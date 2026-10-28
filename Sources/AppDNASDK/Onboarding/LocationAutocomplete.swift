@@ -169,7 +169,8 @@ enum LocationResolve {
         guard let suggestion = reply["suggestion"],
               let location = LocationData.fromStoredAnswer(suggestion),
               !location.formatted_address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              location.mapbox_id != nil || location.place_id != nil else {
+              !(location.mapbox_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                  || !(location.place_id ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failed(reason: "unparseable")
         }
         return .resolved(location)
