@@ -5,11 +5,11 @@ import XCTest
 
  The flow is synthetic (one location `type` per step, block and form-step surfaces): city block,
  address block, region block, address form step, country form step, a done step. Each method walks
- it, writes a frame per screen to the Mac's /tmp (`spec507-<run>-<nn>-<name>.png`), and logs the
+ it, writes a frame per screen to the Mac's /tmp (`locwalk-<run>-<nn>-<name>.png`), and logs the
  stored answer twice: `getLocationData` for `-appdnaLocationField`, and the raw responses bucket.
  Queries are public place names only (Rule 11).
  */
-final class Spec507LocationWalkUITests: XCTestCase {
+final class LocationWalkUITests: XCTestCase {
     override func setUp() { continueAfterFailure = true }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
@@ -25,7 +25,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
 
     // MARK: - walks
 
-    /// §8.1 — a released build against the P1 server, Mapbox app: suggestions show, a tap stores and shows.
+    /// A released build against a server that does not resolve, Mapbox app: suggestions show, a tap stores and shows.
     func testP1Mapbox() throws {
         let app = try start("p1mbx", field: "w_city_blk")
         typeAndTap(app, "Porto", row: "Porto", tag: "city")
@@ -38,16 +38,16 @@ final class Spec507LocationWalkUITests: XCTestCase {
         finish(app)
     }
 
-    /// §8.1 — a released build against the P1 server, Google app: no suggestions, the typed text is stored.
+    /// A released build against a server that does not resolve, Google app: no suggestions, the typed text is stored.
     func testP1Google() throws {
         let app = try start("p1ggl", field: "w_city_blk")
         let f = field(app)
         type("Porto", into: f, in: app)
         Thread.sleep(forTimeInterval: 6)
         shot(app, "city-typed-no-list")
-        // 1.0.83's content block searches Apple MapKit on the device (spec §1), not our proxy: observed, not asserted.
+        // 1.0.83's content block searches Apple MapKit on the device (not our proxy): observed, not asserted.
         let rows = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] %@", "Portugal")).count
-        NSLog("[spec507] google: block rows naming Portugal after 6s = \(rows); field=\(value(f))")
+        NSLog("[locwalk] google: block rows naming Portugal after 6s = \(rows); field=\(value(f))")
         advance(app, to: "Walk address block")
         advance(app, to: "Walk region block")
         advance(app, to: "Walk address form")
@@ -58,13 +58,13 @@ final class Spec507LocationWalkUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 6)
         shot(app, "country-form-typed-no-list")
         let formRows = app.staticTexts.matching(NSPredicate(format: "label == %@", "Portugal")).count
-        NSLog("[spec507] google: form-step rows labelled Portugal after 6s = \(formRows); field=\(value(ff))")
+        NSLog("[locwalk] google: form-step rows labelled Portugal after 6s = \(formRows); field=\(value(ff))")
         XCTAssertEqual(formRows, 0, "a Google app showed proxy suggestions to a released build")
         advance(app, to: "Walk done")
         finish(app)
     }
 
-    /// §8.2 (a)(b)(c) and (e) spinner timing — the on-branch build against a resolving server.
+    /// The current build against a resolving server: the tap, the stored answer, the field text and the spinner timing.
     func testP2Resolve() throws {
         let app = try start("p2", field: "w_addr_blk")
         // (a) city block
@@ -98,14 +98,14 @@ final class Spec507LocationWalkUITests: XCTestCase {
         checkShown(app, country, tag: "c-country-form-back")
         advance(app, to: "Walk done")
         finish(app)
-        // iOS has no in-flow resume (§3.9): a relaunch is checked through getLocationData only.
+        // iOS has no in-flow resume: a relaunch is checked through getLocationData only.
         app.terminate()
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
         readback(app, tag: "relaunch")
     }
 
-    /// §8.2 (e) — the deferred notes on #1147: the spinner during the debounce; an optional field's
+    /// The spinner during the debounce; an optional field's
     /// Continue while its resolve is in flight (the walker's proxy holds a "Lisbo" resolve 4 s); and the
     /// dropdown after a stale-list tap once the held fresh reply lands.
     func testP2ContinueDuringResolve() throws {
@@ -122,21 +122,21 @@ final class Spec507LocationWalkUITests: XCTestCase {
         app.buttons["Next"].firstMatch.tap()
         shot(app, "after-next")
         let advanced = app.staticTexts["Walk address block"].waitForExistence(timeout: 3)
-        NSLog("[spec507] p2e: advanced with the resolve in flight = \(advanced)")
+        NSLog("[locwalk] p2e: advanced with the resolve in flight = \(advanced)")
         Thread.sleep(forTimeInterval: 5)
         shot(app, "after-held-reply")
         if advanced {
             back(app, to: "Walk city block")
             Thread.sleep(forTimeInterval: 1)
             shot(app, "back-on-city")
-            NSLog("[spec507] p2e: city field after back = \(value(field(app)))")
+            NSLog("[locwalk] p2e: city field after back = \(value(field(app)))")
             advance(app, to: "Walk address block")
         } else {
-            NSLog("[spec507] p2e: still on city, field = \(value(f))")
+            NSLog("[locwalk] p2e: still on city, field = \(value(f))")
             advance(app, to: "Walk address block")
         }
         let addr = staleTap(app, tag: "e-addr-held", settle: 8)
-        NSLog("[spec507] p2e: address after the held fresh reply landed = \(addr)")
+        NSLog("[locwalk] p2e: address after the held fresh reply landed = \(addr)")
         advance(app, to: "Walk region block")
         advance(app, to: "Walk address form")
         advance(app, to: "Walk country form")
@@ -144,7 +144,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
         finish(app)
     }
 
-    /// §8.2 (d) — a refused resolve: the typed text is stored and shown.
+    /// A refused resolve: the typed text is stored and shown.
     func testP2Refused() throws {
         let app = try start("p2d", field: "w_city_blk")
         let f = field(app)
@@ -153,20 +153,20 @@ final class Spec507LocationWalkUITests: XCTestCase {
         XCTAssertTrue(r.waitForExistence(timeout: 20), "no Porto row")
         shot(app, "list")
         // The walker swaps the app's key for an invalid one now (the list is already drawn), then
-        // creates /tmp/spec507-go on the Mac, so the tap's resolve is refused by the provider.
+        // creates /tmp/locwalk-go on the Mac, so the tap's resolve is refused by the provider.
         try? FileManager.default.createDirectory(atPath: "/tmp", withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: "/tmp/spec507-ready", contents: Data())
+        FileManager.default.createFile(atPath: "/tmp/locwalk-ready", contents: Data())
         var waited = 0
-        while !FileManager.default.fileExists(atPath: "/tmp/spec507-go") && waited < 240 { Thread.sleep(forTimeInterval: 1); waited += 1 }
-        NSLog("[spec507] p2d: go signal after \(waited)s")
+        while !FileManager.default.fileExists(atPath: "/tmp/locwalk-go") && waited < 240 { Thread.sleep(forTimeInterval: 1); waited += 1 }
+        NSLog("[locwalk] p2d: go signal after \(waited)s")
         shot(app, "list-before-tap")
         r.tap()
         for i in 0..<4 { Thread.sleep(forTimeInterval: 0.5); shot(app, "after-tap-\(i)") }
-        NSLog("[spec507] p2d: field after a refused resolve = \(value(f))")
+        NSLog("[locwalk] p2d: field after a refused resolve = \(value(f))")
         advance(app, to: "Walk address block")
         back(app, to: "Walk city block")
         shot(app, "back")
-        NSLog("[spec507] p2d: field after back = \(value(field(app)))")
+        NSLog("[locwalk] p2d: field after back = \(value(field(app)))")
         advance(app, to: "Walk address block")
         advance(app, to: "Walk region block")
         advance(app, to: "Walk address form")
@@ -192,7 +192,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         shot(app, "\(tag)-tapped")
         let open = row(app, title).exists
-        NSLog("[spec507] \(tag): field before=\(before) after=\(after) dropdown-still-open=\(open)")
+        NSLog("[locwalk] \(tag): field before=\(before) after=\(after) dropdown-still-open=\(open)")
         return after
     }
 
@@ -215,7 +215,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
         shot(app, "\(tag)-tapped")
         let open = app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Brazil")).count
             + app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Canada")).count
-        NSLog("[spec507] \(tag): field after stale tap=\(after); rows still drawn (Brazil/Canada)=\(open)")
+        NSLog("[locwalk] \(tag): field after stale tap=\(after); rows still drawn (Brazil/Canada)=\(open)")
         return after
     }
 
@@ -223,7 +223,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
         shot(app, tag)
         let shown = value(field(app))
-        NSLog("[spec507] \(tag): field on re-entry=\(shown) expected=\(expected)")
+        NSLog("[locwalk] \(tag): field on re-entry=\(shown) expected=\(expected)")
         XCTAssertEqual(shown, expected, "[\(tag)] the field does not show the resolved line on re-entry")
     }
 
@@ -264,7 +264,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
 
     private func logRows(_ app: XCUIApplication, _ tag: String) {
         let labels = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }
-        NSLog("[spec507] \(tag): drawn texts = \(labels)")
+        NSLog("[locwalk] \(tag): drawn texts = \(labels)")
     }
 
     private func waitChange(_ f: XCUIElement, from before: String) -> String {
@@ -286,7 +286,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
     private func back(_ app: XCUIApplication, to heading: String) {
         let candidates = ["Back", "chevron.left", "Go back", "Previous"].map { app.buttons[$0] }
         if let b = candidates.first(where: { $0.exists }) { b.tap() } else {
-            NSLog("[spec507] no Back button by label; buttons = \(app.buttons.allElementsBoundByIndex.map(\.label))")
+            NSLog("[locwalk] no Back button by label; buttons = \(app.buttons.allElementsBoundByIndex.map(\.label))")
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.07, dy: 0.10)).tap()
         }
         XCTAssertTrue(app.staticTexts[heading].waitForExistence(timeout: 10), "Back did not return to \(heading)")
@@ -313,8 +313,8 @@ final class Spec507LocationWalkUITests: XCTestCase {
         for _ in 0..<20 where raw.label.contains("no bucket") || raw.label.contains("not read") {
             Thread.sleep(forTimeInterval: 0.5)
         }
-        NSLog("[spec507] \(run) \(tag) getLocationData: \(ld.label)")
-        NSLog("[spec507] \(run) \(tag) RAW: \(raw.label)")
+        NSLog("[locwalk] \(run) \(tag) getLocationData: \(ld.label)")
+        NSLog("[locwalk] \(run) \(tag) RAW: \(raw.label)")
     }
 
     private func type(_ text: String, into f: XCUIElement, in app: XCUIApplication) {
@@ -328,7 +328,7 @@ final class Spec507LocationWalkUITests: XCTestCase {
             f.typeText(text)
             // The field's value can lag the keystrokes: poll before deciding the text did not land.
             for _ in 0..<8 { if value(f).localizedCaseInsensitiveContains(text) { return }; Thread.sleep(forTimeInterval: 0.25) }
-            NSLog("[spec507] typing attempt \(attempt) did not land: field=\(value(f))")
+            NSLog("[locwalk] typing attempt \(attempt) did not land: field=\(value(f))")
         }
         XCTFail("could not type \(text)")
     }
@@ -340,6 +340,6 @@ final class Spec507LocationWalkUITests: XCTestCase {
         a.name = name
         a.lifetime = .keepAlways
         add(a)
-        try? png.write(to: URL(fileURLWithPath: String(format: "/tmp/spec507-%@-%02d-%@.png", run, n, name)))
+        try? png.write(to: URL(fileURLWithPath: String(format: "/tmp/locwalk-%@-%02d-%@.png", run, n, name)))
     }
 }
