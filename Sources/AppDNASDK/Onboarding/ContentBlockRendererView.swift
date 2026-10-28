@@ -427,6 +427,8 @@ struct ContentBlockRendererView: View {
     @ViewBuilder
     private func renderBlock(_ block: ContentBlock, animate: Bool = false) -> some View {
         let content = renderBlockContent(block)
+            // What the block draws behind its own content, for a Google logo inside it.
+            .modifier(GoogleAttributionBlockBackdrop(block: block))
             .applyBlockStyle(block.block_style)
             // #1006 — AFTER the background, so the background is what widens. Negative horizontal
             // padding is SwiftUI's "extend outward"; Compose has to measure for it instead

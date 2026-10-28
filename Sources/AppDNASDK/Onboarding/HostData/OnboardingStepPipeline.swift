@@ -115,6 +115,13 @@ enum OnboardingStepPipeline {
         ctx.legacyResolve = { path, fallback in
             TemplateEngine.shared.resolveToken(path, fallback: fallback, context: tctx)
         }
+        // A stored value (an option's value, a field default, a URL action) leaves the screen, so a
+        // Google answer resolves there as it does on every other surface: to its typed text.
+        var storedContext = tctx
+        storedContext.surface = .other
+        ctx.legacyResolveStored = { path, fallback in
+            TemplateEngine.shared.resolveToken(path, fallback: fallback, context: storedContext)
+        }
         return ctx
     }
 
@@ -142,7 +149,15 @@ enum OnboardingStepPipeline {
                 if !outcome.reverted.isEmpty {
                     log.append("Host data decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
                 }
-                if let block = outcome.block {
+                if var block = outcome.block {
+                    // Which option keys show a Google answer's content, for a later `selected` path.
+                    if !r.googleOptionKeys.isEmpty {
+                        block.field_options = block.field_options?.map { option in
+                            var o = option
+                            o.googleKeys = r.googleOptionKeys[option.id ?? option.resolvedValue]
+                            return o
+                        }
+                    }
                     typed.append(block)
                     collectIds(block, into: &rawIds)
                 } else if results.count == authored.count {

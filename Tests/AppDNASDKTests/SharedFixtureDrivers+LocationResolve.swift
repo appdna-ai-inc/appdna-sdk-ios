@@ -104,6 +104,9 @@ extension SharedFixtureTests {
         // field whose answer came from Google.
         case "list_google_logo": return holder.showsGoogleLogo
         case "field_google_attribution": return LocationAnswer.carriesPlaceId(rig.stored)
+        // Every typed text the field stored, in order: a Google line must never be one of them.
+        case "stored_texts": return rig.storedTexts
+        case "stored_raw_query": return (rig.stored as? [String: Any])?["raw_query"] ?? NSNull()
         default: return nil
         }
     }

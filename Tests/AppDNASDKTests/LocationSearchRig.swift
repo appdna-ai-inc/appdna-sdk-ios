@@ -39,6 +39,8 @@ final class LocationSearchRig {
     /// What the view would have persisted. `nil` = no answer.
     private(set) var stored: Any?
     private(set) var storeWrites = 0
+    /// Every typed text (a String answer) the holder stored, in order.
+    private(set) var storedTexts: [String] = []
 
     /// The autocomplete stub's replies, by query. An unlisted query answers [].
     var autocomplete: [String: [[String: Any]]]
@@ -87,6 +89,7 @@ final class LocationSearchRig {
         holder.attach(store: { [unowned self] value in
             self.stored = value
             self.storeWrites += 1
+            if let text = value as? String { self.storedTexts.append(text) }
         })
     }
 

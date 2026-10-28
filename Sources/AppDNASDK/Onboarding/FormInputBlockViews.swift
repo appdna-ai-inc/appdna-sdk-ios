@@ -3187,9 +3187,23 @@ struct OptionBottomSheetView: View {
     var blockId: String? = nil
 
     @State private var sheetToggles: [String: Bool] = [:]
-    @State private var sheetInputs: [String: Any] = [:]
+    @State private var sheetInputs: [String: Any]
     /// The step's credit context. The sheet is a modal above the step, so it draws its own credit.
     @SwiftUI.Environment(\.googleCreditSheetContext) private var creditContext
+
+    /// What the sheet draws behind its content: the system sheet background (no fill of its own).
+    static let backdrop: GoogleMapsAttribution.Backdrop = .plain(hex: nil)
+
+    /// `inputs`: the sheet's own inputs when it opens — empty in production; a render test seeds a
+    /// field's answer.
+    init(option: InputOption, onDismiss: @escaping () -> Void, rawResolved: Bool = false, blockId: String? = nil,
+         inputs: [String: Any] = [:]) {
+        self.option = option
+        self.onDismiss = onDismiss
+        self.rawResolved = rawResolved
+        self.blockId = blockId
+        _sheetInputs = State(initialValue: inputs)
+    }
 
     /// Whether the sheet's own blocks template a Google answer — their `step` root read against the
     /// sheet's own inputs.
@@ -3225,12 +3239,15 @@ struct OptionBottomSheetView: View {
                 // environment reaches `.sheet` content, so the step's channel is cut off explicitly:
                 // a `refresh_step` button in `sheet_blocks` fires nothing (REFRESH_STEP_CANNOT_FIRE).
                 .environment(\.appdnaStepInteraction, nil)
+                // The sheet is filled with the system background, whatever the step underneath
+                // draws: a Google logo inside the sheet picks its variant from the sheet.
+                .environment(\.googleAttributionBackdrop, Self.backdrop)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
             }
             // Google's attribution inside the sheet, the container its text is drawn in.
             if showsGoogleCredit {
-                GoogleMapsTextAttribution(backdrop: .plain(hex: nil))
+                GoogleMapsTextAttribution(backdrop: Self.backdrop)
                     .padding(.bottom, 12)
             }
         }

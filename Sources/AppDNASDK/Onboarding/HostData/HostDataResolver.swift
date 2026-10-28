@@ -44,6 +44,10 @@ struct HostDataContext {
     /// TemplateEngine's per-token resolver for non-block roots: `(path, fallback) -> String`.
     /// Nil keeps the token as authored (what the console does).
     var legacyResolve: ((_ path: String, _ fallback: String?) -> String)? = nil
+    /// The same resolver for a value that is stored or sent off the device rather than drawn
+    /// (`HostDataResolver.isStoredValueKey`): a Google answer resolves to its typed text there. Nil
+    /// falls back to `legacyResolve`.
+    var legacyResolveStored: ((_ path: String, _ fallback: String?) -> String)? = nil
 }
 
 struct HostDataResolveResult {
@@ -60,6 +64,9 @@ struct HostDataResolveResult {
     var postExpansion: HostJSON
     var stampedAuthored: HostJSON
     var boundTopLevelKeys: Set<String>
+    /// The block's own options whose drawn keys took a Google location answer's content, by option
+    /// id → those keys (`InputOption.googleKeys`). Empty when none did.
+    var googleOptionKeys: [String: [String]] = [:]
 }
 
 // MARK: - Mutable reference tree (the TS pass mutates objects and keys its bookkeeping by identity)
@@ -152,6 +159,86 @@ enum HostDataResolver {
     // MARK: Small helpers
 
     static func isUrlKey(_ key: String) -> Bool { key.hasSuffix("_url") }
+
+    /// Whether `key` is a value the SDK stores rather than draws: an option's `value` (stored as the
+    /// answer) and a field default (`default_value`, `default_<kind>_value`, stored once the step
+    /// submits). A Google location answer resolves to its typed text, `raw_query`, in these positions —
+    /// the step's credit covers only what is drawn on it, and a stored plain string is no longer
+    /// recognisable as Google content. (A button's `action_value` is never templated: the pass skips it.)
+    static func isStoredValueKey(_ key: String, isOption: Bool) -> Bool {
+        if isOption && key == "value" { return true }
+        return key.hasPrefix("default_") && key.hasSuffix("value")
+    }
+
+    /// The targets of the markdown links in `text` (`[label](target)`), as UTF-16 ranges. A token inside
+    /// one is part of a URL a tap opens, so its value leaves the device: it resolves as a stored value.
+    static func markdownLinkTargets(_ text: String) -> [NSRange] {
+        guard text.contains("](") else { return [] }
+        return markdownLinkRegex.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length))
+            .map { $0.range(at: 1) }
+    }
+
+    // swiftlint:disable:next force_try
+    private static let markdownLinkRegex = try! NSRegularExpression(pattern: #"\]\(([^)]*)\)"#)
+
+    /// Whether `v` is a Google location answer (one carrying a non-blank `place_id`).
+    static func isGoogleAnswer(_ v: HDVal) -> Bool {
+        guard let id = v.obj?.d["place_id"]?.str else { return false }
+        return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// A Google answer's typed text; nil (unresolved — the token takes its fallback) when it has none.
+    static func typedText(ofGoogleAnswer v: HDVal) -> HDVal? {
+        guard let q = v.obj?.d["raw_query"]?.str, !q.isEmpty else { return nil }
+        return .string(q)
+    }
+
+    /// Whether `v` is, or holds at any depth, a Google answer.
+    static func holdsGoogleAnswer(_ v: HDVal) -> Bool {
+        if isGoogleAnswer(v) { return true }
+        if let o = v.obj { return o.d.values.contains(where: holdsGoogleAnswer) }
+        if let a = v.arr { return a.contains(where: holdsGoogleAnswer) }
+        return false
+    }
+
+    /// Whether a drawn token's path takes a Google answer's content: under `responses`, `step` or
+    /// `item`, it reaches or passes through a Google answer, or ends on a value holding one. A
+    /// host-supplied root (`hook_data`, `user`, `session`, `selected`) never does — that content is
+    /// the host's to attribute.
+    static func readsGoogleAnswer(_ path: String, _ scope: Scope) -> Bool {
+        let parts = path.components(separatedBy: ".")
+        var current: HDVal
+        switch parts[0] {
+        case "item":
+            guard let item = scope.item else { return false }
+            current = item.value
+        case "responses", "step":
+            guard parts.count >= 2, let r = scope.roots[parts[0]] else { return false }
+            current = r
+        default:
+            return false
+        }
+        for part in parts.dropFirst() {
+            if isGoogleAnswer(current) { return true }
+            if let o = current.obj, let next = o.d[part] {
+                current = next
+            } else if let a = current.arr, !part.isEmpty, part.allSatisfy({ $0.isASCII && $0.isNumber }),
+                      let i = Int(part), i < a.count {
+                current = a[i]
+            } else {
+                return false
+            }
+        }
+        return holdsGoogleAnswer(current)
+    }
+
+    /// `v` with every Google answer inside it, at any depth, replaced by its typed text (a copy).
+    static func typedTextForGoogleAnswers(_ v: HDVal) -> HDVal {
+        if isGoogleAnswer(v) { return typedText(ofGoogleAnswer: v) ?? .string("") }
+        if let o = v.obj { return .obj(HDObj(o.d.mapValues { typedTextForGoogleAnswers($0) })) }
+        if let a = v.arr { return .arr(a.map { typedTextForGoogleAnswers($0) }) }
+        return v
+    }
 
     struct Token {
         let raw: String
@@ -285,8 +372,9 @@ enum HostDataResolver {
     }
 
     /// Any depth, numeric array index, miss → nil. Two or more segments are required except
-    /// for exactly `item` and `index`.
-    static func resolveScopePath(_ path: String, _ scope: Scope) -> HDVal? {
+    /// for exactly `item` and `index`. `typedText`: a stored value's path — a Google answer it
+    /// reaches or passes through resolves to the answer's typed text (`isStoredValueKey`).
+    static func resolveScopePath(_ path: String, _ scope: Scope, typedText: Bool = false) -> HDVal? {
         let parts = path.components(separatedBy: ".")
         let root = parts[0]
         var current: HDVal
@@ -301,6 +389,7 @@ enum HostDataResolver {
             current = r
         }
         for part in parts.dropFirst() {
+            if typedText && isGoogleAnswer(current) { return self.typedText(ofGoogleAnswer: current) }
             if let o = current.obj, let next = o.d[part] {
                 current = next
             } else if let a = current.arr, !part.isEmpty, part.allSatisfy({ $0.isASCII && $0.isNumber }),
@@ -310,7 +399,8 @@ enum HostDataResolver {
                 return nil
             }
         }
-        return current.isNull ? nil : current
+        if current.isNull { return nil }
+        return typedText ? typedTextForGoogleAnswers(current) : current
     }
 
     // MARK: String resolution
@@ -321,13 +411,20 @@ enum HostDataResolver {
         var unresolved = false
         var unresolvedHookData = false
         var deferredStep = false
+        /// A drawn token took a Google answer's content (`readsGoogleAnswer`).
+        var readGoogle = false
     }
 
+    /// `stored`: the string is a stored value (`isStoredValueKey`), so a Google answer resolves to
+    /// its typed text, through `storedLegacy` for a TemplateEngine root. A token inside a markdown
+    /// link's target resolves the same way (`markdownLinkTargets`).
     static func resolveString(
         _ text: String, scope: Scope, url: Bool, deferStep: Bool,
-        legacy: ((String, String?) -> String)?
+        legacy: ((String, String?) -> String)?, storedLegacy: ((String, String?) -> String)? = nil,
+        stored: Bool = false
     ) -> StringResult {
         let tokens = extractTokens(text)
+        let linkTargets = stored ? [] : markdownLinkTargets(text)
         var res = StringResult(value: text, hadToken: !tokens.isEmpty)
         if tokens.isEmpty { return res }
         let ns = text as NSString
@@ -340,12 +437,14 @@ enum HostDataResolver {
             out += ns.substring(with: NSRange(location: last, length: t.index - last))
             last = t.index + t.length
             if deferStep && t.root == "step" { out += t.raw; res.deferredStep = true; continue }
+            let typed = stored || linkTargets.contains { NSLocationInRange(t.index, $0) }
             if !blockRoots.contains(t.root) {
                 // TemplateEngine roots, per token, same semantics as today.
-                out += legacy?(t.path, t.fallback) ?? t.raw
+                out += (typed ? storedLegacy ?? legacy : legacy)?(t.path, t.fallback) ?? t.raw
                 continue
             }
-            if let s = stringify(resolveScopePath(t.path, scope)) {
+            if let s = stringify(resolveScopePath(t.path, scope, typedText: typed)) {
+                if !typed && readsGoogleAnswer(t.path, scope) { res.readGoogle = true }
                 let encode = url && !whole
                 out += encode ? percentEncode(s, query: firstQuery >= 0 && firstQuery < t.index) : s
             } else if let fb = t.fallback {
@@ -655,14 +754,21 @@ enum HostDataResolver {
                 if !value.contains("{{") { out[locale]![key] = value; continue }
                 let owner = ids.first(where: { $0.id == id })?.obj
                 let locScope = owner.map { seededScope($0, scope) } ?? scope
-                out[locale]![key] = resolveString(value, scope: locScope, url: false, deferStep: false, legacy: ctx.legacyResolve).value
+                out[locale]![key] = resolveString(value, scope: locScope, url: false, deferStep: false, legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored).value
             }
             localizations = out
         }
 
+        var googleOptionKeys: [String: [String]] = [:]
+        for option in block.d["field_options"]?.arr ?? [] {
+            guard let o = option.obj, let keys = pass.googleKeys(of: o), !keys.isEmpty,
+                  let id = o.d["id"]?.str ?? o.d["value"]?.str else { continue }
+            googleOptionKeys[id] = keys.sorted()
+        }
         return HostDataResolveResult(
             block: HDVal.obj(block).host, localizations: localizations, skipped: false, log: pass.log,
-            postExpansion: postExpansion, stampedAuthored: stamped, boundTopLevelKeys: boundTop
+            postExpansion: postExpansion, stampedAuthored: stamped, boundTopLevelKeys: boundTop,
+            googleOptionKeys: googleOptionKeys
         )
     }
 
@@ -763,12 +869,25 @@ private final class RawPass {
     private var optionState = HDIdentityMap<OptionState>()
     private var itemScope = HDIdentityMap<(value: HDVal, index: Int)>()
     private var unresolvedKeys = HDIdentityMap<Set<String>>()
+    /// Per option: the drawn keys that took a Google answer's content.
+    private var googleOptionKeys = HDIdentityMap<Set<String>>()
     var displacedLocKeys = Set<String>()
     var hiddenCount = HDIdentityMap<Int>()
 
     init(_ ctx: HostDataContext) { self.ctx = ctx }
 
     func boundKeys(of o: HDObj) -> Set<String> { bound[o] ?? [] }
+
+    func googleKeys(of o: HDObj) -> Set<String>? { googleOptionKeys[o] }
+
+    /// An option's `key` took a Google answer's content: a later `{{selected.<field>.<key>}}` shows
+    /// it, so the pick records which keys did.
+    private func noteGoogle(_ o: HDObj, _ key: String, _ r: H.StringResult) {
+        guard r.readGoogle, optionState.has(o) else { return }
+        var s = googleOptionKeys[o] ?? []
+        s.insert(key)
+        googleOptionKeys[o] = s
+    }
 
     // MARK: Bindings
 
@@ -788,7 +907,7 @@ private final class RawPass {
                 addSheetPath(block, SheetStepPath(path: prop, kind: "binding", source: pathV))
                 continue
             }
-            guard let v = H.resolveScopePath(pathV, scope) else { continue }
+            guard let v = H.resolveScopePath(pathV, scope, typedText: H.isStoredValueKey(prop, isOption: false)) else { continue }
             var converted: HDVal?
             switch cls {
             case "string": converted = H.stringify(v).map { .string($0) }
@@ -1027,11 +1146,20 @@ private final class RawPass {
         if let t = templates?.obj { applyDataTemplates(o, t, owner, scope, env, boundSet) }
     }
 
+    /// Whether `key` on `o` is a stored value (`H.isStoredValueKey`).
+    private func isStored(_ o: HDObj, _ key: String) -> Bool {
+        H.isStoredValueKey(key, isOption: optionState.has(o))
+    }
+
     private func resolveKey(_ o: HDObj, _ key: String, _ v: String, _ scope: H.Scope, _ env: WalkEnv, _ path: [PathPart]) {
         guard v.contains("{{") else { return }
         let url = H.isUrlKey(key)
-        let r = H.resolveString(v, scope: scope, url: url, deferStep: env.inSheet, legacy: ctx.legacyResolve)
+        let r = H.resolveString(
+            v, scope: scope, url: url, deferStep: env.inSheet,
+            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, stored: isStored(o, key)
+        )
         if r.deferredStep { addSheetPath(env.block, SheetStepPath(path: path.map(\.text).joined(separator: "."), kind: "token", source: nil)) }
+        noteGoogle(o, key, r)
         let flags = optionState[o]
         if let flags, key == "label" {
             flags.labelUnresolved = r.unresolved
@@ -1058,7 +1186,7 @@ private final class RawPass {
     private func resolveListString(_ el: String, _ key: String, _ scope: H.Scope, _ env: WalkEnv, _ path: [PathPart]) -> String? {
         guard el.contains("{{") else { return el }
         let url = key == "gallery_images"
-        let r = H.resolveString(el, scope: scope, url: url, deferStep: env.inSheet, legacy: ctx.legacyResolve)
+        let r = H.resolveString(el, scope: scope, url: url, deferStep: env.inSheet, legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored)
         if r.deferredStep { addSheetPath(env.block, SheetStepPath(path: path.map(\.text).joined(separator: "."), kind: "token", source: nil)) }
         if url && r.hadToken && !r.deferredStep && (r.unresolved || !H.isValidTemplatedUrl(r.value)) {
             log.append("url \(env.block.d["id"]?.str ?? "").\(path.map(\.text).joined(separator: ".")): dropped")
@@ -1081,7 +1209,10 @@ private final class RawPass {
             // at runtime the entry counts as unresolved (the sibling stays).
             if env.inSheet && H.extractTokens(tmpl).contains(where: { $0.root == "step" }) { continue }
             let url = H.isUrlKey(key)
-            let r = H.resolveString(tmpl, scope: scope, url: url, deferStep: false, legacy: ctx.legacyResolve)
+            let r = H.resolveString(
+                tmpl, scope: scope, url: url, deferStep: false,
+                legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, stored: isStored(o, key)
+            )
             let flags = optionState[o]
             var resolved = !r.unresolved && !r.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if resolved && url && !H.isValidTemplatedUrl(r.value) { resolved = false }
@@ -1090,6 +1221,7 @@ private final class RawPass {
                 continue
             }
             o.d[key] = .string(r.value)
+            noteGoogle(o, key, r)
             if let flags, key == "label" { flags.labelUnresolved = false; flags.labelUnresolvedHookData = false }
             if let flags, flags.generated, key == "value" { flags.valueUnresolved = false }
             if var s = unresolvedKeys[o] { s.remove(key); unresolvedKeys[o] = s }

@@ -70,6 +70,17 @@ final class SelectedOptionStore: @unchecked Sendable {
         // free-form data rather than being a column, so it arrives through the same passthrough
         // as any other extra.
         if let icon = option.icon { out["icon"] = icon }
+        // The keys whose text is a Google answer's content, so a later step that shows them draws
+        // Google's attribution (`GoogleCredit`).
+        if let keys = option.googleKeys, !keys.isEmpty { out[googleKeysKey] = keys }
         return out
+    }
+
+    /// Where a recorded option keeps its Google keys (`InputOption.googleKeys`).
+    static let googleKeysKey = "google_keys"
+
+    /// The recorded option's keys whose text is a Google answer's content.
+    static func googleKeys(of record: Any) -> [String] {
+        ((record as? [String: Any])?[googleKeysKey] as? [String]) ?? []
     }
 }

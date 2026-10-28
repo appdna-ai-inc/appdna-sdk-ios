@@ -1784,7 +1784,8 @@ struct OnboardingStepRouter: View {
         GoogleCredit.Answers(
             accumulated: accumulatedResponses,
             stepInputs: inputValues,
-            sessionStore: SessionDataStore.shared.onboardingResponses
+            sessionStore: SessionDataStore.shared.onboardingResponses,
+            selected: SelectedOptionStore.shared.snapshot
         )
     }
 

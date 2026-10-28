@@ -54,15 +54,43 @@ enum GoogleMapsAttribution {
         case busy
     }
 
-    /// A step's background as a backdrop: a colour is plain, anything else authored is busy, and no
-    /// background is the system one.
+    /// A step's background as a backdrop: what the step host actually draws for it
+    /// (`StyleEngine.backgroundView`). A colour is plain; an image, gradient or animation is busy. A
+    /// background with no `type` (even one holding a colour) and a transparent one draw nothing, so
+    /// the system background shows: plain, with no colour of its own.
     static func backdrop(of background: BackgroundStyleConfig?) -> Backdrop {
         guard let background else { return .plain(hex: nil) }
-        switch background.type ?? (background.color != nil ? "color" : nil) {
+        switch background.type {
         case "color": return .plain(hex: background.color)
-        case nil: return .plain(hex: nil)
+        case nil, "transparent", "clear", "none": return .plain(hex: nil)
         default: return .busy
         }
+    }
+
+    /// What a content block draws behind its own content: its own fill, else what is behind it. In
+    /// order from the content outwards — a row's `bg_color`, the block's `block_style` fill, its
+    /// container fill (`container_bg_color`, `blur_background`). A gradient, a blur or a translucent
+    /// fill is busy. A field inside a filled container, or a filled field, picks its logo from THIS.
+    static func backdrop(ofBlock block: ContentBlock, behind: Backdrop) -> Backdrop {
+        let cfg = block.field_config
+        func double(_ key: String) -> Double? { cfgDouble(cfg?[key]) }
+        func visible(_ hex: String?) -> String? {
+            guard let hex, !hex.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+            let l = hex.lowercased()
+            return l == "transparent" || l == "clear" ? nil : hex
+        }
+        if block.type == .row, let bg = visible(cfg?["bg_color"]?.value as? String) {
+            return (double("background_opacity") ?? 1) < 1 ? .busy : .plain(hex: bg)
+        }
+        if let style = block.block_style {
+            if style.background_gradient != nil { return .busy }
+            if let bg = visible(style.background_color) { return (style.opacity ?? 1) < 1 ? .busy : .plain(hex: bg) }
+        }
+        if (cfg?["blur_background"]?.value as? Bool) == true { return .busy }
+        if let bg = visible(cfg?["container_bg_color"]?.value as? String), bg.lowercased() != "#ffffff" {
+            return (double("container_opacity") ?? double("background_opacity") ?? 1) < 1 ? .busy : .plain(hex: bg)
+        }
+        return behind
     }
 
     /// What the flow host draws behind a step (`stepFullScreenBackground`), in its order: the step's
@@ -198,9 +226,22 @@ private struct GoogleAttributionBackdropKey: EnvironmentKey {
     static let defaultValue: GoogleMapsAttribution.Backdrop = .plain(hex: nil)
 }
 
+/// Hands a block's content what is drawn behind it (`GoogleMapsAttribution.backdrop(ofBlock:behind:)`),
+/// reading what is behind the block at the block's own place in the tree — so a container's children
+/// see the container's fill.
+struct GoogleAttributionBlockBackdrop: ViewModifier {
+    let block: ContentBlock
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+
+    func body(content: Content) -> some View {
+        content.environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(ofBlock: block, behind: behind))
+    }
+}
+
 extension EnvironmentValues {
-    /// What is behind a location field on this surface — the onboarding step's background. A field
-    /// that keeps the Google logo beside it after a tap draws the variant for it.
+    /// What is behind a location field on this surface — the onboarding step's background, an option
+    /// sheet's own background, a filled container. A field that keeps the Google logo beside it after
+    /// a tap draws the variant for it.
     var googleAttributionBackdrop: GoogleMapsAttribution.Backdrop {
         get { self[GoogleAttributionBackdropKey.self] }
         set { self[GoogleAttributionBackdropKey.self] = newValue }

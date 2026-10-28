@@ -246,6 +246,10 @@ final class LocationSuggestionSearch: ObservableObject {
     /// `raw_query`, and the answer `settleResolveInFlight` stores if the step advances before the
     /// reply. nil when no resolve is in flight.
     private var resolvingTyped: String?
+    /// While the field shows a Google answer's line: that line and the answer's `raw_query`. Google's
+    /// line must never be stored or sent, so the first edit restarts from `rawQuery`
+    /// (`LocationAnswer.editRestart`) and clears this; nil once the field holds typed text.
+    private var shownGoogle: (line: String, rawQuery: String)?
 
     /// Production: the live autocomplete and resolve calls, on a main-queue debounce. `client` is read
     /// when each request is made, not when the field is built, so a field shown before the SDK
@@ -284,7 +288,7 @@ final class LocationSuggestionSearch: ObservableObject {
         self.schedule = schedule
         self.storedAnswer = storedAnswer
         if let restored = LocationAnswer.fieldText(forStored: storedAnswer) {
-            setText(restored)
+            showAnswer(restored, of: storedAnswer)
         }
     }
 
@@ -331,7 +335,7 @@ final class LocationSuggestionSearch: ObservableObject {
         let wasPresent = LocationAnswer.fieldText(forStored: storedAnswer) != nil
         storedAnswer = value
         guard !wasPresent, text.isEmpty, let restored = LocationAnswer.fieldText(forStored: value) else { return }
-        setText(restored)
+        showAnswer(restored, of: value)
     }
 
     // MARK: - Text
@@ -340,6 +344,9 @@ final class LocationSuggestionSearch: ObservableObject {
     /// (SwiftUI's `.onChange(of:)` fires for our own sets too). The one echo of the holder's own set
     /// is skipped; anything else is the user typing: it drops a resolve in flight, stores the typed
     /// text, and searches.
+    ///
+    /// The first edit of a field showing a Google answer's line restarts from the user's own text
+    /// (`LocationAnswer.editRestart`), so the line itself is never stored as typed text or searched.
     func textChanged(_ newText: String, settings: LocationSearchSettings) {
         if let echo = pendingEcho {
             pendingEcho = nil
@@ -347,8 +354,14 @@ final class LocationSuggestionSearch: ObservableObject {
         }
         if text != newText { text = newText }
         dropResolveInFlight()
-        storeTyped(newText)
-        search(query: newText, settings: settings)
+        var typed = newText
+        if let google = shownGoogle {
+            shownGoogle = nil
+            typed = LocationAnswer.editRestart(rawQuery: google.rawQuery, shown: google.line, edited: newText)
+            setText(typed)
+        }
+        storeTyped(typed)
+        search(query: typed, settings: settings)
     }
 
     /// Typing without selecting stores the typed text (an empty field stores nothing). Editing after a
@@ -369,6 +382,13 @@ final class LocationSuggestionSearch: ObservableObject {
         guard newText != text else { return }
         pendingEcho = newText
         text = newText
+    }
+
+    /// Shows a stored answer's line; for a Google answer, remembers the line and the user's own
+    /// text for the first edit.
+    private func showAnswer(_ line: String, of answer: Any?) {
+        setText(line)
+        shownGoogle = LocationAnswer.googleRawQuery(answer).map { (line, $0) }
     }
 
     // MARK: - Search
@@ -422,6 +442,7 @@ final class LocationSuggestionSearch: ObservableObject {
         results = []
         isDropdownOpen = false
         write(nil)
+        shownGoogle = nil
         setText("")
     }
 
@@ -440,8 +461,9 @@ final class LocationSuggestionSearch: ObservableObject {
         isDropdownOpen = false
         results = []
         dropResolveInFlight()
-        // The text the user typed to find this place, read before anything changes it.
-        let typed = text
+        // The text the user typed to find this place, read before anything changes it — never a
+        // Google line the field still shows.
+        let typed = shownGoogle?.rawQuery ?? text
         let typedAnswer: Any? = typed.isEmpty ? nil : LocationAnswer.typed(typed)
 
         guard let body = resolveRequest(for: listed) else {
@@ -461,7 +483,7 @@ final class LocationSuggestionSearch: ObservableObject {
             case .resolved(let location):
                 let answer = LocationAnswer.selection(from: location, rawQuery: typed)
                 self.write(answer)
-                self.setText(LocationAnswer.fieldText(forStored: answer) ?? listed.data.formatted_address)
+                self.showAnswer(LocationAnswer.fieldText(forStored: answer) ?? listed.data.formatted_address, of: answer)
                 // Never log the place itself.
                 Log.debug("Location suggestion resolved")
             case .refused(let reason), .failed(let reason):

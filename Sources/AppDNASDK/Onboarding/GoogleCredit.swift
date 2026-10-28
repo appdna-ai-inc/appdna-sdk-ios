@@ -51,18 +51,27 @@ enum GoogleCredit {
         /// `item`: what it can stand on where the walk stands — empty outside a repeat's template
         /// option (`repeatItems`).
         var items: [Any] = []
+        /// `selected`: the options picked on earlier steps (`SelectedOptionStore.snapshot`). A
+        /// recorded option names the keys whose text was a Google answer's content
+        /// (`SelectedOptionStore.googleKeys(of:)`).
+        var selected: [String: Any]
 
-        init(accumulated: [String: Any], stepInputs: [String: Any], sessionStore: [String: [String: Any]]) {
+        init(
+            accumulated: [String: Any], stepInputs: [String: Any], sessionStore: [String: [String: Any]],
+            selected: [String: Any] = [:]
+        ) {
             self.responses = [accumulated, sessionStore]
             self.step = stepInputs
             self.onboarding = sessionStore
+            self.selected = selected
         }
 
-        /// Whether any answer a root can read is a Google one. Nothing can credit otherwise, so the
-        /// step's source is not even encoded.
+        /// Whether any answer a root can read — `item` included — is a Google one. Nothing can
+        /// credit otherwise, so the step's source is not even encoded.
         var holdAGoogleAnswer: Bool {
             responses.contains(where: GoogleCredit.holdsGoogleAnswer) || GoogleCredit.holdsGoogleAnswer(step)
-                || GoogleCredit.holdsGoogleAnswer(onboarding)
+                || GoogleCredit.holdsGoogleAnswer(onboarding) || items.contains(where: GoogleCredit.holdsGoogleAnswer)
+                || !GoogleCredit.selectedGooglePlaces(selected).isEmpty
         }
     }
 
@@ -289,10 +298,13 @@ enum GoogleCredit {
         return false
     }
 
-    /// The `{{…}}` tokens of one string.
+    /// The `{{…}}` tokens of one string: every token any renderer resolves — the raw pass's scanner
+    /// and the TemplateEngine's wider one (a legacy field id may hold a space, which only the latter
+    /// reads), so a token one of them substitutes is never missed.
     private static func tokensCredit(_ s: String, _ answers: Answers) -> Bool {
         guard s.contains("{{") else { return false }
-        return HostDataResolver.extractTokens(s).contains { pathCredits($0.path, answers) }
+        let paths = Set(HostDataResolver.extractTokens(s).map(\.path)).union(TemplateEngine.tokenPaths(in: s))
+        return paths.contains { pathCredits($0, answers) }
     }
 
     /// Every string under a `bindings` object is a bare path.
@@ -310,6 +322,7 @@ enum GoogleCredit {
         guard let root = segments.first else { return false }
         let rest = Array(segments.dropFirst())
         if root == "item" { return answers.items.contains { reaches(rest, in: $0) } }
+        if root == "selected" { return selectedCredits(rest, answers.selected) }
         guard roots.contains(root) else { return false }
         switch root {
         case "responses":
@@ -347,6 +360,39 @@ enum GoogleCredit {
         return holdsGoogleAnswer(current)
     }
 
+    /// A `selected` path: `<field>.<key>` for a single pick, `<field>.<n>.<key>` for a multi pick. It
+    /// credits when the picked option's `key` was drawn from a Google answer; a path that stops at the
+    /// option (or at the list) credits when any of its keys was.
+    private static func selectedCredits(_ rest: [String], _ selected: [String: Any]) -> Bool {
+        guard let field = rest.first, var current = selected[field] else { return false }
+        var next = 1
+        if let list = current as? [Any] {
+            guard rest.count > next, let n = Int(rest[next]), list.indices.contains(n) else {
+                return rest.count <= next && list.contains { !SelectedOptionStore.googleKeys(of: $0).isEmpty }
+            }
+            current = list[n]
+            next += 1
+        }
+        let keys = SelectedOptionStore.googleKeys(of: current)
+        guard rest.count > next else { return !keys.isEmpty }
+        return keys.contains(rest[next])
+    }
+
+    /// Where each recorded option with Google keys sits in `selected`, one entry per key.
+    static func selectedGooglePlaces(_ selected: [String: Any]) -> [String] {
+        var out: [String] = []
+        for (field, record) in selected {
+            if let list = record as? [Any] {
+                for (i, r) in list.enumerated() {
+                    out += SelectedOptionStore.googleKeys(of: r).map { "selected\u{1F}\(field)\u{1F}[\(i)]\u{1F}\($0)" }
+                }
+            } else {
+                out += SelectedOptionStore.googleKeys(of: record).map { "selected\u{1F}\(field)\u{1F}\($0)" }
+            }
+        }
+        return out
+    }
+
     /// Whether `value` is, or holds at any depth, a Google answer.
     static func holdsGoogleAnswer(_ value: Any) -> Bool {
         if LocationAnswer.carriesPlaceId(value) { return true }
@@ -374,6 +420,7 @@ enum GoogleCredit {
         for (i, r) in answers.responses.enumerated() { collect(r, "responses\(i)") }
         collect(answers.step, "step")
         collect(answers.onboarding, "onboarding")
+        out += selectedGooglePlaces(answers.selected)
         return out.sorted()
     }
 
@@ -437,7 +484,9 @@ struct GoogleCreditSheetContext {
     func shows(blockId: String?, optionId: String?, presentedSheetBlocks: [ContentBlock], sheetInputs: [String: Any]) -> Bool {
         var own = answers
         own.step = sheetInputs
-        guard own.holdAGoogleAnswer else { return false }
+        // A sheet's `item` stands on what the STEP's answers hold, which the sheet's own inputs replace
+        // in `own`: either may hold the Google answer.
+        guard own.holdAGoogleAnswer || answers.holdAGoogleAnswer else { return false }
         if let blockId, let optionId,
            let source = GoogleCredit.sheetSource(in: index(), blockId: blockId, optionId: optionId, answers: answers) {
             return GoogleCredit.sheetShows(sheetBlocks: source.blocks, sheetInputs: sheetInputs, answers: answers, items: source.items)

@@ -39,9 +39,20 @@ final class TemplateEngine {
     }()
 
     // Compiled regex — reused across calls
-    private let regex: NSRegularExpression? = {
+    private let regex: NSRegularExpression? = TemplateEngine.tokenRegex
+
+    private static let tokenRegex: NSRegularExpression? = {
         try? NSRegularExpression(pattern: "\\{\\{([^}|]+)(?:\\|([^}]*))?\\}\\}")
     }()
+
+    /// The variable path of every `{{…}}` token `interpolate` resolves in `value`, trimmed as it
+    /// trims them. Wider than the raw host-data pass's scanner: a path may hold a space.
+    static func tokenPaths(in value: String) -> [String] {
+        guard value.contains("{{"), let regex = tokenRegex else { return [] }
+        return regex.matches(in: value, range: NSRange(value.startIndex..., in: value)).compactMap { m in
+            Range(m.range(at: 1), in: value).map { String(value[$0]).trimmingCharacters(in: .whitespaces) }
+        }
+    }
 
     private init() {}
 

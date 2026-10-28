@@ -151,6 +151,26 @@ enum LocationAnswer {
         return !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// The text the first edit of a field showing a Google answer restarts from. The field shows
+    /// Google's line (`shown`), which must never be stored or sent, so the edit goes back to the
+    /// user's own words, the answer's `raw_query`: characters appended at the END of Google's line
+    /// are appended to it, and any other edit (a deletion, a replacement, a paste inside the line)
+    /// leaves the typed text alone. The result is ordinary typed text from then on.
+    static func editRestart(rawQuery: String, shown: String, edited: String) -> String {
+        if edited.count > shown.count, edited.hasPrefix(shown) {
+            return rawQuery + edited.dropFirst(shown.count)
+        }
+        return rawQuery
+    }
+
+    /// A Google answer's `raw_query` ("" when it has none). nil for anything that is not a Google
+    /// answer.
+    static func googleRawQuery(_ value: Any?) -> String? {
+        guard carriesPlaceId(value) else { return nil }
+        let raw = (value as? [String: Any])?["raw_query"] ?? (value as? NSDictionary)?["raw_query"]
+        return (raw as? String) ?? ""
+    }
+
 }
 
 /// One autocomplete suggestion as the tap path needs it: the decoded display data,

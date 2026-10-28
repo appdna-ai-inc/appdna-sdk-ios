@@ -502,6 +502,55 @@ final class GoogleAttributionRenderTests: XCTestCase {
             XCTAssertGreaterThan(d.maxRow, g.h * 85 / 100, "[\(name)] the credit is at the bottom of the step")
         }
     }
+
+    // MARK: what is behind a field
+
+    private let darkStep: GoogleMapsAttribution.Backdrop = .plain(hex: "#0F172A")
+
+    /// A field inside an option's sheet draws its logo on the SHEET, not on the step under it: the
+    /// sheet renders the same frame whatever the step's background. RED CONTROL: a sheet that hands
+    /// down nothing of its own lets the dark step's white logo reach the light sheet, and the frames
+    /// differ.
+    func testAFieldInASheetPicksItsLogoFromTheSheet() throws {
+        let option = try JSONDecoder().decode(InputOption.self, from: Data(
+            #"{"id":"tpl","label":"Stop","sheet_blocks":[{"id":"loc","type":"input_location","field_id":"home"}]}"#.utf8
+        ))
+        func sheet(_ answer: [String: Any], on backdrop: GoogleMapsAttribution.Backdrop) -> AnyView {
+            AnyView(OptionBottomSheetView(option: option, onDismiss: {}, inputs: ["home": answer])
+                .environment(\.googleAttributionBackdrop, backdrop))
+        }
+        let onDark = pixels(sheet(GoogleAttributionData.google, on: darkStep))
+        let onLight = pixels(sheet(GoogleAttributionData.google, on: .plain(hex: nil)))
+        let mapbox = pixels(sheet(GoogleAttributionData.mapboxSameText, on: darkStep))
+        XCTAssertGreaterThan(inked(mapbox), 200, "the sheet drew its field")
+        XCTAssertGreaterThan(diff(onDark, mapbox).count, 200, "control: the field in the sheet draws Google's logo")
+        let d = diff(onDark, onLight)
+        print("[google-logo] sheet field, dark vs light step: \(d.count) px differ, rows \(d.minRow)–\(d.maxRow)")
+        XCTAssertEqual(d.count, 0, "the logo in a sheet is picked from the sheet, whatever the step draws")
+    }
+
+    /// A field inside a filled container draws its logo on the container's fill: the same container
+    /// renders the same frame whatever the step's background. RED CONTROL: a block that hands down
+    /// nothing of its own lets the dark step's white logo reach the white container.
+    func testAFieldInAFilledContainerPicksItsLogoFromTheFill() throws {
+        let stack = try JSONDecoder().decode(ContentBlock.self, from: Data(
+            ##"{"id":"st","type":"stack","block_style":{"background_color":"#FFFFFF"},"height":160,"children":[{"id":"loc","type":"input_location","field_id":"home"}]}"##.utf8
+        ))
+        func container(_ answer: [String: Any], on backdrop: GoogleMapsAttribution.Backdrop) -> AnyView {
+            AnyView(ContentBlockRendererView(blocks: [stack], onAction: { _, _ in }, toggleValues: .constant([:]),
+                                             inputValues: .constant(["home": answer]))
+                .padding(16)
+                .environment(\.googleAttributionBackdrop, backdrop))
+        }
+        let onDark = pixels(container(GoogleAttributionData.google, on: darkStep))
+        let onLight = pixels(container(GoogleAttributionData.google, on: .plain(hex: nil)))
+        let mapbox = pixels(container(GoogleAttributionData.mapboxSameText, on: darkStep))
+        XCTAssertGreaterThan(inked(mapbox), 200, "the container drew its field")
+        XCTAssertGreaterThan(diff(onDark, mapbox).count, 200, "control: the field in the container draws Google's logo")
+        let d = diff(onDark, onLight)
+        print("[google-logo] container field, dark vs light step: \(d.count) px differ, rows \(d.minRow)–\(d.maxRow)")
+        XCTAssertEqual(d.count, 0, "the logo in a filled container is picked from its fill, whatever the step draws")
+    }
 }
 
 private extension FormField {

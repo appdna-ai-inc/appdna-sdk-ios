@@ -561,6 +561,12 @@ public struct InputOption: Codable, Identifiable {
     /// Non-optional value — falls back to id if value is nil.
     public var resolvedValue: String { value ?? id ?? "" }
 
+    /// The keys of this option whose drawn text took a Google location answer's content, as the raw
+    /// host-data pass resolved them (`HostDataResolveResult.googleOptionKeys`). Never decoded from or
+    /// encoded to JSON: a pick records it with the option, so a later `{{selected.<field>.<key>}}`
+    /// showing that text draws Google's attribution.
+    var googleKeys: [String]? = nil
+
     enum CodingKeys: String, CodingKey {
         case id, label, value, icon, image_url
         case selected_image_url, unselected_image_url
