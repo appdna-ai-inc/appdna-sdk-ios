@@ -5,7 +5,7 @@ import SwiftUI
 ///
 /// Every field except `formatted_address` is optional: a stored answer may be a typed string (no
 /// coordinates), a legacy `{address, latitude, longitude}` dict, or a selection that lacked some keys.
-public struct LocationData: Codable, Equatable {
+public struct LocationData: Codable, Equatable, Sendable {
     public let formatted_address: String
     public let city: String?
     public let state: String?
@@ -18,6 +18,14 @@ public struct LocationData: Codable, Equatable {
     public let timezone_offset: Int?
     public let postal_code: String?
     public let raw_query: String?
+    /// The provenance of a RESOLVED answer: `mapbox_id` marks a Mapbox answer
+    /// geocoded permanently, `place_id` a Google one. Only a resolve reply fills them; a
+    /// suggestion's own `id` never lands here (it rides on the internal `LocationSuggestionItem`), so an
+    /// unresolved or typed answer stays legacy and ingest reduces it to the typed text.
+    /// `mapbox_id` is an opaque marker, not a stable place id: for an interpolated address it encodes
+    /// the request that produced it and runs to hundreds of characters.
+    public let mapbox_id: String?
+    public let place_id: String?
 
     init(
         formatted_address: String,
@@ -31,7 +39,9 @@ public struct LocationData: Codable, Equatable {
         timezone: String? = nil,
         timezone_offset: Int? = nil,
         postal_code: String? = nil,
-        raw_query: String? = nil
+        raw_query: String? = nil,
+        mapbox_id: String? = nil,
+        place_id: String? = nil
     ) {
         self.formatted_address = formatted_address
         self.city = city
@@ -45,6 +55,8 @@ public struct LocationData: Codable, Equatable {
         self.timezone_offset = timezone_offset
         self.postal_code = postal_code
         self.raw_query = raw_query
+        self.mapbox_id = mapbox_id
+        self.place_id = place_id
     }
 
     /// Builds the result from a stored location answer, tolerantly and WITHOUT any
@@ -101,24 +113,40 @@ public struct LocationData: Codable, Equatable {
             timezone: str("timezone"),
             timezone_offset: int("timezone_offset"),
             postal_code: str("postal_code"),
-            raw_query: str("raw_query")
+            raw_query: str("raw_query"),
+            // The provenance a resolve reply carries, kept with the stored answer.
+            // Never a suggestion's `id`: that key is not read here.
+            mapbox_id: str("mapbox_id"),
+            place_id: str("place_id")
         )
     }
 }
 
 /// Autocomplete location field for onboarding form steps.
-/// Debounces user input, calls backend proxy for suggestions, displays dropdown.
+///
+/// The list, the text, the debounce, the tap → resolve and the dropdown live in
+/// `LocationSuggestionSearch`, the ONE holder this field and the `input_location` content block share
+/// (they were `private @State` here and could not be driven by a test). This view owns focus and
+/// layout, and persists what the holder writes into `value`.
 struct LocationFieldView: View {
     let field: FormField
     @Binding var value: Any?
     let apiClient: APIClient?
 
-    @State private var query = ""
-    @State private var suggestions: [LocationData] = []
-    @State private var isLoading = false
-    @State private var isExpanded = false
-    @State private var debounceTask: Task<Void, Never>?
+    @StateObject private var locationSearch: LocationSuggestionSearch
     @FocusState private var isFocused: Bool
+
+    init(field: FormField, value: Binding<Any?>, apiClient: APIClient?) {
+        self.field = field
+        self._value = value
+        self.apiClient = apiClient
+        // Built once per field (a `@StateObject`'s autoclosure): the answer held when the step is
+        // entered is restored into the text at once; one seeded later is restored reactively.
+        _locationSearch = StateObject(wrappedValue: LocationSuggestionSearch(
+            storedAnswer: value.wrappedValue,
+            client: { apiClient }
+        ))
+    }
 
     private var selectedLocation: LocationData? {
         if let loc = value as? LocationData { return loc }
@@ -132,8 +160,6 @@ struct LocationFieldView: View {
     private var search: LocationSearchSettings {
         LocationSearchSettings.from(fieldConfig: field.config, defaultMinChars: 2)
     }
-
-    private var minChars: Int { search.minChars }
 
     private var placeholder: String {
         (field.config?.location_placeholder as? String) ?? "Search for a location..."
@@ -154,7 +180,7 @@ struct LocationFieldView: View {
                 // appears. UIKit-backed fields don't participate in SwiftUI's
                 // ScrollView focus tracking system.
                 UIKitTextField(
-                    text: $query,
+                    text: $locationSearch.text,
                     placeholder: placeholder,
                     keyboardType: .default,
                     onEditingChanged: { editing in
@@ -162,16 +188,18 @@ struct LocationFieldView: View {
                     }
                 )
                 .frame(height: 20)
-                .onChange(of: query) { newValue in
-                    onQueryChanged(newValue)
-                    storeTyped(newValue)
+                // Every change, programmatic ones included, goes to the holder's
+                // one entry point, which skips the echo of its own set (a resolve or a restore) and
+                // treats anything else as typing.
+                .onChange(of: locationSearch.text) { newValue in
+                    locationSearch.textChanged(newValue, settings: search)
                 }
 
-                if isLoading {
+                if locationSearch.isSearching || locationSearch.isResolving {
                     ProgressView()
                         .scaleEffect(0.7)
                 } else if selectedLocation != nil {
-                    Button(action: clearSelection) {
+                    Button(action: { locationSearch.clear() }) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(.secondary)
                             .font(.system(size: 14))
@@ -184,32 +212,27 @@ struct LocationFieldView: View {
             .background(Color(.systemGray6))
             .cornerRadius(10)
 
-            if isExpanded && !suggestions.isEmpty {
+            let suggestions = locationSearch.results
+            if locationSearch.isDropdownOpen && !suggestions.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(Array(suggestions.prefix(5).enumerated()), id: \.offset) { idx, suggestion in
-                        Button(action: { selectSuggestion(suggestion) }) {
+                    ForEach(Array(suggestions.prefix(5).enumerated()), id: \.offset) { idx, listed in
+                        Button(action: { selectSuggestion(listed) }) {
                             HStack {
                                 Image(systemName: "mappin")
                                     .font(.system(size: 12))
                                     .foregroundColor(.secondary)
+                                // The ONE row rule every surface draws from. This row
+                                // used to be built from city / state / country, which a display-only
+                                // suggestion does not carry: every row would have been a bare pin. The
+                                // "no street names" choice is the field's TYPE now — an address field
+                                // lists streets; a city / region / country display line holds none.
+                                let lines = LocationAnswer.displayLines(listed.data)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    // Primary line: City (or fallback to country if city empty)
-                                    Text((suggestion.city ?? "").isEmpty ? (suggestion.country ?? "") : (suggestion.city ?? ""))
+                                    Text(lines.title)
                                         .font(.system(size: 14, weight: .medium))
                                         .foregroundColor(.primary)
-                                    // Secondary line: "State, Country" or just "Country"
-                                    // (no street names per user request)
-                                    let secondary: String = {
-                                        let state = suggestion.state ?? "", country = suggestion.country ?? ""
-                                        if !state.isEmpty && !country.isEmpty {
-                                            return "\(state), \(country)"
-                                        } else if !country.isEmpty {
-                                            return country
-                                        }
-                                        return ""
-                                    }()
-                                    if !secondary.isEmpty {
-                                        Text(secondary)
+                                    if !lines.subtitle.isEmpty {
+                                        Text(lines.subtitle)
                                             .font(.system(size: 11))
                                             .foregroundColor(.secondary)
                                             .lineLimit(1)
@@ -242,29 +265,20 @@ struct LocationFieldView: View {
                 // Delay slightly so button taps on dropdown items register first
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     if !isFocused {
-                        isExpanded = false
+                        locationSearch.editingEnded()
                     }
                 }
             }
         }
+        // A stored answer that appears after the field was built (the parent seeds
+        // `values` in its own `.onAppear`) is restored while the text is empty. The key is the text
+        // the answer would show, which changes exactly when the answer's presence or line does.
+        .onChange(of: LocationAnswer.fieldText(forStored: value)) { _ in
+            locationSearch.storedAnswerChanged(value)
+        }
         .onAppear {
-            // Restore from saved dict on re-entry (back navigation). Rebuild the
-            // display query text from city/state/country so the field doesn't
-            // show an empty placeholder after back-navigating to this step.
-            if query.isEmpty, let typed = value as? String, !typed.isEmpty {
-                // A typed (not selected) answer is restored as typed.
-                query = typed
-            } else if query.isEmpty, let dict = value as? [String: Any] {
-                let city = (dict["city"] as? String) ?? ""
-                let state = (dict["state"] as? String) ?? ""
-                let country = (dict["country"] as? String) ?? ""
-                if !city.isEmpty {
-                    query = Self.formatDisplay(city: city, state: state, country: country)
-                }
-                // Never log the restored dict — it carries city/state/country and
-                // (for placemark-backed values) coordinates.
-                Log.debug("LocationField restored a saved value")
-            }
+            locationSearch.attach(store: { newValue in value = newValue })
+            locationSearch.storedAnswerChanged(value)
             // Pre-warm the iOS keyboard subsystem so the first keystroke
             // doesn't show the 200-400ms lag customers see on empty-field
             // first-focus. An invisible UITextField is briefly added to the
@@ -273,102 +287,18 @@ struct LocationFieldView: View {
             // engine loading without any visible flash.
             KeyboardPrewarmer.prewarmOnce()
         }
-    }
-
-    private func onQueryChanged(_ newValue: String) {
-        debounceTask?.cancel()
-
-        if newValue.count < minChars {
-            suggestions = []
-            isExpanded = false
-            return
-        }
-
-        debounceTask = Task {
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms debounce
-            if !Task.isCancelled {
-                await fetchSuggestions(query: newValue)
-            }
+        .onDisappear {
+            // A resolve reply that arrives after the step has advanced is dropped.
+            locationSearch.detach()
         }
     }
 
-    /// #963 — the search itself is `LocationAutocomplete`, the one autocomplete call in the SDK,
-    /// shared with the `input_location` content block. This method is the field's own state around
-    /// it: the spinner, and whether the dropdown is open.
-    ///
-    /// A failed request now closes the dropdown instead of leaving the previous suggestions on
-    /// screen, which is what Android has always done (`fetchLocationSuggestions` answers an
-    /// unreachable proxy with an empty list). Stale suggestions for a query the user has since
-    /// changed are the worse of the two.
-    private func fetchSuggestions(query: String) async {
-        guard apiClient != nil else { return }
-        isLoading = true
-        defer { isLoading = false }
-
-        let decoded = await LocationAutocomplete.fetch(query: query, settings: search, client: apiClient)
-        await MainActor.run {
-            suggestions = decoded
-            isExpanded = !decoded.isEmpty
-        }
-    }
-
-    private func selectSuggestion(_ suggestion: LocationData) {
-        // The text the user typed to find this place — read before `query` shows the selection.
-        let typed = query
-        // Build display: "City / State, Country" or "City, Country"
-        let display = Self.formatDisplay(
-            city: suggestion.city ?? "",
-            state: suggestion.state ?? "",
-            country: suggestion.country ?? ""
-        )
-        // The one stored shape on both platforms and both writers (`LocationAnswer`).
-        // Stored BEFORE `query` changes, so `storeTyped` sees the selection and leaves it alone.
-        value = LocationAnswer.selection(from: suggestion, rawQuery: typed)
-        query = display
-
-        suggestions = []
-        isExpanded = false
+    private func selectSuggestion(_ listed: LocationListedSuggestion) {
+        locationSearch.select(listed)
         isFocused = false  // dismiss keyboard
-
         // Log the fact of a selection, never the user's location. A raw `print`
         // here is unconditional — it reaches release builds and the host's crash
         // reporter / device console.
         Log.debug("Location suggestion selected")
-    }
-
-    /// Typing without selecting stores the typed text, as Android and the
-    /// `input_location` block do (this field used to store nothing, so `getLocationData` returned nil
-    /// and a required field stayed empty). Editing after a selection replaces it with the text. The
-    /// display text a selection or a restore writes into `query` is not typing: it is skipped.
-    private func storeTyped(_ newValue: String) {
-        if let dict = value as? [String: Any] {
-            let shown = Self.formatDisplay(
-                city: (dict["city"] as? String) ?? "",
-                state: (dict["state"] as? String) ?? "",
-                country: (dict["country"] as? String) ?? ""
-            )
-            if newValue == shown { return }
-        }
-        if let current = value as? String, current == newValue { return }
-        if newValue.isEmpty && value == nil { return }
-        value = newValue.isEmpty ? nil : LocationAnswer.typed(newValue)
-    }
-
-    private func clearSelection() {
-        query = ""
-        value = nil
-        suggestions = []
-        isExpanded = false
-    }
-
-    /// Formats "City / State, Country" or "City, Country" based on whether state is present.
-    static func formatDisplay(city: String, state: String, country: String) -> String {
-        if !state.isEmpty && !country.isEmpty {
-            return "\(city) / \(state), \(country)"
-        } else if !country.isEmpty {
-            return "\(city), \(country)"
-        } else {
-            return city
-        }
     }
 }

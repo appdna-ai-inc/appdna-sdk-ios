@@ -10,7 +10,8 @@ import Foundation
 ///   `timezone_offset`, `postal_code` and `raw_query` ONLY when the lookup has it. A blank string, a
 ///   non-finite coordinate or a failed time-zone lookup is left out — never stored as `""`, `0` or
 ///   `"UTC"`. `timezone_offset` (minutes east of UTC) is kept only together with a `timezone`.
-///   `raw_query` is the text the user typed to find the place.
+///   `raw_query` is the text the user typed to find the place. `mapbox_id` / `place_id`
+///   only for an answer a resolve reply produced — the provenance the server's ingest keys on.
 enum LocationAnswer {
 
     /// Typing without selecting stores the text itself.
@@ -28,7 +29,9 @@ enum LocationAnswer {
         timezone: String? = nil,
         timezoneOffsetMinutes: Int? = nil,
         postalCode: String? = nil,
-        rawQuery: String? = nil
+        rawQuery: String? = nil,
+        mapboxId: String? = nil,
+        placeId: String? = nil
     ) -> [String: Any] {
         func present(_ s: String?) -> String? {
             guard let s, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
@@ -48,11 +51,16 @@ enum LocationAnswer {
         }
         if let v = present(postalCode) { out["postal_code"] = v }
         if let v = present(rawQuery) { out["raw_query"] = v }
+        if let v = present(mapboxId) { out["mapbox_id"] = v }
+        if let v = present(placeId) { out["place_id"] = v }
         return out
     }
 
-    /// A server autocomplete suggestion the user picked. `rawQuery` is the text in the field; the
-    /// suggestion's own `raw_query` is the fallback.
+    /// A location the user picked: a resolve reply, or a full suggestion from a
+    /// path that predates resolving. `rawQuery` is the text in the field; the location's own `raw_query` is the
+    /// fallback (a resolve reply carries none). The provenance ids are written only when the
+    /// location carries them, which only a decoded resolve reply does (`decodeSuggestionItems` never
+    /// fills them).
     static func selection(from s: LocationData, rawQuery: String?) -> [String: Any] {
         let typed = rawQuery.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
         return selection(
@@ -62,7 +70,9 @@ enum LocationAnswer {
             latitude: s.latitude, longitude: s.longitude,
             timezone: s.timezone, timezoneOffsetMinutes: s.timezone_offset,
             postalCode: s.postal_code,
-            rawQuery: typed ?? s.raw_query
+            rawQuery: typed ?? s.raw_query,
+            mapboxId: s.mapbox_id,
+            placeId: s.place_id
         )
     }
 
@@ -71,9 +81,70 @@ enum LocationAnswer {
     /// through `JSONDecoder`, which dropped a whole suggestion over one wrong-typed field while Android
     /// kept it.
     static func decodeSuggestions(_ items: [[String: Any]]) -> [LocationData] {
-        items.compactMap { LocationData.fromStoredAnswer($0) }
+        decodeSuggestionItems(items).map(\.data)
     }
 
+    /// The same decode, keeping each suggestion's own `id` and `provider` on
+    /// the internal wrapper the tap path reads. A display-only suggestion (`{id, provider,
+    /// formatted_address, name, place_formatted}`) decodes to a `LocationData` holding only its
+    /// display line.
+    ///
+    /// 🔴 A suggestion never fills `mapbox_id` / `place_id`, whatever keys it carries: those mark an
+    /// answer a resolve reply produced, and a suggestion is a temporary result that may not be stored.
+    static func decodeSuggestionItems(_ items: [[String: Any]]) -> [LocationSuggestionItem] {
+        items.compactMap { item in
+            guard let d = LocationData.fromStoredAnswer(item) else { return nil }
+            let data = LocationData(
+                formatted_address: d.formatted_address,
+                city: d.city, state: d.state, state_code: d.state_code,
+                country: d.country, country_code: d.country_code,
+                latitude: d.latitude, longitude: d.longitude,
+                timezone: d.timezone, timezone_offset: d.timezone_offset,
+                postal_code: d.postal_code, raw_query: d.raw_query
+            )
+            func nonBlank(_ key: String) -> String? {
+                guard let s = item[key] as? String, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                return s
+            }
+            return LocationSuggestionItem(data: data, id: nonBlank("id"), provider: nonBlank("provider"))
+        }
+    }
+
+    /// The ONE rule for the text a location field shows for a stored answer, on
+    /// both iOS surfaces, after a tap and on a restore alike: a selection shows its
+    /// `formatted_address` (else the legacy `address`), a typed answer shows itself. Anything else
+    /// (absent, empty, a number) shows nothing (nil).
+    ///
+    /// It replaces two city / state / country builders (`formatDisplay`, `formatLocationDisplay`),
+    /// which for a resolved address showed the containing city instead of the tapped street, and for
+    /// a resolved region or country an empty or comma-led line.
+    static func fieldText(forStored value: Any?) -> String? {
+        guard let value else { return nil }
+        if let text = value as? String { return text.isEmpty ? nil : text }
+        let dict: [String: Any]?
+        if let d = value as? [String: Any] { dict = d }
+        else if let d = value as? NSDictionary {
+            var out: [String: Any] = [:]
+            for (k, v) in d { if let key = k as? String { out[key] = v } }
+            dict = out
+        } else { dict = nil }
+        guard let dict else { return nil }
+        let line = (dict["formatted_address"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            ?? (dict["address"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return line
+    }
+
+}
+
+/// One autocomplete suggestion as the tap path needs it: the decoded display data,
+/// and the suggestion's own `id` / `provider`. Internal on purpose: the public `Codable`
+/// `LocationData` never carries a suggestion id, so `getLocationData` and the wrapper mappers cannot
+/// expose one. A suggestion with no `id` (a server that predates resolving, or a rollback) cannot be resolved,
+/// and a tap on it stores the typed text.
+struct LocationSuggestionItem: Sendable {
+    let data: LocationData
+    let id: String?
+    let provider: String?
 }
 
 /// The two lines one autocomplete suggestion shows in the dropdown.

@@ -17,6 +17,8 @@ enum Endpoint {
     case pushTapped(body: [String: Any])
     // Geocoding
     case geocodeAutocomplete
+    /// The tapped suggestion resolved into the answer that may be stored.
+    case geocodeResolve
     // A page of an Option Set, or a search within it.
     case optionSet(id: String, cursor: String?, query: String?)
 
@@ -38,6 +40,7 @@ enum Endpoint {
         case .pushDelivered:        return "/api/v1/push/delivered"
         case .pushTapped:           return "/api/v1/push/tapped"
         case .geocodeAutocomplete:  return "/api/v1/sdk/geocode/autocomplete"
+        case .geocodeResolve:       return "/api/v1/sdk/geocode/resolve"
         case .optionSet(let id, let cursor, let query):
             var path = "/api/v1/sdk/option-sets/\(id)"
             var params: [String] = []
@@ -67,6 +70,7 @@ enum Endpoint {
         case .pushDelivered:        return "POST"
         case .pushTapped:           return "POST"
         case .geocodeAutocomplete:  return "POST"
+        case .geocodeResolve:       return "POST"
         case .optionSet:            return "GET"
         }
     }

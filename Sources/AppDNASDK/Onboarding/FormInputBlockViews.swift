@@ -2676,15 +2676,20 @@ struct FormInputLocationPlaceholderBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
 
-    @State private var text: String = ""
-    @State private var showResults = false
     @State private var isFocused: Bool = false
-    @StateObject private var searchCompleter = LocationSuggestionSearch()
+    /// The ONE holder this block and the form-step Location field share: the
+    /// list with its listing requests, the text, the tap → resolve and the dropdown. It replaces the
+    /// view's own `text` / `showResults` and the timing-dependent `isRestoringFromSaved` flag.
+    @StateObject private var searchCompleter: LocationSuggestionSearch
 
-    /// True while we're restoring text from saved inputValues so the
-    /// .onChange(of: text) handler doesn't clobber the full dict with a
-    /// raw string.
-    @State private var isRestoringFromSaved = false
+    init(block: ContentBlock, inputValues: Binding<[String: Any]>) {
+        self.block = block
+        self._inputValues = inputValues
+        _searchCompleter = StateObject(wrappedValue: LocationSuggestionSearch(
+            storedAnswer: inputValues.wrappedValue[block.field_id ?? block.id],
+            client: { AppDNA.geocodeClient }
+        ))
+    }
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -2714,7 +2719,7 @@ struct FormInputLocationPlaceholderBlock: View {
                         .foregroundColor(.secondary)
                 }
                 UIKitTextField(
-                    text: $text,
+                    text: $searchCompleter.text,
                     placeholder: block.field_placeholder ?? "Search location...",
                     keyboardAppearance: .from(keyboardAppearanceRaw),
                     autocorrection: false,
@@ -2728,45 +2733,28 @@ struct FormInputLocationPlaceholderBlock: View {
                     )
                 )
                 .frame(height: 24)
-                .onChange(of: text) { newValue in
-                    // Skip the onChange that fires when we programmatically set
-                    // text from a saved dict — we must NOT overwrite the full
-                    // dict with the raw string. Same when a suggestion is
-                    // selected (we set text before storing the dict).
-                    if isRestoringFromSaved { return }
+                .onChange(of: searchCompleter.text) { newValue in
                     // #963 — honour the author's Min characters. The Console seeds
                     // `location_min_chars: 3` on every Location content block
                     // (`StepContentEditor.tsx:2845`) and this surface searched from the FIRST
                     // keystroke, so an authored threshold did nothing and every block issued two
                     // throwaway searches before the one that could match. Resolved by the same
-                    // `LocationSearchSettings` the form-step sibling uses.
+                    // `LocationSearchSettings` the form-step sibling uses, and all four settings reach
+                    // the proxy: `search` carries the authored Type, Bias country and Language.
                     let search = LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
-                    if newValue.count < search.minChars {
-                        searchCompleter.clear()
-                        showResults = false
-                    } else {
-                        // #963 — all four settings reach the proxy from this surface now, not just
-                        // the threshold: `search` carries the authored Type, Bias country and
-                        // Language, and `LocationAutocomplete` sends each one that is present.
-                        searchCompleter.search(query: newValue, settings: search)
-                        showResults = isFocused
-                    }
-                    // Only store the raw string if the user is ACTIVELY typing.
-                    // Once a suggestion is selected, selectResult writes the
-                    // structured dict and this onChange won't fire again until
-                    // the user starts typing over it.
-                    inputValues[fieldId] = LocationAnswer.typed(newValue)
+                    // Every change, programmatic ones included, goes to the
+                    // holder's one entry point. It skips the echo of its own set (a resolve, a restore,
+                    // a clear) by value, stores what the user types, and searches.
+                    searchCompleter.textChanged(newValue, settings: search)
                 }
-                if !text.isEmpty {
+                if !searchCompleter.text.isEmpty {
                     Button {
-                        text = ""
-                        showResults = false
-                        inputValues[fieldId] = ""
+                        searchCompleter.clear()
                     } label: {
                         Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
                     }
                 }
-                if searchCompleter.isSearching {
+                if searchCompleter.isSearching || searchCompleter.isResolving {
                     ProgressView().scaleEffect(0.7)
                 }
             }
@@ -2779,7 +2767,7 @@ struct FormInputLocationPlaceholderBlock: View {
                     .strokeBorder(borderColor, lineWidth: borderWidth)
             )
 
-            if showResults && !searchCompleter.results.isEmpty {
+            if searchCompleter.isDropdownOpen && !searchCompleter.results.isEmpty {
                 // Dropdown styling from field_config
                 let cfg = block.field_config
                 let ddBgHex = cfg?["dropdown_bg_color"]?.value as? String
@@ -2801,9 +2789,9 @@ struct FormInputLocationPlaceholderBlock: View {
 
                 VStack(alignment: .leading, spacing: 0) {
                     let visible = Array(searchCompleter.results.prefix(5).enumerated())
-                    ForEach(visible, id: \.offset) { idx, result in
+                    ForEach(visible, id: \.offset) { idx, listed in
                         Button {
-                            selectResult(result, fieldId: fieldId)
+                            selectResult(listed)
                         } label: {
                             HStack(spacing: 8) {
                                 // Icon with optional gradient background
@@ -2831,7 +2819,7 @@ struct FormInputLocationPlaceholderBlock: View {
                                 // #963 — a proxy suggestion has no pre-split title/subtitle the way
                                 // an `MKLocalSearchCompletion` did, so the two lines come from the
                                 // one rule every surface and both platforms share.
-                                let lines = LocationAnswer.displayLines(result)
+                                let lines = LocationAnswer.displayLines(listed.data)
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(lines.title)
                                         .font(.system(size: CGFloat(ddFontSize)))
@@ -2866,90 +2854,52 @@ struct FormInputLocationPlaceholderBlock: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onChange(of: isFocused) { focused in
-            // Hide dropdown immediately when focus is lost (tap outside)
+            // Hide dropdown immediately when focus is lost (tap outside), and let no pending search
+            // reopen it.
             if !focused {
-                showResults = false
+                searchCompleter.editingEnded()
             }
+        }
+        // The restore is the holder's: the answer held when the block was built
+        // is restored at once (`formatted_address ?? address` for a selection, the text itself for a
+        // typed answer), and one that appears later is restored reactively while the text is empty.
+        // The key is the text the answer would show, which changes exactly when its presence or
+        // line does.
+        .onChange(of: LocationAnswer.fieldText(forStored: inputValues[fieldId])) { _ in
+            searchCompleter.storedAnswerChanged(inputValues[fieldId])
         }
         .onAppear {
-            // Restore previously entered/selected value WITHOUT clobbering the
-            // stored dict. Uses isRestoringFromSaved to bypass the onChange(of: text)
-            // handler so the full structured dict (lat/lng/city/state/country/
-            // timezone) survives back-navigation.
-            let fieldId = block.field_id ?? block.id
-            if let savedDict = inputValues[fieldId] as? [String: Any] {
-                // Full structured dict — rebuild display text from city/state/country
-                let display = Self.formatLocationDisplay(from: savedDict)
-                    ?? (savedDict["formatted_address"] as? String)
-                    ?? (savedDict["address"] as? String)
-                    ?? ""
-                if !display.isEmpty && text != display {
-                    isRestoringFromSaved = true
-                    text = display
-                    // Re-yield so onChange(of:text) fires with isRestoringFromSaved
-                    // still true, then clear the flag.
-                    DispatchQueue.main.async {
-                        isRestoringFromSaved = false
-                    }
+            let values = $inputValues
+            searchCompleter.attach(store: { newValue in
+                if let newValue {
+                    values.wrappedValue[fieldId] = newValue
+                } else {
+                    // No answer — an empty field, or a resolve in flight (nothing is stored
+                    // then, so a required field keeps the step's Continue gated).
+                    values.wrappedValue.removeValue(forKey: fieldId)
                 }
-                // Never log the restored dict — it carries the user's location.
-                Log.debug("[LocationBlock] restored a saved value")
-            } else if let savedStr = inputValues[fieldId] as? String, !savedStr.isEmpty {
-                if text != savedStr {
-                    isRestoringFromSaved = true
-                    text = savedStr
-                    DispatchQueue.main.async {
-                        isRestoringFromSaved = false
-                    }
-                }
-            }
+            })
+            searchCompleter.storedAnswerChanged(inputValues[fieldId])
+        }
+        .onDisappear {
+            // A resolve reply that arrives after the step has advanced is dropped.
+            searchCompleter.detach()
         }
     }
 
-    /// Formats a saved location dict as "City / State, Country" (with state)
-    /// or "City, Country" (no state). Returns nil if city is missing.
-    static func formatLocationDisplay(from dict: [String: Any]) -> String? {
-        let city = (dict["city"] as? String) ?? ""
-        let state = (dict["state"] as? String) ?? ""
-        let country = (dict["country"] as? String) ?? ""
-        guard !city.isEmpty else { return nil }
-        if !state.isEmpty && !country.isEmpty {
-            return "\(city) / \(state), \(country)"
-        } else if !country.isEmpty {
-            return "\(city), \(country)"
-        } else {
-            return city
-        }
-    }
-
-    /// #963 — the proxy has already resolved the place, so this stores it.
+    /// A tap resolves the suggestion through the holder: the pending search is
+    /// cancelled, the dropdown closes, nothing is stored while the resolve is in flight, and the
+    /// answer is the resolved selection (with `mapbox_id`) or, on any non-success, the typed text.
     ///
-    /// What it replaces: an `MKLocalSearch` round trip to turn the completion into a placemark, and
-    /// then — because `MKPlacemark.timeZone` is almost always nil for a text-search result — a
-    /// `CLGeocoder` reverse-geocode purely to find the time zone. Two extra network calls per
-    /// selection, and a `state_code` that was never available at the end of them. The proxy returns
-    /// city, state, `state_code`, country, country code, coordinates, the zone, its offset and the
-    /// postal code in the suggestion itself, so a selection is now local work.
-    private func selectResult(_ suggestion: LocationData, fieldId: String) {
-        showResults = false
+    /// What #963 replaced here: an `MKLocalSearch` round trip and a `CLGeocoder` reverse-geocode per
+    /// selection. What resolving replaces: storing the suggestion itself, which for Mapbox is a temporary
+    /// result that may not be stored.
+    private func selectResult(_ listed: LocationListedSuggestion) {
         isFocused = false  // dismiss keyboard + hide dropdown reliably
-        // The text the user typed to find this place — read before `text` shows the selection.
-        let typed = text
-
-        // The one stored shape on both platforms and both writers (`LocationAnswer`): a value the
-        // lookup does not have is left out, never stored as "" or "UTC".
-        let locationDict = LocationAnswer.selection(from: suggestion, rawQuery: typed)
-        inputValues[fieldId] = locationDict
-
-        let display = Self.formatLocationDisplay(from: locationDict)
-            ?? LocationAnswer.displayLines(suggestion).title
-        isRestoringFromSaved = true
-        text = display
-        DispatchQueue.main.async { isRestoringFromSaved = false }
-
+        searchCompleter.select(listed)
         // Never log city/state/country/coordinates. A raw `print` is unconditional and reaches
         // release builds.
-        Log.debug("Location selected (timezone resolved: \(suggestion.timezone != nil))")
+        Log.debug("Location suggestion tapped")
     }
 }
 

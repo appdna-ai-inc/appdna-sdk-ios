@@ -16,6 +16,8 @@
 //   location_answer_from_input REAL: `LocationAnswer` (the rule both location writers call; a selection
 //                              first goes through `LocationAnswer.decodeSuggestions`, the form-step
 //                              field's parser) → `SessionDataStore` → `AppDNA.getLocationData(fieldId:)`.
+//                              input.kind "resolved" parses the resolve route's reply through
+//                              `LocationResolve.outcome`, the parser the tap path uses.
 //   bridge_step_advance_reply  REAL: `StepAdvanceResult.isExplicitBridgeDecision` / `bridgeSkipTarget`,
 //                              the two calls every wrapper bridge's auth gate and decoder make.
 //   bridge_timeout_floor       REAL: `StepAdvanceResult.minimumBridgeTimeout(stepData:)`. Only
@@ -44,6 +46,9 @@ extension SharedFixtureTests {
         case "location_data_from_answer": runLocationDataFromAnswer(f, h)
         case "location_answer_from_input": runLocationAnswerFromInput(f, h)
         case "location_suggestion_display": runLocationSuggestionDisplay(f, h)
+        // The ONE location state holder (SharedFixtureDrivers+LocationResolve.swift).
+        case "location_resolve_request":  runLocationResolveRequest(f, h)
+        case "location_field_text":       runLocationFieldText(f, h)
         case "bridge_step_advance_reply": runBridgeStepAdvanceReply(f, h)
         case "bridge_timeout_floor":      runBridgeTimeoutFloor(f, h)
         case "parse_window_date":         runParseWindowDate(f, h)
@@ -248,9 +253,16 @@ extension SharedFixtureTests {
             h.state["location_data"] = NSNull()
             return
         }
-        // Every key, absent ones as NSNull (never a boxed Swift nil, which canonicalises as "nil").
+        h.state["location_data"] = Self.locationDataProjection(loc)
+    }
+
+    /// `getLocationData`'s result as the location kinds assert it: every key, absent ones as NSNull
+    /// (never a boxed Swift nil, which canonicalises as "nil") — and the provenance ids
+    /// (`mapbox_id`, `place_id`) ONLY when the answer carries them, so every fixture written before
+    /// the ids existed keeps its exact shape on both platforms.
+    static func locationDataProjection(_ loc: LocationData) -> [String: Any] {
         let o = SharedFixtureTests.orNull
-        h.state["location_data"] = [
+        var out: [String: Any] = [
             "formatted_address": loc.formatted_address,
             "city": o(loc.city),
             "state": o(loc.state),
@@ -263,7 +275,10 @@ extension SharedFixtureTests {
             "timezone_offset": o(loc.timezone_offset),
             "postal_code": o(loc.postal_code),
             "raw_query": o(loc.raw_query),
-        ] as [String: Any]
+        ]
+        if let v = loc.mapbox_id { out["mapbox_id"] = v }
+        if let v = loc.place_id { out["place_id"] = v }
+        return out
     }
 
     // MARK: location_answer_from_input
@@ -308,6 +323,17 @@ extension SharedFixtureTests {
                 return XCTFail("[\(f.id)] the suggestion did not parse")
             }
             stored = LocationAnswer.selection(from: suggestion, rawQuery: input["typed_query"]?.stringValue)
+        case "resolved":
+            // The resolve route's reply, through the parser the tap path uses, then
+            // the same selection builder. The provenance id the reply carries must reach the store.
+            guard let reply = input["reply"]?.foundation,
+                  let data = try? JSONSerialization.data(withJSONObject: reply) else {
+                return XCTFail("[\(f.id)] input.kind resolved needs input.reply")
+            }
+            guard case .resolved(let location) = LocationResolve.outcome(status: 200, data: data) else {
+                return XCTFail("[\(f.id)] the resolve reply did not parse as resolved")
+            }
+            stored = LocationAnswer.selection(from: location, rawQuery: input["typed_query"]?.stringValue)
         default:
             return XCTFail("[\(f.id)] unknown input.kind \(kind)")
         }
@@ -316,25 +342,13 @@ extension SharedFixtureTests {
         SessionDataStore.shared.clearAll()
         defer { SessionDataStore.shared.clearAll() }
         SessionDataStore.shared.setOnboardingResponses(["step_location": [fieldId: stored]])
+        // #1150 / Read it back from the persisted copy, the way a cold start does.
+        if f.action.raw["relaunch"]?.boolValue == true { SessionDataStore.shared.reloadFromDisk() }
         guard let loc = AppDNA.getLocationData(fieldId: fieldId) else {
             h.state["location_data"] = NSNull()
             return
         }
-        let o = SharedFixtureTests.orNull
-        h.state["location_data"] = [
-            "formatted_address": loc.formatted_address,
-            "city": o(loc.city),
-            "state": o(loc.state),
-            "state_code": o(loc.state_code),
-            "country": o(loc.country),
-            "country_code": o(loc.country_code),
-            "latitude": o(loc.latitude),
-            "longitude": o(loc.longitude),
-            "timezone": o(loc.timezone),
-            "timezone_offset": o(loc.timezone_offset),
-            "postal_code": o(loc.postal_code),
-            "raw_query": o(loc.raw_query),
-        ] as [String: Any]
+        h.state["location_data"] = Self.locationDataProjection(loc)
     }
 
     // MARK: bridge_step_advance_reply
