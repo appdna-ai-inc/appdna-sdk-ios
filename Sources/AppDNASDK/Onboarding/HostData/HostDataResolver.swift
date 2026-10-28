@@ -64,9 +64,10 @@ struct HostDataResolveResult {
     var postExpansion: HostJSON
     var stampedAuthored: HostJSON
     var boundTopLevelKeys: Set<String>
-    /// The block's own options whose drawn keys took a Google location answer's content, by option
-    /// id → those keys (`InputOption.googleKeys`). Empty when none did.
-    var googleOptionKeys: [String: [String]] = [:]
+    /// The options whose drawn keys took a Google location answer's content, in this block and every
+    /// block inside it (children, stack_children, option sheets): block id → option id → those keys
+    /// (`InputOption.googleKeys`). Empty when none did.
+    var googleOptionKeys: [String: [String: [String]]] = [:]
 }
 
 // MARK: - Mutable reference tree (the TS pass mutates objects and keys its bookkeeping by identity)
@@ -180,6 +181,70 @@ enum HostDataResolver {
 
     // swiftlint:disable:next force_try
     private static let markdownLinkRegex = try! NSRegularExpression(pattern: #"\]\(([^)]*)\)"#)
+
+    /// Whether `key` holds a media URL the device fetches: a `*_url` key, or an element of
+    /// `gallery_images`.
+    static func isMediaUrlKey(_ key: String) -> Bool { isUrlKey(key) || key == "gallery_images" }
+
+    /// The hosts whose own URLs may carry a Google answer's content (a static map, say): Google's.
+    private static let googleHostSuffixes = ["googleapis.com", "google.com", "gstatic.com"]
+
+    /// Whether the host of the URL `template` builds is Google's own, decided from the literal text
+    /// before its first token, so a substituted value can never choose the host. The host counts only
+    /// when the literal prefix ends it (a `/`, `?` or `#` follows it), it is plain (letters, digits,
+    /// dots and dashes, an optional port, no user info), and it is one of `googleHostSuffixes` or a
+    /// subdomain of one.
+    static func templateHostIsGoogle(_ template: String) -> Bool {
+        let prefix = template.range(of: "{{").map { String(template[..<$0.lowerBound]) } ?? template
+        guard let schemeEnd = prefix.range(of: "://") else { return false }
+        let scheme = prefix[..<schemeEnd.lowerBound].lowercased()
+        guard scheme == "https" || scheme == "http" else { return false }
+        let rest = prefix[schemeEnd.upperBound...]
+        guard let end = rest.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) else { return false }
+        var host = rest[..<end].lowercased()
+        if let colon = host.lastIndex(of: ":") {
+            let port = host[host.index(after: colon)...]
+            guard !port.isEmpty, port.allSatisfy({ $0.isASCII && $0.isNumber }) else { return false }
+            host = String(host[..<colon])
+        }
+        guard !host.isEmpty, host.allSatisfy({ ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "." || $0 == "-" }) else {
+            return false
+        }
+        return googleHostSuffixes.contains { host == $0 || host.hasSuffix("." + $0) }
+    }
+
+    /// Which tokens of one template resolve a Google location answer to its typed text (`raw_query`)
+    /// rather than its values.
+    struct TypedTextRule {
+        /// Every token: a stored value, or a media URL whose host is not Google's own.
+        let all: Bool
+        /// Otherwise only the tokens inside these ranges: the targets of the template's markdown links.
+        let ranges: [NSRange]
+
+        static let none = TypedTextRule(all: false, ranges: [])
+
+        /// Whether the token starting at UTF-16 offset `location` takes the typed text.
+        func covers(_ location: Int) -> Bool { all || ranges.contains { NSLocationInRange(location, $0) } }
+    }
+
+    /// Whether a `bindings` entry writing `prop` resolves a Google answer to its typed text: a stored
+    /// value, or a media URL — a binding is a bare path, with no literal host of its own.
+    static func bindingTakesTypedText(_ prop: String) -> Bool {
+        isStoredValueKey(prop, isOption: false) || isMediaUrlKey(prop)
+    }
+
+    /// The rule for `template`, the value of `key` (nil for text with no key, such as a translation):
+    /// a stored value (`isStoredValueKey`) and a media URL (`isMediaUrlKey`) off Google's hosts
+    /// (`templateHostIsGoogle`) take the typed text in every token; any other text takes it inside its
+    /// markdown links' targets, because a tap sends that URL off the device. Every resolver that
+    /// substitutes an onboarding answer applies this one rule.
+    static func typedTextRule(_ template: String, key: String?, isOption: Bool) -> TypedTextRule {
+        if let key {
+            if isStoredValueKey(key, isOption: isOption) { return TypedTextRule(all: true, ranges: []) }
+            if isMediaUrlKey(key) { return templateHostIsGoogle(template) ? .none : TypedTextRule(all: true, ranges: []) }
+        }
+        return TypedTextRule(all: false, ranges: markdownLinkTargets(template))
+    }
 
     /// Whether `v` is a Google location answer (one carrying a non-blank `place_id`).
     static func isGoogleAnswer(_ v: HDVal) -> Bool {
@@ -415,16 +480,15 @@ enum HostDataResolver {
         var readGoogle = false
     }
 
-    /// `stored`: the string is a stored value (`isStoredValueKey`), so a Google answer resolves to
-    /// its typed text, through `storedLegacy` for a TemplateEngine root. A token inside a markdown
-    /// link's target resolves the same way (`markdownLinkTargets`).
+    /// `key` / `isOption`: where the string sits, for `typedTextRule` — a token it covers resolves a
+    /// Google answer to its typed text, through `storedLegacy` for a TemplateEngine root.
     static func resolveString(
         _ text: String, scope: Scope, url: Bool, deferStep: Bool,
         legacy: ((String, String?) -> String)?, storedLegacy: ((String, String?) -> String)? = nil,
-        stored: Bool = false
+        key: String? = nil, isOption: Bool = false
     ) -> StringResult {
         let tokens = extractTokens(text)
-        let linkTargets = stored ? [] : markdownLinkTargets(text)
+        let rule = typedTextRule(text, key: key, isOption: isOption)
         var res = StringResult(value: text, hadToken: !tokens.isEmpty)
         if tokens.isEmpty { return res }
         let ns = text as NSString
@@ -437,7 +501,7 @@ enum HostDataResolver {
             out += ns.substring(with: NSRange(location: last, length: t.index - last))
             last = t.index + t.length
             if deferStep && t.root == "step" { out += t.raw; res.deferredStep = true; continue }
-            let typed = stored || linkTargets.contains { NSLocationInRange(t.index, $0) }
+            let typed = rule.covers(t.index)
             if !blockRoots.contains(t.root) {
                 // TemplateEngine roots, per token, same semantics as today.
                 out += (typed ? storedLegacy ?? legacy : legacy)?(t.path, t.fallback) ?? t.raw
@@ -759,11 +823,14 @@ enum HostDataResolver {
             localizations = out
         }
 
-        var googleOptionKeys: [String: [String]] = [:]
-        for option in block.d["field_options"]?.arr ?? [] {
-            guard let o = option.obj, let keys = pass.googleKeys(of: o), !keys.isEmpty,
-                  let id = o.d["id"]?.str ?? o.d["value"]?.str else { continue }
-            googleOptionKeys[id] = keys.sorted()
+        var googleOptionKeys: [String: [String: [String]]] = [:]
+        forEachBlock(block, "") { b, _, _ in
+            guard let blockId = b.d["id"]?.str else { return }
+            for option in b.d["field_options"]?.arr ?? [] {
+                guard let o = option.obj, let keys = pass.googleKeys(of: o), !keys.isEmpty,
+                      let id = o.d["id"]?.str ?? o.d["value"]?.str else { continue }
+                googleOptionKeys[blockId, default: [:]][id] = keys.sorted()
+            }
         }
         return HostDataResolveResult(
             block: HDVal.obj(block).host, localizations: localizations, skipped: false, log: pass.log,
@@ -907,7 +974,7 @@ private final class RawPass {
                 addSheetPath(block, SheetStepPath(path: prop, kind: "binding", source: pathV))
                 continue
             }
-            guard let v = H.resolveScopePath(pathV, scope, typedText: H.isStoredValueKey(prop, isOption: false)) else { continue }
+            guard let v = H.resolveScopePath(pathV, scope, typedText: H.bindingTakesTypedText(prop)) else { continue }
             var converted: HDVal?
             switch cls {
             case "string": converted = H.stringify(v).map { .string($0) }
@@ -1146,17 +1213,12 @@ private final class RawPass {
         if let t = templates?.obj { applyDataTemplates(o, t, owner, scope, env, boundSet) }
     }
 
-    /// Whether `key` on `o` is a stored value (`H.isStoredValueKey`).
-    private func isStored(_ o: HDObj, _ key: String) -> Bool {
-        H.isStoredValueKey(key, isOption: optionState.has(o))
-    }
-
     private func resolveKey(_ o: HDObj, _ key: String, _ v: String, _ scope: H.Scope, _ env: WalkEnv, _ path: [PathPart]) {
         guard v.contains("{{") else { return }
         let url = H.isUrlKey(key)
         let r = H.resolveString(
             v, scope: scope, url: url, deferStep: env.inSheet,
-            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, stored: isStored(o, key)
+            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, key: key, isOption: optionState.has(o)
         )
         if r.deferredStep { addSheetPath(env.block, SheetStepPath(path: path.map(\.text).joined(separator: "."), kind: "token", source: nil)) }
         noteGoogle(o, key, r)
@@ -1186,7 +1248,7 @@ private final class RawPass {
     private func resolveListString(_ el: String, _ key: String, _ scope: H.Scope, _ env: WalkEnv, _ path: [PathPart]) -> String? {
         guard el.contains("{{") else { return el }
         let url = key == "gallery_images"
-        let r = H.resolveString(el, scope: scope, url: url, deferStep: env.inSheet, legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored)
+        let r = H.resolveString(el, scope: scope, url: url, deferStep: env.inSheet, legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, key: key)
         if r.deferredStep { addSheetPath(env.block, SheetStepPath(path: path.map(\.text).joined(separator: "."), kind: "token", source: nil)) }
         if url && r.hadToken && !r.deferredStep && (r.unresolved || !H.isValidTemplatedUrl(r.value)) {
             log.append("url \(env.block.d["id"]?.str ?? "").\(path.map(\.text).joined(separator: ".")): dropped")
@@ -1211,7 +1273,7 @@ private final class RawPass {
             let url = H.isUrlKey(key)
             let r = H.resolveString(
                 tmpl, scope: scope, url: url, deferStep: false,
-                legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, stored: isStored(o, key)
+                legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, key: key, isOption: optionState.has(o)
             )
             let flags = optionState[o]
             var resolved = !r.unresolved && !r.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

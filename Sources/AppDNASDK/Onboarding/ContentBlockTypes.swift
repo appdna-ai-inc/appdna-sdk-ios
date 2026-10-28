@@ -321,7 +321,10 @@ func resolveDotPath(
     sessionData: [String: Any]?,
     /// The current step's live `inputValues`, addressable as `{{step.field_id}}`.
     /// Defaulted so every existing call site keeps compiling and behaves exactly as before.
-    stepInputs: [String: Any]? = nil
+    stepInputs: [String: Any]? = nil,
+    /// A stored value's or a URL's path: a Google location answer it reaches or passes through
+    /// resolves to the answer's typed text (`HostDataResolver.typedTextRule`).
+    typedText: Bool = false
 ) -> Any? {
     guard let path = path, !path.isEmpty else { return nil }
     let parts = path.split(separator: ".").map(String.init)
@@ -347,6 +350,7 @@ func resolveDotPath(
 
     guard var current: Any = root else { return nil }
     for part in parts.dropFirst() {
+        if typedText && LocationAnswer.carriesPlaceId(current) { return TemplateEngine.typedText(of: current) }
         if let dict = current as? [String: Any], let next = dict[part] {
             current = next
         } else if let array = current as? [Any], let idx = Int(part), idx >= 0, idx < array.count {
@@ -357,7 +361,7 @@ func resolveDotPath(
             return nil
         }
     }
-    return current
+    return typedText ? TemplateEngine.typedTextForGoogleAnswers(in: current) : current
 }
 
 /// Compares two values as strings for equality.
@@ -472,7 +476,7 @@ public struct InputOption: Codable, Identifiable {
     /// ordinary content blocks, so one engine serves both the chooser sheet and the detail
     /// sheet. Presentation-only: nothing set inside is reported back, so there is no new
     /// response plumbing here.
-    public let sheet_blocks: [ContentBlock]?
+    public var sheet_blocks: [ContentBlock]?
     // Per-option subtitle (shown below label in a smaller font)
     public let subtitle: String?
     // Per-option text styling — overrides field_config defaults when set
@@ -620,9 +624,14 @@ func resolveTemplateString(
     responses: [String: Any],
     sessionData: [String: Any]? = nil,
     userTraits: [String: Any]? = nil,
-    stepInputs: [String: Any]? = nil
+    stepInputs: [String: Any]? = nil,
+    /// Where `text` sits (`HostDataResolver.typedTextRule`): a token the rule covers resolves a Google
+    /// answer to its typed text. Nil: drawn text, where only a markdown link's target does.
+    key: String? = nil,
+    isOption: Bool = false
 ) -> String {
     var result = text
+    let rule = HostDataResolver.typedTextRule(text, key: key, isOption: isOption)
     // The console's variable picker tells authors to write `{{var | fallback}}`
     // and the web preview implements it. Neither native did: this character class contained
     // neither `|` nor a space, so `{{responses.name | Guest}}` did not match AT ALL and the whole
@@ -643,7 +652,10 @@ func resolveTemplateString(
         guard let fullRange = Range(match.range, in: result),
               let pathRange = Range(match.range(at: 1), in: result) else { continue }
         let path = String(result[pathRange])
-        let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData, stepInputs: stepInputs)
+        let resolved = resolveDotPath(
+            path, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData,
+            stepInputs: stepInputs, typedText: rule.covers(match.range.location)
+        )
         // `{{x | Guest}}` — the fallback is used when the path resolves to nothing, which is also
         // the only way an author can stop an unresolved token reaching a customer's screen.
         let fallback: String? = match.range(at: 2).location == NSNotFound
@@ -1484,8 +1496,8 @@ public struct ContentBlock: Codable, Identifiable {
     public let wheel_line_stroke_width: Double?
 
     // Phase F: stack / row fields (container blocks)
-    public let children: [ContentBlock]?
-    public let stack_children: [ContentBlock]?  // Console uses this key; SDK prefers children
+    public var children: [ContentBlock]?
+    public var stack_children: [ContentBlock]?  // Console uses this key; SDK prefers children
     public let z_index: Double?
     public let gap: Double?
     public let wrap: Bool?

@@ -74,6 +74,7 @@ final class SilentPreviousDelegate: NSObject, UNUserNotificationCenterDelegate {
 extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
+    @MainActor
     func driveSpec497Push(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "classify_push":
@@ -131,6 +132,7 @@ extension SharedFixtureTests {
         h.state["is_appdna"] = AppDNA.pushModule.isAppDNAMessage(userInfo)    // REAL
     }
 
+    @MainActor
     private func runNotificationProxy(_ f: Fixture, _ h: Harness) async {
         let action = f.action.raw
         guard let method = action["method"]?.stringValue else {

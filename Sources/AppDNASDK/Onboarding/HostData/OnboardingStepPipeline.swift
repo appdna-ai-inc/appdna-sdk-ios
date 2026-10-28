@@ -150,14 +150,9 @@ enum OnboardingStepPipeline {
                     log.append("Host data decode revert \(outcome.blockId): \(outcome.reverted.map(\.keyPath).joined(separator: ", "))")
                 }
                 if var block = outcome.block {
-                    // Which option keys show a Google answer's content, for a later `selected` path.
-                    if !r.googleOptionKeys.isEmpty {
-                        block.field_options = block.field_options?.map { option in
-                            var o = option
-                            o.googleKeys = r.googleOptionKeys[option.id ?? option.resolvedValue]
-                            return o
-                        }
-                    }
+                    // Which option keys show a Google answer's content, for a later `selected` path —
+                    // on a Select at any depth.
+                    if !r.googleOptionKeys.isEmpty { block = stampGoogleKeys(block, r.googleOptionKeys) }
                     typed.append(block)
                     collectIds(block, into: &rawIds)
                 } else if results.count == authored.count {
@@ -523,6 +518,39 @@ enum OnboardingStepPipeline {
         return resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: stepInputs)
     }
 
+    /// `block` with every option's `googleKeys` set from `keys` (block id → option id → keys), at every
+    /// depth the raw pass records them: the block, its `children` / `stack_children`, and its options'
+    /// sheets. A pick records an option's keys with it, so a nested Select credits like a top-level one.
+    static func stampGoogleKeys(_ block: ContentBlock, _ keys: [String: [String: [String]]]) -> ContentBlock {
+        var b = block
+        let own = keys[b.id]
+        b.field_options = b.field_options?.map { option in
+            var o = option
+            if let own { o.googleKeys = own[option.id ?? option.resolvedValue] }
+            if let sheet = o.sheet_blocks { o.sheet_blocks = sheet.map { stampGoogleKeys($0, keys) } }
+            return o
+        }
+        b.children = b.children?.map { stampGoogleKeys($0, keys) }
+        b.stack_children = b.stack_children?.map { stampGoogleKeys($0, keys) }
+        return b
+    }
+
+    /// The `googleKeys` a block tree carries, keyed as `stampGoogleKeys` takes them — so a JSON round
+    /// trip, which drops them, can put them back.
+    static func googleKeys(of block: ContentBlock) -> [String: [String: [String]]] {
+        var out: [String: [String: [String]]] = [:]
+        func visit(_ b: ContentBlock) {
+            for o in b.field_options ?? [] {
+                if let k = o.googleKeys, !k.isEmpty { out[b.id, default: [:]][o.id ?? o.resolvedValue] = k }
+                o.sheet_blocks?.forEach(visit)
+            }
+            b.children?.forEach(visit)
+            b.stack_children?.forEach(visit)
+        }
+        visit(block)
+        return out
+    }
+
     /// "Sheet ids" — the sheet renderer resolves ONLY the paths the raw pass recorded, against
     /// the sheet's own inputs: `token` entries as `{{step.x}}` strings, `binding` entries with the
     /// Class conversion. Nothing else in the block is re-scanned.
@@ -539,7 +567,9 @@ enum OnboardingStepPipeline {
               case .object(let json) = h else { return block }
         let out = applySheetStepPaths(json: json, inputs: HostJSON(any: stepInputs), stepInputs: stepInputs)
         guard let decoded = try? decodeBlock(.object(out)) else { return block }
-        return decoded
+        // The round trip drops each option's Google keys (never JSON): put them back.
+        let keys = googleKeys(of: block)
+        return keys.isEmpty ? decoded : stampGoogleKeys(decoded, keys)
     }
 
     /// Whether this block or any nested child (not a nested option sheet) has deferred paths —
@@ -558,11 +588,13 @@ enum OnboardingStepPipeline {
                 let segs = path.components(separatedBy: ".")
                 if kind == "token" {
                     guard case .string(let s)? = get(.object(json), segs), s.contains("{{") else { continue }
-                    let r = resolveTemplateString(s, hookData: nil, responses: [:], stepInputs: stepInputs)
+                    let at = sheetPathKey(segs)
+                    let r = resolveTemplateString(s, hookData: nil, responses: [:], stepInputs: stepInputs, key: at.key, isOption: at.isOption)
                     json = (set(.object(json), segs, .string(r)).objectValue) ?? json
                 } else if kind == "binding", case .string(let source)? = e["source"] {
                     let fid = source.components(separatedBy: ".").dropFirst().joined(separator: ".")
-                    guard case .object(let io) = inputs, let v = io[fid] else { continue }
+                    guard case .object(let io) = inputs, var v = io[fid] else { continue }
+                    if HostDataResolver.bindingTakesTypedText(path) { v = HostDataResolver.typedTextForGoogleAnswers(HDVal(v)).host }
                     let cls = BlockKeyTypes.ownerKeyClasses["ContentBlock"]?[path]
                     var converted: HostJSON?
                     switch cls ?? "" {
@@ -597,6 +629,16 @@ enum OnboardingStepPipeline {
             })
         }
         return json
+    }
+
+    /// The key a deferred token's path ends on, and whether it is an option's: `field_options.<n>.value`
+    /// is an option's `value`; a list element (`gallery_images.<n>`) takes its list's key.
+    static func sheetPathKey(_ segs: [String]) -> (key: String?, isOption: Bool) {
+        guard let last = segs.last else { return (nil, false) }
+        let isIndex: (String) -> Bool = { !$0.isEmpty && $0.allSatisfy { $0.isASCII && $0.isNumber } }
+        if isIndex(last) { return (segs.count >= 2 ? segs[segs.count - 2] : nil, false) }
+        let isOption = segs.count >= 3 && segs[segs.count - 3] == "field_options" && isIndex(segs[segs.count - 2])
+        return (last, isOption)
     }
 
     private static func get(_ h: HostJSON, _ segs: [String]) -> HostJSON? {

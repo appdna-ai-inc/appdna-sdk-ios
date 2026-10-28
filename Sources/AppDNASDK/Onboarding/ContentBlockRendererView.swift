@@ -3587,7 +3587,11 @@ func resolveBlockTemplates(
         // Resolve bindings map — override block properties from data context
         if let bindings = block.bindings {
             for (property, path) in bindings {
-                if let resolved = resolveDotPath(path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil, stepInputs: stepInputs) {
+                // A stored value or a media URL takes a Google answer's typed text, as in the raw pass.
+                if let resolved = resolveDotPath(
+                    path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil,
+                    stepInputs: stepInputs, typedText: HostDataResolver.bindingTakesTypedText(property)
+                ) {
                     json[property] = resolved
                 }
             }

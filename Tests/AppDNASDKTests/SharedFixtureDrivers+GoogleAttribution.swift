@@ -132,7 +132,18 @@ extension SharedFixtureTests {
                 responses: accumulated, templateContext: fixtureTemplateContext(f), selected: [:],
                 fieldConfigOverrides: [:], fieldOptionsOverrides: [:]
             ))
-            guard let block = resolvedPick.blocks.first(where: { $0.id == pick["block_id"]?.stringValue }),
+            // The picked Select at any depth: a container's child records its pick like a top-level one.
+            // `in_sheet = {block_id, option_id}`: the Select is drawn in that option's sheet, as the
+            // sheet's renderer draws it (`displayBlock`, the sheet's deferred paths applied).
+            var pickBlocks = resolvedPick.blocks
+            if let inSheet = pick["in_sheet"]?.objectValue {
+                let owner = Self.findBlock(inSheet["block_id"]?.stringValue, in: resolvedPick.blocks)
+                let opened = owner?.field_options?.first { ($0.id ?? $0.value) == inSheet["option_id"]?.stringValue }
+                pickBlocks = (opened?.sheet_blocks ?? []).map {
+                    OnboardingStepPipeline.displayBlock($0, rawResolved: true, hookData: nil, responses: [:], stepInputs: [:])
+                }
+            }
+            guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks),
                   let option = block.field_options?.first(where: { ($0.id ?? $0.value) == pick["option_id"]?.stringValue }) else {
                 return XCTFail("[\(f.id)] the picked option is not on the resolved step")
             }
@@ -166,18 +177,83 @@ extension SharedFixtureTests {
             ))
         }
 
-        // `action.read[] = {name, block_id, option_id?, key}`: one value of the resolved step — an
-        // option's `label` / `value`, or a block's `text` / `action_value` / `default_value` (its
-        // `field_config.default_value`). Absent → null.
+        // The option sheet `action.sheet` opens, as its renderer draws it: the presented option's sheet
+        // blocks from the REAL pipeline, each through `displayBlock` — the call the sheet's own renderer
+        // makes — so its deferred `{{step.…}}` paths resolve against the sheet's own inputs.
+        let sheetSpec = f.action.raw["sheet"]?.objectValue
+        let sheetOption: () -> InputOption? = {
+            guard let sheet = sheetSpec else { return nil }
+            return resolveStep().blocks.first(where: { $0.id == sheet["block_id"]?.stringValue })?.field_options?
+                .first(where: { $0.id == sheet["option_id"]?.stringValue })
+        }
+        let drawnSheet: () -> [ContentBlock] = {
+            let inputs = (sheetSpec?["inputs"]?.foundation as? [String: Any]) ?? [:]
+            return (sheetOption()?.sheet_blocks ?? []).map {
+                OnboardingStepPipeline.displayBlock($0, rawResolved: true, hookData: nil, responses: [:], stepInputs: inputs)
+            }
+        }
+
+        // `action.read[] = {name, via?, block_id?, option_id?, key}`: one value as a renderer draws or
+        // stores it — an option's `label` / `value`, or a block's `text` / `action_value` /
+        // `default_value` (its `field_config.default_value`) / `image_url` / `video_url` / `lottie_url`
+        // / `markdown_content`, the block found at any depth. `via`: `pipeline` (default) the step the
+        // REAL pipeline resolves; `view_pass` the same step built without raw capture, each block drawn
+        // through `displayBlock` (the view-level pass); `sheet` the sheet above; `legacy` the step's
+        // `title` / `subtitle` / `cta_text` through `interpolated()`, as every legacy view draws them.
+        // Absent → null.
         if let reads = f.action.raw["read"]?.arrayValue {
-            let blocks = resolveStep().blocks
+            var cache: [String: [ContentBlock]] = [:]
+            func blocks(_ via: String) -> [ContentBlock] {
+                if let hit = cache[via] { return hit }
+                let out: [ContentBlock]
+                switch via {
+                case "view_pass":
+                    let bare = OnboardingStep(id: step.id, type: step.type, config: step.config, hook: step.hook,
+                                              hide_progress: step.hide_progress, hide_back: step.hide_back,
+                                              next_step_rules: step.next_step_rules, name: step.name)
+                    let resolved = OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
+                        step: bare, override: override, pending: false, inputValues: stepInputs,
+                        responses: accumulated, templateContext: self.fixtureTemplateContext(f), selected: [:],
+                        fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
+                    ))
+                    out = (resolved.config.content_blocks ?? []).map {
+                        OnboardingStepPipeline.displayBlock(
+                            $0, rawResolved: resolved.isRawResolved($0.id),
+                            hookData: nil, responses: accumulated, stepInputs: stepInputs
+                        )
+                    }
+                case "sheet": out = drawnSheet()
+                default: out = resolveStep().blocks
+                }
+                cache[via] = out
+                return out
+            }
+            var legacyContext = fixtureTemplateContext(f)
+            legacyContext = TemplateContext(
+                userTraits: legacyContext.userTraits, remoteConfig: legacyContext.remoteConfig,
+                onboardingResponses: store, computedData: [:], sessionData: legacyContext.sessionData,
+                deviceInfo: [:], surface: .onboarding
+            )
             var out: [String: Any] = [:]
             for r in reads {
                 guard let o = r.objectValue, let name = o["name"]?.stringValue, let key = o["key"]?.stringValue else {
                     return XCTFail("[\(f.id)] a read needs name + key")
                 }
-                let block = blocks.first { $0.id == o["block_id"]?.stringValue }
+                let via = o["via"]?.stringValue ?? "pipeline"
                 var value: Any?
+                if via == "legacy" {
+                    let source: String?
+                    switch key {
+                    case "title": source = step.config.title
+                    case "subtitle": source = step.config.subtitle
+                    case "cta_text": source = step.config.cta_text
+                    default: return XCTFail("[\(f.id)] read \(name): unknown legacy key \(key)")
+                    }
+                    value = source?.interpolated(context: legacyContext)
+                    out[name] = value ?? NSNull()
+                    continue
+                }
+                let block = Self.findBlock(o["block_id"]?.stringValue, in: blocks(via))
                 if let optionId = o["option_id"]?.stringValue {
                     let option = block?.field_options?.first { ($0.id ?? $0.value) == optionId }
                     switch key {
@@ -190,6 +266,10 @@ extension SharedFixtureTests {
                     case "text": value = block?.text
                     case "action_value": value = block?.action_value
                     case "default_value": value = block?.field_config?["default_value"]?.value
+                    case "image_url": value = block?.image_url
+                    case "video_url": value = block?.video_url
+                    case "lottie_url": value = block?.lottie_url
+                    case "markdown_content": value = block?.markdown_content
                     default: return XCTFail("[\(f.id)] read \(name): unknown block key \(key)")
                     }
                 }
@@ -225,6 +305,17 @@ extension SharedFixtureTests {
                 blockId: blockId, optionId: optionId, presentedSheetBlocks: presented, sheetInputs: inputs
             )
         }
+    }
+
+    /// The block with `id` among `blocks` at any depth: `children`, `stack_children` and option sheets.
+    static func findBlock(_ id: String?, in blocks: [ContentBlock]) -> ContentBlock? {
+        guard let id else { return nil }
+        for b in blocks {
+            if b.id == id { return b }
+            let nested = (b.children ?? []) + (b.stack_children ?? []) + (b.field_options ?? []).flatMap { $0.sheet_blocks ?? [] }
+            if let hit = findBlock(id, in: nested) { return hit }
+        }
+        return nil
     }
 
     private static func creditOverride(_ json: AnyJSON?) -> StepConfigOverride? {

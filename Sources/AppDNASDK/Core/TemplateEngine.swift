@@ -77,12 +77,21 @@ final class TemplateEngine {
     }
 
     /// Interpolate all `{{...}}` variables in a string.
-    func interpolate(_ value: String, context: TemplateContext) -> String {
+    ///
+    /// `key` / `isOption`: where the string sits. On an onboarding step a token the typed-text rule
+    /// covers (`HostDataResolver.typedTextRule`: a stored value, a media URL off Google's hosts, a
+    /// markdown link's target) resolves as on every other surface — a Google answer to its typed text.
+    func interpolate(_ value: String, context: TemplateContext, key: String? = nil, isOption: Bool = false) -> String {
         guard value.contains("{{") else { return value } // Fast path
         guard let regex = regex else { return value }
 
         var result = value
         let matches = regex.matches(in: value, range: NSRange(value.startIndex..., in: value))
+        let rule = context.surface == .onboarding
+            ? HostDataResolver.typedTextRule(value, key: key, isOption: isOption)
+            : HostDataResolver.TypedTextRule.none
+        var typedContext = context
+        typedContext.surface = .other
 
         for match in matches.reversed() {
             guard let varRange = Range(match.range(at: 1), in: value),
@@ -93,7 +102,8 @@ final class TemplateEngine {
                 ? Range(match.range(at: 2), in: value).map { String(value[$0]).trimmingCharacters(in: .whitespaces) }
                 : nil
 
-            let resolved = resolveVariable(varPath, context: context) ?? fallback ?? ""
+            let tokenContext = rule.covers(match.range.location) ? typedContext : context
+            let resolved = resolveVariable(varPath, context: tokenContext) ?? fallback ?? ""
             result = result.replacingCharacters(in: fullRange, with: resolved)
         }
         return result

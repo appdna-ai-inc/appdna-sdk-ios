@@ -26,6 +26,7 @@ import XCTest
 extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
+    @MainActor
     func driveStyle(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "parse_colour": runParseColour(f, h)

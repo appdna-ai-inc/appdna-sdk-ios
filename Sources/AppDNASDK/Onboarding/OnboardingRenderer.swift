@@ -1563,11 +1563,18 @@ struct OnboardingFlowHost: View {
 
 /// Interpolates `{{variable}}` patterns in onboarding text fields via shared TemplateEngine.
 extension String {
-    func interpolated() -> String {
+    /// `key`: the field this text is, for the typed-text rule (`HostDataResolver.typedTextRule`); nil
+    /// for drawn text, where only a markdown link's target takes a Google answer's typed text.
+    func interpolated(key: String? = nil) -> String {
         guard self.contains("{{") else { return self }
         // An onboarding step's own text: the step's container draws the Google credit (`GoogleCredit`).
-        let ctx = TemplateEngine.shared.buildContext(surface: .onboarding)
-        return TemplateEngine.shared.interpolate(self, context: ctx)
+        return interpolated(key: key, context: TemplateEngine.shared.buildContext(surface: .onboarding))
+    }
+
+    /// `interpolated(key:)` against `context` — the SDK state it reads, as one value.
+    func interpolated(key: String? = nil, context: TemplateContext) -> String {
+        guard self.contains("{{") else { return self }
+        return TemplateEngine.shared.interpolate(self, context: context, key: key)
     }
 }
 

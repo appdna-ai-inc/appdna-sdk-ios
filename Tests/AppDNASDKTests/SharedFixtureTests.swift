@@ -446,20 +446,37 @@ final class SharedFixtureTests: XCTestCase {
 
     // MARK: - Umbrella test
 
+    /// `@MainActor`, like every `async` driver it reaches (`drive` and the `drive…` / `run…` drivers
+    /// marked so in each `SharedFixtureDrivers+…` file): the run, its drivers and its assertions execute
+    /// on the main thread. A non-isolated `async` test method runs on a cooperative-pool thread, and an
+    /// XCTest failure raised there is not recorded where it is raised — it is handed to the main thread,
+    /// and a run lost every failure after the first, from both the xcresult and the log. Raised on the
+    /// main thread, each failure is recorded as it is raised, whatever fixtures fail and in what order.
+    @MainActor
     func testAllSharedFixtures() async throws {
         let fixtures = try loadFixtures()
         XCTAssertFalse(fixtures.isEmpty, "No iOS-applicable fixtures found")
 
+        // Each fixture's failures, counted as XCTest records them: on the main thread the count moves as
+        // a failure is raised, so the summary below names every failing fixture of the run.
+        var failed: [String] = []
         for fixture in fixtures {
+            let before = testRun?.totalFailureCount ?? 0
             let harness = Harness()
             await drive(fixture: fixture, harness: harness)
             assertExpectations(fixture: fixture, harness: harness)
+            let raised = (testRun?.totalFailureCount ?? 0) - before
+            if raised > 0 { failed.append("\(fixture.id) (\(raised))") }
         }
 
         print("[SharedFixtureTests] drove \(fixtures.count) iOS fixtures (no skips — a fixture this runner cannot drive fails)")
+        if !failed.isEmpty {
+            print("[SharedFixtureTests] \(failed.count) fixture(s) failed: \(failed.joined(separator: ", "))")
+        }
     }
 
     /// Dispatch. A kind with no driver FAILS — the whole point of this file.
+    @MainActor
     private func drive(fixture: Fixture, harness: Harness) async {
         switch fixture.action.kind {
         case "evaluate_audience":              runEvaluateAudience(fixture, harness)
@@ -1363,6 +1380,7 @@ final class SharedFixtureTests: XCTestCase {
     // REAL: parseMeasurementConfig(_:) + measurementToBase + measurementSnapshot — the exact chain
     // MeasurementWheelBlockView.pick() runs (view line 549-576).
 
+    @MainActor
     private func runPickMeasurement(_ f: Fixture, _ h: Harness) async {
         let action = f.action.raw
         guard let fieldId = action["field_id"]?.stringValue,
@@ -2352,12 +2370,14 @@ final class SharedFixtureTests: XCTestCase {
     }
 
     /// Lets the main-queue work the SDK scheduled (buffer drain, the 0.5 s routing delay) run.
+    @MainActor
     func settlePushMainQueue(seconds: Double = 0.8) async {
         let settled = expectation(description: "push main-queue work settles")
         DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { settled.fulfill() }
         await fulfillment(of: [settled], timeout: seconds + 5)
     }
 
+    @MainActor
     private func runReceivePush(_ f: Fixture, _ h: Harness) async {
         guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
             return XCTFail("[\(f.id)] receive_push needs action.payload")
@@ -2435,6 +2455,7 @@ final class SharedFixtureTests: XCTestCase {
      under test every swipe-away would arrive as `push_tapped`, inflating the one number a push
      campaign is judged on. A fixture that only counted dismissals would pass against that.
      */
+    @MainActor
     private func runDismissPush(_ f: Fixture, _ h: Harness) async {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             return XCTFail("[\(f.id)] dismiss_push needs action.cases")
@@ -2465,6 +2486,7 @@ final class SharedFixtureTests: XCTestCase {
         h.state["taps_emitted"] = taps
     }
 
+    @MainActor
     private func runTapPush(_ f: Fixture, _ h: Harness) async {
         guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
             return XCTFail("[\(f.id)] tap_push needs action.payload")

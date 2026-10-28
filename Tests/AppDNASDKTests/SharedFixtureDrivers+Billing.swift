@@ -32,6 +32,7 @@ import XCTest
 extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
+    @MainActor
     func driveSpec497Billing(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "billing_ownership":           runBillingOwnership(f, h)
@@ -78,6 +79,7 @@ extension SharedFixtureTests {
 
     /// `true` when this fixture's paywall declares a `billing_provider` — the tap then goes through the
     /// REAL `PaywallManager.handlePurchase` guard.
+    @MainActor
     func runPurchaseUnderProvider(_ f: Fixture, _ h: Harness) async -> Bool {
         guard let config = f.setup.config?.objectValue,
               let provider = Self.billingProvider(from: config["billing_provider"]) else { return false }
@@ -167,6 +169,7 @@ extension SharedFixtureTests {
 
     // MARK: - subscription_snapshot_diff
 
+    @MainActor
     private func runSubscriptionSnapshotDiff(_ f: Fixture, _ h: Harness) async {
         let previous = Self.snapshots(f.setup.raw["previous_snapshot"])
         let current = Self.snapshots(f.setup.raw["current"])
@@ -292,6 +295,7 @@ extension SharedFixtureTests {
 
     // MARK: - late_purchase
 
+    @MainActor
     private func runLatePurchase(_ f: Fixture, _ h: Harness) async {
         let world = QueueWorld()
         let queue = world.makeQueue(tracker: h.tracker)
@@ -371,6 +375,7 @@ extension SharedFixtureTests {
 
     // MARK: - rebuy_already_owned
 
+    @MainActor
     private func runRebuyAlreadyOwned(_ f: Fixture, _ h: Harness) async {
         let config = f.setup.config?.objectValue ?? [:]
         let owned = await Self.driveRebuy(
@@ -431,6 +436,7 @@ extension SharedFixtureTests {
 
     // MARK: - delivery_queue
 
+    @MainActor
     private func runDeliveryQueue(_ f: Fixture, _ h: Harness) async {
         let world = QueueWorld()
         world.currentUserId = f.setup.raw["current_user_id"]?.stringValue
