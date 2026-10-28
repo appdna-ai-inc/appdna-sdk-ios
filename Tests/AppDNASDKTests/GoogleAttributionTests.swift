@@ -67,6 +67,34 @@ final class GoogleCreditTests: XCTestCase {
       {"id":"hello","type":"text","text":"Welcome from {{responses.places.home.city}}"}]}}
     """
 
+    /// An option sheet decides its credit from the options picked when it asks, not when the step last
+    /// drew: a pick recorded after the context was built (the pick that opens the sheet, or one inside
+    /// it) counts.
+    /// RED CONTROL: `GoogleCreditSheetContext.shows` reading `answers.selected` only (the snapshot the
+    /// step drew with) fails the live leg.
+    func testASheetsCreditReadsTheOptionsPickedWhenItAsks() throws {
+        let s = try step("""
+        {"id":"s","type":"custom","config":{"content_blocks":[{"id":"sel","type":"input_select","field_id":"stop",
+          "field_config":{"display_style":"list"},"field_options":[{"id":"o1","label":"Open","value":"o1",
+          "sheet_blocks":[{"id":"sh","type":"text","text":"You chose {{selected.near.label}}"}]}]}]}}
+        """)
+        let store = SelectedOptionStore()
+        let sources = GoogleCredit.stepSources(step: s, override: nil, fieldConfigOverrides: [:], fieldOptionsOverrides: [:])
+        let context = GoogleCreditSheetContext(
+            sources: { sources }, answers: answers(store: [:]), selected: { store.snapshot }
+        )
+        let frozen = GoogleCreditSheetContext(sources: { sources }, answers: answers(store: [:]))
+        func ask(_ c: GoogleCreditSheetContext) -> Bool {
+            c.shows(blockId: "sel", optionId: "o1", presentedSheetBlocks: [], sheetInputs: [:])
+        }
+        XCTAssertFalse(ask(context), "nothing picked yet: no credit")
+        var near = try JSONDecoder().decode(InputOption.self, from: Data(#"{"id":"n","label":"Springfield","value":"n"}"#.utf8))
+        near.googleKeys = ["label": "Springf"]
+        store.record(fieldId: "near", option: near)
+        XCTAssertTrue(ask(context), "the pick made since the context was built credits")
+        XCTAssertFalse(ask(frozen), "control: a context holding only the snapshot it was built with does not")
+    }
+
     /// A content-block token reaching a Google answer credits; the same token on a Mapbox or a
     /// legacy answer does not.
     func testAContentBlockTokenCreditsOnlyAGoogleAnswer() throws {

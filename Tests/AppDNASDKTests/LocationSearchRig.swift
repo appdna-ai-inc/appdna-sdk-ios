@@ -102,6 +102,29 @@ final class LocationSearchRig {
     }
 
     /// SwiftUI's `.onChange` after the holder set its own text. No-op when the text is unchanged.
+    /// An edit while the input method composes (or, with `composing` false, a commit that changed
+    /// the text), as the text field delivers it: the field writes the text through the binding, then
+    /// reports whether marked text remains (`compositionChanged`), then SwiftUI's `.onChange` delivers
+    /// the text the holder holds by then — once, and only if it changed.
+    func typeComposing(_ text: String, composing: Bool) {
+        holder.text = text
+        holder.compositionChanged(composing, settings: settings)
+        deliverChange()
+    }
+
+    /// The input method commits without changing the text: the field reports no marked text, and
+    /// `.onChange` delivers the text only if the commit changed it.
+    func commit() {
+        holder.compositionChanged(false, settings: settings)
+        deliverChange()
+    }
+
+    private func deliverChange() {
+        guard holder.text != lastDelivered else { return }
+        lastDelivered = holder.text
+        holder.textChanged(holder.text, settings: settings)
+    }
+
     func echo() {
         guard holder.text != lastDelivered else { return }
         lastDelivered = holder.text

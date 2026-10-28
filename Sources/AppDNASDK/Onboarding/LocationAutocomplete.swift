@@ -250,6 +250,12 @@ final class LocationSuggestionSearch: ObservableObject {
     /// line must never be stored or sent, so the first edit restarts from `rawQuery`
     /// (`LocationAnswer.editRestart`) and clears this; nil once the field holds typed text.
     private var shownGoogle: (line: String, rawQuery: String)?
+    /// Whether the text field's input method has marked text in progress (an IME composition), as the
+    /// field last reported it (`compositionChanged`).
+    private(set) var composing = false
+    /// The first edit of a Google answer's line arrived while composing: it is applied when the
+    /// composition commits, not before.
+    private var awaitingCommit = false
 
     /// Production: the live autocomplete and resolve calls, on a main-queue debounce. `client` is read
     /// when each request is made, not when the field is built, so a field shown before the SDK
@@ -353,6 +359,13 @@ final class LocationSuggestionSearch: ObservableObject {
             if newText == echo { return }
         }
         if text != newText { text = newText }
+        // A composition in progress is not the first edit yet: Google's line with marked text after it
+        // is neither stored nor searched. The edit applies when the composition commits.
+        if composing && shownGoogle != nil {
+            awaitingCommit = true
+            return
+        }
+        awaitingCommit = false
         dropResolveInFlight()
         var typed = newText
         if let google = shownGoogle {
@@ -362,6 +375,14 @@ final class LocationSuggestionSearch: ObservableObject {
         }
         storeTyped(typed)
         search(query: typed, settings: settings)
+    }
+
+    /// The text field reports whether its input method has marked text in progress — after it updated
+    /// the text, so a commit that leaves the text as it was still arrives here. A first edit of Google's
+    /// line held back while composing applies now, from the committed text.
+    func compositionChanged(_ composing: Bool, settings: LocationSearchSettings) {
+        self.composing = composing
+        if !composing && awaitingCommit { textChanged(text, settings: settings) }
     }
 
     /// Typing without selecting stores the typed text (an empty field stores nothing). Editing after a

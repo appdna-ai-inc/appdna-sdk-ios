@@ -47,7 +47,14 @@ extension SharedFixtureTests {
                     XCTFail("[\(f.id)] \(legName) script[\(i)] has no op"); continue
                 }
                 switch name {
-                case "type": rig.type(op["text"]?.stringValue ?? "")
+                case "type":
+                    if let composing = op["composing"]?.boolValue {
+                        rig.typeComposing(op["text"]?.stringValue ?? "", composing: composing)
+                    } else {
+                        rig.type(op["text"]?.stringValue ?? "")
+                    }
+                // The input method commits the composition without changing the text.
+                case "commit": rig.commit()
                 case "echo": rig.echo()
                 case "advance_clock_ms": rig.advance(ms: Int(op["ms"]?.doubleValue ?? 0))
                 case "tap": rig.tap(Int(op["index"]?.doubleValue ?? 0))

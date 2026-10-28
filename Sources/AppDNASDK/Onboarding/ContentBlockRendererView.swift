@@ -309,6 +309,8 @@ struct ContentBlockRendererView: View {
     /// Set by a parent renderer on a raw-resolved block, so NESTED renderers (carousel
     /// pages, option sheets) never re-scan resolved strings either.
     @SwiftUI.Environment(\.appdnaRawResolved) private var envRawResolved: Bool
+    /// Where these blocks are drawn: `.onboarding` under a step router, `.other` on a Screen.
+    @SwiftUI.Environment(\.appdnaTemplateSurface) private var templateSurface: TemplateSurface
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
@@ -461,7 +463,7 @@ struct ContentBlockRendererView: View {
     private func resolveBlockBindings(_ block: ContentBlock, hookData: [String: Any]?, responses: [String: Any]) -> ContentBlock {
         // `inputValues` is the live map of what the user has typed on THIS step — see the note on
         // `resolveBlockTemplates`' stepInputs parameter for why passing it matters.
-        resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: inputValues)
+        resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: inputValues, surface: templateSurface)
     }
 
     /// Check if a block contains `{{...}}` template patterns in its text fields.
@@ -2562,7 +2564,7 @@ struct ContentBlockRendererView: View {
         var result = AttributedString()
         for (index, line) in lines.enumerated() {
             if index > 0 { result.append(AttributedString("\n")) }
-            if var parsed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            if var parsed = MarkdownLinks.parseLine(line) {
                 for run in parsed.runs {
                     if run.link != nil {
                         parsed[run.range].foregroundColor = UIColor(linkColor)
@@ -3573,9 +3575,17 @@ func resolveBlockTemplates(
     // resolveTemplateString has accepted a stepInputs map since the `step` root landed, but NO caller
     // ever passed one, so the console's "This Step (live)" picker group offered authors a namespace
     // that resolved to nothing on device. Declaring the parameter is not wiring it.
-    stepInputs: [String: Any]? = nil
+    stepInputs: [String: Any]? = nil,
+    /// Where the block is drawn. Off an onboarding step (a Screen) nothing credits Google, so every
+    /// token resolves a Google answer — and a picked option's Google key — to the text the user typed.
+    surface: TemplateSurface = .onboarding
 ) -> ContentBlock {
         guard block.bindings != nil || blockContainsTemplates(block) else { return block }
+        let allTyped = surface == .other
+        // `resolveTemplateString` on this surface.
+        func fill(_ s: String, _ inputs: [String: Any]?) -> String {
+            resolveTemplateString(s, hookData: hookData, responses: responses, stepInputs: inputs, allTyped: allTyped)
+        }
 
         // Since ContentBlock is a struct with let properties, we use JSON round-trip to create a mutable copy.
         // This is the simplest approach without refactoring the entire model to use var properties.
@@ -3590,7 +3600,7 @@ func resolveBlockTemplates(
                 // A stored value or a media URL takes a Google answer's typed text, as in the raw pass.
                 if let resolved = resolveDotPath(
                     path, responses: responses, hookData: hookData, userTraits: nil, sessionData: nil,
-                    stepInputs: stepInputs, typedText: HostDataResolver.bindingTakesTypedText(property)
+                    stepInputs: stepInputs, typedText: allTyped || HostDataResolver.bindingTakesTypedText(property)
                 ) {
                     json[property] = resolved
                 }
@@ -3599,19 +3609,19 @@ func resolveBlockTemplates(
 
         // Resolve template strings in text fields
         if let text = json["text"] as? String, text.contains("{{") {
-            json["text"] = resolveTemplateString(text, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["text"] = fill(text, stepInputs)
         }
         if let label = json["field_label"] as? String, label.contains("{{") {
-            json["field_label"] = resolveTemplateString(label, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["field_label"] = fill(label, stepInputs)
         }
         if let placeholder = json["field_placeholder"] as? String, placeholder.contains("{{") {
-            json["field_placeholder"] = resolveTemplateString(placeholder, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["field_placeholder"] = fill(placeholder, stepInputs)
         }
         if let badgeText = json["badge_text"] as? String, badgeText.contains("{{") {
-            json["badge_text"] = resolveTemplateString(badgeText, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["badge_text"] = fill(badgeText, stepInputs)
         }
         if let toggleLabel = json["toggle_label"] as? String, toggleLabel.contains("{{") {
-            json["toggle_label"] = resolveTemplateString(toggleLabel, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["toggle_label"] = fill(toggleLabel, stepInputs)
         }
         // RichText v2 — rich_text's primary content field is `markdown_content`;
         // it must run the SAME `{{var}}` interpolation as `text` so a rich_text
@@ -3645,13 +3655,26 @@ func resolveBlockTemplates(
         // console's variable picker is available wherever an author types, options included, so this
         // rendered a raw token on BOTH platforms rather than differing between them — which is why
         // symmetric fixtures never noticed it.
+        // An option key whose text takes a Google answer's content records it with the text as the user
+        // typed it (`InputOption.googleKeys`), as the raw pass records an authored option's — so a host's
+        // options, and a step drawn without raw capture, carry it to a later `selected` path too.
+        var optionGoogleKeys: [Int: [String: String]] = [:]
         if let rawOpts = json["field_options"] as? [[String: Any]] {
             var optChanged = false
-            let nextOpts: [[String: Any]] = rawOpts.map { opt in
+            let answers = GoogleCredit.Answers(
+                accumulated: responses, stepInputs: stepInputs ?? [:], sessionStore: [:],
+                selected: SelectedOptionStore.shared.snapshot
+            )
+            let nextOpts: [[String: Any]] = rawOpts.enumerated().map { i, opt in
                 var next = opt
                 for key in ["label", "subtitle", "leading_text"] {
                     if let s = opt[key] as? String, s.contains("{{") {
-                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses, stepInputs: stepInputs)
+                        next[key] = fill(s, stepInputs)
+                        if !allTyped && templateReadsGoogle(s, answers: answers) {
+                            optionGoogleKeys[i, default: [:]][key] = resolveTemplateString(
+                                s, hookData: hookData, responses: responses, stepInputs: stepInputs, allTyped: true
+                            )
+                        }
                         optChanged = true
                     }
                 }
@@ -3668,7 +3691,7 @@ func resolveBlockTemplates(
                 var next = stat
                 for key in ["value", "label"] {
                     if let s = stat[key] as? String, s.contains("{{") {
-                        next[key] = resolveTemplateString(s, hookData: hookData, responses: responses, stepInputs: stepInputs)
+                        next[key] = fill(s, stepInputs)
                         changed = true
                     }
                 }
@@ -3696,7 +3719,7 @@ func resolveBlockTemplates(
             }
         }
         if let markdown = json["markdown_content"] as? String, markdown.contains("{{") {
-            json["markdown_content"] = resolveTemplateString(markdown, hookData: hookData, responses: responses, stepInputs: stepInputs)
+            json["markdown_content"] = fill(markdown, stepInputs)
         }
 
         // RECURSE into container children.
@@ -3715,6 +3738,9 @@ func resolveBlockTemplates(
         // Done here, rather than at each container's child-render site, because this is the one place
         // every container type passes through: row, stack, carousel, section_background and anything
         // added later all get it for free, and iOS/Android stay reachable-surface-identical.
+        // Option Google keys never ride in JSON: gather the block tree's own (and its children's after
+        // they resolve) to put back on the decoded result.
+        var googleKeys = OnboardingStepPipeline.googleKeys(of: block)
         for key in ["children", "stack_children"] {
             guard let rawChildren = json[key] as? [[String: Any]] else { continue }
             let resolvedChildren: [[String: Any]] = rawChildren.map { childJSON in
@@ -3724,8 +3750,9 @@ func resolveBlockTemplates(
                     return childJSON
                 }
                 let resolved = resolveBlockTemplates(
-                    child, hookData: hookData, responses: responses, stepInputs: stepInputs
+                    child, hookData: hookData, responses: responses, stepInputs: stepInputs, surface: surface
                 )
+                googleKeys.merge(OnboardingStepPipeline.googleKeys(of: resolved)) { $0.merging($1) { _, new in new } }
                 guard let outData = try? JSONEncoder().encode(resolved),
                       let out = try? JSONSerialization.jsonObject(with: outData) as? [String: Any] else {
                     return childJSON
@@ -3737,7 +3764,14 @@ func resolveBlockTemplates(
 
         // Decode back to ContentBlock
         if let updatedData = try? JSONSerialization.data(withJSONObject: json),
-           let resolved = try? JSONDecoder().decode(ContentBlock.self, from: updatedData) {
+           var resolved = try? JSONDecoder().decode(ContentBlock.self, from: updatedData) {
+            if !googleKeys.isEmpty { resolved = OnboardingStepPipeline.stampGoogleKeys(resolved, googleKeys) }
+            if !optionGoogleKeys.isEmpty, var opts = resolved.field_options {
+                for (i, k) in optionGoogleKeys where i < opts.count {
+                    opts[i].googleKeys = (opts[i].googleKeys ?? [:]).merging(k) { _, new in new }
+                }
+                resolved.field_options = opts
+            }
             return resolved
         }
         return block

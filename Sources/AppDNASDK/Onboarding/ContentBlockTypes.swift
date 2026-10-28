@@ -327,8 +327,9 @@ func resolveDotPath(
     typedText: Bool = false
 ) -> Any? {
     guard let path = path, !path.isEmpty else { return nil }
-    let parts = path.split(separator: ".").map(String.init)
-    guard parts.count >= 2 else { return nil }
+    // An empty segment (`responses..x`) names nothing: refused, as Android and the credit walk read it.
+    let parts = path.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+    guard parts.count >= 2, !parts.contains(where: \.isEmpty) else { return nil }
 
     let root: [String: Any]?
     switch parts[0] {
@@ -351,6 +352,8 @@ func resolveDotPath(
     guard var current: Any = root else { return nil }
     for part in parts.dropFirst() {
         if typedText && LocationAnswer.carriesPlaceId(current) { return TemplateEngine.typedText(of: current) }
+        // A picked option's key that came from a Google answer: the text as the user typed it.
+        if typedText && parts[0] == "selected", let typed = SelectedOptionStore.typedText(of: current, key: part) { return typed }
         if let dict = current as? [String: Any], let next = dict[part] {
             current = next
         } else if let array = current as? [Any], let idx = Int(part), idx >= 0, idx < array.count {
@@ -565,11 +568,13 @@ public struct InputOption: Codable, Identifiable {
     /// Non-optional value — falls back to id if value is nil.
     public var resolvedValue: String { value ?? id ?? "" }
 
-    /// The keys of this option whose drawn text took a Google location answer's content, as the raw
-    /// host-data pass resolved them (`HostDataResolveResult.googleOptionKeys`). Never decoded from or
-    /// encoded to JSON: a pick records it with the option, so a later `{{selected.<field>.<key>}}`
-    /// showing that text draws Google's attribution.
-    var googleKeys: [String]? = nil
+    /// The keys of this option whose drawn text took a Google location answer's content, each with
+    /// that text as the user typed it (every Google answer in it replaced by its `raw_query`), as the
+    /// resolver that filled the option found them (`HostDataResolveResult.googleOptionKeys`). Never
+    /// decoded from or encoded to JSON: a pick records it with the option, so a later
+    /// `{{selected.<field>.<key>}}` showing that text draws Google's attribution, and one storing or
+    /// sending it takes the typed text.
+    var googleKeys: [String: String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, label, value, icon, image_url
@@ -628,10 +633,18 @@ func resolveTemplateString(
     /// Where `text` sits (`HostDataResolver.typedTextRule`): a token the rule covers resolves a Google
     /// answer to its typed text. Nil: drawn text, where only a markdown link's target does.
     key: String? = nil,
-    isOption: Bool = false
+    isOption: Bool = false,
+    /// Every token takes the typed text: text drawn where no Google credit is (a Screen), or the text
+    /// an option keeps for a Google key (`InputOption.googleKeys`).
+    allTyped: Bool = false,
+    /// A token naming a whole location answer draws its line (`formatted_address`, else `address`)
+    /// rather than the dictionary — a sheet's late `{{step.<field>}}`.
+    wholeLocationAnswer: Bool = false
 ) -> String {
     var result = text
-    let rule = HostDataResolver.typedTextRule(text, key: key, isOption: isOption)
+    let rule = allTyped
+        ? HostDataResolver.TypedTextRule(all: true, ranges: [])
+        : HostDataResolver.typedTextRule(text, key: key, isOption: isOption)
     // The console's variable picker tells authors to write `{{var | fallback}}`
     // and the web preview implements it. Neither native did: this character class contained
     // neither `|` nor a space, so `{{responses.name | Guest}}` did not match AT ALL and the whole
@@ -652,10 +665,13 @@ func resolveTemplateString(
         guard let fullRange = Range(match.range, in: result),
               let pathRange = Range(match.range(at: 1), in: result) else { continue }
         let path = String(result[pathRange])
-        let resolved = resolveDotPath(
+        var resolved = resolveDotPath(
             path, responses: responses, hookData: hookData, userTraits: userTraits, sessionData: sessionData,
             stepInputs: stepInputs, typedText: rule.covers(match.range.location)
         )
+        if wholeLocationAnswer, let line = LocationAnswer.fieldText(forStored: resolved), !(resolved is String) {
+            resolved = line
+        }
         // `{{x | Guest}}` — the fallback is used when the path resolves to nothing, which is also
         // the only way an author can stop an unresolved token reaching a customer's screen.
         let fallback: String? = match.range(at: 2).location == NSNotFound
@@ -668,6 +684,15 @@ func resolveTemplateString(
         }
     }
     return result
+}
+
+/// Whether drawing `text` through `resolveTemplateString` shows a Google answer's content: a token
+/// whose path reaches one under `responses` / `step`, or reads a picked option's Google key under
+/// `selected` (`GoogleCredit.pathCredits` over `answers`). An option filled with such text records the
+/// key (`InputOption.googleKeys`).
+func templateReadsGoogle(_ text: String, answers: GoogleCredit.Answers) -> Bool {
+    guard text.contains("{{") else { return false }
+    return HostDataResolver.extractTokens(text).contains { GoogleCredit.pathCredits($0.path, answers) }
 }
 
 // MARK: - 2D Positioning Modifier
@@ -917,6 +942,20 @@ extension EnvironmentValues {
     var appdnaRawResolved: Bool {
         get { self[RawResolvedKey.self] }
         set { self[RawResolvedKey.self] = newValue }
+    }
+}
+
+/// Where the blocks below are drawn. Only an onboarding step's container credits Google, so only the
+/// step router sets `.onboarding`; anywhere else (a Screen) the view-level pass resolves a Google
+/// answer — and a picked option's Google key — to the text the user typed.
+private struct TemplateSurfaceKey: EnvironmentKey {
+    static let defaultValue: TemplateSurface = .other
+}
+
+extension EnvironmentValues {
+    var appdnaTemplateSurface: TemplateSurface {
+        get { self[TemplateSurfaceKey.self] }
+        set { self[TemplateSurfaceKey.self] = newValue }
     }
 }
 
@@ -1190,6 +1229,17 @@ public struct PricingPlanConfig: Codable, Identifiable {
     public let period: String?
     public let badge: String?
     public let is_highlighted: Bool?
+    /// The keys of this plan whose drawn text took a Google location answer's content, each with that
+    /// text as the user typed it — as `InputOption.googleKeys`. Never decoded from or encoded to JSON: a
+    /// pick stores the plan's label (`selected_plan_label`), and a stored label takes the typed text.
+    var googleKeys: [String: String]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, price, period, badge, is_highlighted
+    }
+
+    /// The label a pick stores: the text the user typed where the drawn label came from a Google answer.
+    var storedLabel: String { googleKeys?["label"] ?? label ?? "" }
 }
 
 /// A date wheel picker column for the `date_wheel_picker` block.
@@ -1549,7 +1599,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let border_color: String?
 
     // pricing_card fields
-    public let pricing_plans: [PricingPlanConfig]?
+    public var pricing_plans: [PricingPlanConfig]?
     public let pricing_layout: String?     // stack, side_by_side
 
     // Form input common fields

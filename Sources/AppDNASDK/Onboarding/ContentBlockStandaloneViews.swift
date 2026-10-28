@@ -2391,7 +2391,8 @@ struct PricingCardBlockView: View {
         return Button {
             selectedPlanId = plan.id
             inputValues["selected_plan_id"] = plan.id ?? ""
-            inputValues["selected_plan_label"] = plan.label ?? ""
+            // A stored value: a label drawn from a Google answer is stored as the text the user typed.
+            inputValues["selected_plan_label"] = plan.storedLabel
             onAction("select_plan", plan.id)
         } label: {
             VStack(spacing: 6) {

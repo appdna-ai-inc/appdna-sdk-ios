@@ -1819,7 +1819,9 @@ struct OnboardingStepRouter: View {
                     fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
                 )
             },
-            answers: googleCreditAnswers
+            answers: googleCreditAnswers,
+            // Read when a sheet decides, so a pick made since the step last drew counts.
+            selected: { SelectedOptionStore.shared.snapshot }
         )
     }
 
@@ -1857,6 +1859,8 @@ struct OnboardingStepRouter: View {
         }
         .environment(\.googleAttributionBackdrop, googleAttributionBackdrop)
         .environment(\.googleCreditSheetContext, googleCreditSheetContext)
+        // The step's container credits Google, so its blocks draw a Google answer's content.
+        .environment(\.appdnaTemplateSurface, .onboarding)
         // Background is rendered at the OnboardingFlowHost level (full-screen behind nav bar)
         // Keyboard dismiss handled by ScrollView .scrollDismissesKeyboard in ThreeZoneStepLayout
         // Intercept links to open in-app instead of Safari

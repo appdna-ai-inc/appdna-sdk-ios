@@ -191,7 +191,11 @@ struct LocationFieldView: View {
                     keyboardType: .default,
                     onEditingChanged: { editing in
                         if editing { isFocused = true } else { isFocused = false }
-                    }
+                    },
+                    // An IME composition is not an edit until it commits.
+                    onCompositionChange: { locationSearch.compositionChanged($0, settings: search) },
+                    // Google's line, replaced by the user's own text, must not come back by an undo.
+                    clearsUndoOnProgrammaticSet: true
                 )
                 .frame(height: 20)
                 // Every change, programmatic ones included, goes to the holder's

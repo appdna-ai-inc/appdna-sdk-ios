@@ -2182,7 +2182,7 @@ struct AgreementBlock: View {
         // Parse per line so a `\n` in the consent copy is preserved (mirrors rich_text).
         for (index, line) in text.components(separatedBy: "\n").enumerated() {
             if index > 0 { result.append(AttributedString("\n")) }
-            if var parsed = try? AttributedString(markdown: line, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            if var parsed = MarkdownLinks.parseLine(line) {
                 for run in parsed.runs {
                     if run.link != nil {
                         parsed[run.range].foregroundColor = UIColor(linkColor)
@@ -2751,7 +2751,15 @@ struct FormInputLocationPlaceholderBlock: View {
                     isFocused: Binding(
                         get: { isFocused },
                         set: { isFocused = $0 }
-                    )
+                    ),
+                    // An IME composition is not an edit until it commits.
+                    onCompositionChange: {
+                        searchCompleter.compositionChanged(
+                            $0, settings: LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
+                        )
+                    },
+                    // Google's line, replaced by the user's own text, must not come back by an undo.
+                    clearsUndoOnProgrammaticSet: true
                 )
                 .frame(height: 24)
                 .onChange(of: searchCompleter.text) { newValue in
@@ -2867,7 +2875,9 @@ struct FormInputLocationPlaceholderBlock: View {
                     // authored dropdown colour decides the plain variant; a translucent dropdown lets
                     // the step show through, which is a busy surface.
                     if searchCompleter.showsGoogleLogo {
-                        GoogleMapsLogoView(backdrop: ddOpacity < 1 ? .busy : .plain(hex: ddBgHex))
+                        GoogleMapsLogoView(backdrop: GoogleMapsAttribution.backdrop(
+                            ofDropdownFill: ddBgHex, opacity: ddOpacity, behind: attributionBackdrop, unstyled: .plain(hex: nil)
+                        ))
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

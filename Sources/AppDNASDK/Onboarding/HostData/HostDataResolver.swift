@@ -48,6 +48,10 @@ struct HostDataContext {
     /// (`HostDataResolver.isStoredValueKey`): a Google answer resolves to its typed text there. Nil
     /// falls back to `legacyResolve`.
     var legacyResolveStored: ((_ path: String, _ fallback: String?) -> String)? = nil
+    /// Whether a TemplateEngine root's path (`input.*`, `onboarding.*`) reads a Google answer's content
+    /// when drawn, so an option whose text it fills records the key (`InputOption.googleKeys`). Nil:
+    /// none does.
+    var legacyReadsGoogle: ((_ path: String) -> Bool)? = nil
 }
 
 struct HostDataResolveResult {
@@ -65,9 +69,10 @@ struct HostDataResolveResult {
     var stampedAuthored: HostJSON
     var boundTopLevelKeys: Set<String>
     /// The options whose drawn keys took a Google location answer's content, in this block and every
-    /// block inside it (children, stack_children, option sheets): block id → option id → those keys
-    /// (`InputOption.googleKeys`). Empty when none did.
-    var googleOptionKeys: [String: [String: [String]]] = [:]
+    /// block inside it (children, stack_children, option sheets): block id → option id → each such key
+    /// and its text with every Google answer as the user typed it (`InputOption.googleKeys`). Empty
+    /// when none did.
+    var googleOptionKeys: [String: [String: [String: String]]] = [:]
 }
 
 // MARK: - Mutable reference tree (the TS pass mutates objects and keys its bookkeeping by identity)
@@ -171,29 +176,28 @@ enum HostDataResolver {
         return key.hasPrefix("default_") && key.hasSuffix("value")
     }
 
-    /// The targets of the markdown links in `text` (`[label](target)`), as UTF-16 ranges. A token inside
-    /// one is part of a URL a tap opens, so its value leaves the device: it resolves as a stored value.
+    /// Every link destination in the template `text` that the markdown renderer turns into a tappable
+    /// link, as UTF-16 ranges (`MarkdownLinks.destinations`): an inline link's destination in any of
+    /// its forms, and an autolink. A token inside one is part of a URL a tap opens, so its value leaves
+    /// the device: it resolves as a stored value.
     static func markdownLinkTargets(_ text: String) -> [NSRange] {
-        guard text.contains("](") else { return [] }
-        return markdownLinkRegex.matches(in: text, range: NSRange(location: 0, length: (text as NSString).length))
-            .map { $0.range(at: 1) }
+        MarkdownLinks.destinations(inTemplate: text)
     }
-
-    // swiftlint:disable:next force_try
-    private static let markdownLinkRegex = try! NSRegularExpression(pattern: #"\]\(([^)]*)\)"#)
 
     /// Whether `key` holds a media URL the device fetches: a `*_url` key, or an element of
     /// `gallery_images`.
     static func isMediaUrlKey(_ key: String) -> Bool { isUrlKey(key) || key == "gallery_images" }
 
-    /// The hosts whose own URLs may carry a Google answer's content (a static map, say): Google's.
-    private static let googleHostSuffixes = ["googleapis.com", "google.com", "gstatic.com"]
+    /// The hosts whose own URLs may carry a Google answer's content (a static map, say): Google's Maps
+    /// hosts, exactly. Not every Google host: a storage bucket, a form, an Apps Script or a page that
+    /// fetches any URL (Translate, the Docs viewer) would carry the place to whoever controls it.
+    static let googleMapsHosts: Set<String> = ["maps.googleapis.com", "maps.google.com", "maps.gstatic.com"]
 
-    /// Whether the host of the URL `template` builds is Google's own, decided from the literal text
-    /// before its first token, so a substituted value can never choose the host. The host counts only
-    /// when the literal prefix ends it (a `/`, `?` or `#` follows it), it is plain (letters, digits,
-    /// dots and dashes, an optional port, no user info), and it is one of `googleHostSuffixes` or a
-    /// subdomain of one.
+    /// Whether the host of the URL `template` builds is one of Google's Maps hosts, decided from the
+    /// literal text before its first token, so a substituted value can never choose the host. The host
+    /// counts only when the literal prefix ends it (a `/`, `?` or `#` follows it), it is plain (letters,
+    /// digits, dots and dashes, an optional port, no user info), and it is exactly one of
+    /// `googleMapsHosts`.
     static func templateHostIsGoogle(_ template: String) -> Bool {
         let prefix = template.range(of: "{{").map { String(template[..<$0.lowerBound]) } ?? template
         guard let schemeEnd = prefix.range(of: "://") else { return false }
@@ -210,7 +214,7 @@ enum HostDataResolver {
         guard !host.isEmpty, host.allSatisfy({ ($0.isASCII && ($0.isLetter || $0.isNumber)) || $0 == "." || $0 == "-" }) else {
             return false
         }
-        return googleHostSuffixes.contains { host == $0 || host.hasSuffix("." + $0) }
+        return googleMapsHosts.contains(host)
     }
 
     /// Which tokens of one template resolve a Google location answer to its typed text (`raw_query`)
@@ -234,7 +238,7 @@ enum HostDataResolver {
     }
 
     /// The rule for `template`, the value of `key` (nil for text with no key, such as a translation):
-    /// a stored value (`isStoredValueKey`) and a media URL (`isMediaUrlKey`) off Google's hosts
+    /// a stored value (`isStoredValueKey`) and a media URL (`isMediaUrlKey`) off Google's Maps hosts
     /// (`templateHostIsGoogle`) take the typed text in every token; any other text takes it inside its
     /// markdown links' targets, because a tap sends that URL off the device. Every resolver that
     /// substitutes an onboarding answer applies this one rule.
@@ -267,15 +271,20 @@ enum HostDataResolver {
     }
 
     /// Whether a drawn token's path takes a Google answer's content: under `responses`, `step` or
-    /// `item`, it reaches or passes through a Google answer, or ends on a value holding one. A
-    /// host-supplied root (`hook_data`, `user`, `session`, `selected`) never does — that content is
-    /// the host's to attribute.
+    /// `item`, it reaches or passes through a Google answer, or ends on a value holding one; under
+    /// `selected` (or the `item` of a repeat over it), it reads a key the picked option took from a
+    /// Google answer (`recordReadsGoogle`). A host-supplied root (`hook_data`, `user`, `session`) never
+    /// does — that content is the host's to attribute.
     static func readsGoogleAnswer(_ path: String, _ scope: Scope) -> Bool {
         let parts = path.components(separatedBy: ".")
         var current: HDVal
         switch parts[0] {
+        case "selected":
+            guard parts.count >= 2, let r = scope.roots["selected"], let field = r.obj?.d[parts[1]] else { return false }
+            return recordReadsGoogle(Array(parts.dropFirst(2)), field)
         case "item":
             guard let item = scope.item else { return false }
+            if item.fromSelected { return recordReadsGoogle(Array(parts.dropFirst()), item.value) }
             current = item.value
         case "responses", "step":
             guard parts.count >= 2, let r = scope.roots[parts[0]] else { return false }
@@ -295,6 +304,37 @@ enum HostDataResolver {
             }
         }
         return holdsGoogleAnswer(current)
+    }
+
+    /// The keys a picked option's record took from a Google answer (`SelectedOptionStore.googleKeysKey`).
+    static func recordGoogleKeys(_ record: HDVal) -> [String] {
+        (record.obj?.d[SelectedOptionStore.googleKeysKey]?.obj?.d.keys).map { Array($0).sorted() } ?? []
+    }
+
+    /// The text a picked option's record keeps for `key` with every Google answer as the user typed it;
+    /// nil when `key` did not come from a Google answer.
+    static func recordTypedText(_ record: HDVal, _ key: String) -> HDVal? {
+        record.obj?.d[SelectedOptionStore.googleKeysKey]?.obj?.d[key]?.str.map { .string($0) }
+    }
+
+    /// The rest of a path under one `selected` field (`<key>`, or `<n>.<key>` for a multi pick), or
+    /// under the `item` a repeat over `selected` generated from: whether it reads a key the picked
+    /// option took from a Google answer. A path that stops at the option (or at the list) reads one
+    /// when any of its keys was.
+    static func recordReadsGoogle(_ rest: [String], _ value: HDVal) -> Bool {
+        var current = value
+        var rest = rest
+        if let list = current.arr {
+            guard let first = rest.first, !first.isEmpty, first.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let i = Int(first), i < list.count else {
+                return rest.isEmpty && list.contains { !recordGoogleKeys($0).isEmpty }
+            }
+            current = list[i]
+            rest.removeFirst()
+        }
+        let keys = recordGoogleKeys(current)
+        guard let key = rest.first else { return !keys.isEmpty }
+        return keys.contains(key)
     }
 
     /// `v` with every Google answer inside it, at any depth, replaced by its typed text (a copy).
@@ -422,7 +462,9 @@ enum HostDataResolver {
 
     struct Scope {
         var roots: [String: HDVal]
-        var item: (value: HDVal, index: Int)?
+        /// The element a repeat generated the option from. `fromSelected`: the repeat's source is under
+        /// `selected`, so the element is a picked option's record.
+        var item: (value: HDVal, index: Int, fromSelected: Bool)?
     }
 
     static func rootScope(_ ctx: HostDataContext) -> Scope {
@@ -438,14 +480,18 @@ enum HostDataResolver {
 
     /// Any depth, numeric array index, miss → nil. Two or more segments are required except
     /// for exactly `item` and `index`. `typedText`: a stored value's path — a Google answer it
-    /// reaches or passes through resolves to the answer's typed text (`isStoredValueKey`).
+    /// reaches or passes through resolves to the answer's typed text (`isStoredValueKey`), and so does
+    /// a picked option's key that came from one (`recordTypedText`), under `selected` or the `item` of
+    /// a repeat over it.
     static func resolveScopePath(_ path: String, _ scope: Scope, typedText: Bool = false) -> HDVal? {
         let parts = path.components(separatedBy: ".")
         let root = parts[0]
         var current: HDVal
+        var records = root == "selected"
         if root == "item" {
             guard let item = scope.item else { return nil }
             current = item.value
+            records = item.fromSelected
         } else if root == "index" {
             guard let item = scope.item, parts.count == 1 else { return nil }
             return .int(Int64(item.index))
@@ -455,6 +501,7 @@ enum HostDataResolver {
         }
         for part in parts.dropFirst() {
             if typedText && isGoogleAnswer(current) { return self.typedText(ofGoogleAnswer: current) }
+            if typedText && records, let typed = recordTypedText(current, part) { return typed }
             if let o = current.obj, let next = o.d[part] {
                 current = next
             } else if let a = current.arr, !part.isEmpty, part.allSatisfy({ $0.isASCII && $0.isNumber }),
@@ -481,14 +528,17 @@ enum HostDataResolver {
     }
 
     /// `key` / `isOption`: where the string sits, for `typedTextRule` — a token it covers resolves a
-    /// Google answer to its typed text, through `storedLegacy` for a TemplateEngine root.
+    /// Google answer to its typed text, through `storedLegacy` for a TemplateEngine root. `allTyped`:
+    /// every token does (the text an option keeps for a Google key, `InputOption.googleKeys`).
+    /// `legacyReadsGoogle`: whether a drawn TemplateEngine-root token reads a Google answer.
     static func resolveString(
         _ text: String, scope: Scope, url: Bool, deferStep: Bool,
         legacy: ((String, String?) -> String)?, storedLegacy: ((String, String?) -> String)? = nil,
-        key: String? = nil, isOption: Bool = false
+        legacyReadsGoogle: ((String) -> Bool)? = nil,
+        key: String? = nil, isOption: Bool = false, allTyped: Bool = false
     ) -> StringResult {
         let tokens = extractTokens(text)
-        let rule = typedTextRule(text, key: key, isOption: isOption)
+        let rule = allTyped ? TypedTextRule(all: true, ranges: []) : typedTextRule(text, key: key, isOption: isOption)
         var res = StringResult(value: text, hadToken: !tokens.isEmpty)
         if tokens.isEmpty { return res }
         let ns = text as NSString
@@ -503,8 +553,12 @@ enum HostDataResolver {
             if deferStep && t.root == "step" { out += t.raw; res.deferredStep = true; continue }
             let typed = rule.covers(t.index)
             if !blockRoots.contains(t.root) {
-                // TemplateEngine roots, per token, same semantics as today.
-                out += (typed ? storedLegacy ?? legacy : legacy)?(t.path, t.fallback) ?? t.raw
+                // TemplateEngine roots, per token, same semantics as today; inside a longer URL the value
+                // is percent-encoded like any other.
+                guard let resolver = typed ? storedLegacy ?? legacy : legacy else { out += t.raw; continue }
+                let v = resolver(t.path, t.fallback)
+                if !typed && legacyReadsGoogle?(t.path) == true { res.readGoogle = true }
+                out += url && !whole ? percentEncode(v, query: firstQuery >= 0 && firstQuery < t.index) : v
                 continue
             }
             if let s = stringify(resolveScopePath(t.path, scope, typedText: typed)) {
@@ -823,13 +877,17 @@ enum HostDataResolver {
             localizations = out
         }
 
-        var googleOptionKeys: [String: [String: [String]]] = [:]
+        var googleOptionKeys: [String: [String: [String: String]]] = [:]
         forEachBlock(block, "") { b, _, _ in
             guard let blockId = b.d["id"]?.str else { return }
             for option in b.d["field_options"]?.arr ?? [] {
                 guard let o = option.obj, let keys = pass.googleKeys(of: o), !keys.isEmpty,
                       let id = o.d["id"]?.str ?? o.d["value"]?.str else { continue }
-                googleOptionKeys[blockId, default: [:]][id] = keys.sorted()
+                googleOptionKeys[blockId, default: [:]][id] = keys
+            }
+            for plan in b.d["pricing_plans"]?.arr ?? [] {
+                guard let o = plan.obj, let keys = pass.googleKeys(of: o), !keys.isEmpty, let id = o.d["id"]?.str else { continue }
+                googleOptionKeys[blockId, default: [:]][OnboardingStepPipeline.planKey(id)] = keys
             }
         }
         return HostDataResolveResult(
@@ -934,10 +992,14 @@ private final class RawPass {
     private var bound = HDIdentityMap<Set<String>>()
     private var sheetPaths = HDIdentityMap<[SheetStepPath]>()
     private var optionState = HDIdentityMap<OptionState>()
-    private var itemScope = HDIdentityMap<(value: HDVal, index: Int)>()
+    private var itemScope = HDIdentityMap<(value: HDVal, index: Int, fromSelected: Bool)>()
     private var unresolvedKeys = HDIdentityMap<Set<String>>()
-    /// Per option: the drawn keys that took a Google answer's content.
-    private var googleOptionKeys = HDIdentityMap<Set<String>>()
+    /// The entries of a block's `pricing_plans`: a pick stores a plan's label, so its Google keys are
+    /// recorded like an option's.
+    private var plans = HDIdentityMap<Bool>()
+    /// Per option: the drawn keys that took a Google answer's content, each with its text as the user
+    /// typed it.
+    private var googleOptionKeys = HDIdentityMap<[String: String]>()
     var displacedLocKeys = Set<String>()
     var hiddenCount = HDIdentityMap<Int>()
 
@@ -945,15 +1007,22 @@ private final class RawPass {
 
     func boundKeys(of o: HDObj) -> Set<String> { bound[o] ?? [] }
 
-    func googleKeys(of o: HDObj) -> Set<String>? { googleOptionKeys[o] }
+    func googleKeys(of o: HDObj) -> [String: String]? { googleOptionKeys[o] }
 
     /// An option's `key` took a Google answer's content: a later `{{selected.<field>.<key>}}` shows
-    /// it, so the pick records which keys did.
-    private func noteGoogle(_ o: HDObj, _ key: String, _ r: H.StringResult) {
-        guard r.readGoogle, optionState.has(o) else { return }
-        var s = googleOptionKeys[o] ?? []
-        s.insert(key)
-        googleOptionKeys[o] = s
+    /// it, so the pick records which keys did — and, for where a later step stores or sends it, the
+    /// same `template` with every Google answer as the user typed it.
+    private func noteGoogle(
+        _ o: HDObj, _ key: String, _ r: H.StringResult, template: String, scope: H.Scope, url: Bool, deferStep: Bool = false
+    ) {
+        guard r.readGoogle, optionState.has(o) || plans.has(o) else { return }
+        let typed = H.resolveString(
+            template, scope: scope, url: url, deferStep: deferStep,
+            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, allTyped: true
+        )
+        var keys = googleOptionKeys[o] ?? [:]
+        keys[key] = typed.value
+        googleOptionKeys[o] = keys
     }
 
     // MARK: Bindings
@@ -1079,6 +1148,8 @@ private final class RawPass {
         let source = rep.d["source"]?.str ?? ""
         let root = H.firstSegment(source)
         let arr: HDVal? = (root == "item" || root == "index") ? nil : H.resolveScopePath(source, scope)
+        // A repeat over picked options: each element is an option's record, with its Google keys.
+        let fromSelected = root == "selected"
         var generated: [HDVal] = []
         if let template, template.obj != nil {
             if let a = arr?.arr {
@@ -1095,7 +1166,7 @@ private final class RawPass {
                     let copy = cloneWithState(template)
                     let co = copy.obj!
                     co.d["id"] = .string("\(tid!)__\(i)")
-                    itemScope[co] = (el, i)
+                    itemScope[co] = (el, i, fromSelected)
                     optionState[co] = OptionState(generated: true)
                     generated.append(copy)
                 }
@@ -1177,6 +1248,9 @@ private final class RawPass {
                     continue
                 }
                 let elOwner = H.childOwnerOf(owner, key)
+                if o === env.block && key == "pricing_plans" {
+                    for el in list { if let eo = el.obj { plans[eo] = true } }
+                }
                 var kept: [HDVal] = []
                 var changed = false
                 for (i, el) in list.enumerated() {
@@ -1218,10 +1292,11 @@ private final class RawPass {
         let url = H.isUrlKey(key)
         let r = H.resolveString(
             v, scope: scope, url: url, deferStep: env.inSheet,
-            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, key: key, isOption: optionState.has(o)
+            legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, legacyReadsGoogle: ctx.legacyReadsGoogle,
+            key: key, isOption: optionState.has(o)
         )
         if r.deferredStep { addSheetPath(env.block, SheetStepPath(path: path.map(\.text).joined(separator: "."), kind: "token", source: nil)) }
-        noteGoogle(o, key, r)
+        noteGoogle(o, key, r, template: v, scope: scope, url: url, deferStep: env.inSheet)
         let flags = optionState[o]
         if let flags, key == "label" {
             flags.labelUnresolved = r.unresolved
@@ -1273,7 +1348,8 @@ private final class RawPass {
             let url = H.isUrlKey(key)
             let r = H.resolveString(
                 tmpl, scope: scope, url: url, deferStep: false,
-                legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, key: key, isOption: optionState.has(o)
+                legacy: ctx.legacyResolve, storedLegacy: ctx.legacyResolveStored, legacyReadsGoogle: ctx.legacyReadsGoogle,
+                key: key, isOption: optionState.has(o)
             )
             let flags = optionState[o]
             var resolved = !r.unresolved && !r.value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1283,7 +1359,7 @@ private final class RawPass {
                 continue
             }
             o.d[key] = .string(r.value)
-            noteGoogle(o, key, r)
+            noteGoogle(o, key, r, template: tmpl, scope: scope, url: url)
             if let flags, key == "label" { flags.labelUnresolved = false; flags.labelUnresolvedHookData = false }
             if let flags, flags.generated, key == "value" { flags.valueUnresolved = false }
             if var s = unresolvedKeys[o] { s.remove(key); unresolvedKeys[o] = s }

@@ -130,6 +130,10 @@ final class TemplateEngine {
     // MARK: - Variable Resolution
 
     private func resolveVariable(_ path: String, context: TemplateContext) -> String? {
+        // An empty segment (`onboarding..x`) names nothing: refused, as Android reads it and as the
+        // Google credit walk reads it — a path that resolved here and not there would draw content the
+        // credit never saw.
+        guard !path.split(separator: ".", omittingEmptySubsequences: false).contains(where: \.isEmpty) else { return nil }
         let parts = path.split(separator: ".", maxSplits: 2).map(String.init)
         guard let namespace = parts.first else { return nil }
 

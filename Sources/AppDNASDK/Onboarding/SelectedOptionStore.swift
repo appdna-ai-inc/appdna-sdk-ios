@@ -1,6 +1,6 @@
 import Foundation
 
-/// §"The selected item" — what the user actually picked, addressable as
+/// "The selected item" — what the user actually picked, addressable as
 /// `{{selected.<field_id>.description}}` on a later screen.
 ///
 /// 🔴 This is deliberately NOT stored in `responses`, and that is an acceptance criterion rather
@@ -70,17 +70,25 @@ final class SelectedOptionStore: @unchecked Sendable {
         // free-form data rather than being a column, so it arrives through the same passthrough
         // as any other extra.
         if let icon = option.icon { out["icon"] = icon }
-        // The keys whose text is a Google answer's content, so a later step that shows them draws
-        // Google's attribution (`GoogleCredit`).
+        // The keys whose text is a Google answer's content, each with that text as the user typed it:
+        // a later step that DRAWS one draws Google's attribution (`GoogleCredit`); one that STORES or
+        // SENDS it (an option value, a field default, a link or media URL) takes the typed text.
         if let keys = option.googleKeys, !keys.isEmpty { out[googleKeysKey] = keys }
         return out
     }
 
-    /// Where a recorded option keeps its Google keys (`InputOption.googleKeys`).
+    /// Where a recorded option keeps its Google keys (`InputOption.googleKeys`): key → typed text.
     static let googleKeysKey = "google_keys"
 
     /// The recorded option's keys whose text is a Google answer's content.
     static func googleKeys(of record: Any) -> [String] {
-        ((record as? [String: Any])?[googleKeysKey] as? [String]) ?? []
+        guard let keys = (record as? [String: Any])?[googleKeysKey] as? [String: Any] else { return [] }
+        return keys.keys.sorted()
+    }
+
+    /// The recorded option's text for `key` with every Google answer as the user typed it; nil when
+    /// `key` is not a Google key.
+    static func typedText(of record: Any?, key: String) -> String? {
+        ((record as? [String: Any])?[googleKeysKey] as? [String: Any])?[key] as? String
     }
 }

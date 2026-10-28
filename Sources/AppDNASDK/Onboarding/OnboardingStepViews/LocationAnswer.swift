@@ -156,9 +156,14 @@ enum LocationAnswer {
     /// user's own words, the answer's `raw_query`: characters appended at the END of Google's line
     /// are appended to it, and any other edit (a deletion, a replacement, a paste inside the line)
     /// leaves the typed text alone. The result is ordinary typed text from then on.
+    ///
+    /// Compared in UTF-16 code units, exactly as Android compares them: a combining mark typed after the
+    /// line's last letter (U+0301 after "A") is an append of one unit here, though Swift's own `String`
+    /// would count it as part of the last character.
     static func editRestart(rawQuery: String, shown: String, edited: String) -> String {
-        if edited.count > shown.count, edited.hasPrefix(shown) {
-            return rawQuery + edited.dropFirst(shown.count)
+        let e = Array(edited.utf16), s = Array(shown.utf16)
+        if e.count > s.count, e.starts(with: s) {
+            return rawQuery + String(decoding: e[s.count...], as: UTF16.self)
         }
         return rawQuery
     }

@@ -25,12 +25,17 @@ import SwiftUI
 /// walks its own, drawing the credit inside the sheet; a sheet resolves its `step` root against its
 /// own inputs, as the sheet renderer does.
 ///
+/// The `selected` root reads the options the user picked on earlier steps. A picked option's record
+/// names each key whose text was a Google answer's content (`SelectedOptionStore.googleKeys(of:)`), so
+/// a path reading one credits, like a path into an answer.
+///
 /// The `item` root reads the element a `repeat` generated an option from. The raw pass expands a
 /// `repeat` on a top-level `input_select` only, so the walk gives `item` a value only inside such a
 /// block's template option (and that option's sheet): the elements of the array its `source` reaches
-/// among the answers the source's root reads. A `source` under `hook_data` (or `user`, `session`,
-/// `selected`) is host-supplied, which makes the host responsible for its attribution, and a block
-/// with an Option Set never expands — so neither gives `item` anything to credit.
+/// among the answers the source's root reads — a `selected` source's elements being picked options'
+/// records. A `source` under `hook_data` (or `user`, `session`) is host-supplied, which makes the host
+/// responsible for its attribution, and a block with an Option Set never expands — so neither gives
+/// `item` anything to credit.
 enum GoogleCredit {
 
     /// The roots that read onboarding answers.
@@ -228,11 +233,18 @@ enum GoogleCredit {
         return (rep, tid, i, options)
     }
 
+    /// An element a `repeat` over `selected` generated an option from: a picked option's record, whose
+    /// Google keys decide what an `item` path credits.
+    struct PickedRecord {
+        let record: Any
+    }
+
     /// What `item` stands on in the options `rep` generates: each element, up to its `max`, of the
     /// array its `source` reaches among the answers the source's root reads — only element `n` when
     /// `n` is given. A source that passes through a Google answer stands `item` on that answer, since
-    /// everything it generates is a part of it. Only `responses` and `step` sources read onboarding
-    /// answers; any other root gives nothing.
+    /// everything it generates is a part of it. `responses`, `step` and `selected` sources read
+    /// onboarding answers (a `selected` source's elements are `PickedRecord`s); any other root gives
+    /// nothing.
     static func repeatItems(_ rep: [String: Any], _ answers: Answers, at n: Int? = nil) -> [Any] {
         guard let source = rep["source"] as? String else { return [] }
         let segments = source.components(separatedBy: ".")
@@ -241,6 +253,7 @@ enum GoogleCredit {
         switch segments[0] {
         case "responses": roots = answers.responses
         case "step": roots = [answers.step]
+        case "selected": roots = [answers.selected]
         default: return []
         }
         let max = repeatMax(rep["max"])
@@ -262,7 +275,7 @@ enum GoogleCredit {
                 }
             }
             guard reached, let a = current as? [Any] else { continue }
-            let drawn = Array(a.prefix(max))
+            let drawn = Array(a.prefix(max)).map { segments[0] == "selected" ? PickedRecord(record: $0) : $0 }
             if let n {
                 if n < drawn.count { out.append(drawn[n]) }
             } else {
@@ -321,7 +334,12 @@ enum GoogleCredit {
         let segments = path.split(separator: ".", omittingEmptySubsequences: false).map(String.init)
         guard let root = segments.first else { return false }
         let rest = Array(segments.dropFirst())
-        if root == "item" { return answers.items.contains { reaches(rest, in: $0) } }
+        if root == "item" {
+            return answers.items.contains { item in
+                if let picked = item as? PickedRecord { return recordCredits(rest, picked.record) }
+                return reaches(rest, in: item)
+            }
+        }
         if root == "selected" { return selectedCredits(rest, answers.selected) }
         guard roots.contains(root) else { return false }
         switch root {
@@ -373,9 +391,15 @@ enum GoogleCredit {
             current = list[n]
             next += 1
         }
-        let keys = SelectedOptionStore.googleKeys(of: current)
-        guard rest.count > next else { return !keys.isEmpty }
-        return keys.contains(rest[next])
+        return recordCredits(Array(rest.dropFirst(next)), current)
+    }
+
+    /// One picked option's record: a path reading one of its Google keys credits; a path that stops at
+    /// the record credits when it has any.
+    private static func recordCredits(_ rest: [String], _ record: Any) -> Bool {
+        let keys = SelectedOptionStore.googleKeys(of: record)
+        guard let key = rest.first else { return !keys.isEmpty }
+        return keys.contains(key)
     }
 
     /// Where each recorded option with Google keys sits in `selected`, one entry per key.
@@ -466,14 +490,18 @@ struct GoogleCreditSheetContext {
     /// Every option sheet in the step's sources (built on demand).
     let index: () -> GoogleCredit.SheetIndex
     let answers: GoogleCredit.Answers
+    /// The options picked so far, read when the sheet decides — a pick that opens the sheet, or one made
+    /// inside it, counts — not when the step last drew. Nil: `answers.selected`.
+    let selected: (() -> [String: Any])?
 
-    init(index: @escaping () -> GoogleCredit.SheetIndex, answers: GoogleCredit.Answers) {
+    init(index: @escaping () -> GoogleCredit.SheetIndex, answers: GoogleCredit.Answers, selected: (() -> [String: Any])? = nil) {
         self.index = index
         self.answers = answers
+        self.selected = selected
     }
 
-    init(sources: @escaping () -> [Any], answers: GoogleCredit.Answers) {
-        self.init(index: { GoogleCredit.sheetSources(in: sources()) }, answers: answers)
+    init(sources: @escaping () -> [Any], answers: GoogleCredit.Answers, selected: (() -> [String: Any])? = nil) {
+        self.init(index: { GoogleCredit.sheetSources(in: sources()) }, answers: answers, selected: selected)
     }
 
     /// The credit for the sheet of `optionId` on `blockId`, from the sheet's SOURCE: the presented
@@ -482,6 +510,8 @@ struct GoogleCreditSheetContext {
     /// its `item` root the element it was generated from. Only a sheet no source holds (an Option Set's
     /// option) walks the blocks it presents.
     func shows(blockId: String?, optionId: String?, presentedSheetBlocks: [ContentBlock], sheetInputs: [String: Any]) -> Bool {
+        var answers = self.answers
+        if let selected { answers.selected = selected() }
         var own = answers
         own.step = sheetInputs
         // A sheet's `item` stands on what the STEP's answers hold, which the sheet's own inputs replace

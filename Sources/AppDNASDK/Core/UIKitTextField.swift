@@ -34,6 +34,13 @@ struct UIKitTextField: UIViewRepresentable {
     var onReturn: (() -> Void)? = nil
     /// Called on every editing change (after the text binding updates).
     var onEditingChanged: ((Bool) -> Void)? = nil
+    /// Called after every text change the user makes, with whether the input method still has marked
+    /// text (an IME composition) — so a commit that leaves the text as it was is reported too.
+    var onCompositionChange: ((Bool) -> Void)? = nil
+    /// A text set from the binding (not typed) clears the field's undo history, so shake-to-undo cannot
+    /// bring back text the app replaced. UIKit drops it on such a set too on current iOS; this does not
+    /// rely on that.
+    var clearsUndoOnProgrammaticSet: Bool = false
 
     func makeUIView(context: Context) -> UITextField {
         let tf = UITextField(frame: .zero)
@@ -51,9 +58,7 @@ struct UIKitTextField: UIViewRepresentable {
 
     func updateUIView(_ tf: UITextField, context: Context) {
         // Update text only if out of sync — avoids cursor jump on every keystroke
-        if tf.text != text {
-            tf.text = text
-        }
+        Self.setText(text, of: tf, clearingUndo: clearsUndoOnProgrammaticSet)
         // Apply placeholder with optional color via attributedPlaceholder
         if let placeholderColor = placeholderColor {
             let attrs: [NSAttributedString.Key: Any] = [.foregroundColor: placeholderColor]
@@ -110,6 +115,15 @@ struct UIKitTextField: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
+    /// A text set from the binding: only when it differs from what the field holds. `clearingUndo`: the
+    /// field's undo history goes with the text it replaced — the undo actions UIKit recorded for the
+    /// user's typing would otherwise restore that text.
+    static func setText(_ text: String, of tf: UITextField, clearingUndo: Bool) {
+        guard tf.text != text else { return }
+        tf.text = text
+        if clearingUndo { tf.undoManager?.removeAllActions() }
+    }
+
     private func applyNonReactive(tf: UITextField) {
         tf.text = text
         if let placeholderColor = placeholderColor {
@@ -146,6 +160,7 @@ struct UIKitTextField: UIViewRepresentable {
             if parent.text != newText {
                 parent.text = newText
             }
+            parent.onCompositionChange?(tf.markedTextRange != nil)
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {

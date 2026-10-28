@@ -122,6 +122,13 @@ enum OnboardingStepPipeline {
         ctx.legacyResolveStored = { path, fallback in
             TemplateEngine.shared.resolveToken(path, fallback: fallback, context: storedContext)
         }
+        // `input.*` / `onboarding.*` read the session store's answers: an option whose text one fills
+        // with a Google answer's content records the key, as a `responses` path does.
+        let legacyAnswers = GoogleCredit.Answers(accumulated: [:], stepInputs: [:], sessionStore: tctx.onboardingResponses)
+        ctx.legacyReadsGoogle = { path in
+            let root = HostDataResolver.firstSegment(path)
+            return (root == "input" || root == "onboarding") && GoogleCredit.pathCredits(path, legacyAnswers)
+        }
         return ctx
     }
 
@@ -219,22 +226,32 @@ enum OnboardingStepPipeline {
     }
 
     /// `label`, `subtitle`, `leading_text` of host-supplied options, resolved as the view pass always
-    /// did for them (an unresolved token keeps today's behaviour — the literal stays).
+    /// did for them (an unresolved token keeps today's behaviour — the literal stays). A key whose text
+    /// takes a Google answer's content records it (`InputOption.googleKeys`), as an authored option's
+    /// does in the raw pass.
     static func resolveOptionText(_ options: [InputOption], _ input: Input) -> [InputOption] {
         guard let data = try? JSONEncoder().encode(options),
               let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return options }
         var changed = false
         let hook = input.hookData
-        let next: [[String: Any]] = arr.map { opt in
+        let answers = GoogleCredit.Answers(
+            accumulated: input.responses, stepInputs: input.inputValues, sessionStore: [:], selected: input.selected
+        )
+        var keys: [Int: [String: String]] = [:]
+        let next: [[String: Any]] = arr.enumerated().map { i, opt in
             var o = opt
             for key in ["label", "subtitle", "leading_text"] {
                 if let s = opt[key] as? String, s.contains("{{") {
-                    o[key] = resolveTemplateString(
-                        s, hookData: hook, responses: input.responses,
-                        sessionData: input.templateContext.sessionData,
-                        userTraits: input.templateContext.userTraits,
-                        stepInputs: input.inputValues
-                    )
+                    let resolve = { (allTyped: Bool) in
+                        resolveTemplateString(
+                            s, hookData: hook, responses: input.responses,
+                            sessionData: input.templateContext.sessionData,
+                            userTraits: input.templateContext.userTraits,
+                            stepInputs: input.inputValues, allTyped: allTyped
+                        )
+                    }
+                    o[key] = resolve(false)
+                    if templateReadsGoogle(s, answers: answers) { keys[i, default: [:]][key] = resolve(true) }
                     changed = true
                 }
             }
@@ -242,7 +259,8 @@ enum OnboardingStepPipeline {
         }
         guard changed,
               let out = try? JSONSerialization.data(withJSONObject: next),
-              let decoded = try? JSONDecoder().decode([InputOption].self, from: out) else { return options }
+              var decoded = try? JSONDecoder().decode([InputOption].self, from: out) else { return options }
+        for (i, k) in keys where i < decoded.count { decoded[i].googleKeys = k }
         return decoded
     }
 
@@ -518,31 +536,46 @@ enum OnboardingStepPipeline {
         return resolveBlockTemplates(block, hookData: hookData, responses: responses, stepInputs: stepInputs)
     }
 
-    /// `block` with every option's `googleKeys` set from `keys` (block id → option id → keys), at every
-    /// depth the raw pass records them: the block, its `children` / `stack_children`, and its options'
-    /// sheets. A pick records an option's keys with it, so a nested Select credits like a top-level one.
-    static func stampGoogleKeys(_ block: ContentBlock, _ keys: [String: [String: [String]]]) -> ContentBlock {
+    /// `block` with every option named in `keys` (block id → option id → its Google keys) given those
+    /// keys, at every depth a resolver records them: the block, its `children` / `stack_children`, and
+    /// its options' sheets. A pick records an option's keys with it, so a nested Select credits like a
+    /// top-level one. An option `keys` does not name keeps its own.
+    static func stampGoogleKeys(_ block: ContentBlock, _ keys: [String: [String: [String: String]]]) -> ContentBlock {
         var b = block
         let own = keys[b.id]
         b.field_options = b.field_options?.map { option in
             var o = option
-            if let own { o.googleKeys = own[option.id ?? option.resolvedValue] }
+            if let k = own?[option.id ?? option.resolvedValue] { o.googleKeys = k }
             if let sheet = o.sheet_blocks { o.sheet_blocks = sheet.map { stampGoogleKeys($0, keys) } }
             return o
+        }
+        if let own {
+            b.pricing_plans = b.pricing_plans?.map { plan in
+                var p = plan
+                if let id = plan.id, let k = own[planKey(id)] { p.googleKeys = k }
+                return p
+            }
         }
         b.children = b.children?.map { stampGoogleKeys($0, keys) }
         b.stack_children = b.stack_children?.map { stampGoogleKeys($0, keys) }
         return b
     }
 
+    /// Where a pricing plan's Google keys sit among a block's option keys: its id, marked so it can never
+    /// meet an option's.
+    static func planKey(_ id: String) -> String { "plan\u{1F}\(id)" }
+
     /// The `googleKeys` a block tree carries, keyed as `stampGoogleKeys` takes them — so a JSON round
     /// trip, which drops them, can put them back.
-    static func googleKeys(of block: ContentBlock) -> [String: [String: [String]]] {
-        var out: [String: [String: [String]]] = [:]
+    static func googleKeys(of block: ContentBlock) -> [String: [String: [String: String]]] {
+        var out: [String: [String: [String: String]]] = [:]
         func visit(_ b: ContentBlock) {
             for o in b.field_options ?? [] {
                 if let k = o.googleKeys, !k.isEmpty { out[b.id, default: [:]][o.id ?? o.resolvedValue] = k }
                 o.sheet_blocks?.forEach(visit)
+            }
+            for p in b.pricing_plans ?? [] {
+                if let id = p.id, let k = p.googleKeys, !k.isEmpty { out[b.id, default: [:]][planKey(id)] = k }
             }
             b.children?.forEach(visit)
             b.stack_children?.forEach(visit)
@@ -589,7 +622,11 @@ enum OnboardingStepPipeline {
                 if kind == "token" {
                     guard case .string(let s)? = get(.object(json), segs), s.contains("{{") else { continue }
                     let at = sheetPathKey(segs)
-                    let r = resolveTemplateString(s, hookData: nil, responses: [:], stepInputs: stepInputs, key: at.key, isOption: at.isOption)
+                    // A whole location answer (`{{step.home}}`) draws its line, as Android's sheet does.
+                    let r = resolveTemplateString(
+                        s, hookData: nil, responses: [:], stepInputs: stepInputs, key: at.key, isOption: at.isOption,
+                        wholeLocationAnswer: true
+                    )
                     json = (set(.object(json), segs, .string(r)).objectValue) ?? json
                 } else if kind == "binding", case .string(let source)? = e["source"] {
                     let fid = source.components(separatedBy: ".").dropFirst().joined(separator: ".")

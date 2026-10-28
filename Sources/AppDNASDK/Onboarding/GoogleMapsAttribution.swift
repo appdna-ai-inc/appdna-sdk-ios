@@ -55,13 +55,16 @@ enum GoogleMapsAttribution {
     }
 
     /// A step's background as a backdrop: what the step host actually draws for it
-    /// (`StyleEngine.backgroundView`). A colour is plain; an image, gradient or animation is busy. A
-    /// background with no `type` (even one holding a colour) and a transparent one draw nothing, so
-    /// the system background shows: plain, with no colour of its own.
+    /// (`StyleEngine.backgroundView`). A colour is plain — `#FFFFFF` when none is authored, which is
+    /// what the host draws then; an image, gradient or animation is busy. A background with no `type`
+    /// (even one holding a colour) and a transparent one draw nothing, so the system background shows:
+    /// plain, with no colour of its own.
     static func backdrop(of background: BackgroundStyleConfig?) -> Backdrop {
         guard let background else { return .plain(hex: nil) }
         switch background.type {
-        case "color": return .plain(hex: background.color)
+        case "color":
+            let color = background.color ?? "#FFFFFF"
+            return color == "transparent" || color == "clear" ? .plain(hex: nil) : .plain(hex: color)
         case nil, "transparent", "clear", "none": return .plain(hex: nil)
         default: return .busy
         }
@@ -128,6 +131,23 @@ enum GoogleMapsAttribution {
         if style.background_gradient?.start != nil, style.background_gradient?.end != nil { return .busy }
         if let color = style.background_color { return .plain(hex: color) }
         return behind
+    }
+
+    /// What a location dropdown draws behind its rows, and so behind the logo under them: its authored
+    /// fill (`dropdown_bg_color`), else `unstyled` (what an unstyled dropdown draws). A fill drawn
+    /// translucent (`dropdown_opacity` below 1, or an alpha below `FF`) is busy. A fill that draws
+    /// nothing — `transparent`, `clear`, a fully transparent colour, or a value no colour parser reads
+    /// (both platforms draw those clear) — shows what is `behind` the dropdown.
+    static func backdrop(ofDropdownFill hex: String?, opacity: Double, behind: Backdrop, unstyled: Backdrop) -> Backdrop {
+        guard let raw = hex?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
+            return opacity < 1 ? .busy : unstyled
+        }
+        let digits = raw.hasPrefix("#") ? String(raw.dropFirst()) : raw
+        let isHex = (digits.count == 6 || digits.count == 8) && digits.allSatisfy(\.isHexDigit)
+        guard isHex else { return behind }
+        let alpha = digits.count == 8 ? Int(digits.suffix(2), radix: 16) ?? 255 : 255
+        if alpha == 0 { return behind }
+        return opacity < 1 || alpha < 255 ? .busy : .plain(hex: raw)
     }
 
     /// The variant for a backdrop. A known plain colour decides by its own luminance; the system

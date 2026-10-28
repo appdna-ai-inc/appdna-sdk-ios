@@ -18,6 +18,7 @@
 // © 2026 AppDNA AI, Inc.
 
 import Foundation
+import SwiftUI
 import XCTest
 @testable import AppDNASDK
 
@@ -74,6 +75,16 @@ extension SharedFixtureTests {
                     return XCTFail("[\(f.id)] \(name): no block \(blockId)")
                 }
                 for b in path { backdrop = A.backdrop(ofBlock: b, behind: backdrop) }
+                // `dropdown`: what is behind the logo under the block's location dropdown, the call the
+                // block's view makes with what is behind the dropdown.
+                if o["dropdown"]?.boolValue == true, let block = path.last {
+                    let cfg = block.field_config
+                    backdrop = A.backdrop(
+                        ofDropdownFill: cfg?["dropdown_bg_color"]?.value as? String,
+                        opacity: cfgDouble(cfg?["dropdown_opacity"]) ?? 1,
+                        behind: backdrop, unstyled: .plain(hex: nil)
+                    )
+                }
             }
             let described: String
             switch backdrop {
@@ -88,6 +99,40 @@ extension SharedFixtureTests {
             case .darkOutline: variant = "dark_outline"
             }
             results.append(["name": name, "backdrop": described, "variant_light": variant])
+        }
+        h.state["results"] = results
+    }
+
+    // MARK: markdown_links
+
+    /// `action.cases[] = {name, markdown}` → `[{name, links: [{text, url}]}]`: each line through
+    /// `MarkdownLinks.parseLine` — the Foundation parse `rich_text` and an agreement's copy draw with —
+    /// and the runs carrying a link, adjacent runs with the same link joined.
+    func runMarkdownLinks(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue, !cases.isEmpty else {
+            return XCTFail("[\(f.id)] markdown_links needs action.cases")
+        }
+        var results: [[String: Any]] = []
+        for c in cases {
+            guard let o = c.objectValue, let name = o["name"]?.stringValue, let md = o["markdown"]?.stringValue else {
+                return XCTFail("[\(f.id)] a case needs name + markdown")
+            }
+            var links: [[String: Any]] = []
+            if #available(iOS 15.0, *), let parsed = MarkdownLinks.parseLine(md) {
+                var lastURL: URL?
+                for run in parsed.runs {
+                    guard let url = run.link else { lastURL = nil; continue }
+                    let text = String(parsed[run.range].characters)
+                    if url == lastURL, var last = links.popLast() {
+                        last["text"] = (last["text"] as? String ?? "") + text
+                        links.append(last)
+                    } else {
+                        links.append(["text": text, "url": url.absoluteString])
+                    }
+                    lastURL = url
+                }
+            }
+            results.append(["name": name, "links": links])
         }
         h.state["results"] = results
     }
@@ -118,24 +163,46 @@ extension SharedFixtureTests {
         for (stepId, answers) in (session["session_store"]?.foundation as? [String: Any]) ?? [:] {
             if let d = answers as? [String: Any] { store[stepId] = d }
         }
-        // `action.select = {step, block_id, option_id}`: an EARLIER step, resolved through the REAL
-        // pipeline with the same answers, and the option the user picked there, recorded by the REAL
+        // The TemplateEngine roots (`input`, `onboarding`) read the session store, on the onboarding
+        // surface — as the router's context does.
+        let base = fixtureTemplateContext(f)
+        let templateContext = TemplateContext(
+            userTraits: base.userTraits, remoteConfig: base.remoteConfig, onboardingResponses: store,
+            computedData: [:], sessionData: base.sessionData, deviceInfo: [:], surface: .onboarding
+        )
+        // `action.select = {step, block_id, option_id | option_ids, in_sheet?, override?,
+        // field_options_overrides?}` (or a list of them, picked in order): an EARLIER step, resolved
+        // through the REAL pipeline with the same answers and the picks before it, drawn as its
+        // renderer draws it, and the option(s) the user picked there, recorded by the REAL
         // `SelectedOptionStore` — the `selected` root this step reads.
         var selected: [String: Any] = [:]
-        if let pick = f.action.raw["select"]?.objectValue {
+        let picks: [[String: AnyJSON]] = f.action.raw["select"].map { $0.arrayValue?.compactMap(\.objectValue) ?? [$0.objectValue].compactMap { $0 } } ?? []
+        let selectedStore = SelectedOptionStore()
+        for pick in picks {
             guard let pickJSON = pick["step"]?.foundation, let pickData = try? JSONSerialization.data(withJSONObject: pickJSON),
                   let pickStep = try? JSONDecoder().decode(OnboardingStep.self, from: pickData) else {
                 return XCTFail("[\(f.id)] action.select.step did not decode")
             }
+            var pickOptions: [String: [InputOption]] = [:]
+            for (blockId, options) in pick["field_options_overrides"]?.objectValue ?? [:] {
+                pickOptions[blockId] = Self.decodeOptions(options)
+            }
             let resolvedPick = OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
-                step: pickStep, override: nil, pending: false, inputValues: [:],
-                responses: accumulated, templateContext: fixtureTemplateContext(f), selected: [:],
-                fieldConfigOverrides: [:], fieldOptionsOverrides: [:]
+                step: pickStep, override: Self.creditOverride(pick["override"]), pending: false, inputValues: [:],
+                responses: accumulated, templateContext: templateContext, selected: selected,
+                fieldConfigOverrides: [:], fieldOptionsOverrides: pickOptions
             ))
-            // The picked Select at any depth: a container's child records its pick like a top-level one.
-            // `in_sheet = {block_id, option_id}`: the Select is drawn in that option's sheet, as the
-            // sheet's renderer draws it (`displayBlock`, the sheet's deferred paths applied).
-            var pickBlocks = resolvedPick.blocks
+            // The picked Select at any depth: a container's child records its pick like a top-level one,
+            // drawn as the step's renderer draws it (`displayBlock`: a block the raw pass did not
+            // produce goes through the view-level pass). `in_sheet = {block_id, option_id}`: the Select
+            // is drawn in that option's sheet, as the sheet's renderer draws it.
+            var pickBlocks = Self.withShared(selected) {
+                resolvedPick.blocks.map {
+                    OnboardingStepPipeline.displayBlock(
+                        $0, rawResolved: resolvedPick.isRawResolved($0.id), hookData: nil, responses: accumulated, stepInputs: [:]
+                    )
+                }
+            }
             if let inSheet = pick["in_sheet"]?.objectValue {
                 let owner = Self.findBlock(inSheet["block_id"]?.stringValue, in: resolvedPick.blocks)
                 let opened = owner?.field_options?.first { ($0.id ?? $0.value) == inSheet["option_id"]?.stringValue }
@@ -143,14 +210,23 @@ extension SharedFixtureTests {
                     OnboardingStepPipeline.displayBlock($0, rawResolved: true, hookData: nil, responses: [:], stepInputs: [:])
                 }
             }
-            guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks),
-                  let option = block.field_options?.first(where: { ($0.id ?? $0.value) == pick["option_id"]?.stringValue }) else {
-                return XCTFail("[\(f.id)] the picked option is not on the resolved step")
+            guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks) else {
+                return XCTFail("[\(f.id)] the picked block is not on the resolved step")
             }
-            let selectedStore = SelectedOptionStore()
-            selectedStore.record(fieldId: block.field_id ?? block.id, option: option)
+            let fieldId = block.field_id ?? block.id
+            if let ids = pick["option_ids"]?.arrayValue?.compactMap(\.stringValue) {
+                let options = ids.compactMap { id in block.field_options?.first { ($0.id ?? $0.value) == id } }
+                guard options.count == ids.count else { return XCTFail("[\(f.id)] a picked option is not on the resolved step") }
+                selectedStore.record(fieldId: fieldId, options: options)
+                h.state["selected_label"] = options.last?.label ?? NSNull()
+            } else {
+                guard let option = block.field_options?.first(where: { ($0.id ?? $0.value) == pick["option_id"]?.stringValue }) else {
+                    return XCTFail("[\(f.id)] the picked option is not on the resolved step")
+                }
+                selectedStore.record(fieldId: fieldId, option: option)
+                h.state["selected_label"] = option.label ?? NSNull()
+            }
             selected = selectedStore.snapshot
-            h.state["selected_label"] = option.label ?? NSNull()
         }
         let answers = GoogleCredit.Answers(accumulated: accumulated, stepInputs: stepInputs, sessionStore: store, selected: selected)
 
@@ -172,7 +248,7 @@ extension SharedFixtureTests {
         let resolveStep = {
             OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
                 step: step, override: override, pending: false, inputValues: stepInputs,
-                responses: accumulated, templateContext: self.fixtureTemplateContext(f), selected: [:],
+                responses: accumulated, templateContext: templateContext, selected: selected,
                 fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
             ))
         }
@@ -213,14 +289,26 @@ extension SharedFixtureTests {
                                               next_step_rules: step.next_step_rules, name: step.name)
                     let resolved = OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
                         step: bare, override: override, pending: false, inputValues: stepInputs,
-                        responses: accumulated, templateContext: self.fixtureTemplateContext(f), selected: [:],
+                        responses: accumulated, templateContext: templateContext, selected: selected,
                         fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
                     ))
-                    out = (resolved.config.content_blocks ?? []).map {
-                        OnboardingStepPipeline.displayBlock(
-                            $0, rawResolved: resolved.isRawResolved($0.id),
-                            hookData: nil, responses: accumulated, stepInputs: stepInputs
-                        )
+                    // The view-level pass reads the `selected` root from the shared store.
+                    out = Self.withShared(selected) {
+                        (resolved.config.content_blocks ?? []).map {
+                            OnboardingStepPipeline.displayBlock(
+                                $0, rawResolved: resolved.isRawResolved($0.id),
+                                hookData: nil, responses: accumulated, stepInputs: stepInputs
+                            )
+                        }
+                    }
+                case "screen":
+                    // A Screen draws the same blocks through the view-level pass with the surface a
+                    // Screen's renderer has (`appdnaTemplateSurface`'s default): no Google credit there.
+                    out = Self.withShared(selected) {
+                        (step.config.content_blocks ?? []).map {
+                            resolveBlockTemplates($0, hookData: nil, responses: accumulated, stepInputs: stepInputs,
+                                                  surface: EnvironmentValues().appdnaTemplateSurface)
+                        }
                     }
                 case "sheet": out = drawnSheet()
                 default: out = resolveStep().blocks
@@ -228,12 +316,7 @@ extension SharedFixtureTests {
                 cache[via] = out
                 return out
             }
-            var legacyContext = fixtureTemplateContext(f)
-            legacyContext = TemplateContext(
-                userTraits: legacyContext.userTraits, remoteConfig: legacyContext.remoteConfig,
-                onboardingResponses: store, computedData: [:], sessionData: legacyContext.sessionData,
-                deviceInfo: [:], surface: .onboarding
-            )
+            let legacyContext = templateContext
             var out: [String: Any] = [:]
             for r in reads {
                 guard let o = r.objectValue, let name = o["name"]?.stringValue, let key = o["key"]?.stringValue else {
@@ -254,7 +337,11 @@ extension SharedFixtureTests {
                     continue
                 }
                 let block = Self.findBlock(o["block_id"]?.stringValue, in: blocks(via))
-                if let optionId = o["option_id"]?.stringValue {
+                if let planId = o["plan_id"]?.stringValue {
+                    // What a pick of the plan stores (`selected_plan_label`).
+                    guard key == "stored_plan_label" else { return XCTFail("[\(f.id)] read \(name): unknown plan key \(key)") }
+                    value = block?.pricing_plans?.first { $0.id == planId }?.storedLabel
+                } else if let optionId = o["option_id"]?.stringValue {
                     let option = block?.field_options?.first { ($0.id ?? $0.value) == optionId }
                     switch key {
                     case "label": value = option?.label
@@ -305,6 +392,16 @@ extension SharedFixtureTests {
                 blockId: blockId, optionId: optionId, presentedSheetBlocks: presented, sheetInputs: inputs
             )
         }
+    }
+
+    /// `body` run with the shared `SelectedOptionStore` holding `selected` — the store the view-level
+    /// pass reads the `selected` root from — and emptied after.
+    static func withShared<T>(_ selected: [String: Any], _ body: () -> T) -> T {
+        let store = SelectedOptionStore.shared
+        store.resetForTesting()
+        for (field, value) in selected { store.seedForTesting(fieldId: field, value: value) }
+        defer { store.resetForTesting() }
+        return body()
     }
 
     /// The block with `id` among `blocks` at any depth: `children`, `stack_children` and option sheets.
