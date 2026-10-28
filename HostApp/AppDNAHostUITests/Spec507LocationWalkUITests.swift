@@ -1,7 +1,7 @@
 import XCTest
 
 /**
- SPEC-507 §8.1 / §8.2 — the location-field device walks, screen by screen.
+ The location-field device walks, screen by screen.
 
  The flow is synthetic (one location `type` per step, block and form-step surfaces): city block,
  address block, region block, address form step, country form step, a done step. Each method walks

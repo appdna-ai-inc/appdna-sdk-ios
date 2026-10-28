@@ -57,7 +57,7 @@ struct ContentView: View {
      whenever the event mirror changes, removes the hidden dependency.
      */
     @State private var locationReadback = "not read yet"
-    /// SPEC-507 §8 — the RAW stored responses bucket, sorted-key JSON, so a walk reads every key the SDK
+    /// The RAW stored responses bucket, sorted-key JSON, so a walk reads every key the SDK
     /// persisted (`mapbox_id` included) whatever `LocationData` version the host is built against.
     @State private var responsesRaw = "not read yet"
 
