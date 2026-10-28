@@ -57,6 +57,11 @@ extension SharedFixtureTests {
                     } else {
                         rig.reply(status: Int(op["status"]?.doubleValue ?? 0), body: op["body"]?.foundation ?? NSNull())
                     }
+                // The field goes away (the step advanced): what the view's `onDisappear` and the
+                // step's settlement both run.
+                case "detach": rig.holder.detach()
+                // The user leaves the field (focus lost).
+                case "editing_ended": rig.holder.editingEnded()
                 case "store_answer":
                     let v = op["value"]?.foundation
                     rig.storeFromOutside(v is NSNull ? nil : v)

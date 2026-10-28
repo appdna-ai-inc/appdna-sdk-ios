@@ -14,6 +14,9 @@ struct FormStepView: View {
     /// #985 — which field has the keyboard, so `focus_border_color` has a state to apply to.
     @FocusState private var focusedFieldId: String?
     @State private var showValidationToast = false
+    /// The step's Location fields register here, so Continue can settle a field whose resolve is
+    /// still in flight (it stores the typed text) before the answers are submitted.
+    @State private var locationSettlement = LocationAdvanceSettlement()
 
     private var fields: [FormField] { config.fields ?? [] }
 
@@ -123,6 +126,7 @@ struct FormStepView: View {
             restoreSavedValues()
             initializeDefaults()
         }
+        .environment(\.locationAdvanceSettlement, locationSettlement)
     }
 
     // MARK: - Field visibility
@@ -705,7 +709,12 @@ struct FormStepView: View {
                     response[key] = val
                 }
             }
-            onNext(response)
+            // The step advances: a Location field whose resolve is still in flight stores the text
+            // the user typed (into `values`, through its holder), and its late reply is dropped. Only
+            // here, after validation: a REQUIRED field with a resolve in flight has no answer, so
+            // `canSubmit` is false and Continue stays gated. `response` was built from `values`
+            // above, so the settled answers are added to it directly.
+            onNext(locationSettlement.settleInto(response))
         }
     }
 

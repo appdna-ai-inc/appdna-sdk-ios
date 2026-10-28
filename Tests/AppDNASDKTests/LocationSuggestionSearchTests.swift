@@ -312,16 +312,59 @@ final class LocationSuggestionSearchTests: XCTestCase {
         XCTAssertFalse(rig.holder.isResolving)
     }
 
-    /// "A reply that arrives after the step has advanced is dropped" — the view's `onDisappear`
-    /// detaches the holder.
-    func testAReplyAfterTheViewWentAwayIsDropped() {
+    // MARK: - The step advances while a resolve is in flight
+
+    /// The view goes away (`detach`) with a resolve in flight: the field stores the text the user had
+    /// typed at the tap — the resolve's `raw_query` — as for any failed resolve, and the late reply
+    /// changes nothing. Red control: `detach` without the settle → nothing stored (the typed text is
+    /// lost) and this fails on the first assertion.
+    func testDetachWhileResolvingStoresTheTypedTextAndDropsTheLateReply() {
         let rig = staleListTap()
-        let writes = rig.storeWrites
+        XCTAssertTrue(rig.holder.isResolving, "precondition: the resolve is held in flight")
+        XCTAssertNil(rig.stored, "precondition: nothing stored while it is")
         rig.holder.detach()
+        XCTAssertEqual(rig.stored as? String, "12 Example Av", "the typed text at the tap is stored")
+        XCTAssertFalse(rig.holder.isResolving)
+        let writes = rig.storeWrites
         rig.reply(status: 200, body: Self.resolvedReply())
-        XCTAssertEqual(rig.storeWrites, writes, "nothing written after detach")
-        XCTAssertNil(rig.stored)
-        XCTAssertEqual(rig.holder.text, "12 Example Av")
+        XCTAssertEqual(rig.storeWrites, writes, "the late reply writes nothing")
+        XCTAssertEqual(rig.stored as? String, "12 Example Av")
+        XCTAssertEqual(rig.holder.text, "12 Example Av", "the late reply does not set the field text")
+    }
+
+    /// The step's settlement (what Continue runs before it submits) does the same, and reports the
+    /// answer under the field's id so the step can add it to a payload it already built. A second
+    /// settle, and a settle with nothing in flight, write nothing.
+    func testTheStepSettlementStoresTheTypedTextBeforeTheStepSubmits() {
+        let rig = staleListTap()
+        let settlement = LocationAdvanceSettlement()
+        settlement.register(fieldId: "where", holder: rig.holder)
+        let payload = settlement.settleInto(["action": "next"])
+        XCTAssertEqual(payload?["where"] as? String, "12 Example Av", "the submitted payload carries the typed text")
+        XCTAssertEqual(payload?["action"] as? String, "next")
+        XCTAssertEqual(rig.stored as? String, "12 Example Av", "and the field's answer holds it")
+        let writes = rig.storeWrites
+        XCTAssertTrue(settlement.settle().isEmpty, "nothing is in flight any more")
+        rig.reply(status: 200, body: Self.resolvedReply())
+        rig.holder.detach()
+        XCTAssertEqual(rig.storeWrites, writes, "the late reply and the later detach write nothing")
+        XCTAssertEqual(rig.stored as? String, "12 Example Av")
+    }
+
+    /// With no resolve in flight, `detach` and the settlement write nothing: a resolved answer stays
+    /// the resolved answer.
+    func testDetachWithNoResolveInFlightWritesNothing() throws {
+        let rig = staleListTap()
+        rig.reply(status: 200, body: Self.resolvedReply())
+        let resolved = try XCTUnwrap(rig.stored as? [String: Any])
+        let writes = rig.storeWrites
+        let settlement = LocationAdvanceSettlement()
+        settlement.register(fieldId: "where", holder: rig.holder)
+        XCTAssertTrue(settlement.settle().isEmpty, "the settlement settles nothing")
+        rig.holder.detach()
+        XCTAssertEqual(rig.storeWrites, writes, "detach writes nothing")
+        XCTAssertEqual((rig.stored as? [String: Any])?["mapbox_id"] as? String, resolved["mapbox_id"] as? String,
+                       "the resolved answer is kept")
     }
 
     /// A second tap supersedes the first: the first reply is dropped.

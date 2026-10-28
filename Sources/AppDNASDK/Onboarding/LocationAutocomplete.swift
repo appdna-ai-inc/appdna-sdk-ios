@@ -235,6 +235,10 @@ final class LocationSuggestionSearch: ObservableObject {
     /// Bumped by every tap, every user edit and `detach`, so a resolve reply for a superseded tap is
     /// dropped: "the field's current text decides".
     private var resolveGeneration = 0
+    /// The text the user had typed when the resolve in flight was tapped — that resolve's
+    /// `raw_query`, and the answer `settleResolveInFlight` stores if the step advances before the
+    /// reply. nil when no resolve is in flight.
+    private var resolvingTyped: String?
 
     /// Production: the live autocomplete and resolve calls, on a main-queue debounce. `client` is read
     /// when each request is made, not when the field is built, so a field shown before the SDK
@@ -285,12 +289,32 @@ final class LocationSuggestionSearch: ObservableObject {
         self.store = store
     }
 
-    /// The view went away (the step advanced, or the user navigated back): a resolve reply that
-    /// arrives now is dropped, and a pending search never fires.
+    /// The view went away (the step advanced, or the user navigated back): a resolve in flight is
+    /// settled first (`settleResolveInFlight` — the typed text is stored), so a reply that arrives now
+    /// is dropped, and a pending search never fires.
+    ///
+    /// The views call this from `onDisappear`, which runs AFTER the step has already submitted its
+    /// answers. So the step settles its fields itself, before it hands the payload on
+    /// (`LocationAdvanceSettlement`); this call covers every other way the field goes away.
     func detach() {
+        settleResolveInFlight()
         store = nil
-        dropResolveInFlight()
         cancelSearch()
+    }
+
+    /// The step is advancing while a tap's resolve is in flight (an optional field's Continue): the
+    /// field stores the text the user had typed when they tapped, as for any failed resolve, and the
+    /// late reply is dropped — so nothing the user typed is lost. The write goes through the store
+    /// BEFORE the reply is dropped.
+    ///
+    /// Returns the answer written, or nil when no resolve was in flight (nothing is written then).
+    @discardableResult
+    func settleResolveInFlight() -> Any? {
+        guard isResolving else { return nil }
+        let answer: Any? = resolvingTyped.flatMap { $0.isEmpty ? nil : LocationAnswer.typed($0) }
+        if let answer { write(answer) }
+        dropResolveInFlight()
+        return answer
     }
 
     /// The view saw its stored answer change. The restore is REACTIVE: on an absent →
@@ -420,10 +444,12 @@ final class LocationSuggestionSearch: ObservableObject {
         }
         write(nil)
         isResolving = true
+        resolvingTyped = typed
         let generation = resolveGeneration
         resolve(body) { [weak self] outcome in
             guard let self, generation == self.resolveGeneration else { return }
             self.isResolving = false
+            self.resolvingTyped = nil
             switch outcome {
             case .resolved(let location):
                 let answer = LocationAnswer.selection(from: location, rawQuery: typed)
@@ -467,6 +493,7 @@ final class LocationSuggestionSearch: ObservableObject {
 
     private func dropResolveInFlight() {
         resolveGeneration += 1
+        resolvingTyped = nil
         isResolving = false
     }
 

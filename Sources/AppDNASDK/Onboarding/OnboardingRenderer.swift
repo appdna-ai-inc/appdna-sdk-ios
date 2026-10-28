@@ -1587,7 +1587,9 @@ struct OnboardingStepRouter: View {
     var configOverride: StepConfigOverride? = nil
     /// This presentation is still waiting on `onBeforeStepRender`.
     var hostDataPending: Bool = false
-    let onNext: ([String: Any]?) -> Void
+    /// The flow host's advance. Called only through `onNext(_:)`, which settles the step's location
+    /// fields first.
+    private let forwardNext: ([String: Any]?) -> Void
     let onSkip: () -> Void
     /**
      #1014 — WHAT A TAP ON THIS STEP'S CONTENT SHOULD DO.
@@ -1667,6 +1669,17 @@ struct OnboardingStepRouter: View {
     @State private var permissionSettingsAlert: PermissionSettingsAlert?
     @State private var inputValues: [String: Any]
     @State private var showValidationToast = false
+    /// The step's location fields register here. Every advance goes through `onNext(_:)`, after the
+    /// step's own required gate, so settling there stores the typed text of a field whose resolve is
+    /// still in flight before the answers leave the step. The fields' own `onDisappear` runs too late
+    /// for that.
+    @State private var locationSettlement = LocationAdvanceSettlement()
+
+    /// Every advance of this step: settles its location fields, adding the typed text of any whose
+    /// resolve is still in flight to the payload, then hands the payload to the flow host.
+    private func onNext(_ data: [String: Any]?) {
+        forwardNext(locationSettlement.settleInto(data))
+    }
     /// Per-block `field_config` overrides pushed back by the host delegate
     /// (`ElementInteractionResult.fieldConfigPatches`). Keyed by blockId → (key → value). Layered at
     /// render time on top of the resolved block; empty = zero change.
@@ -1689,7 +1702,7 @@ struct OnboardingStepRouter: View {
         self.configOverride = configOverride
         self.hostDataPending = hostDataPending
         self.pendingProvider = pendingProvider
-        self.onNext = onNext
+        self.forwardNext = onNext
         self.onSkip = onSkip
         self.onContentTap = onContentTap
         self.flowId = flowId
@@ -1769,6 +1782,7 @@ struct OnboardingStepRouter: View {
                         presentation: presentation, coordinator: coordinator,
                         pending: livePending, fire: handleInteract
                     ))
+                    .environment(\.locationAdvanceSettlement, locationSettlement)
             } else {
                 legacyStepView
             }

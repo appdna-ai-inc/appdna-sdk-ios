@@ -2681,6 +2681,9 @@ struct FormInputLocationPlaceholderBlock: View {
     /// list with its listing requests, the text, the tap → resolve and the dropdown. It replaces the
     /// view's own `text` / `showResults` and the timing-dependent `isRestoringFromSaved` flag.
     @StateObject private var searchCompleter: LocationSuggestionSearch
+    /// The step's settlement: the step settles this field when it advances (a resolve in flight
+    /// stores the typed text). `onDisappear` runs only after the step has handed its answers on.
+    @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
 
     init(block: ContentBlock, inputValues: Binding<[String: Any]>) {
         self.block = block
@@ -2879,10 +2882,12 @@ struct FormInputLocationPlaceholderBlock: View {
                     values.wrappedValue.removeValue(forKey: fieldId)
                 }
             })
+            locationSettlement?.register(fieldId: fieldId, holder: searchCompleter)
             searchCompleter.storedAnswerChanged(inputValues[fieldId])
         }
         .onDisappear {
-            // A resolve reply that arrives after the step has advanced is dropped.
+            // A resolve still in flight stores the typed text, and its late reply is dropped.
+            locationSettlement?.unregister(searchCompleter)
             searchCompleter.detach()
         }
     }

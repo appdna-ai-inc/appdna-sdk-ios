@@ -135,6 +135,9 @@ struct LocationFieldView: View {
 
     @StateObject private var locationSearch: LocationSuggestionSearch
     @FocusState private var isFocused: Bool
+    /// The form step's settlement: Continue settles this field before it submits (a resolve in
+    /// flight stores the typed text). `onDisappear` runs only after the answers were submitted.
+    @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
 
     init(field: FormField, value: Binding<Any?>, apiClient: APIClient?) {
         self.field = field
@@ -278,6 +281,7 @@ struct LocationFieldView: View {
         }
         .onAppear {
             locationSearch.attach(store: { newValue in value = newValue })
+            locationSettlement?.register(fieldId: field.id, holder: locationSearch)
             locationSearch.storedAnswerChanged(value)
             // Pre-warm the iOS keyboard subsystem so the first keystroke
             // doesn't show the 200-400ms lag customers see on empty-field
@@ -288,7 +292,8 @@ struct LocationFieldView: View {
             KeyboardPrewarmer.prewarmOnce()
         }
         .onDisappear {
-            // A resolve reply that arrives after the step has advanced is dropped.
+            // A resolve still in flight stores the typed text, and its late reply is dropped.
+            locationSettlement?.unregister(locationSearch)
             locationSearch.detach()
         }
     }
