@@ -435,6 +435,12 @@ public final class AppDNA: @unchecked Sendable {
     /// The live `EventTracker`, so a test can observe an event actually reaching the pipeline rather
     /// than merely observing that `track()` did not throw. Its `eventSink` fires on every enqueue.
     internal static var eventTrackerForTesting: EventTracker? { shared.eventTracker }
+    /// The SDK's API client, for a test that drives a real view through the geocoding routes (the
+    /// network itself stubbed by a URL protocol). Production sets it only in `configure`.
+    internal static var apiClientForTesting: APIClient? {
+        get { shared.apiClient }
+        set { shared.apiClient = newValue }
+    }
 
     /// Test-only: install a capturing tracker as the SDK's event tracker (under the same
     /// lock `configure` publishes it under), so a test can drive the PUBLIC `AppDNA.track`. Mirrors

@@ -332,7 +332,7 @@ struct OnboardingFlowHost: View {
                 Color(hex: chatBg)
             } else if step.type == .interactive_chat {
                 // Chat step fallback default (dark)
-                Color(hex: "#0F172A")
+                Color(hex: GoogleMapsAttribution.interactiveChatBackground)
             } else {
                 Color(.systemBackground)
             }
@@ -1700,6 +1700,8 @@ struct OnboardingStepRouter: View {
     private var fieldOptionsOverrides: [String: [InputOption]] { fieldOptionsOverridesByPresentation[presentation] ?? [:] }
     /// Memo of the step pipeline (raw pass → decode → override merge → layering).
     @State private var pipelineMemo = OnboardingStepPipelineMemo()
+    /// Memo of the step's Google credit (`GoogleCreditMemo`).
+    @State private var googleCreditMemo = GoogleCreditMemo()
 
     init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
@@ -1788,28 +1790,34 @@ struct OnboardingStepRouter: View {
 
     /// Whether this step's text templates a Google answer: computed here, from the step's own source
     /// and the answers, before anything renders — so there is no child-to-parent report and no stale
-    /// first frame.
+    /// first frame. Memoised (`GoogleCreditMemo`): a body pass runs on every keystroke.
     private var showsGoogleCredit: Bool {
-        GoogleCredit.shows(
+        googleCreditMemo.shows(
             step: step, override: liveConfigOverride,
             fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides,
             answers: googleCreditAnswers
         )
     }
 
-    /// What the option sheets on this step need to decide their own credit.
+    /// What the option sheets on this step need to decide their own credit. The index is built from
+    /// the memo's sources when a sheet first asks, and kept until what the step draws changes.
     private var googleCreditSheetContext: GoogleCreditSheetContext {
-        let step = step, override = liveConfigOverride
+        let memo = googleCreditMemo, step = step, override = liveConfigOverride
         let fieldConfigOverrides = fieldConfigOverrides, fieldOptionsOverrides = fieldOptionsOverrides
         return GoogleCreditSheetContext(
-            sources: {
-                GoogleCredit.stepSources(
+            index: {
+                memo.sheetIndex(
                     step: step, override: override,
                     fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
                 )
             },
             answers: googleCreditAnswers
         )
+    }
+
+    /// Where the step's Google attribution sits: the colour the flow host actually draws behind it.
+    private var googleAttributionBackdrop: GoogleMapsAttribution.Backdrop {
+        GoogleMapsAttribution.backdrop(ofStep: effectiveConfig, type: step.type)
     }
 
     var body: some View {
@@ -1834,12 +1842,12 @@ struct OnboardingStepRouter: View {
             // Google's attribution, in the step's own container, when its text shows a Google
             // answer's content.
             if showsGoogleCredit {
-                GoogleMapsTextAttribution(backdrop: GoogleMapsAttribution.backdrop(of: effectiveConfig.background))
+                GoogleMapsTextAttribution(backdrop: googleAttributionBackdrop)
                     .padding(.top, 4)
                     .padding(.bottom, 8)
             }
         }
-        .environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(of: effectiveConfig.background))
+        .environment(\.googleAttributionBackdrop, googleAttributionBackdrop)
         .environment(\.googleCreditSheetContext, googleCreditSheetContext)
         // Background is rendered at the OnboardingFlowHost level (full-screen behind nav bar)
         // Keyboard dismiss handled by ScrollView .scrollDismissesKeyboard in ThreeZoneStepLayout

@@ -65,6 +65,43 @@ enum GoogleMapsAttribution {
         }
     }
 
+    /// What the flow host draws behind a step (`stepFullScreenBackground`), in its order: the step's
+    /// background; a chat step's own colour; a chat step's dark default; else the system background.
+    /// The attribution's variant is picked from THIS, not from the appearance alone — a chat step is
+    /// dark in a light appearance.
+    static func backdrop(ofStep config: StepConfig, type: OnboardingStep.StepType) -> Backdrop {
+        if let background = config.background { return backdrop(of: background) }
+        if let chat = config.chat_config?.style?.background_color { return .plain(hex: chat) }
+        if type == .interactive_chat { return .plain(hex: interactiveChatBackground) }
+        return .plain(hex: nil)
+    }
+
+    /// The flow host's default behind an `interactive_chat` step.
+    static let interactiveChatBackground = "#0F172A"
+
+    /// What a Screen draws behind its sections (`ScreenRenderer.backgroundView`): a gradient or an image
+    /// is busy, as is a translucent colour; a colour is plain; nothing authored is the system background.
+    static func backdrop(ofScreen background: BackgroundConfig?) -> Backdrop {
+        guard let background else { return .plain(hex: nil) }
+        switch background.type {
+        case "gradient":
+            return background.gradient?.start != nil && background.gradient?.end != nil ? .busy : .plain(hex: nil)
+        case "image":
+            return background.image_url != nil ? .busy : .plain(hex: nil)
+        default:
+            guard let color = background.color else { return .plain(hex: nil) }
+            return (background.opacity ?? 1) < 1 ? .busy : .plain(hex: color)
+        }
+    }
+
+    /// What a Screen section draws behind its content: its own fill, else what is behind it.
+    static func backdrop(ofSection style: SectionStyle?, behind: Backdrop) -> Backdrop {
+        guard let style else { return behind }
+        if style.background_gradient?.start != nil, style.background_gradient?.end != nil { return .busy }
+        if let color = style.background_color { return .plain(hex: color) }
+        return behind
+    }
+
     /// The variant for a backdrop. A known plain colour decides by its own luminance; the system
     /// background and a busy one follow the appearance.
     static func variant(on backdrop: Backdrop, darkAppearance: Bool) -> Variant {

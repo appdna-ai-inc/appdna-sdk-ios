@@ -58,30 +58,45 @@ enum GoogleCredit {
 
     // MARK: - The step
 
-    /// The step's source, as the walk reads it: the step encoded (its `config` and its raw blocks),
-    /// the config after the host's override is merged (the override itself is not `Codable`), and the
-    /// interaction patches the router layers on (`fieldConfigOverrides` / `fieldOptionsOverrides`).
+    /// The step's source, as the walk reads it. Only what can be DRAWN is walked, so a key or an entry
+    /// nothing renders never credits:
+    /// - the step's `config` as the SDK decodes it (a key the decoder drops is never drawn);
+    /// - each content block as published, because the raw host-data pass resolves the published block
+    ///   before it is decoded (`data_templates` render from keys the typed block does not hold);
+    /// - the config after the host's override is merged, as the renderer merges it (the override itself
+    ///   is not `Codable`): an override's options for a block the step does not hold are dropped;
+    /// - the interaction patches the router layers on (`fieldConfigOverrides` /
+    ///   `fieldOptionsOverrides`), for the blocks they are layered onto — the step's top-level blocks.
     static func stepSources(
         step: OnboardingStep,
         override: StepConfigOverride?,
         fieldConfigOverrides: [String: [String: Any]],
         fieldOptionsOverrides: [String: [InputOption]]
     ) -> [Any] {
+        sourcesBuilt += 1
         var sources: [Any] = []
-        if let encoded = encodeToJSON(step) { sources.append(encoded) }
-        // Without an override the merged config IS `step.config`, already in the encoded step.
-        if override != nil, let merged = encodeToJSON(StepConfigOverrideMerger.apply(override, to: step.config)) {
-            sources.append(merged)
-        }
-        if !fieldConfigOverrides.isEmpty { sources.append(fieldConfigOverrides) }
-        if !fieldOptionsOverrides.isEmpty, let options = encodeToJSON(fieldOptionsOverrides) {
+        if let config = encodeToJSON(step.config) { sources.append(config) }
+        if let raw = step.rawContentBlocks, let encoded = encodeToJSON(raw) { sources.append(encoded) }
+        // Without an override the merged config IS `step.config`, already walked.
+        let merged = override.map { StepConfigOverrideMerger.apply($0, to: step.config) }
+        if let merged, let encoded = encodeToJSON(merged) { sources.append(encoded) }
+        // A patch reaches the screen only through a block the step draws.
+        let drawn = Set(((merged ?? step.config).content_blocks ?? []).map(\.id))
+        let patches = fieldConfigOverrides.filter { drawn.contains($0.key) }
+        if !patches.isEmpty { sources.append(patches) }
+        let options = fieldOptionsOverrides.filter { drawn.contains($0.key) }
+        if !options.isEmpty, let encoded = encodeToJSON(options) {
             // Keyed by block id, as the router keys them; kept as `{id, field_options}` objects so the
             // sheet index below files each option's sheet under its block.
-            let byBlock = (options as? [String: Any] ?? [:]).map { ["id": $0.key, "field_options": $0.value] as [String: Any] }
+            let byBlock = (encoded as? [String: Any] ?? [:]).map { ["id": $0.key, "field_options": $0.value] as [String: Any] }
             sources.append(byBlock)
         }
         return sources
     }
+
+    /// How many times `stepSources` has encoded a step. Read by the tests that hold the router to one
+    /// encode per change of what the step draws, not one per body pass.
+    static var sourcesBuilt = 0
 
     /// The step's credit: its own walk, `sheet_blocks` skipped.
     static func shows(sources: [Any], answers: Answers) -> Bool {
@@ -119,6 +134,16 @@ enum GoogleCredit {
     }
 
     static func sheetKey(blockId: String, optionId: String) -> String { "\(blockId)\u{1F}\(optionId)" }
+
+    /// The source of the sheet `optionId` opens on `blockId`. An option a `repeat` generated is
+    /// `<template id>__<n>`, and it opens its TEMPLATE's sheet: the index holds that one, filed under
+    /// the template's id, as authored.
+    static func sheetSource(in index: [String: [Any]], blockId: String, optionId: String) -> [Any]? {
+        if let own = index[sheetKey(blockId: blockId, optionId: optionId)] { return own }
+        guard let r = optionId.range(of: "__", options: .backwards),
+              !optionId[r.upperBound...].isEmpty, optionId[r.upperBound...].allSatisfy(\.isNumber) else { return nil }
+        return index[sheetKey(blockId: blockId, optionId: String(optionId[..<r.lowerBound]))]
+    }
 
     /// A sheet's credit: its own blocks, its `step` root its own inputs, every other root the step's.
     static func sheetShows(sheetBlocks: [Any], sheetInputs: [String: Any], answers: Answers) -> Bool {
@@ -210,6 +235,26 @@ enum GoogleCredit {
         return false
     }
 
+    /// Where each Google answer sits among the answers, one path per answer (root first, segments
+    /// joined by a unit separator): `pathCredits` reaches a Google answer exactly when its path and one
+    /// of these is a prefix of the other, so the walk's answer depends on the answers only through
+    /// these. Empty when no Google answer is held.
+    static func googlePaths(_ answers: Answers) -> [String] {
+        var out: [String] = []
+        func collect(_ value: Any, _ path: String) {
+            if LocationAnswer.carriesPlaceId(value) { out.append(path); return }
+            if let d = dictionary(value) {
+                for (k, v) in d { collect(v, path + "\u{1F}" + k) }
+            } else if let a = value as? [Any] {
+                for (i, v) in a.enumerated() { collect(v, path + "\u{1F}" + String(i)) }
+            }
+        }
+        for (i, r) in answers.responses.enumerated() { collect(r, "responses\(i)") }
+        collect(answers.step, "step")
+        collect(answers.onboarding, "onboarding")
+        return out.sorted()
+    }
+
     // MARK: - Helpers
 
     private static func indexSheets(_ value: Any, into out: inout [String: [Any]]) {
@@ -249,21 +294,127 @@ enum GoogleCredit {
 /// Handed down from the step to the option sheets it can open (SwiftUI's environment reaches `.sheet`
 /// content). A sheet looks up its own source by block and option, and walks it with its own inputs.
 struct GoogleCreditSheetContext {
-    let sources: () -> [Any]
+    /// Every option sheet in the step's sources, by `GoogleCredit.sheetKey` (built on demand).
+    let index: () -> [String: [Any]]
     let answers: GoogleCredit.Answers
 
-    /// The credit for the sheet of `optionId` on `blockId`. A sheet whose source is not found (an
-    /// option a `repeat` template generated) walks the presented blocks instead.
+    init(index: @escaping () -> [String: [Any]], answers: GoogleCredit.Answers) {
+        self.index = index
+        self.answers = answers
+    }
+
+    init(sources: @escaping () -> [Any], answers: GoogleCredit.Answers) {
+        self.init(index: { GoogleCredit.sheetSources(in: sources()) }, answers: answers)
+    }
+
+    /// The credit for the sheet of `optionId` on `blockId`, from the sheet's SOURCE: the presented
+    /// blocks of a raw-resolved sheet have already had every token but its `step` ones substituted, so
+    /// they no longer say what they show. An option a `repeat` generated finds its template's sheet.
+    /// Only a sheet no source holds (an Option Set's option) walks the blocks it presents.
     func shows(blockId: String?, optionId: String?, presentedSheetBlocks: [ContentBlock], sheetInputs: [String: Any]) -> Bool {
         var own = answers
         own.step = sheetInputs
         guard own.holdAGoogleAnswer else { return false }
-        let index = GoogleCredit.sheetSources(in: sources())
-        if let blockId, let optionId, let source = index[GoogleCredit.sheetKey(blockId: blockId, optionId: optionId)] {
+        if let blockId, let optionId, let source = GoogleCredit.sheetSource(in: index(), blockId: blockId, optionId: optionId) {
             return GoogleCredit.sheetShows(sheetBlocks: source, sheetInputs: sheetInputs, answers: answers)
         }
         let presented = GoogleCredit.encodeToJSON(presentedSheetBlocks) as? [Any] ?? []
         return GoogleCredit.sheetShows(sheetBlocks: presented, sheetInputs: sheetInputs, answers: answers)
+    }
+}
+
+// MARK: - The router's memo
+
+/// The step's credit, kept across body passes. Encoding the step is the cost, and a body pass runs on
+/// every keystroke once a Google answer is held; so the sources (and the sheet index) are rebuilt only
+/// when what the step draws changes — its content, the host's override, an interaction patch — and the
+/// walk re-runs only when, besides, the PLACE of a Google answer among the answers changes. The walk's
+/// answer depends on the answers only through those places (`GoogleCredit.googlePaths`), so typing
+/// into a field that holds no Google answer re-runs nothing. One instance per router (`@State`).
+///
+/// The step's content is compared the way `OnboardingStepPipelineMemo` compares it — id, raw blocks,
+/// localizations — which is what the router draws from, so the credit never disagrees with the screen.
+final class GoogleCreditMemo {
+    private struct SourcesKey: Equatable {
+        let stepId: String
+        let raw: [HostJSON]?
+        let localizations: [String: [String: String]]?
+        let override: HostJSON
+        let patches: HostJSON
+        let options: HostJSON
+    }
+
+    private var sourcesKey: SourcesKey?
+    private var sources: [Any] = []
+    private var sheetIndex: [String: [Any]]?
+    private var shownFor: (key: SourcesKey, places: [String])?
+    private var shown = false
+
+    func sources(
+        step: OnboardingStep, override: StepConfigOverride?,
+        fieldConfigOverrides: [String: [String: Any]], fieldOptionsOverrides: [String: [InputOption]]
+    ) -> [Any] {
+        let key = Self.key(step: step, override: override, fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides)
+        if key != sourcesKey {
+            sources = GoogleCredit.stepSources(
+                step: step, override: override,
+                fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
+            )
+            sourcesKey = key
+            sheetIndex = nil
+            shownFor = nil
+        }
+        return sources
+    }
+
+    /// The step's credit (`GoogleCredit.shows`).
+    func shows(
+        step: OnboardingStep, override: StepConfigOverride?,
+        fieldConfigOverrides: [String: [String: Any]], fieldOptionsOverrides: [String: [InputOption]],
+        answers: GoogleCredit.Answers
+    ) -> Bool {
+        let places = GoogleCredit.googlePaths(answers)
+        guard !places.isEmpty else { return false }
+        let s = sources(step: step, override: override, fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides)
+        if let key = sourcesKey, let last = shownFor, last.key == key, last.places == places { return shown }
+        shown = GoogleCredit.shows(sources: s, answers: answers)
+        if let key = sourcesKey { shownFor = (key, places) }
+        return shown
+    }
+
+    /// The option sheets' index (`GoogleCredit.sheetSources`), from the same sources.
+    func sheetIndex(
+        step: OnboardingStep, override: StepConfigOverride?,
+        fieldConfigOverrides: [String: [String: Any]], fieldOptionsOverrides: [String: [InputOption]]
+    ) -> [String: [Any]] {
+        let s = sources(step: step, override: override, fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides)
+        if let index = sheetIndex { return index }
+        let index = GoogleCredit.sheetSources(in: s)
+        sheetIndex = index
+        return index
+    }
+
+    private static func key(
+        step: OnboardingStep, override: StepConfigOverride?,
+        fieldConfigOverrides: [String: [String: Any]], fieldOptionsOverrides: [String: [InputOption]]
+    ) -> SourcesKey {
+        func json<T: Encodable>(_ v: T?) -> HostJSON {
+            guard let v, let any = GoogleCredit.encodeToJSON(v) else { return .null }
+            return HostJSON(any: any)
+        }
+        let o: HostJSON = override.map { o in
+            .object([
+                "title": o.title.map { .string($0) } ?? .null,
+                "subtitle": o.subtitle.map { .string($0) } ?? .null,
+                "cta": o.ctaText.map { .string($0) } ?? .null,
+                "defaults": HostJSON(any: o.fieldDefaults),
+                "options": json(o.fieldOptions),
+            ])
+        } ?? .null
+        return SourcesKey(
+            stepId: step.id, raw: step.rawContentBlocks, localizations: step.config.localizations,
+            override: o, patches: HostJSON(any: fieldConfigOverrides), options: json(fieldOptionsOverrides)
+        )
     }
 }
 

@@ -22,7 +22,13 @@ final class LocationAdvanceSettlement {
 
     func register(fieldId: String, holder: LocationSuggestionSearch) {
         entries[ObjectIdentifier(holder)] = Entry(fieldId: fieldId, holder: holder)
+        Self.registeredForTesting?(fieldId, holder)
     }
+
+    /// Test seam: told of every field that registers with a step, so a test driving a real step can
+    /// reach a field it cannot touch through the accessibility tree (one inside a scroll view). Never
+    /// set in production.
+    static var registeredForTesting: ((String, LocationSuggestionSearch) -> Void)?
 
     func unregister(_ holder: LocationSuggestionSearch) {
         entries.removeValue(forKey: ObjectIdentifier(holder))

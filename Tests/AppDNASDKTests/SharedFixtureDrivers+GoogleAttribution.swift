@@ -9,7 +9,8 @@
 //                               blocks captured and stamped as for a published flow), then
 //                               `GoogleCredit.shows(step:override:…)` — the call `OnboardingStepRouter`
 //                               makes in its body — and, for an option sheet,
-//                               `GoogleCreditSheetContext.shows`, the call the sheet makes.
+//                               `GoogleCreditSheetContext.shows`, the call the sheet makes, handed
+//                               the option's sheet blocks as the REAL pipeline resolved them.
 //
 // The dropdown's logo and the field's attribution through a tap are asserted by the
 // `location_resolve_request` kind (`list_google_logo` / `field_google_attribution` observables).
@@ -93,10 +94,20 @@ extension SharedFixtureTests {
                 },
                 answers: answers
             )
-            // The presented option, as the sheet receives it: from the typed blocks.
-            let presented = (step.config.content_blocks ?? [])
-                .first { $0.id == blockId }?.field_options?
-                .first { $0.id == optionId }?.sheet_blocks ?? []
+            // The presented option, as the sheet receives it in production: from the step the REAL
+            // pipeline resolved (raw pass → decode → override → interaction layering), so its sheet
+            // blocks have every non-`step` token substituted and a `repeat` has generated its options.
+            let resolved = OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
+                step: step, override: override, pending: false, inputValues: stepInputs,
+                responses: accumulated, templateContext: fixtureTemplateContext(f), selected: [:],
+                fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
+            ))
+            guard let option = resolved.blocks.first(where: { $0.id == blockId })?.field_options?
+                .first(where: { $0.id == optionId }) else {
+                return XCTFail("[\(f.id)] the resolved step has no option \(optionId ?? "nil") on \(blockId ?? "nil")")
+            }
+            let presented = option.sheet_blocks ?? []
+            h.state["presented_sheet_text"] = presented.compactMap(\.text)
             h.state["sheet_credit"] = context.shows(
                 blockId: blockId, optionId: optionId, presentedSheetBlocks: presented, sheetInputs: inputs
             )

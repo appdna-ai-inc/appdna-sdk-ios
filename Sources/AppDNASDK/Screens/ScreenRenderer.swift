@@ -104,6 +104,8 @@ internal struct ScreenRenderer: View {
                 HapticEngine.trigger(hapticType)
             }
         }
+        // What the screen draws behind its sections, for a Google logo kept beside a location field.
+        .environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(ofScreen: config.background))
     }
 
     // MARK: - Section Rendering
@@ -219,9 +221,23 @@ internal struct ScreenRenderer: View {
 
 // MARK: - Section Style Modifier
 
+/// A section's own fill decides the Google attribution drawn inside it; without one, what is behind it.
+private struct SectionAttributionBackdrop: ViewModifier {
+    let style: SectionStyle?
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+
+    func body(content: Content) -> some View {
+        content.environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(ofSection: style, behind: behind))
+    }
+}
+
 extension View {
-    @ViewBuilder
     func applySectionStyle(_ style: SectionStyle?) -> some View {
+        styledSection(style).modifier(SectionAttributionBackdrop(style: style))
+    }
+
+    @ViewBuilder
+    private func styledSection(_ style: SectionStyle?) -> some View {
         if let s = style {
             let radius = CGFloat(s.border_radius ?? 0)
             // #886 — through `StyleEngine.resolveShadow`, the ONE seam that says what an authored
