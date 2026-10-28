@@ -1272,7 +1272,14 @@ struct FormInputSelectBlock: View {
 
     @ViewBuilder
     private func dropdownSelectView(options: [InputOption], fieldId: String) -> some View {
-        Picker("", selection: $selectedValue) {
+        // The picker writes through `pickFromDropdown`, not `onChange(of: selectedValue)`: the
+        // setter runs on every pick, a re-pick of the current option included, which is what lets
+        // picking the same option again re-open its sheet. A programmatic change to `selectedValue`
+        // (a restore or a resync) is not a pick and writes nothing.
+        Picker("", selection: Binding(
+            get: { selectedValue },
+            set: { pickFromDropdown($0, options: options) }
+        )) {
             Text(block.field_placeholder ?? "Select...").tag("")
             ForEach(options) { option in
                 Text(option.label ?? "").tag(option.resolvedValue)
@@ -1288,10 +1295,18 @@ struct FormInputSelectBlock: View {
             RoundedRectangle(cornerRadius: CGFloat(block.field_style?.corner_radius ?? 8))
                 .stroke(Color(hex: block.field_style?.border_color ?? "#D1D5DB"), lineWidth: fieldBorderWidth(block))
         )
-        .onChange(of: selectedValue) { newValue in
-            // A resync to "nothing selected" must not write an empty answer back.
-            if newValue.isEmpty && inputValues[fieldId] == nil { return }
-            inputValues[fieldId] = newValue
+    }
+
+    /// A pick from the dropdown's menu. The choice is recorded at once; an option that owns a sheet
+    /// opens it once the menu has closed (`DropdownSelectPick.sheetDelay`), through the same
+    /// presenter as every other style.
+    private func pickFromDropdown(_ value: String, options: [InputOption]) {
+        selectedValue = value
+        guard let sheet = DropdownSelectPick.apply(
+            value: value, options: options, block: block, inputValues: &inputValues
+        ) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + DropdownSelectPick.sheetDelay) {
+            sheetOption = sheet
         }
     }
 
@@ -1686,8 +1701,8 @@ struct FormInputSelectBlock: View {
         selectedValue = next.selectedValue
         // Picking an option that owns a sheet opens it. The choice is
         // already recorded above; the sheet only presents, so nothing else is reported.
-        if let blocks = option.sheet_blocks, !blocks.isEmpty {
-            sheetOption = option
+        if let sheet = SelectOptionSheet.opened(by: option) {
+            sheetOption = sheet
         }
     }
 
@@ -3315,5 +3330,47 @@ enum SelectOptionTap {
         inputValues[fieldId] = option.resolvedValue
         store.record(fieldId: fieldId, option: option)
         return ([], option.resolvedValue)
+    }
+}
+
+/// The option whose bottom sheet a pick opens: the picked option when it owns `sheet_blocks`, else
+/// nil. Every Select presentation asks this one question, so the dropdown and the list, stacked and
+/// grid styles open the same sheet for the same pick.
+enum SelectOptionSheet {
+    static func opened(by option: InputOption) -> InputOption? {
+        guard let blocks = option.sheet_blocks, !blocks.isEmpty else { return nil }
+        return option
+    }
+}
+
+/// One pick from the dropdown presentation (a system menu) — the write the dropdown view performs,
+/// extracted so the fixture runner drives the SAME code (`host_data_scenario` `pick_dropdown`).
+enum DropdownSelectPick {
+    /// How long after a pick the picked option's sheet waits before presenting. The menu's selection
+    /// arrives while the menu is still animating closed, and SwiftUI offers no callback for its end;
+    /// this outlasts that animation, so the sheet rises after the menu, never on top of it.
+    static let sheetDelay: TimeInterval = 0.35
+
+    /// Records the pick and returns the option whose sheet it opens, or nil. The choice is recorded
+    /// first — the value, and the option for `{{selected.<field_id>.…}}`, as every other Select style
+    /// records it — and the sheet only presents. `value` is looked up in the options the dropdown
+    /// rendered, so a repeat-generated or Option Set option resolves like any other. The placeholder
+    /// (`""`) clears the answer and its record and opens nothing; a resync to "nothing selected" must
+    /// not write an empty answer back.
+    static func apply(
+        value: String, options: [InputOption], block: ContentBlock,
+        inputValues: inout [String: Any], store: SelectedOptionStore = .shared
+    ) -> InputOption? {
+        let fieldId = block.field_id ?? block.id
+        guard !value.isEmpty, let option = options.first(where: { $0.resolvedValue == value }) else {
+            if value.isEmpty && inputValues[fieldId] == nil { return nil }
+            inputValues[fieldId] = value
+            // Nothing is chosen any more, so nothing is recorded for `{{selected.<field_id>.…}}`.
+            if value.isEmpty { store.clear(fieldId: fieldId) }
+            return nil
+        }
+        inputValues[fieldId] = option.resolvedValue
+        store.record(fieldId: fieldId, option: option)
+        return SelectOptionSheet.opened(by: option)
     }
 }

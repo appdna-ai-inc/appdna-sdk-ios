@@ -226,6 +226,11 @@ extension SharedFixtureTests {
             case "open_sheet":
                 run.view?.openSheet = (op["block_id"]?.stringValue ?? "", op["option_value"]?.stringValue ?? "")
                 run.view?.sheetInputs = (op["sheet_inputs"]?.objectValue ?? [:]).mapValues { $0.foundation }
+            case "pick_dropdown": run.pickDropdown(blockId: op["block_id"]?.stringValue ?? "", value: op["value"]?.stringValue ?? "")
+            case "dismiss_sheet":
+                run.view?.openSheet = nil
+                run.view?.presentedSheet = nil
+                run.view?.sheetInputs = [:]
             case "element_interaction": await run.elementInteraction(op)
             case "complete_step": run.completeStep()
             // P1b ops.
@@ -384,6 +389,8 @@ final class HostDataStepView {
     var fieldOptionsOverridesByPresentation: [Int: [String: [InputOption]]] = [:]
     var searchQueries: [String: String] = [:]
     var openSheet: (blockId: String, value: String)?
+    /// The sheet the last dropdown pick presented (`pick_dropdown`), by block and OPTION id.
+    var presentedSheet: (blockId: String, optionId: String)?
     /// The open sheet's OWN inputs (its renderer's `inputValues`) — never the step's.
     var sheetInputs: [String: Any] = [:]
     var decodeSeam: HostDataDecodeSeam?
@@ -705,6 +712,26 @@ final class HostDataScenarioRun {
         _ = SelectOptionTap.apply(option: option, block: block, selectedValues: currentValues,
                                   sourcedOptions: filterOptionsLocally(options, query: v.searchQueries[blockId] ?? ""),
                                   inputValues: &v.inputValues)
+        refresh()
+    }
+
+    /// A pick from a dropdown-style Select's menu, through the dropdown view's own seam
+    /// (`DropdownSelectPick`), against the options the real pipeline rendered for the block. What it
+    /// returns is what the view presents through `.sheet(item:)`.
+    func pickDropdown(blockId: String, value: String) {
+        refresh()
+        guard let v = view(owning: blockId) ?? view, let block = v.findBlock(blockId) else {
+            failures.append("pick_dropdown: no block \(blockId)"); return
+        }
+        let options = block.field_options ?? []
+        if !value.isEmpty, !options.contains(where: { $0.resolvedValue == value }) {
+            failures.append("pick_dropdown: block \(blockId) renders no option \(value) (renders \(options.map(\.resolvedValue)))")
+            return
+        }
+        let sheet = DropdownSelectPick.apply(value: value, options: options, block: block, inputValues: &v.inputValues)
+        v.openSheet = sheet.map { (blockId, $0.resolvedValue) }
+        v.presentedSheet = sheet.map { (blockId, $0.id ?? $0.resolvedValue) }
+        v.sheetInputs = [:]
         refresh()
     }
 
@@ -1063,6 +1090,8 @@ final class HostDataScenarioRun {
                 out[key] = m
             case "interaction_calls":
                 out[key] = host.calls
+            case "presented_sheet":
+                out[key] = v.presentedSheet.map { ["block_id": $0.blockId, "option_id": $0.optionId] as [String: Any] } ?? NSNull()
             default:
                 failures.append("unknown checkpoint observable '\(key)'")
             }
