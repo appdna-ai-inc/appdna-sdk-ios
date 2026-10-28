@@ -364,6 +364,9 @@ func resolveDotPath(
             return nil
         }
     }
+    // A path that stops at a picked record (or a multi pick's list): every key it took from a Google
+    // answer takes the text the user typed, as a path to that key does.
+    if typedText && parts[0] == "selected" { current = SelectedOptionStore.withTypedText(current) }
     return typedText ? TemplateEngine.typedTextForGoogleAnswers(in: current) : current
 }
 

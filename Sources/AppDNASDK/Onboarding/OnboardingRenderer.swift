@@ -1812,16 +1812,15 @@ struct OnboardingStepRouter: View {
     private var googleCreditSheetContext: GoogleCreditSheetContext {
         let memo = googleCreditMemo, step = step, override = liveConfigOverride
         let fieldConfigOverrides = fieldConfigOverrides, fieldOptionsOverrides = fieldOptionsOverrides
-        return GoogleCreditSheetContext(
+        // The picks are read when a sheet decides, so a pick made since the step last drew counts.
+        return GoogleCreditSheetContext.live(
             index: {
                 memo.sheetIndex(
                     step: step, override: override,
                     fieldConfigOverrides: fieldConfigOverrides, fieldOptionsOverrides: fieldOptionsOverrides
                 )
             },
-            answers: googleCreditAnswers,
-            // Read when a sheet decides, so a pick made since the step last drew counts.
-            selected: { SelectedOptionStore.shared.snapshot }
+            answers: googleCreditAnswers
         )
     }
 

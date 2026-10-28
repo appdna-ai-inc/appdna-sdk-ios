@@ -62,6 +62,43 @@ final class LocationEditUndoTests: XCTestCase {
         XCTAssertFalse(undo.canUndo, "after the rewrite nothing can be undone")
     }
 
+    /// An input method commits its marked text without changing the text. No `editingChanged` arrives
+    /// for that (and a package test dispatches none anyway), so the first edit of Google's line held
+    /// back while composing must still be applied: the field reports the commit itself. Driven through
+    /// the real field's own marked-text calls; nothing here calls `compositionChanged`.
+    func testACommitThatLeavesTheTextUnchangedAppliesTheHeldBackEdit() throws {
+        let step = try JSONDecoder().decode(OnboardingStep.self, from: Data(
+            #"{"id":"where","type":"form","config":{"title":"Where?","fields":[{"id":"home","type":"location","label":"Home","required":false}]}}"#.utf8
+        ))
+        let hosted = HostedStep(OnboardingStepRouter(step: step, onNext: { _ in }, onSkip: {}, savedResponses: ["home": google]))
+        defer { hosted.close() }
+        guard let tf = textField(in: hosted.host.view) else { return XCTFail("no text field") }
+        XCTAssertTrue(hosted.wait { tf.text == self.line }, "the field restored Google's line; it shows \(tf.text ?? "nil")")
+        tf.becomeFirstResponder()
+        hosted.spin(0.1)
+        tf.selectedTextRange = tf.textRange(from: tf.endOfDocument, to: tf.endOfDocument)
+        hosted.spin(0.1)
+
+        // A keystroke the input method composes: the marked text, then the field's own editingChanged.
+        tf.setMarkedText("\u{306B}", selectedRange: NSRange(location: 1, length: 0))
+        XCTAssertNotNil(tf.markedTextRange, "control: the harness can compose marked text")
+        for target in tf.allTargets {
+            for action in tf.actions(forTarget: target, forControlEvent: .editingChanged) ?? [] {
+                _ = (target as NSObject).perform(Selector(action), with: tf)
+            }
+        }
+        hosted.spin(0.2)
+        XCTAssertEqual(tf.text, line + "\u{306B}", "while composing, Google's line with the marked text is shown and nothing restarts")
+
+        // The commit: no text change, no editingChanged.
+        tf.unmarkText()
+        XCTAssertNil(tf.markedTextRange)
+        XCTAssertTrue(
+            hosted.wait { tf.text == "Springf\u{306B}" },
+            "the commit applied the held-back edit from the user's own text; the field shows \(tf.text ?? "nil")"
+        )
+    }
+
     /// The set itself: only a text that differs is set, and only then is the history cleared.
     func testAProgrammaticSetClearsTheHistoryOnlyWhenItSets() {
         final class Field: UITextField {

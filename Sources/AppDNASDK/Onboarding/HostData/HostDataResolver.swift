@@ -217,6 +217,24 @@ enum HostDataResolver {
         return googleMapsHosts.contains(host)
     }
 
+    /// Inside a URL on one of Google's Maps hosts, the part from a nested `scheme://` on — written
+    /// plainly, or percent-encoded as `%3A%2F%2F` — is another URL, which the Maps host fetches from
+    /// wherever it points (a Static Maps marker icon). Every token there takes the typed text; a token
+    /// before it, in the Maps URL itself, keeps the place. As a UTF-16 range, or none.
+    static func nestedURLRanges(_ template: String) -> [NSRange] {
+        let ns = template as NSString
+        let outer = ns.range(of: "://")
+        guard outer.location != NSNotFound else { return [] }
+        let from = outer.location + outer.length
+        let rest = NSRange(location: from, length: ns.length - from)
+        let starts = [
+            ns.range(of: "://", options: [], range: rest),
+            ns.range(of: "%3A%2F%2F", options: .caseInsensitive, range: rest),
+        ].filter { $0.location != NSNotFound }.map(\.location)
+        guard let start = starts.min() else { return [] }
+        return [NSRange(location: start, length: ns.length - start)]
+    }
+
     /// Which tokens of one template resolve a Google location answer to its typed text (`raw_query`)
     /// rather than its values.
     struct TypedTextRule {
@@ -245,7 +263,10 @@ enum HostDataResolver {
     static func typedTextRule(_ template: String, key: String?, isOption: Bool) -> TypedTextRule {
         if let key {
             if isStoredValueKey(key, isOption: isOption) { return TypedTextRule(all: true, ranges: []) }
-            if isMediaUrlKey(key) { return templateHostIsGoogle(template) ? .none : TypedTextRule(all: true, ranges: []) }
+            if isMediaUrlKey(key) {
+                guard templateHostIsGoogle(template) else { return TypedTextRule(all: true, ranges: []) }
+                return TypedTextRule(all: false, ranges: nestedURLRanges(template))
+            }
         }
         return TypedTextRule(all: false, ranges: markdownLinkTargets(template))
     }

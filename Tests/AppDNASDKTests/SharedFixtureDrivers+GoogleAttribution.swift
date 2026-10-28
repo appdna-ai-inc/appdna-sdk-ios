@@ -105,17 +105,26 @@ extension SharedFixtureTests {
 
     // MARK: markdown_links
 
-    /// `action.cases[] = {name, markdown}` → `[{name, links: [{text, url}]}]`: each line through
-    /// `MarkdownLinks.parseLine` — the Foundation parse `rich_text` and an agreement's copy draw with —
-    /// and the runs carrying a link, adjacent runs with the same link joined.
+    /// `action.cases[] = {name, markdown, surface?}` → `[{name, links: [{text, url}]}]`: each line
+    /// through `MarkdownLinks.parseLine` — the Foundation parse `rich_text` and an agreement's copy draw
+    /// with — and the runs carrying a link, adjacent runs with the same link joined. `surface:
+    /// "rich_text"` first runs the rich-text block's own `normaliseMarkdown` (which drops a code span's
+    /// backticks); `"agreement"`, or no surface, hands the parser the line as written, as an
+    /// agreement's copy does.
     func runMarkdownLinks(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue, !cases.isEmpty else {
             return XCTFail("[\(f.id)] markdown_links needs action.cases")
         }
         var results: [[String: Any]] = []
         for c in cases {
-            guard let o = c.objectValue, let name = o["name"]?.stringValue, let md = o["markdown"]?.stringValue else {
+            guard let o = c.objectValue, let name = o["name"]?.stringValue, let raw = o["markdown"]?.stringValue else {
                 return XCTFail("[\(f.id)] a case needs name + markdown")
+            }
+            let md: String
+            switch o["surface"]?.stringValue {
+            case nil, "agreement"?: md = raw
+            case "rich_text"?: md = ContentBlockRendererView.normaliseMarkdown(raw)
+            case let other?: return XCTFail("[\(f.id)] case \(name): unknown surface '\(other)'")
             }
             var links: [[String: Any]] = []
             if #available(iOS 15.0, *), let parsed = MarkdownLinks.parseLine(md) {
@@ -194,8 +203,9 @@ extension SharedFixtureTests {
             ))
             // The picked Select at any depth: a container's child records its pick like a top-level one,
             // drawn as the step's renderer draws it (`displayBlock`: a block the raw pass did not
-            // produce goes through the view-level pass). `in_sheet = {block_id, option_id}`: the Select
-            // is drawn in that option's sheet, as the sheet's renderer draws it.
+            // produce goes through the view-level pass). `in_sheet = {block_id, option_id, inputs?}`: the
+            // Select is drawn in that option's sheet, as the sheet's renderer draws it, against the
+            // sheet's own inputs.
             var pickBlocks = Self.withShared(selected) {
                 resolvedPick.blocks.map {
                     OnboardingStepPipeline.displayBlock(
@@ -206,8 +216,10 @@ extension SharedFixtureTests {
             if let inSheet = pick["in_sheet"]?.objectValue {
                 let owner = Self.findBlock(inSheet["block_id"]?.stringValue, in: resolvedPick.blocks)
                 let opened = owner?.field_options?.first { ($0.id ?? $0.value) == inSheet["option_id"]?.stringValue }
+                // `in_sheet.inputs`: what the user entered in the sheet before picking (its own inputs).
+                let sheetInputs = (inSheet["inputs"]?.foundation as? [String: Any]) ?? [:]
                 pickBlocks = (opened?.sheet_blocks ?? []).map {
-                    OnboardingStepPipeline.displayBlock($0, rawResolved: true, hookData: nil, responses: [:], stepInputs: [:])
+                    OnboardingStepPipeline.displayBlock($0, rawResolved: true, hookData: nil, responses: [:], stepInputs: sheetInputs)
                 }
             }
             guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks) else {
@@ -346,6 +358,9 @@ extension SharedFixtureTests {
                     switch key {
                     case "label": value = option?.label
                     case "value": value = option?.value
+                    // The text a pick of the option records for its label when the label took a Google
+                    // answer's content: what the user typed. Null when it took none.
+                    case "google_label": value = option?.googleKeys?["label"]
                     default: return XCTFail("[\(f.id)] read \(name): unknown option key \(key)")
                     }
                 } else {
@@ -359,6 +374,15 @@ extension SharedFixtureTests {
                     case "markdown_content": value = block?.markdown_content
                     default: return XCTFail("[\(f.id)] read \(name): unknown block key \(key)")
                     }
+                }
+                // `match = {contains?, lacks?}`: a value whose exact text is not portable (a picked record
+                // drawn whole, which each platform stringifies its own way) is checked for what it must
+                // and must not hold; the read reports "matched", or the value itself when a check fails.
+                if let match = o["match"]?.objectValue, let v = value {
+                    let text = "\(v)"
+                    let contains = match["contains"]?.arrayValue?.compactMap(\.stringValue) ?? []
+                    let lacks = match["lacks"]?.arrayValue?.compactMap(\.stringValue) ?? []
+                    value = contains.allSatisfy { text.contains($0) } && !lacks.contains { text.contains($0) } ? "matched" : text
                 }
                 out[name] = value ?? NSNull()
             }

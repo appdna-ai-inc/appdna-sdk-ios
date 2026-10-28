@@ -34,8 +34,10 @@ struct UIKitTextField: UIViewRepresentable {
     var onReturn: (() -> Void)? = nil
     /// Called on every editing change (after the text binding updates).
     var onEditingChanged: ((Bool) -> Void)? = nil
-    /// Called after every text change the user makes, with whether the input method still has marked
-    /// text (an IME composition) — so a commit that leaves the text as it was is reported too.
+    /// Called with whether the input method has marked text (an IME composition): after every text
+    /// change the user makes, and whenever the marked text is set or committed or the selection moves
+    /// with the text unchanged — so a commit that leaves the text as it was, which sends no
+    /// `editingChanged`, is reported too.
     var onCompositionChange: ((Bool) -> Void)? = nil
     /// A text set from the binding (not typed) clears the field's undo history, so shake-to-undo cannot
     /// bring back text the app replaced. UIKit drops it on such a set too on current iOS; this does not
@@ -43,8 +45,12 @@ struct UIKitTextField: UIViewRepresentable {
     var clearsUndoOnProgrammaticSet: Bool = false
 
     func makeUIView(context: Context) -> UITextField {
-        let tf = UITextField(frame: .zero)
+        let tf = MarkedTextReportingField(frame: .zero)
         tf.delegate = context.coordinator
+        tf.onMarkedTextChange = { [weak coordinator = context.coordinator, weak tf] in
+            guard let coordinator, let tf else { return }
+            coordinator.compositionMayHaveChanged(tf)
+        }
         tf.addTarget(
             context.coordinator,
             action: #selector(Coordinator.textFieldDidChange(_:)),
@@ -163,12 +169,28 @@ struct UIKitTextField: UIViewRepresentable {
             parent.onCompositionChange?(tf.markedTextRange != nil)
         }
 
+        /// The selection moved, or the marked text was set or committed. When the text is unchanged
+        /// this is not an edit, only a composition report: an input method can commit its marked text
+        /// without changing it, and then no `editingChanged` arrives to say the composition ended. When
+        /// the text differs from the binding, a text change is under way and `editingChanged` reports it
+        /// after the binding has the new text, so nothing is reported here.
+        func compositionMayHaveChanged(_ tf: UITextField) {
+            guard (tf.text ?? "") == parent.text else { return }
+            parent.onCompositionChange?(tf.markedTextRange != nil)
+        }
+
+        func textFieldDidChangeSelection(_ textField: UITextField) {
+            compositionMayHaveChanged(textField)
+        }
+
         func textFieldDidBeginEditing(_ textField: UITextField) {
             parent.isFocused?.wrappedValue = true
             parent.onEditingChanged?(true)
         }
 
         func textFieldDidEndEditing(_ textField: UITextField) {
+            // Ending editing commits any marked text.
+            compositionMayHaveChanged(textField)
             parent.isFocused?.wrappedValue = false
             parent.onEditingChanged?(false)
         }
@@ -178,6 +200,22 @@ struct UIKitTextField: UIViewRepresentable {
             textField.resignFirstResponder()
             return true
         }
+    }
+}
+
+/// A `UITextField` that says when its marked text is set or committed. A commit that leaves the text as
+/// it was changes no text, so `editingChanged` may never fire for it.
+final class MarkedTextReportingField: UITextField {
+    var onMarkedTextChange: (() -> Void)?
+
+    override func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+        super.setMarkedText(markedText, selectedRange: selectedRange)
+        onMarkedTextChange?()
+    }
+
+    override func unmarkText() {
+        super.unmarkText()
+        onMarkedTextChange?()
     }
 }
 

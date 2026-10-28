@@ -91,4 +91,16 @@ final class SelectedOptionStore: @unchecked Sendable {
     static func typedText(of record: Any?, key: String) -> String? {
         ((record as? [String: Any])?[googleKeysKey] as? [String: Any])?[key] as? String
     }
+
+    /// A token that stops at a picked record (`{{selected.stop}}`), or at a multi pick's list of them,
+    /// where a Google answer must not go (a stored value, a URL, a surface with no credit): each record
+    /// with every key that came from a Google answer replaced by its text as the user typed it. Anything
+    /// that is not a record is returned as it is.
+    static func withTypedText(_ value: Any) -> Any {
+        if let list = value as? [Any] { return list.map { withTypedText($0) } }
+        guard var record = value as? [String: Any],
+              let keys = record[googleKeysKey] as? [String: Any], !keys.isEmpty else { return value }
+        for (key, typed) in keys where record[key] != nil { record[key] = typed }
+        return record
+    }
 }

@@ -55,6 +55,10 @@ extension SharedFixtureTests {
                     }
                 // The input method commits the composition without changing the text.
                 case "commit": rig.commit()
+                // The caret moves without typing: the same text, a new selection.
+                case "move_caret": rig.moveCaret()
+                // The input method sets or clears marked text without changing the text.
+                case "composition": rig.compositionOnly(op["composing"]?.boolValue ?? false)
                 case "echo": rig.echo()
                 case "advance_clock_ms": rig.advance(ms: Int(op["ms"]?.doubleValue ?? 0))
                 case "tap": rig.tap(Int(op["index"]?.doubleValue ?? 0))

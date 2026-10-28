@@ -119,6 +119,21 @@ final class LocationSearchRig {
         deliverChange()
     }
 
+    /// The user moves the caret (or the selection) without typing. The text field reports its
+    /// composition from the selection change (`textFieldDidChangeSelection`); SwiftUI's `.onChange`
+    /// sends nothing, because the text did not change.
+    func moveCaret() {
+        holder.compositionChanged(false, settings: settings)
+        deliverChange()
+    }
+
+    /// The input method sets or clears marked text without changing the text: the field reports the
+    /// composition, and `.onChange` sends nothing.
+    func compositionOnly(_ composing: Bool) {
+        holder.compositionChanged(composing, settings: settings)
+        deliverChange()
+    }
+
     private func deliverChange() {
         guard holder.text != lastDelivered else { return }
         lastDelivered = holder.text

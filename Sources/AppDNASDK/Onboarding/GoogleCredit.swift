@@ -504,6 +504,13 @@ struct GoogleCreditSheetContext {
         self.init(index: { GoogleCredit.sheetSources(in: sources()) }, answers: answers, selected: selected)
     }
 
+    /// The onboarding step's context: the step's answers as it last drew, and the options picked so far
+    /// read from the shared store each time a sheet decides — so the pick that opens a sheet, or one
+    /// made inside it, counts.
+    static func live(index: @escaping () -> GoogleCredit.SheetIndex, answers: GoogleCredit.Answers) -> GoogleCreditSheetContext {
+        GoogleCreditSheetContext(index: index, answers: answers, selected: { SelectedOptionStore.shared.snapshot })
+    }
+
     /// The credit for the sheet of `optionId` on `blockId`, from the sheet's SOURCE: the presented
     /// blocks of a raw-resolved sheet have already had every token but its `step` ones substituted, so
     /// they no longer say what they show. An option a `repeat` generated finds its template's sheet,

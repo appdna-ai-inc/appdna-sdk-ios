@@ -598,10 +598,26 @@ enum OnboardingStepPipeline {
               let data = try? JSONEncoder().encode(block),
               let h = try? JSONDecoder().decode(HostJSON.self, from: data),
               case .object(let json) = h else { return block }
-        let out = applySheetStepPaths(json: json, inputs: HostJSON(any: stepInputs), stepInputs: stepInputs)
+        var lateKeys: [String: [String: [String: String]]] = [:]
+        let out = applySheetStepPaths(json: json, inputs: HostJSON(any: stepInputs), stepInputs: stepInputs, lateKeys: &lateKeys)
         guard let decoded = try? decodeBlock(.object(out)) else { return block }
-        // The round trip drops each option's Google keys (never JSON): put them back.
-        let keys = googleKeys(of: block)
+        // The round trip drops each option's Google keys (never JSON): put them back. A key the raw pass
+        // recorded holds its text as the user typed it with these deferred tokens still in it, so they
+        // are filled the same way; a key only a deferred token took from a Google answer is added.
+        var keys = googleKeys(of: block).mapValues { options in
+            options.mapValues { optionKeys in
+                optionKeys.mapValues { typed in
+                    typed.contains("{{")
+                        ? resolveTemplateString(typed, hookData: nil, responses: [:], stepInputs: stepInputs, allTyped: true)
+                        : typed
+                }
+            }
+        }
+        for (blockId, options) in lateKeys {
+            for (optionId, late) in options {
+                keys[blockId, default: [:]][optionId] = late.merging(keys[blockId]?[optionId] ?? [:]) { _, recorded in recorded }
+            }
+        }
         return keys.isEmpty ? decoded : stampGoogleKeys(decoded, keys)
     }
 
@@ -613,7 +629,10 @@ enum OnboardingStepPipeline {
         return (block.stack_children ?? []).contains(where: carriesSheetStepPaths)
     }
 
-    private static func applySheetStepPaths(json input: [String: HostJSON], inputs: HostJSON, stepInputs: [String: Any]) -> [String: HostJSON] {
+    private static func applySheetStepPaths(
+        json input: [String: HostJSON], inputs: HostJSON, stepInputs: [String: Any],
+        lateKeys: inout [String: [String: [String: String]]]
+    ) -> [String: HostJSON] {
         var json = input
         if case .object(let fc)? = json["field_config"], case .array(let entries)? = fc["sheet_step_paths"] {
             for case .object(let e) in entries {
@@ -627,6 +646,19 @@ enum OnboardingStepPipeline {
                         s, hookData: nil, responses: [:], stepInputs: stepInputs, key: at.key, isOption: at.isOption,
                         wholeLocationAnswer: true
                     )
+                    // An option's text that a deferred token fills from a Google answer in the sheet's
+                    // inputs: the pick records the key, with the text as the user typed it, as the raw
+                    // pass records an option's — so a later `selected` path credits where it is drawn
+                    // and takes the typed text where it is stored.
+                    if at.isOption, let key = at.key,
+                       case .string(let blockId)? = json["id"],
+                       case .object(let option)? = get(.object(json), Array(segs.dropLast())),
+                       let optionId = option["id"]?.stringValue ?? option["value"]?.stringValue,
+                       templateReadsGoogle(s, answers: GoogleCredit.Answers(accumulated: [:], stepInputs: stepInputs, sessionStore: [:])) {
+                        lateKeys[blockId, default: [:]][optionId, default: [:]][key] = resolveTemplateString(
+                            s, hookData: nil, responses: [:], stepInputs: stepInputs, allTyped: true
+                        )
+                    }
                     json = (set(.object(json), segs, .string(r)).objectValue) ?? json
                 } else if kind == "binding", case .string(let source)? = e["source"] {
                     let fid = source.components(separatedBy: ".").dropFirst().joined(separator: ".")
@@ -662,7 +694,7 @@ enum OnboardingStepPipeline {
             guard case .array(let kids)? = json[key] else { continue }
             json[key] = .array(kids.map { kid in
                 guard case .object(let o) = kid else { return kid }
-                return .object(applySheetStepPaths(json: o, inputs: inputs, stepInputs: stepInputs))
+                return .object(applySheetStepPaths(json: o, inputs: inputs, stepInputs: stepInputs, lateKeys: &lateKeys))
             })
         }
         return json
