@@ -2229,7 +2229,7 @@ struct ContentBlockRendererView: View {
              * The letterform stays as the fallback: a host that strips SPM resources, or an older
              * cached bundle, gets what it has always had rather than an empty button.
              */
-            if let url = Bundle.module.url(forResource: "appdna_google_g", withExtension: "png"),
+            if let url = AppDNAResources.bundle?.url(forResource: "appdna_google_g", withExtension: "png"),
                let data = try? Data(contentsOf: url),
                let image = UIImage(data: data) {
                 /*

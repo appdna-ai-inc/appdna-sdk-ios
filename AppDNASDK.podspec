@@ -18,7 +18,7 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   # extension target. Compiled into this module here, so the app registers push button categories
   # through the same code as the extension.
   s.source_files     = ['Sources/AppDNASDK/**/*.swift', 'Sources/AppDNANotificationExtension/**/*.swift', 'Sources/AppDNASDKLoader/**/*.m']
-  s.resource_bundles = { 'AppDNASDK' => ['Sources/AppDNASDK/PrivacyInfo.xcprivacy'] }
+  s.resource_bundles = { 'AppDNASDK' => ['Sources/AppDNASDK/PrivacyInfo.xcprivacy', 'Sources/AppDNASDK/Resources/appdna_google_g.png'] }
   s.platform         = :ios, '16.0'
   s.swift_version    = '5.9'
 
