@@ -382,6 +382,20 @@ final class LocationSuggestionSearchTests: XCTestCase {
         XCTAssertEqual(rig.holder.text, "Spr")
     }
 
+    /// The one state where the text guard decides: a tap's resolve is in flight, so nothing is stored while the
+    /// field still shows what the user typed. A parent seeding an answer then must not replace the typed text.
+    /// Red control: drop `text.isEmpty` from the restore guard and this fails.
+    func testAnAnswerSeededWhileAResolveIsInFlightDoesNotReplaceTheTypedText() {
+        let rig = addressRig()
+        rig.type("12 Example")
+        rig.advance(ms: 300)
+        rig.tap(0)
+        XCTAssertTrue(rig.holder.isResolving)
+        XCTAssertNil(rig.stored, "nothing is stored while the resolve is in flight")
+        rig.storeFromOutside(["formatted_address": "California, United States", "mapbox_id": "m"])
+        XCTAssertEqual(rig.holder.text, "12 Example", "the typed text was replaced by a seeded answer")
+    }
+
     // MARK: - The search
 
     func testBelowMinCharsNoSearchAndTheDropdownCloses() {
