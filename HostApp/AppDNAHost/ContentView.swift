@@ -57,8 +57,15 @@ struct ContentView: View {
      whenever the event mirror changes, removes the hidden dependency.
      */
     @State private var locationReadback = "not read yet"
+    /// SPEC-507 §8 — the RAW stored responses bucket, sorted-key JSON, so a walk reads every key the SDK
+    /// persisted (`mapbox_id` included) whatever `LocationData` version the host is built against.
+    @State private var responsesRaw = "not read yet"
 
     private func refreshLocationReadback() {
+        responsesRaw = UserDefaults.standard.data(forKey: "appdna.session.onboarding_responses")
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            .flatMap { try? JSONSerialization.data(withJSONObject: $0, options: [.sortedKeys]) }
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "(no bucket)"
         guard let fieldId = Launch.locationFieldId else { locationReadback = "no field asked for"; return }
         guard let d = AppDNA.getLocationData(fieldId: fieldId) else {
             /*
@@ -135,6 +142,10 @@ struct ContentView: View {
              */
             Text(locationReadback)
                 .accessibilityIdentifier("host.locationData")
+                .opacity(0)
+                .frame(height: 0)
+            Text(responsesRaw)
+                .accessibilityIdentifier("host.responsesRaw")
                 .opacity(0)
                 .frame(height: 0)
             Spacer()
