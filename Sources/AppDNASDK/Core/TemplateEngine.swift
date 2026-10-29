@@ -234,8 +234,17 @@ final class TemplateEngine {
         return value
     }
 
+    /// `value` as template text, or nil (unresolved, so a `| fallback` applies) for a null: `NSNull`, which
+    /// identify keeps for a null trait, and an optional's nil boxed in `Any`. A null trait is not set, as
+    /// `HostDataResolver` reads it.
     static func stringify(_ value: Any) -> String? {
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let wrapped = mirror.children.first?.value else { return nil }
+            return stringify(wrapped)
+        }
         switch value {
+        case is NSNull: return nil
         case let s as String: return s
         case let n as NSNumber:
             // Check if it's a boolean

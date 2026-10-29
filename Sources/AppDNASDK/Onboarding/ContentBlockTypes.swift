@@ -680,7 +680,8 @@ func resolveTemplateString(
         let fallback: String? = match.range(at: 2).location == NSNotFound
             ? nil
             : Range(match.range(at: 2), in: result).map { String(result[$0]) }
-        if let resolved = resolved {
+        // A null (a trait identify kept as NSNull, a null in hook data) is unresolved, never "<null>".
+        if let resolved = resolved, !(resolved is NSNull) {
             result.replaceSubrange(fullRange, with: "\(resolved)")
         } else if let fallback = fallback {
             result.replaceSubrange(fullRange, with: fallback)
