@@ -538,27 +538,51 @@ final class SharedFixtureTests: XCTestCase {
     // ScreenManager consult. It owns `field`/`trait` aliasing, `values`, `between` (closed interval)
     // and the numeric coercion in `in`/`not_in`.
 
-    /// evaluate_screen_trigger — REAL `ScreenIndexEntry` decode + `ScreenManager.evaluateScreenTrigger`, the
-    /// trigger check `ScreenManager.evaluateTriggers` runs on every tracked event (iOS's live path). Each case is
-    /// one entry `{trigger_rules: {events: [{event_name, conditions}]}}` decoded as the screen index is.
+    /// evaluate_screen_trigger — the LIVE trigger decision, `ScreenManager.triggeredScreen`, which both
+    /// `evaluateTriggers` (every tracked event) and `onScreenAppeared` (every screen that appears) call. Each case is
+    /// one screen-index entry decoded as the index is, on a fresh manager (its own frequency state). A case's `steps`
+    /// run in order on that manager and record one fired/not-fired each; a case without steps is one step. The
+    /// inputs a device would read (`session_count`, `days_since_install`, `user_traits`) come from the case.
     private func runEvaluateScreenTrigger(_ f: Fixture, _ h: Harness) {
-        guard let event = f.action.raw["event"]?.stringValue,
-              let cases = f.action.raw["cases"]?.arrayValue else {
-            return XCTFail("[\(f.id)] evaluate_screen_trigger needs action.event and action.cases")
+        let defaultEvent = f.action.raw["event"]?.stringValue ?? ""
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] evaluate_screen_trigger needs action.cases")
         }
-        var fired: [Bool] = []
+        var fired: [Any] = []
         for c in cases {
-            var trigger: [String: Any] = ["event_name": event]
-            if let conditions = c.objectValue?["conditions"], conditions.arrayValue != nil {
-                trigger["conditions"] = conditions.foundation
+            let o = c.objectValue ?? [:]
+            var rules: Any
+            if let r = o["trigger_rules"] {
+                rules = r.foundation
+            } else {
+                var trigger: [String: Any] = ["event_name": defaultEvent]
+                if let conditions = o["conditions"], conditions.arrayValue != nil { trigger["conditions"] = conditions.foundation }
+                rules = ["events": [trigger]]
             }
-            let json: [String: Any] = ["id": "s1", "name": "Screen", "trigger_rules": ["events": [trigger]]]
+            let json: [String: Any] = ["screens": [["id": "s1", "name": "Screen", "trigger_rules": rules]]]
             guard let data = try? JSONSerialization.data(withJSONObject: json),
-                  let entry = try? JSONDecoder().decode(ScreenIndexEntry.self, from: data) else {
-                return XCTFail("[\(f.id)] a case did not decode as a ScreenIndexEntry")
+                  let index = try? JSONDecoder().decode(ScreenIndex.self, from: data) else {
+                return XCTFail("[\(f.id)] a case did not decode as a ScreenIndex")
             }
-            let properties = c.objectValue?["properties"]?.objectValue?.mapValues { $0.foundation }
-            fired.append(ScreenManager.evaluateScreenTrigger(entry, event: event, properties: properties, userTraits: [:]))
+            let manager = ScreenManager()
+            manager.updateIndex(index)
+            var days: Int? = 0
+            if let d = o["days_since_install"] { days = d.foundation is NSNull ? nil : (d.foundation as? Int) }
+            let inputs = ScreenTriggerInputs(sessionCount: (o["session_count"]?.foundation as? Int) ?? 1, daysSinceInstall: days)
+            let traits = (o["user_traits"]?.objectValue ?? [:]).mapValues { $0.foundation }
+            func step(_ s: [String: AnyJSON]) -> Bool {
+                let screen = s["screen"]?.stringValue
+                return manager.triggeredScreen(
+                    event: s["event"]?.stringValue ?? (screen != nil ? "" : defaultEvent),
+                    properties: s["properties"]?.objectValue?.mapValues { $0.foundation },
+                    currentScreenName: screen, inputs: inputs, traits: traits
+                ) != nil
+            }
+            if let steps = o["steps"]?.arrayValue {
+                fired.append(steps.map { step($0.objectValue ?? [:]) })
+            } else {
+                fired.append(step(o))
+            }
         }
         h.state["fired"] = fired
     }

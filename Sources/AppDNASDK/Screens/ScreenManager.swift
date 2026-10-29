@@ -12,6 +12,8 @@ internal class ScreenManager {
     private var nestingDepth: Int = 0
     private let maxNestingDepth = 5
     private let lock = NSLock()
+    /// The screen-trigger engine: every trigger kind and the frequency caps it records. One per manager.
+    private let autoTriggerEngine = AutoTriggerEngine()
 
     /// The only way a screen action reaches the OS. Injectable so a test can assert that a vetoed
     /// action opens nothing; production keeps calling `UIApplication.shared.open`.
@@ -446,72 +448,59 @@ internal class ScreenManager {
 
     // MARK: - Trigger Evaluation (Mechanism 1)
 
+    /// The screens module's own events, which do not run screen triggers (see `evaluateTriggers`).
+    static let ownEvents: Set<String> = [
+        "screen_presented", "screen_dismissed", "screen_action", "screen_response_submitted",
+        "flow_started", "flow_completed", "flow_abandoned", "interception_triggered",
+        "slot_registered", "slot_rendered", "slot_empty",
+        "message_request", "purchase_request", "restore_request",
+    ]
+
+    /// Every tracked event (`AppDNA.track`) runs the screen triggers, as messages and surveys run theirs. The screens
+    /// module's own events are skipped: a session-count, install-age or trait trigger matches on any evaluation, and
+    /// a presented (or failed) screen tracking `screen_*` must not re-trigger itself.
     func evaluateTriggers(event: String, properties: [String: Any]?) {
-        guard let index = screenIndex, let screens = index.screens else { return }
-        guard AppDNA.isConsentGranted() else { return }
-
-        let userTraits = AppDNA.getUserTraits()
-
-        // Find matching screens sorted by priority (highest first)
-        let matchingScreens = screens
-            .filter { entry in
-                Self.evaluateScreenTrigger(entry, event: event, properties: properties, userTraits: userTraits)
-            }
-            .sorted { ($0.priority ?? 0) > ($1.priority ?? 0) }
-
-        // Show highest priority match
-        if let match = matchingScreens.first {
-            guard PresentationCoordinator.shared.canPresent(type: .screen, isAutoTriggered: true) else { return }
-            if let matchId = match.id { showScreen(matchId) }
-        }
+        guard !Self.ownEvents.contains(event) else { return }
+        present { triggeredScreen(event: event, properties: properties, currentScreenName: nil) }
     }
 
-    /// Whether `event` (with `properties`) triggers `entry`. The live iOS screen-trigger path, called by
-    /// `evaluateTriggers` on every tracked event.
-    static func evaluateScreenTrigger(
-        _ entry: ScreenIndexEntry,
+    /// A host screen appeared: evaluate the `on_screen` triggers against its name. Called where the "after"
+    /// navigation interceptions are (`AppDNA.notifyScreenAppeared`, and the UIKit `viewDidAppear` hook once
+    /// navigation interception is enabled). An event is not involved, so no `events` trigger matches here.
+    func onScreenAppeared(_ screenName: String) {
+        present { triggeredScreen(event: "", properties: nil, currentScreenName: screenName) }
+    }
+
+    /// The ONE trigger decision: which screen (if any) this event or screen appearance presents. Every trigger kind
+    /// the console can author is evaluated by `AutoTriggerEngine` (events with their conditions, session count, days
+    /// since install, the current screen, user traits) together with the frequency caps, which the engine records
+    /// when it picks a screen. iOS used to check event triggers only, here, and never ran the engine.
+    func triggeredScreen(
         event: String,
         properties: [String: Any]?,
-        userTraits: [String: Any]
-    ) -> Bool {
-        guard let triggerRules = entry.trigger_rules else { return false }
+        currentScreenName: String?,
+        inputs: ScreenTriggerInputs = .current(),
+        traits: [String: Any]? = nil
+    ) -> String? {
+        guard AppDNA.isConsentGranted() else { return nil }
+        lock.lock()
+        let entries = screenIndex?.screens
+        lock.unlock()
+        guard let entries else { return nil }
+        return autoTriggerEngine.evaluate(
+            entries: entries, event: event, properties: properties,
+            userTraits: traits ?? AppDNA.getUserTraits(),
+            sessionCount: inputs.sessionCount, daysSinceInstall: inputs.daysSinceInstall,
+            currentScreenName: currentScreenName
+        )
+    }
 
-        // Check scheduling
-        if let startDate = entry.start_date, let date = ISO8601.date(from: startDate), date > Date() {
-            return false
-        }
-        if let endDate = entry.end_date, let date = ISO8601.date(from: endDate), date < Date() {
-            return false
-        }
-
-        // Check audience rules
-        if let audienceRules = entry.audience_rules {
-            if !AudienceRuleEvaluator.evaluate(rules: audienceRules, userTraits: userTraits) {
-                return false
-            }
-        }
-
-        // Check event triggers
-        if let events = triggerRules.events {
-            let eventMatch = events.contains { trigger in
-                guard trigger.event_name == event else { return false }
-                // Each event-property condition is evaluated by its OPERATOR, with the audience-rule evaluator
-                // (it compared everything by equality, so "gt 10" meant "== 10"). An event tracked without
-                // properties is evaluated on none; it no longer fires a conditioned trigger outright, and a
-                // condition naming no property does not match.
-                let props = properties ?? [:]
-                return (trigger.conditions ?? []).allSatisfy { cond in
-                    guard let field = cond.field else { return false }
-                    return AudienceRuleEvaluator.evaluateRule(
-                        AudienceRule(trait: field, operator: cond.operator ?? "equals", value: cond.value),
-                        userTraits: props
-                    )
-                }
-            }
-            if eventMatch { return true }
-        }
-
-        return false
+    /// Presents what `decide` picks. Presentability is checked FIRST: the engine records an impression when it picks a
+    /// screen, so a pick that could not be shown would otherwise spend the screen's frequency cap.
+    private func present(_ decide: () -> String?) {
+        guard PresentationCoordinator.shared.canPresent(type: .screen, isAutoTriggered: true) else { return }
+        guard let screenId = decide() else { return }
+        DispatchQueue.main.async { self.showScreen(screenId) }
     }
 
     // MARK: - Navigation Interception (Mechanism 3)

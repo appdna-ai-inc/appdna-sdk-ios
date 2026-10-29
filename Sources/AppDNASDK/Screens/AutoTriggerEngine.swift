@@ -18,7 +18,7 @@ internal class AutoTriggerEngine {
         properties: [String: Any]?,
         userTraits: [String: Any],
         sessionCount: Int,
-        daysSinceInstall: Int,
+        daysSinceInstall: Int?,
         currentScreenName: String?
     ) -> String? {
         let now = Date()
@@ -49,7 +49,7 @@ internal class AutoTriggerEngine {
         properties: [String: Any]?,
         userTraits: [String: Any],
         sessionCount: Int,
-        daysSinceInstall: Int,
+        daysSinceInstall: Int?,
         currentScreenName: String?,
         now: Date
     ) -> Bool {
@@ -130,7 +130,8 @@ internal class AutoTriggerEngine {
         // Days since install triggers. Same min/max shape — a MAX-ONLY rule ("first N days":
         // days_since_install.max=7) fires. iOS previously gated the whole block on `if let min`, so a
         // max-only rule never fired while Android's `minOk && maxOk` presented it.
-        if let timeTrigger = triggerRules.days_since_install {
+        // An unknown install time matches no install-age rule.
+        if let timeTrigger = triggerRules.days_since_install, let daysSinceInstall {
             let minOk = timeTrigger.min.map { daysSinceInstall >= $0 } ?? true
             let maxOk = timeTrigger.max.map { daysSinceInstall <= $0 } ?? true
             if (timeTrigger.min != nil || timeTrigger.max != nil) && minOk && maxOk {

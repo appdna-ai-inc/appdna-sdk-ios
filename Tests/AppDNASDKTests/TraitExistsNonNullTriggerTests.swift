@@ -6,16 +6,14 @@ import XCTest
 /// the same trait with a value does.
 final class TraitExistsNonNullTriggerTests: XCTestCase {
 
-    private func entry() throws -> ScreenIndexEntry {
-        let json = #"{"id":"s1","name":"Welcome back","trigger_rules":{"user_traits":[{"trait":"name","operator":"exists"}]}}"#
-        return try JSONDecoder().decode(ScreenIndexEntry.self, from: Data(json.utf8))
-    }
-
+    /// Through the live decision every tracked event runs (`ScreenManager.triggeredScreen`), on a fresh manager.
     private func shown(_ traits: [String: Any]) throws -> String? {
-        AutoTriggerEngine().evaluate(
-            entries: [try entry()], event: "app_open", properties: nil, userTraits: traits,
-            sessionCount: 1, daysSinceInstall: 0, currentScreenName: nil
-        )
+        let manager = ScreenManager()
+        manager.updateIndex(try JSONDecoder().decode(ScreenIndex.self, from: JSONSerialization.data(withJSONObject: [
+            "screens": [["id": "s1", "name": "Welcome back", "trigger_rules": ["user_traits": [["trait": "name", "operator": "exists"]]]]],
+        ])))
+        return manager.triggeredScreen(event: "app_open", properties: nil, currentScreenName: nil,
+                                       inputs: ScreenTriggerInputs(sessionCount: 1, daysSinceInstall: 0), traits: traits)
     }
 
     func testANullTraitDoesNotExist() throws {
