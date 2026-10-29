@@ -6,7 +6,8 @@ import Foundation
 /// `responses` hold for it (snake_case keys, only the keys the answer has), so the server treats it as a
 /// location answer. Any other value that is not a JSON value (a string, a finite number, a boolean,
 /// `NSNull`, a dictionary with string keys, an array of them) is dropped with a warning naming its
-/// trait key, and only that key.
+/// trait key, and only that key. A null is a JSON value and is kept: `NSNull`, and an optional's `nil`
+/// boxed in `Any`, are sent and stored as `null`, as a trait or anywhere inside one.
 ///
 /// This is what keeps `identify` from crashing: `JSONSerialization.data(withJSONObject:)`, which the
 /// keychain write and the request body use, raises an Objective-C exception for any other value, and
@@ -54,6 +55,13 @@ enum IdentifyTraits {
 
     /// `value` as a JSON-safe value, or nil when it cannot be one (anywhere inside it).
     private static func jsonValue(_ value: Any) -> Any? {
+        // An optional boxed in `Any` (`["referrer": referrer as Any]`): a nil is the JSON null it stands
+        // for, and a set one is its value. Neither matches a case below as it is.
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .optional {
+            guard let wrapped = mirror.children.first?.value else { return NSNull() }
+            return jsonValue(wrapped)
+        }
         switch value {
         case let location as LocationData:
             return answerMap(location)
