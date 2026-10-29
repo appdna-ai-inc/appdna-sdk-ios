@@ -225,11 +225,12 @@ enum HostDataResolver {
     /// either:
     /// - a colon followed by a slash or a backslash (`https://`, `https:/`, `https:%5C%5C`,
     ///   `https%253A%252F%252F`, `ftp%3A%09//`);
-    /// - `http:` or `https:`, in any ASCII case, with no slash at all (`https:x.example`, `ht%09tps:x`,
-    ///   `%2568ttps%253Ax`).
-    /// A bare colon after any other word is not a separator: a Static Maps parameter writes its own
-    /// colons (`markers=color:red%7C...`) in front of a token that keeps the place, and only the
-    /// schemes an image is fetched over matter with no slash. The offset returned is where, in
+    /// - the letters `http:` or `https:`, in any ASCII case, with no slash at all, wherever they
+    ///   stand — also at the end of a longer word, so `xhttp:` is one (`https:x.example`,
+    ///   `ht%09tps:x`, `%2568ttps%253Ax`, `xhttp:x`).
+    /// Any other colon with no slash or backslash after it is not a separator: a Static Maps
+    /// parameter writes its own colons (`markers=color:red%7C...`) in front of a token that keeps the
+    /// place, and only the schemes an image is fetched over matter with no slash. The offset returned is where, in
     /// `template`, the text that decodes to the separator's first character begins. The Kotlin twin
     /// is `HostDataResolver.nestedSchemeSeparatorStart`.
     static func nestedSchemeSeparatorStart(_ template: String, from: Int) -> Int? {

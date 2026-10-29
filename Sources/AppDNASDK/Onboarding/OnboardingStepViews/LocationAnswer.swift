@@ -153,9 +153,12 @@ enum LocationAnswer {
 
     /// The text the first edit of a field showing a Google answer restarts from. The field shows
     /// Google's line (`shown`), which must never be stored or sent, so the edit goes back to the
-    /// user's own words, the answer's `raw_query`: characters appended at the END of Google's line
-    /// are appended to it, and any other edit (a deletion, a replacement, a paste inside the line)
-    /// leaves the typed text alone. The result is ordinary typed text from then on.
+    /// user's own words, the answer's `raw_query`. It is decided by the RESULTING text, not by the
+    /// gesture that produced it: when `edited` is Google's whole line followed by more characters,
+    /// those characters are appended to `raw_query`; any other result (shorter than the line, or not
+    /// beginning with all of it) leaves the typed text alone. So a paste or a replacement inside the
+    /// line that leaves the line intact at the start, with more after it, is an append too. The
+    /// result is ordinary typed text from then on.
     ///
     /// Compared in UTF-16 code units, exactly as Android compares them: a combining mark typed after the
     /// line's last letter (U+0301 after "A") is an append of one unit here, though Swift's own `String`
