@@ -266,19 +266,25 @@ extension SharedFixtureTests {
             guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks) else {
                 return XCTFail("[\(f.id)] the picked block is not on the resolved step")
             }
-            let fieldId = block.field_id ?? block.id
-            if let ids = pick["option_ids"]?.arrayValue?.compactMap(\.stringValue) {
-                let options = ids.compactMap { id in block.field_options?.first { ($0.id ?? $0.value) == id } }
-                guard options.count == ids.count else { return XCTFail("[\(f.id)] a picked option is not on the resolved step") }
-                selectedStore.record(fieldId: fieldId, options: options)
-                h.state["selected_label"] = options.last?.label ?? NSNull()
-            } else {
-                guard let option = block.field_options?.first(where: { ($0.id ?? $0.value) == pick["option_id"]?.stringValue }) else {
-                    return XCTFail("[\(f.id)] the picked option is not on the resolved step")
-                }
-                selectedStore.record(fieldId: fieldId, option: option)
-                h.state["selected_label"] = option.label ?? NSNull()
+            // Each picked option is TAPPED through the production write (`SelectOptionTap.apply`), in order, so a
+            // fixture can only assert a pick its own Select can make: several ids on a single Select leave the
+            // last one picked, as a user's taps would.
+            let ids = pick["option_ids"]?.arrayValue?.compactMap(\.stringValue)
+                ?? [pick["option_id"]?.stringValue].compactMap { $0 }
+            let options = ids.compactMap { id in block.field_options?.first { ($0.id ?? $0.value) == id } }
+            guard !ids.isEmpty, options.count == ids.count else {
+                return XCTFail("[\(f.id)] a picked option is not on the resolved step")
             }
+            var values: [String] = []
+            var pickInputs: [String: Any] = [:]
+            for option in options {
+                guard let next = SelectOptionTap.apply(
+                    option: option, block: block, selectedValues: values, sourcedOptions: block.field_options ?? [],
+                    inputValues: &pickInputs, store: selectedStore
+                ) else { return XCTFail("[\(f.id)] the Select refused a pick (its max_selections)") }
+                values = next.selectedValues
+            }
+            h.state["selected_label"] = options.last?.label ?? NSNull()
             selected = selectedStore.snapshot
         }
         let answers = GoogleCredit.Answers(accumulated: accumulated, stepInputs: stepInputs, sessionStore: store, selected: selected)
