@@ -455,7 +455,7 @@ internal class ScreenManager {
         // Find matching screens sorted by priority (highest first)
         let matchingScreens = screens
             .filter { entry in
-                evaluateScreenTrigger(entry, event: event, properties: properties, userTraits: userTraits)
+                Self.evaluateScreenTrigger(entry, event: event, properties: properties, userTraits: userTraits)
             }
             .sorted { ($0.priority ?? 0) > ($1.priority ?? 0) }
 
@@ -466,7 +466,9 @@ internal class ScreenManager {
         }
     }
 
-    private func evaluateScreenTrigger(
+    /// Whether `event` (with `properties`) triggers `entry`. The live iOS screen-trigger path, called by
+    /// `evaluateTriggers` on every tracked event.
+    static func evaluateScreenTrigger(
         _ entry: ScreenIndexEntry,
         event: String,
         properties: [String: Any]?,
@@ -493,15 +495,18 @@ internal class ScreenManager {
         if let events = triggerRules.events {
             let eventMatch = events.contains { trigger in
                 guard trigger.event_name == event else { return false }
-                // Check event property conditions
-                if let conditions = trigger.conditions, let props = properties {
-                    return conditions.allSatisfy { cond in
-                        guard let field = cond.field else { return true }
-                        let propValue = props[field]
-                        return ConditionEvaluator.valuesEqual(propValue, cond.value?.value)
-                    }
+                // Each event-property condition is evaluated by its OPERATOR, with the audience-rule evaluator
+                // (it compared everything by equality, so "gt 10" meant "== 10"). An event tracked without
+                // properties is evaluated on none; it no longer fires a conditioned trigger outright, and a
+                // condition naming no property does not match.
+                let props = properties ?? [:]
+                return (trigger.conditions ?? []).allSatisfy { cond in
+                    guard let field = cond.field else { return false }
+                    return AudienceRuleEvaluator.evaluateRule(
+                        AudienceRule(trait: field, operator: cond.operator ?? "equals", value: cond.value),
+                        userTraits: props
+                    )
                 }
-                return true
             }
             if eventMatch { return true }
         }

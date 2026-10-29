@@ -538,9 +538,9 @@ final class SharedFixtureTests: XCTestCase {
     // ScreenManager consult. It owns `field`/`trait` aliasing, `values`, `between` (closed interval)
     // and the numeric coercion in `in`/`not_in`.
 
-    /// evaluate_screen_trigger — REAL `ScreenIndexEntry` decode + `AutoTriggerEngine.evaluate`. Each case is one
-    /// entry `{trigger_rules: {events: [{event_name, conditions}]}}` decoded as the screen index is, and one
-    /// tracked event on a fresh engine (no frequency state carried between cases).
+    /// evaluate_screen_trigger — REAL `ScreenIndexEntry` decode + `ScreenManager.evaluateScreenTrigger`, the
+    /// trigger check `ScreenManager.evaluateTriggers` runs on every tracked event (iOS's live path). Each case is
+    /// one entry `{trigger_rules: {events: [{event_name, conditions}]}}` decoded as the screen index is.
     private func runEvaluateScreenTrigger(_ f: Fixture, _ h: Harness) {
         guard let event = f.action.raw["event"]?.stringValue,
               let cases = f.action.raw["cases"]?.arrayValue else {
@@ -558,10 +558,7 @@ final class SharedFixtureTests: XCTestCase {
                 return XCTFail("[\(f.id)] a case did not decode as a ScreenIndexEntry")
             }
             let properties = c.objectValue?["properties"]?.objectValue?.mapValues { $0.foundation }
-            fired.append(AutoTriggerEngine().evaluate(
-                entries: [entry], event: event, properties: properties, userTraits: [:],
-                sessionCount: 1, daysSinceInstall: 0, currentScreenName: nil
-            ) != nil)
+            fired.append(ScreenManager.evaluateScreenTrigger(entry, event: event, properties: properties, userTraits: [:]))
         }
         h.state["fired"] = fired
     }
