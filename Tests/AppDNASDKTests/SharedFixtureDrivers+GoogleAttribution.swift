@@ -150,7 +150,7 @@ extension SharedFixtureTests {
 
     /// setup.config.step = one onboarding step as published; setup.session_data = {responses (the
     /// flow's accumulated answers), session_store (SessionDataStore.onboardingResponses), step (the
-    /// step's inputs)}. action: override {title, subtitle, cta_text, field_defaults, field_options},
+    /// step's inputs)}. action: override {title, subtitle, cta_text, field_defaults, field_options, data},
     /// field_config_overrides, field_options_overrides (the interaction patches), sheet {block_id,
     /// option_id, inputs}.
     func runOnboardingGoogleCredit(_ f: Fixture, _ h: Harness) {
@@ -450,7 +450,9 @@ extension SharedFixtureTests {
             title: o["title"]?.stringValue,
             subtitle: o["subtitle"]?.stringValue,
             ctaText: o["cta_text"]?.stringValue,
-            fieldOptions: fieldOptions
+            fieldOptions: fieldOptions,
+            // The host's data for the step: the `hook_data` root.
+            dataContext: o["data"]?.foundation as? [String: Any]
         )
     }
 
