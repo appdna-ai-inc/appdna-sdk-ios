@@ -142,12 +142,13 @@ final class LocationAutocompleteTests: XCTestCase {
         XCTAssertEqual(body["limit"] as? Int, 5)
     }
 
-    /// #964 — the proxy narrows results only when the key is PRESENT, so an unauthored setting must
-    /// be ABSENT rather than a substituted default. Both platforms, every surface.
+    /// #964 — an unauthored setting must be ABSENT rather than a substituted default: the proxy
+    /// (`GeocodingService.autocomplete`) applies its own default for a missing key, which a value
+    /// invented on the device would override. Both platforms, every surface.
     func testAnUnauthoredSettingIsAbsentRatherThanDefaulted() async throws {
         _ = await fetch(LocationSearchSettings.from(blockConfig: nil, defaultMinChars: 3))
         let body = try XCTUnwrap(StubProxy.bodies.first)
-        XCTAssertNil(body["type"], "an unauthored Type must leave the search unfiltered")
+        XCTAssertNil(body["type"], "an unauthored Type must be left to the proxy's default")
         XCTAssertNil(body["bias_country"])
         XCTAssertNil(body["language"])
         XCTAssertEqual(Set(body.keys), ["query", "limit"])

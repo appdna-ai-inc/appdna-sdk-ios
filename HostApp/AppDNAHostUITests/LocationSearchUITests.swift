@@ -64,8 +64,8 @@ final class LocationSearchUITests: XCTestCase {
 
         // ── Step 1: a content block with NO authored type ─────────────────────────────────────
         try select(app, expecting: "TYPE=all", absent: "TYPE=city", because:
-            "a block with no authored Type must leave the search unfiltered (#964) — the proxy "
-            + "narrows only when the key is present, so sending a substituted default is the defect")
+            "a block with no authored Type must send no type (#964) — the proxy applies its own "
+            + "default for a missing key, so sending a substituted default is the defect")
         app.buttons["Next"].tap()
 
         // ── Step 2: the same block, authored `city` ───────────────────────────────────────────
