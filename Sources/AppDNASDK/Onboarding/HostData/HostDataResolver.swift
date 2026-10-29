@@ -217,30 +217,85 @@ enum HostDataResolver {
         return googleMapsHosts.contains(host)
     }
 
-    /// A nested URL's scheme separator, in the forms a lenient URL parser reads as a scheme plus a
-    /// host, in any encoding mix and any case:
-    /// - `:` or `%3A`, then one or more slashes or backslashes, each `/`, `%2F`, `\` or `%5C`
-    ///   (`https://`, `https:/`, `https%3A%2F%2F`, `https:%5C%5C`);
-    /// - `http:` or `https:` with no slash at all (`https:x.example`), each scheme letter written plain
-    ///   or percent-encoded, and the colon `:` or `%3A`. A bare colon with no slash counts only after
-    ///   one of these two schemes, the ones a fetched image is served over, because a Static Maps
-    ///   parameter writes its own colons (`markers=color:red%7C...`) in front of a token that keeps
-    ///   the place.
-    ///
-    /// No case-insensitive option: the classes list both ASCII cases, as the Kotlin twin does, so no
-    /// Unicode case folding (`ſ` to `s`) can differ between the platforms.
-    static let nestedSchemeSeparator: NSRegularExpression = {
-        // swiftlint:disable:next force_try
-        try! NSRegularExpression(
-            pattern: #"(?::|%3[Aa])(?:/|%2[Ff]|\\|%5[Cc])+|(?:[Hh]|%[46]8)(?:[Tt]|%[57]4){2}(?:[Pp]|%[57]0)(?:[Ss]|%[57]3)?(?::|%3[Aa])"#
-        )
-    }()
+    /// Where the first nested URL's scheme separator starts in `template`, as a UTF-16 offset at or
+    /// after `from`, or nil. It is read the way a lenient URL parser would read the text once a
+    /// fetcher has decoded it: the text is percent-decoded again and again until no ASCII escape is
+    /// left (so `%3A`, `%253A` and `%25%33%41` are all a colon), then every tab, line feed and carriage
+    /// return is dropped, because a WHATWG parser strips them. In that decoded text a separator is
+    /// either:
+    /// - a colon followed by a slash or a backslash (`https://`, `https:/`, `https:%5C%5C`,
+    ///   `https%253A%252F%252F`, `ftp%3A%09//`);
+    /// - `http:` or `https:`, in any ASCII case, with no slash at all (`https:x.example`, `ht%09tps:x`,
+    ///   `%2568ttps%253Ax`).
+    /// A bare colon after any other word is not a separator: a Static Maps parameter writes its own
+    /// colons (`markers=color:red%7C...`) in front of a token that keeps the place, and only the
+    /// schemes an image is fetched over matter with no slash. The offset returned is where, in
+    /// `template`, the text that decodes to the separator's first character begins. The Kotlin twin
+    /// is `HostDataResolver.nestedSchemeSeparatorStart`.
+    static func nestedSchemeSeparatorStart(_ template: String, from: Int) -> Int? {
+        let all = Array(template.utf16)
+        guard from < all.count else { return nil }
+        var text = Array(all[from...])
+        var origin = (0..<text.count).map { from + $0 }
+        while true {
+            var out: [UInt16] = []
+            var outOrigin: [Int] = []
+            out.reserveCapacity(text.count)
+            outOrigin.reserveCapacity(text.count)
+            var i = 0
+            var changed = false
+            while i < text.count {
+                let high = (text[i] == 0x25 && i + 2 < text.count) ? hexValue(text[i + 1]) : -1
+                let low = (0...7).contains(high) ? hexValue(text[i + 2]) : -1
+                if low >= 0 {
+                    out.append(UInt16(high * 16 + low))
+                    outOrigin.append(origin[i])
+                    i += 3
+                    changed = true
+                } else {
+                    out.append(text[i])
+                    outOrigin.append(origin[i])
+                    i += 1
+                }
+            }
+            if !changed { break }
+            text = out
+            origin = outOrigin
+        }
+        var chars: [UInt16] = []
+        var at: [Int] = []
+        for (k, c) in text.enumerated() where c != 0x09 && c != 0x0A && c != 0x0D {
+            chars.append((0x41...0x5A).contains(c) ? c + 0x20 : c)
+            at.append(origin[k])
+        }
+        let colon: UInt16 = 0x3A, slash: UInt16 = 0x2F, backslash: UInt16 = 0x5C
+        let http: [UInt16] = [0x68, 0x74, 0x74, 0x70]
+        for k in 0..<chars.count {
+            let c = chars[k]
+            if c == colon, k + 1 < chars.count, chars[k + 1] == slash || chars[k + 1] == backslash { return at[k] }
+            if c == http[0], k + 4 <= chars.count, Array(chars[k..<(k + 4)]) == http {
+                let next = k + 4
+                if next < chars.count, chars[next] == colon { return at[k] }
+                if next + 1 < chars.count, chars[next] == 0x73, chars[next + 1] == colon { return at[k] }
+            }
+        }
+        return nil
+    }
+
+    private static func hexValue(_ c: UInt16) -> Int {
+        switch c {
+        case 0x30...0x39: return Int(c - 0x30)
+        case 0x41...0x46: return Int(c - 0x41) + 10
+        case 0x61...0x66: return Int(c - 0x61) + 10
+        default: return -1
+        }
+    }
 
     /// Inside a URL on one of Google's Maps hosts, the parts that may be another URL, which the Maps
     /// host fetches from wherever it points (a Static Maps marker icon). Every token in them takes the
     /// typed text; any other token, in the Maps URL itself, keeps the place. They run to the end of
     /// `template` from the first of:
-    /// - a nested scheme separator after the outer `://` (`nestedSchemeSeparator`), wherever it is
+    /// - a nested scheme separator after the outer `://` (`nestedSchemeSeparatorStart`), wherever it is
     ///   written, in the literal text or in a token's fallback;
     /// - the end of the first token after the host, wherever it sits (path or query), so every token
     ///   that follows another token is covered, whatever its position: the earlier token's value is not
@@ -254,8 +309,8 @@ enum HostDataResolver {
         guard outer.location != NSNotFound else { return [] }
         let from = outer.location + outer.length
         var starts: [Int] = []
-        if let m = nestedSchemeSeparator.firstMatch(in: template, range: NSRange(location: from, length: ns.length - from)) {
-            starts.append(m.range.location)
+        if let separator = nestedSchemeSeparatorStart(template, from: from) {
+            starts.append(separator)
         }
         if let first = tokenRegex.firstMatch(in: template, range: NSRange(location: from, length: ns.length - from))?.range {
             starts.append(first.location + first.length)
