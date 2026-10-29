@@ -169,6 +169,14 @@ enum GoogleMapsAttribution {
         variant(on: backdrop, darkAppearance: darkAppearance) == .gray ? "#5E5E5E" : "#FFFFFF"
     }
 
+    /// Whether content drawn on `backdrop` needs light ink: a dark plain surface, or a busy one (a
+    /// gradient, an image, an animation). The same light-or-dark call the logo variant makes, for other
+    /// views that pick an unstyled default from what is behind them. The Kotlin twin is
+    /// `GoogleMapsAttribution.needsLightInk(on, darkAppearance)`.
+    static func needsLightInk(on backdrop: Backdrop, darkAppearance: Bool) -> Bool {
+        backdrop == .busy || variant(on: backdrop, darkAppearance: darkAppearance) == .white
+    }
+
     private static var cache: [Variant: UIImage] = [:]
     private static let cacheLock = NSLock()
 

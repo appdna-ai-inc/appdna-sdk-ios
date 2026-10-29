@@ -283,17 +283,53 @@ struct FormInputTextAreaBlock: View {
 }
 
 /// Password input with show/hide toggle.
+/// The colours an `input_password` block draws with when its `field_style` leaves them unset, picked
+/// from what is behind the block (`GoogleMapsAttribution.needsLightInk`). On a light surface: a
+/// `#D1D5DB` outline and the system's light-appearance text, placeholder and secondary colours, so the
+/// field reads the same in a dark appearance as in a light one. On a dark, gradient or image surface:
+/// white, so the field stays visible there. The Kotlin twin is `UnstyledPasswordField` in
+/// `ContentBlockRenderer.kt`.
+enum UnstyledPasswordField {
+    struct Palette: Equatable {
+        let border: UIColor
+        let text: UIColor
+        let placeholder: UIColor
+        let icon: UIColor
+    }
+
+    static let light = Palette(
+        border: UIColor(red: 0xD1 / 255, green: 0xD5 / 255, blue: 0xDB / 255, alpha: 1),
+        text: .black,
+        placeholder: UIColor(red: 0x3C / 255, green: 0x3C / 255, blue: 0x43 / 255, alpha: 0.3),
+        icon: UIColor(red: 0x3C / 255, green: 0x3C / 255, blue: 0x43 / 255, alpha: 0.6)
+    )
+
+    static let dark = Palette(
+        border: UIColor(white: 1, alpha: 0.3),
+        text: .white,
+        placeholder: UIColor(white: 1, alpha: 0.5),
+        icon: UIColor(white: 1, alpha: 0.7)
+    )
+
+    static func palette(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> Palette {
+        GoogleMapsAttribution.needsLightInk(on: behind, darkAppearance: darkAppearance) ? dark : light
+    }
+}
+
 struct FormInputPasswordBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
 
     @State private var text: String = ""
     @State private var showPassword: Bool = false
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var backdrop
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let placeholder = block.field_placeholder ?? "Password"
-        let borderColor = Color(hex: block.field_style?.border_color ?? "#D1D5DB")
+        let unstyled = UnstyledPasswordField.palette(behind: backdrop, darkAppearance: colorScheme == .dark)
+        let borderColor = block.field_style?.border_color.map { Color(hex: $0) } ?? Color(unstyled.border)
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String
         // Mirror FormInputTextBlock font sizing onto the password sibling.
@@ -313,8 +349,8 @@ struct FormInputPasswordBlock: View {
                     autocapitalization: .none,
                     returnKeyType: .done,
                     font: fieldInputFont(block),
-                    textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
-                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) }
+                    textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) } ?? unstyled.text,
+                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? unstyled.placeholder
                 )
                 .frame(height: max(24, inputFontSize + 6))
 
@@ -322,7 +358,7 @@ struct FormInputPasswordBlock: View {
                     showPassword.toggle()
                 } label: {
                     Image(systemName: showPassword ? "eye.slash" : "eye")
-                        .foregroundColor(.secondary)
+                        .foregroundColor(Color(unstyled.icon))
                 }
             }
             .padding(12)
