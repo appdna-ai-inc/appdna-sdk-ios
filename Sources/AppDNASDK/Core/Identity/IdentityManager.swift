@@ -62,7 +62,11 @@ final class IdentityManager {
     /// same-user re-identify (the common per-launch call). The old iOS code wiped in-memory traits on
     /// every nil-traits identify while leaving the keychain intact (inconsistent), and Android retained
     /// them even across a user switch (stale-trait targeting).
-    func identify(userId: String, traits: [String: Any]? = nil) {
+    func identify(userId: String, traits rawTraits: [String: Any]? = nil) {
+        // What is stored is JSON-safe (`IdentifyTraits`): the keychain write serialises it, and an
+        // unserialisable value raises an exception `try?` cannot catch. The public identify has already
+        // logged anything it dropped.
+        let traits = rawTraits.map { IdentifyTraits.sanitize($0, log: false) }
         queue.sync {
             let previousUserId = _userId
             _userId = userId

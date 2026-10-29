@@ -2083,25 +2083,38 @@ final class SharedFixtureTests: XCTestCase {
         guard let userId = f.action.raw["userId"]?.stringValue else {
             return XCTFail("[\(f.id)] identify needs action.userId")
         }
-        let traits = (f.action.raw["traits"]?.objectValue ?? [:]).mapValues { $0.foundation }
+        var traits = (f.action.raw["traits"]?.objectValue ?? [:]).mapValues { $0.foundation }
+        // `location_traits`: each value is a location answer, passed as the SDK's own LocationData.
+        for (key, answer) in f.action.raw["location_traits"]?.objectValue ?? [:] {
+            guard let location = LocationData.fromStoredAnswer(answer.foundation) else {
+                return XCTFail("[\(f.id)] location_traits.\(key) is not a location answer")
+            }
+            traits[key] = location
+        }
+        // `opaque_traits`: keys whose value is a host object that is not a JSON value.
+        for key in f.action.raw["opaque_traits"]?.arrayValue ?? [] {
+            if let k = key.stringValue { traits[k] = OpaqueHostValue() }
+        }
 
         let previousAnonId = h.identityManager.currentIdentity.anonId   // REAL — minted by the SDK
         let previousUserId = h.identityManager.currentIdentity.userId
 
         h.identityManager.identify(userId: userId, traits: traits)      // REAL
 
-        var props: [String: Any] = [
-            "user_id": userId,
-            "anon_id": previousAnonId,
-        ]
-        if let previousUserId, previousUserId != userId { props["previous_user_id"] = previousUserId }
-        if !traits.isEmpty { props["traits"] = traits }
+        // The SDK's own property builder, which makes the traits JSON-safe as the public identify does.
+        let props = AppDNA.identifyEventProperties(
+            userId: userId, previousAnonId: previousAnonId, previousUserId: previousUserId,
+            traits: traits.isEmpty ? nil : traits
+        )
         h.tracker.track(event: "identify", properties: props)
 
         let identity = h.identityManager.currentIdentity
         h.state["user_id"] = SharedFixtureTests.orNull(identity.userId)
         h.state["user_traits"] = identity.traits ?? [:]
     }
+
+    /// A host object that is not a JSON value, for `opaque_traits`.
+    private struct OpaqueHostValue {}
 
     // MARK: - Driver: track_event
     //

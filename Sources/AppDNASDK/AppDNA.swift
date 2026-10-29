@@ -656,7 +656,22 @@ public final class AppDNA: @unchecked Sendable {
     // MARK: - Public API: Identity
 
     /// Link the anonymous device to a known user.
+    /// The `identify` event's properties: `user_id`, the pre-identify `anon_id`, `previous_user_id` only
+    /// when a different user was identified, and the traits made JSON-safe (`IdentifyTraits`).
+    static func identifyEventProperties(
+        userId: String, previousAnonId: String?, previousUserId: String?, traits: [String: Any]?
+    ) -> [String: Any] {
+        var props: [String: Any] = ["user_id": userId, "anon_id": previousAnonId ?? ""]
+        if let prev = previousUserId, prev != userId { props["previous_user_id"] = prev }
+        if let traits { props["traits"] = IdentifyTraits.sanitize(traits, log: false) }
+        return props
+    }
+
     public static func identify(userId: String, traits: [String: Any]? = nil) {
+        // Only JSON values and the SDK's own LocationData (sent as its answer map) go on; any other value is
+        // dropped with a warning naming its key. Unsanitised, JSONSerialization raised an Objective-C
+        // exception in the keychain write and the request body, which `try?` cannot catch.
+        let traits = traits.map { IdentifyTraits.sanitize($0) }
         shared.queue.async {
             let previousAnonId = shared.identityManager?.currentIdentity.anonId
             let previousUserId = shared.identityManager?.currentIdentity.userId
@@ -690,16 +705,9 @@ public final class AppDNA: @unchecked Sendable {
             Log.info("Identified user: \(userId)")
 
             // Fire identify event for backend alias/merge
-            var identifyProps: [String: Any] = [
-                "user_id": userId,
-                "anon_id": previousAnonId ?? "",
-            ]
-            if let prev = previousUserId, prev != userId {
-                identifyProps["previous_user_id"] = prev
-            }
-            if let traits = traits {
-                identifyProps["traits"] = traits
-            }
+            let identifyProps = identifyEventProperties(
+                userId: userId, previousAnonId: previousAnonId, previousUserId: previousUserId, traits: traits
+            )
             // Route identify through the facade so a pre-configure() identify() is
             // captured by the pre-init buffer too (was a direct eventTracker?.track → silently dropped).
             AppDNA.track(event: "identify", properties: identifyProps)
