@@ -263,6 +263,8 @@ final class LocationSuggestionSearch: ObservableObject {
     /// The first edit of a Google answer's line arrived while composing: it is applied when the
     /// composition commits, not before.
     private var awaitingCommit = false
+    /// The search settings of the edit held back while composing, to apply it with when it settles.
+    private var heldSettings: LocationSearchSettings?
 
     /// Production: the live autocomplete and resolve calls, on a main-queue debounce. `client` is read
     /// when each request is made, not when the field is built, so a field shown before the SDK
@@ -341,6 +343,22 @@ final class LocationSuggestionSearch: ObservableObject {
         return answer
     }
 
+    /// The first edit of a Google answer's line, held while the input method composes, applied now.
+    struct HeldEdit { let answer: Any? }
+
+    /// The step is advancing while the first edit of a Google answer's line is still composing (marked
+    /// text after the line, and Continue tapped without leaving the field): the edit is applied now, as
+    /// a commit would apply it, so the user's own text is stored (`LocationAnswer.editRestart`) and not
+    /// the Google answer the field showed. Returns the answer stored (nil for an edit that left nothing),
+    /// or nil when no edit was held.
+    func settleHeldEdit() -> HeldEdit? {
+        guard awaitingCommit, let settings = heldSettings else { return nil }
+        composing = false
+        textChanged(text, settings: settings)
+        cancelSearch()
+        return HeldEdit(answer: storedAnswer)
+    }
+
     /// The view saw its stored answer change. The restore is REACTIVE: on an absent →
     /// present transition while the text is empty, the answer is restored into the text. That covers a
     /// parent that seeds the answers after the field was built (`FormStepView`'s `.onAppear`).
@@ -370,9 +388,11 @@ final class LocationSuggestionSearch: ObservableObject {
         // is neither stored nor searched. The edit applies when the composition commits.
         if composing && shownGoogle != nil {
             awaitingCommit = true
+            heldSettings = settings
             return
         }
         awaitingCommit = false
+        heldSettings = nil
         dropResolveInFlight()
         var typed = newText
         if let google = shownGoogle {

@@ -37,15 +37,24 @@ final class LocationAdvanceSettlement {
     /// Settles every registered field. Each one with a resolve in flight writes its typed text
     /// through its own store (the step's answers) and is returned here as `field id → answer`.
     @discardableResult
-    func settle() -> [String: Any] {
+    func settle() -> [String: Any] { settleAll().settled }
+
+    /// Settles every registered field: a resolve in flight (its typed text, in `settled`) and a first
+    /// edit of a Google line held while composing (in `held`, nil for an edit that left the field
+    /// empty). Both write through the field's own store.
+    private func settleAll() -> (settled: [String: Any], held: [String: Any?]) {
         var settled: [String: Any] = [:]
+        var held: [String: Any?] = [:]
         for entry in entries.values {
             guard let holder = entry.holder else { continue }
             if let answer = holder.settleResolveInFlight() {
                 settled[entry.fieldId] = answer
             }
+            if let edit = holder.settleHeldEdit() {
+                held[entry.fieldId] = .some(edit.answer)
+            }
         }
-        return settled
+        return (settled, held)
     }
 
     /// Settles, then adds each settled answer to `data` where `data` holds none for that field.
@@ -53,13 +62,17 @@ final class LocationAdvanceSettlement {
     /// relied on to have reached them. A key the payload already carries is kept — the SDK's own keys
     /// (`action`, …) win over a field id, as they do when the payload is built.
     func settleInto(_ data: [String: Any]?) -> [String: Any]? {
-        let settled = settle()
-        guard !settled.isEmpty else { return data }
+        let (settled, held) = settleAll()
+        guard !settled.isEmpty || !held.isEmpty else { return data }
         var merged = data ?? [:]
         for (fieldId, answer) in settled {
             if merged[fieldId] == nil || (merged[fieldId] as? String) == "" {
                 merged[fieldId] = answer
             }
+        }
+        // A held edit replaces the field's value: the payload carries the Google answer it edits away from.
+        for (fieldId, answer) in held {
+            if let answer { merged[fieldId] = answer } else { merged.removeValue(forKey: fieldId) }
         }
         return merged
     }
