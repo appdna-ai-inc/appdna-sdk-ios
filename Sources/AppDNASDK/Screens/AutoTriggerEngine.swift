@@ -146,7 +146,8 @@ internal class AutoTriggerEngine {
         if let traitConditions = triggerRules.user_traits, !traitConditions.isEmpty {
             let allTraitsMatch = traitConditions.allSatisfy { cond in
                 guard let trait = cond.trait else { return true }
-                let traitValue = userTraits[trait]
+                // A trait stored as null is not set (it does not `exists`), as in the audience rules.
+                let traitValue = userTraits[trait].flatMap { $0 is NSNull ? nil : $0 }
                 switch cond.`operator` ?? "" {
                 case "equals", "eq": return ConditionEvaluator.valuesEqual(traitValue, cond.value?.value)
                 case "not_equals", "neq": return !ConditionEvaluator.valuesEqual(traitValue, cond.value?.value)

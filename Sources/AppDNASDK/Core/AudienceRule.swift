@@ -108,7 +108,9 @@ internal enum AudienceRuleEvaluator {
 
     private static func evaluateRule(_ rule: AudienceRule, userTraits: [String: Any]) -> Bool {
         guard let traitKey = rule.trait else { return true }
-        let traitValue = userTraits[traitKey]
+        // A trait identify stored as null (`NSNull`) is NOT SET, for every operator: it does not `exists`,
+        // as the server's segment SQL and the journey evaluators read it.
+        let traitValue = userTraits[traitKey].flatMap { $0 is NSNull ? nil : $0 }
 
         switch rule.operator ?? "equals" {
         case "equals", "eq":
