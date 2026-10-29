@@ -5,7 +5,30 @@ struct QuestionStepView: View {
     let config: StepConfig
     let onNext: ([String: Any]?) -> Void
 
-    @State private var selectedIds: Set<String> = []
+    @State private var selectedIds: Set<String>
+
+    /// `savedResponses` is the step's stored answer (`responses[step.id]`). A user who comes back to
+    /// an answered question sees the option or options they chose, highlighted.
+    init(config: StepConfig, onNext: @escaping ([String: Any]?) -> Void, savedResponses: [String: Any]? = nil) {
+        self.config = config
+        self.onNext = onNext
+        _selectedIds = State(initialValue: Set(Self.restoredSelection(savedResponses, config: config)))
+    }
+
+    /// The options a stored answer chose, in the order it stored them: only ids this step still
+    /// offers, and only the first of them for a single-select question.
+    static func restoredSelection(_ saved: [String: Any]?, config: StepConfig) -> [String] {
+        let raw: [String]
+        switch saved?["selected"] {
+        case let list as [Any]: raw = list.compactMap { $0 as? String }
+        case let one as String: raw = [one]
+        default: raw = []
+        }
+        let offered = Set((config.options ?? []).compactMap(\.id))
+        var seen = Set<String>()
+        let kept = raw.filter { offered.contains($0) && seen.insert($0).inserted }
+        return config.selection_mode == .multi ? kept : Array(kept.prefix(1))
+    }
 
     private var isMultiSelect: Bool {
         config.selection_mode == .multi
@@ -153,5 +176,6 @@ struct QuestionStepView: View {
                     .stroke(isSelected ? selectedBorderColor : optionBorderColor, lineWidth: isSelected ? 2 : 1)
             )
         }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

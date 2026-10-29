@@ -2091,7 +2091,7 @@ struct OnboardingStepRouter: View {
             case .welcome:
                 WelcomeStepView(config: effectiveConfig, onNext: { onNext(nil) })
             case .question:
-                QuestionStepView(config: effectiveConfig, onNext: onNext)
+                QuestionStepView(config: effectiveConfig, onNext: onNext, savedResponses: savedResponses)
             case .value_prop:
                 ValuePropStepView(config: effectiveConfig, onNext: { onNext(nil) })
             case .custom, .splash:
