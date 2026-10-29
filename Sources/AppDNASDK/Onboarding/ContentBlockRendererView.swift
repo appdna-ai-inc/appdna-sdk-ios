@@ -263,6 +263,24 @@ internal func mapResolvedHeight(_ block: ContentBlock) -> CGFloat {
     }
 }
 
+/// The ink of unstyled text: a `text` or `heading` block with no `style.color`, and a form field's label
+/// with no `field_style.label_color`. Picked from what is behind the block, by the light-or-dark call the
+/// Google logo makes (`GoogleMapsAttribution.needsLightInk`): on a light surface, dark (black text, and
+/// `#374151` for a label); on a dark, gradient or image surface, white, and `#E5E7EB` for a label.
+/// Authored colours always win. The Kotlin twin is `UnstyledInk` in `ContentBlockRenderer.kt`.
+enum UnstyledInk {
+    static let lightLabelHex = "#374151"
+    static let darkLabelHex = "#E5E7EB"
+
+    static func text(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> Color {
+        GoogleMapsAttribution.needsLightInk(on: behind, darkAppearance: darkAppearance) ? .white : .black
+    }
+
+    static func label(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> Color {
+        Color(hex: GoogleMapsAttribution.needsLightInk(on: behind, darkAppearance: darkAppearance) ? darkLabelHex : lightLabelHex)
+    }
+}
+
 struct ContentBlockRendererView: View {
     /// #663 — the width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
@@ -314,6 +332,14 @@ struct ContentBlockRendererView: View {
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
+    /// What is drawn behind these blocks, and the appearance: the ink of unstyled text (`UnstyledInk`).
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
+
+    /// The colour of a text or heading block with no `style.color`, from what the block draws on.
+    private func unstyledInk(_ block: ContentBlock) -> Color {
+        UnstyledInk.text(behind: GoogleMapsAttribution.backdrop(ofBlock: block, behind: inkBackdrop), darkAppearance: inkScheme == .dark)
+    }
 
     /// Was this block produced by the raw pass (directly, or inside a raw-resolved parent)?
     private func isRawResolved(_ block: ContentBlock) -> Bool {
@@ -624,7 +650,7 @@ struct ContentBlockRendererView: View {
             size: block.style?.font_size ?? Double(fallbackSize),
             weight: block.style?.font_weight ?? 700
         )
-        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? .primary
+        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? unstyledInk(block)
         return Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)
             .foregroundColor(styleColor)
@@ -685,7 +711,7 @@ struct ContentBlockRendererView: View {
             size: block.style?.font_size ?? 16,
             weight: block.style?.font_weight ?? 400
         )
-        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? .primary
+        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? unstyledInk(block)
         let showTrailingDots = (block.field_config?["show_trailing_dots"]?.value as? Bool) ?? false
         let base = Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)

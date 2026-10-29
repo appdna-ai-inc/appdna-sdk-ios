@@ -5,6 +5,9 @@ import PhotosUI
 /// Helper view to render a form field label above the input control.
 struct FormFieldLabelView: View {
     let block: ContentBlock
+    /// What the block draws on (its own fill, else the step's), and the appearance: the label's ink.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var backdrop
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         // `label_position: "hidden"` was IGNORED here, so a label the
@@ -48,7 +51,8 @@ struct FormFieldLabelView: View {
                 HStack(spacing: 2) {
                     Text(label)
                         .font(baseFont)
-                        .foregroundColor(Color(hex: block.field_style?.label_color ?? "#374151"))
+                        .foregroundColor(block.field_style?.label_color.map { Color(hex: $0) }
+                            ?? UnstyledInk.label(behind: backdrop, darkAppearance: colorScheme == .dark))
                     if required {
                         Text("*")
                             .foregroundColor(.red)
