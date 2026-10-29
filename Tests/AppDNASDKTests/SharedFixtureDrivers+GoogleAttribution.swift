@@ -105,12 +105,18 @@ extension SharedFixtureTests {
 
     // MARK: markdown_links
 
-    /// `action.cases[] = {name, markdown, surface?}` → `[{name, links: [{text, url}]}]`: each line
-    /// through `MarkdownLinks.parseLine` — the Foundation parse `rich_text` and an agreement's copy draw
-    /// with — and the runs carrying a link, adjacent runs with the same link joined. `surface:
+    /// `action.cases[] = {name, markdown, surface?, draw?}` → `[{name, links: [{text, url}], runs?}]`:
+    /// each line through `MarkdownLinks.parseLine` — the Foundation parse `rich_text` and an agreement's
+    /// copy draw with — and the runs carrying a link, adjacent runs with the same link joined. `surface:
     /// "rich_text"` first runs the rich-text block's own `normaliseMarkdown` (which drops a code span's
     /// backticks); `"agreement"`, or no surface, hands the parser the line as written, as an
     /// agreement's copy does.
+    ///
+    /// `draw: true` adds `runs`: the text as `MarkdownText.attributed` draws it for that surface (the
+    /// function both views call; `++underline++` on `rich_text` only), one entry per stretch drawn the
+    /// same way — `{text, style?: [bold, italic, underline, strike, code], link?}`. `underline` is the
+    /// `++` marker's (a link is always underlined). U+FFFC, which Foundation puts where an image has no
+    /// alt text, is left out: `Text` draws it with no width (measured: `x\u{FFFC}x` is as wide as `xx`).
     func runMarkdownLinks(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue, !cases.isEmpty else {
             return XCTFail("[\(f.id)] markdown_links needs action.cases")
@@ -141,9 +147,44 @@ extension SharedFixtureTests {
                     lastURL = url
                 }
             }
-            results.append(["name": name, "links": links])
+            var result: [String: Any] = ["name": name, "links": links]
+            if #available(iOS 15.0, *), o["draw"]?.boolValue == true {
+                let drawn = MarkdownText.attributed(md, linkColor: .blue, textColor: nil, underlineMarkers: o["surface"]?.stringValue == "rich_text")
+                result["runs"] = Self.drawnRuns(drawn)
+            }
+            results.append(result)
         }
         h.state["results"] = results
+    }
+
+    @available(iOS 15.0, *)
+    static func drawnRuns(_ drawn: AttributedString) -> [[String: Any]] {
+        var out: [[String: Any]] = []
+        var lastKey: String?
+        for run in drawn.runs {
+            let text = String(drawn[run.range].characters).replacingOccurrences(of: "\u{FFFC}", with: "")
+            if text.isEmpty { continue }
+            var style: [String] = []
+            let intent = run.inlinePresentationIntent ?? []
+            if intent.contains(.stronglyEmphasized) { style.append("bold") }
+            if intent.contains(.emphasized) { style.append("italic") }
+            if run.link == nil, run.underlineStyle != nil { style.append("underline") }
+            if intent.contains(.strikethrough) { style.append("strike") }
+            if intent.contains(.code) { style.append("code") }
+            let link = run.link?.absoluteString
+            let key = style.joined(separator: ",") + "|" + (link ?? "")
+            if key == lastKey, var last = out.popLast() {
+                last["text"] = (last["text"] as? String ?? "") + text
+                out.append(last)
+                continue
+            }
+            var entry: [String: Any] = ["text": text]
+            if !style.isEmpty { entry["style"] = style }
+            if let link { entry["link"] = link }
+            out.append(entry)
+            lastKey = key
+        }
+        return out
     }
 
     // MARK: onboarding_google_credit

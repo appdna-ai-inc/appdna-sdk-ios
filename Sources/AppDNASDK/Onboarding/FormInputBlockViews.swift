@@ -2224,36 +2224,11 @@ struct AgreementBlock: View {
         }
     }
 
-    // Plain (non-ViewBuilder) helper — builds the attributed consent copy. Kept
-    // OUT of the ViewBuilder because a `for` loop can't live directly in a
-    // result-builder body.
-    @available(iOS 15.0, *)
-    private func buildAgreementAttributed(_ text: String, linkColor: Color, textColor: Color) -> AttributedString {
-        var result = AttributedString()
-        // Parse per line so a `\n` in the consent copy is preserved (mirrors rich_text).
-        for (index, line) in text.components(separatedBy: "\n").enumerated() {
-            if index > 0 { result.append(AttributedString("\n")) }
-            if var parsed = MarkdownLinks.parseLine(line) {
-                for run in parsed.runs {
-                    if run.link != nil {
-                        parsed[run.range].foregroundColor = UIColor(linkColor)
-                        parsed[run.range].underlineStyle = .single
-                    } else {
-                        parsed[run.range].foregroundColor = UIColor(textColor)
-                    }
-                }
-                result.append(parsed)
-            } else {
-                result.append(AttributedString(line))
-            }
-        }
-        return result
-    }
-
     @ViewBuilder
     private func agreementLabel(_ text: String, linkColor: Color, textColor: Color) -> some View {
         if #available(iOS 15.0, *) {
-            Text(buildAgreementAttributed(text, linkColor: linkColor, textColor: textColor))
+            // Parsed per line so a `\n` in the consent copy is preserved (as rich_text); no `++underline++`.
+            Text(MarkdownText.attributed(text, linkColor: linkColor, textColor: textColor, underlineMarkers: false))
                 .font(.footnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
         } else {

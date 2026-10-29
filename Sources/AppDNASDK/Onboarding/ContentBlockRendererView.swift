@@ -2566,7 +2566,7 @@ struct ContentBlockRendererView: View {
             )
             if #available(iOS 15.0, *) {
                 let textCol: Color? = rtStyle?.color.map { Color(hex: $0) }
-                let attributed = parseMarkdownToAttributedString(content, linkColor: linkCol, textColor: textCol)
+                let attributed = MarkdownText.attributed(content, linkColor: linkCol, textColor: textCol, underlineMarkers: true)
                 Text(attributed)
                     .font(styleFont)
                     .foregroundColor(isLegal ? .secondary : .primary)
@@ -2587,64 +2587,6 @@ struct ContentBlockRendererView: View {
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
             }
-        }
-    }
-
-    /// Parse subset of markdown (**bold**, *italic*, [link](url), ++underline++)
-    /// to AttributedString. `++text++` is a custom extension — native
-    /// CommonMark has no underline syntax, but the parser leaves `++`
-    /// pairs verbatim so we can post-process them here.
-    @available(iOS 15.0, *)
-    private func parseMarkdownToAttributedString(_ markdown: String, linkColor: Color, textColor: Color? = nil) -> AttributedString {
-        // Two fixes: (1) `.inlineOnlyPreservingWhitespace` STOPS at the first paragraph
-        // break (\n\n), so multi-paragraph content previously rendered only its first line — parse
-        // each line separately and rejoin with newlines. (2) `Text(AttributedString)` ignores the
-        // `.foregroundColor` view modifier because the markdown runs carry their own label color —
-        // so force the authored `base_style.color` onto every non-link run (matches Android).
-        let lines = markdown.components(separatedBy: "\n")
-        var result = AttributedString()
-        for (index, line) in lines.enumerated() {
-            if index > 0 { result.append(AttributedString("\n")) }
-            if var parsed = MarkdownLinks.parseLine(line) {
-                for run in parsed.runs {
-                    if run.link != nil {
-                        parsed[run.range].foregroundColor = UIColor(linkColor)
-                        parsed[run.range].underlineStyle = .single  // match Android's underlined links
-                    } else if let textColor {
-                        parsed[run.range].foregroundColor = UIColor(textColor)
-                    }
-                }
-                result.append(parsed)
-            } else {
-                result.append(AttributedString(line))
-            }
-        }
-        // Apply AppDNA-specific `++underline++` after native parsing.
-        applyUnderlineMarkers(&result)
-        return result
-    }
-
-    /// Post-process `++text++` markers in the parsed AttributedString:
-    /// apply `.underlineStyle = .single` to the inner range and remove
-    /// the `++` marker characters. Collects ranges forward, then mutates
-    /// back-to-front so prior deletions don't invalidate later indices.
-    @available(iOS 15.0, *)
-    private func applyUnderlineMarkers(_ attr: inout AttributedString) {
-        var marks: [(Range<AttributedString.Index>, Range<AttributedString.Index>)] = []
-        var cursor = attr.startIndex
-        while cursor < attr.endIndex {
-            guard let openRange = attr[cursor...].range(of: "++") else { break }
-            let afterOpen = openRange.upperBound
-            guard afterOpen < attr.endIndex,
-                  let closeRange = attr[afterOpen...].range(of: "++") else { break }
-            marks.append((openRange, closeRange))
-            cursor = closeRange.upperBound
-        }
-        for (openRange, closeRange) in marks.reversed() {
-            let innerRange = openRange.upperBound..<closeRange.lowerBound
-            attr[innerRange].underlineStyle = .single
-            attr.removeSubrange(closeRange)
-            attr.removeSubrange(openRange)
         }
     }
 
