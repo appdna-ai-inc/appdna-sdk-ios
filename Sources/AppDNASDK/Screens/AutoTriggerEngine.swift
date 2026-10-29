@@ -145,15 +145,12 @@ internal class AutoTriggerEngine {
         // User trait triggers
         if let traitConditions = triggerRules.user_traits, !traitConditions.isEmpty {
             let allTraitsMatch = traitConditions.allSatisfy { cond in
+                // Evaluated as an audience rule: every operator the console offers, a stored null read as
+                // not set, and an unknown operator failing closed (it used to fire for every user).
                 guard let trait = cond.trait else { return true }
-                // A trait stored as null is not set (it does not `exists`), as in the audience rules.
-                let traitValue = userTraits[trait].flatMap { $0 is NSNull ? nil : $0 }
-                switch cond.`operator` ?? "" {
-                case "equals", "eq": return ConditionEvaluator.valuesEqual(traitValue, cond.value?.value)
-                case "not_equals", "neq": return !ConditionEvaluator.valuesEqual(traitValue, cond.value?.value)
-                case "exists": return traitValue != nil
-                default: return true
-                }
+                return AudienceRuleEvaluator.evaluateRule(
+                    AudienceRule(trait: trait, operator: cond.operator, value: cond.value), userTraits: userTraits
+                )
             }
             if allTraitsMatch { anyTriggerMatched = true }
         }

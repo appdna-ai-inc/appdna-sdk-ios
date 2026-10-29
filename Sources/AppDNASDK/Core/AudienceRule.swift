@@ -7,7 +7,7 @@ public struct AudienceRule: Codable {
     /// a rule authored with `field` used to decode to `trait == nil`, which made `evaluateRule` return
     /// true unconditionally (every audience matched).
     public let trait: String?
-    public let `operator`: String?  // "equals", "not_equals", "gt", "lt", "contains", "exists", "in", "not_in", "between"
+    public let `operator`: String?  // "equals", "not_equals", "gt", "lt", "contains", "exists", "not_exists", "in", "not_in", "between"; any other fails closed
     public let value: AnyCodable?
     /// List form used by `in` / `not_in`. The console emits `values` (plural); a rule authored that
     /// way used to leave `value` nil and the membership test always failed.
@@ -23,6 +23,16 @@ public struct AudienceRule: Codable {
         case values
         case min
         case max
+    }
+
+    /// A rule built in code: a screen trigger's user-trait condition is evaluated as one.
+    init(trait: String?, operator: String?, value: AnyCodable?) {
+        self.trait = trait
+        self.operator = `operator`
+        self.value = value
+        self.values = nil
+        self.min = nil
+        self.max = nil
     }
 
     /// Alias keys accepted on decode only — never emitted on encode.
@@ -106,7 +116,8 @@ internal enum AudienceRuleEvaluator {
         return rules.allSatisfy { evaluateRule($0, userTraits: userTraits) }
     }
 
-    private static func evaluateRule(_ rule: AudienceRule, userTraits: [String: Any]) -> Bool {
+    /// One rule against `userTraits`. Also the reader of a screen trigger's user-trait conditions.
+    static func evaluateRule(_ rule: AudienceRule, userTraits: [String: Any]) -> Bool {
         guard let traitKey = rule.trait else { return true }
         // A trait identify stored as null (`NSNull`) is NOT SET, for every operator: it does not `exists`,
         // as the server's segment SQL and the journey evaluators read it.
@@ -137,6 +148,9 @@ internal enum AudienceRuleEvaluator {
             return false
         case "exists":
             return traitValue != nil
+        case "not_exists":
+            // The server's operator (segment SQL, journeys): no non-null value, the negation of `exists`.
+            return traitValue == nil
         case "between":
             // Closed interval on a numeric trait. Previously unimplemented — it fell into
             // `default: return true`, so a between-rule passed VACUOUSLY for every user.
@@ -165,7 +179,11 @@ internal enum AudienceRuleEvaluator {
             guard !list.isEmpty else { return true }
             return !list.contains { ConditionEvaluator.valuesEqual(traitValue, $0) }
         default:
-            return true
+            // An operator this SDK does not implement FAILS CLOSED. A rule can arrive that the console never
+            // offered (an API or import write, a newer console against this build), and matching every user
+            // is the opposite of targeting — `between` once passed vacuously exactly this way.
+            Log.debug("audience rule on '\(traitKey)': unknown operator '\(rule.operator ?? "")' does not match")
+            return false
         }
     }
 
