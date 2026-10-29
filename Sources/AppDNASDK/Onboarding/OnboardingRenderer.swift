@@ -19,6 +19,8 @@ struct OnboardingFlowHost: View {
     /// nothing happens, no error, ever. The log line is for the developer; this is for the person
     /// holding the phone.
     @State private var errorToastMessage: String?
+    /// The appearance, for the chrome's ink on the current step (`UnstyledInk`).
+    @SwiftUI.Environment(\.colorScheme) private var hostScheme
 
     @State private var currentIndex = 0
     @State private var navigationHistory: [Int] = [] // Stack of visited step indices for back navigation
@@ -454,7 +456,13 @@ struct OnboardingFlowHost: View {
     private var navigationBar: some View {
         let backStyle = flow.settings.back_button_style
         let backSize = backStyle?.icon_size ?? 16
-        let backColor: Color = backStyle?.icon_color.flatMap { Color(hex: $0) } ?? Color(hex: "#6B7280")
+        // The chrome sits on the current step's background: on a dark, gradient or image step an unstyled
+        // back and close are drawn light (`UnstyledInk`).
+        let chromeOnDark = flow.steps.indices.contains(currentIndex) && GoogleMapsAttribution.needsLightInk(
+            on: GoogleMapsAttribution.backdrop(ofStep: flow.steps[currentIndex].config, type: flow.steps[currentIndex].type),
+            darkAppearance: hostScheme == .dark
+        )
+        let backColor: Color = backStyle?.icon_color.flatMap { Color(hex: $0) } ?? (chromeOnDark ? UnstyledInk.darkChrome : Color(hex: "#6B7280"))
         let hasBack = flow.settings.allow_back && !navigationHistory.isEmpty && !currentStepHidesBack
         let dismissAllowed = flow.settings.dismiss_allowed ?? true
         // #1004 — the ✕'s own style. Unset resolves to the values that shipped hardcoded.
@@ -533,7 +541,7 @@ struct OnboardingFlowHost: View {
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
-                    DismissGlyph(style: dismissStyle)
+                    DismissGlyph(style: dismissStyle, fallbackColor: chromeOnDark ? UnstyledInk.darkChrome : nil)
                 }
                 .disabled(isProcessing)
             }
@@ -1593,6 +1601,8 @@ enum OnboardingPresentation {
 /// Routes to the appropriate step view based on step type.
 struct OnboardingStepRouter: View {
     let step: OnboardingStep
+    /// The appearance, for the Skip link's ink on this step (`UnstyledInk`).
+    @SwiftUI.Environment(\.colorScheme) private var routerScheme
     /// `configOverrides[step.id]`, UN-merged. The router applies
     /// `StepConfigOverrideMerger` itself, after the raw pass (never twice, never before resolve).
     var configOverride: StepConfigOverride? = nil
@@ -2109,7 +2119,8 @@ struct OnboardingStepRouter: View {
             if step.config.skip_enabled == true {
                 Button("Skip") { onSkip() }
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(GoogleMapsAttribution.needsLightInk(on: googleAttributionBackdrop, darkAppearance: routerScheme == .dark)
+                        ? UnstyledInk.darkChrome : .secondary)
                     .padding(.bottom, 16)
             }
         }

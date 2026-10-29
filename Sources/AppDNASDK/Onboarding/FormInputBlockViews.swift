@@ -175,6 +175,9 @@ struct FormInputTextBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
     let keyboardType: UIKeyboardType
+    /// What the block draws on and the appearance: the ink of an unstyled field (`UnstyledInk`).
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
 
     @State private var text: String = ""
     // SPEC — focus tracking so focused_background_color can swap the field fill
@@ -208,8 +211,9 @@ struct FormInputTextBlock: View {
                 keyboardAppearance: .from(keyboardAppearanceRaw),
                 returnKeyType: .done,
                 font: fieldInputFont(block),
-                textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
-                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) },
+                textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: inkBackdrop, darkAppearance: inkScheme == .dark).text,
+                tintColor: UnstyledInk.cursor(behind: inkBackdrop, darkAppearance: inkScheme == .dark),
+                placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: inkBackdrop, darkAppearance: inkScheme == .dark).placeholder,
                 isFocused: $isFocused
             )
             .frame(height: max(24, inputFontSize + 6))
@@ -235,6 +239,9 @@ struct FormInputTextBlock: View {
 struct FormInputTextAreaBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
+    /// What the block draws on and the appearance: the ink of an unstyled field (`UnstyledInk`).
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
 
     @State private var text: String = ""
 
@@ -248,8 +255,11 @@ struct FormInputTextAreaBlock: View {
         let minLinesHeight = CGFloat(minLines * 22)
         let textAreaMinHeight = max(minLinesHeight, fieldHeight(block) ?? 0)
         // Honor field_style.text_color + placeholder_color (Android + preview already do).
+        let onDark = GoogleMapsAttribution.needsLightInk(on: inkBackdrop, darkAppearance: inkScheme == .dark)
         let textColor = block.field_style?.text_color.map { Color(hex: $0) }
-        let placeholderColor = Color(hex: block.field_style?.placeholder_color ?? "#9CA3AF")
+            ?? Color(UnstyledInk.input(behind: inkBackdrop, darkAppearance: inkScheme == .dark).text)
+        let placeholderColor = block.field_style?.placeholder_color.map { Color(hex: $0) }
+            ?? (onDark ? Color(UnstyledPasswordField.dark.placeholder) : Color(hex: "#9CA3AF"))
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -257,6 +267,7 @@ struct FormInputTextAreaBlock: View {
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
                     .foregroundColor(textColor)
+                    .accentColor(onDark ? .white : nil)
                     // #1053 — the authored field font applies to a textarea as well, which is
                     // where a larger size is most visible. `Font(UIFont)` keeps one source for the
                     // size/weight ladder rather than a second SwiftUI-side copy of it.
@@ -2741,6 +2752,7 @@ struct FormInputLocationPlaceholderBlock: View {
     @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
     /// What is behind the field, for the Google logo kept beside a Google answer.
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var attributionBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
 
     /// `search` is a test seam: a render test hands in a holder it drives. Production builds its own.
     init(block: ContentBlock, inputValues: Binding<[String: Any]>, search: LocationSuggestionSearch? = nil) {
@@ -2786,8 +2798,8 @@ struct FormInputLocationPlaceholderBlock: View {
                     autocorrection: false,
                     autocapitalization: .words,
                     returnKeyType: .search,
-                    textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) },
-                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) },
+                    textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: attributionBackdrop, darkAppearance: inkScheme == .dark).text,
+                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: attributionBackdrop, darkAppearance: inkScheme == .dark).placeholder,
                     isFocused: Binding(
                         get: { isFocused },
                         set: { isFocused = $0 }

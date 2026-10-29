@@ -263,8 +263,9 @@ internal func mapResolvedHeight(_ block: ContentBlock) -> CGFloat {
     }
 }
 
-/// The ink of unstyled text: a `text` or `heading` block with no `style.color`, and a form field's label
-/// with no `field_style.label_color`. Picked from what is behind the block, by the light-or-dark call the
+/// The ink of unstyled text: a `text` or `heading` block with no `style.color`, a form field's label with
+/// no `field_style.label_color`, the typed text, placeholder and cursor of an unstyled text input, and the
+/// onboarding step's chrome (back, close, Skip). Picked from what is behind the block, by the light-or-dark call the
 /// Google logo makes (`GoogleMapsAttribution.needsLightInk`): on a light surface, dark (black text, and
 /// `#374151` for a label); on a dark, gradient or image surface, white, and `#E5E7EB` for a label.
 /// Authored colours always win. The Kotlin twin is `UnstyledInk` in `ContentBlockRenderer.kt`.
@@ -279,6 +280,20 @@ enum UnstyledInk {
     static func label(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> Color {
         Color(hex: GoogleMapsAttribution.needsLightInk(on: behind, darkAppearance: darkAppearance) ? darkLabelHex : lightLabelHex)
     }
+
+    /// An unstyled text input's typed text and placeholder: the light-appearance system colours on a light
+    /// surface (what a light appearance always drew), white on a dark one. Shared with the password field.
+    static func input(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> UnstyledPasswordField.Palette {
+        UnstyledPasswordField.palette(behind: behind, darkAppearance: darkAppearance)
+    }
+
+    /// An unstyled text input's cursor: white on a dark surface, the system tint on a light one.
+    static func cursor(behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> UIColor? {
+        GoogleMapsAttribution.needsLightInk(on: behind, darkAppearance: darkAppearance) ? .white : nil
+    }
+
+    /// The step chrome (back, close, Skip) on a dark, gradient or image step.
+    static let darkChrome = Color.white.opacity(0.7)
 }
 
 struct ContentBlockRendererView: View {
