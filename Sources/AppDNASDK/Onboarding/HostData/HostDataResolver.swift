@@ -230,9 +230,9 @@ enum HostDataResolver {
     /// `template` from the first of:
     /// - a nested scheme separator after the outer `://` (`nestedSchemeSeparator`), wherever it is
     ///   written, in the literal text or in a token's fallback;
-    /// - the end of the first token in the query (after the first `?` outside any token), so every token
-    ///   that follows another token in the query is covered: the earlier token's value is not known
-    ///   from the literal, and it may supply the nested scheme.
+    /// - the end of the first token after the host, wherever it sits (path or query), so every token
+    ///   that follows another token is covered: the earlier token's value is not known from the
+    ///   literal, and it may supply the nested scheme, and a `?` before it too.
     ///
     /// As a UTF-16 range, or none.
     static func nestedURLRanges(_ template: String) -> [NSRange] {
@@ -244,18 +244,7 @@ enum HostDataResolver {
         if let m = nestedSchemeSeparator.firstMatch(in: template, range: NSRange(location: from, length: ns.length - from)) {
             starts.append(m.range.location)
         }
-        let tokens = tokenRegex.matches(in: template, range: NSRange(location: 0, length: ns.length)).map(\.range)
-        var query: Int?
-        var i = from
-        for t in tokens.map(Optional.some) + [nil] {
-            let literalEnd = t?.location ?? ns.length
-            if i < literalEnd {
-                let q = ns.range(of: "?", options: [], range: NSRange(location: i, length: literalEnd - i))
-                if q.location != NSNotFound { query = q.location; break }
-            }
-            if let t { i = max(i, t.location + t.length) }
-        }
-        if let q = query, let first = tokens.first(where: { $0.location > q }) {
+        if let first = tokenRegex.firstMatch(in: template, range: NSRange(location: from, length: ns.length - from))?.range {
             starts.append(first.location + first.length)
         }
         guard let start = starts.min() else { return [] }
