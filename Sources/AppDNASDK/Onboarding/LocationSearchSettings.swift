@@ -14,10 +14,10 @@ import Foundation
 /// content block 3 (which is also what the Console seeds). Preserving each keeps a surface that
 /// authored nothing on the threshold it has today.
 ///
-/// 🔴 `type`, `biasCountry` and `language` are resolved here for BOTH surfaces, but only the
-/// form-step field can act on them: the content block searches Apple's place index, which takes no
-/// country bias, no language tag and has no city/region/country result type. That asymmetry is
-/// documented per surface on all four SDK pages and enforced by `check:location-config-reach`.
+/// `type`, `biasCountry` and `language` are resolved here for BOTH surfaces, and both act on them:
+/// the form-step field and the content block search through the same geocoding proxy, which
+/// filters by type, restricts to the bias country and answers in the language. Every setting is
+/// checked on every surface by `check:location-config-reach`.
 struct LocationSearchSettings: Equatable {
     /// 🔴 OPTIONAL, and nil means the author never chose one — which is NOT the same as "address".
     /// The server narrows results only when `type` is present (`GeocodingService.ts:230-232`,
