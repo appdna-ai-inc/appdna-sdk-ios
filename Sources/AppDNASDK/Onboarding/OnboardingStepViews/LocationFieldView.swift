@@ -195,6 +195,9 @@ struct LocationFieldView: View {
                     text: $locationSearch.text,
                     placeholder: placeholder,
                     keyboardType: .default,
+                    // The key reads Search, as on the `input_location` block and on Android; pressing it
+                    // leaves the field, which closes the dropdown.
+                    returnKeyType: .search,
                     onEditingChanged: { editing in
                         if editing { isFocused = true } else { isFocused = false }
                     },
