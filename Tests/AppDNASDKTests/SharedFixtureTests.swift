@@ -480,6 +480,7 @@ final class SharedFixtureTests: XCTestCase {
     private func drive(fixture: Fixture, harness: Harness) async {
         switch fixture.action.kind {
         case "evaluate_audience":              runEvaluateAudience(fixture, harness)
+        case "evaluate_screen_trigger":        runEvaluateScreenTrigger(fixture, harness)
         case "interpolate_template":           runInterpolateTemplate(fixture, harness)
         case "tap_button":                     runTapButton(fixture, harness)
         case "submit_form":                    runSubmitForm(fixture, harness)
@@ -536,6 +537,34 @@ final class SharedFixtureTests: XCTestCase {
     // REAL: AudienceRuleEvaluator.evaluate(rules:traits:) — the same evaluator PaywallManager and
     // ScreenManager consult. It owns `field`/`trait` aliasing, `values`, `between` (closed interval)
     // and the numeric coercion in `in`/`not_in`.
+
+    /// evaluate_screen_trigger — REAL `ScreenIndexEntry` decode + `AutoTriggerEngine.evaluate`. Each case is one
+    /// entry `{trigger_rules: {events: [{event_name, conditions}]}}` decoded as the screen index is, and one
+    /// tracked event on a fresh engine (no frequency state carried between cases).
+    private func runEvaluateScreenTrigger(_ f: Fixture, _ h: Harness) {
+        guard let event = f.action.raw["event"]?.stringValue,
+              let cases = f.action.raw["cases"]?.arrayValue else {
+            return XCTFail("[\(f.id)] evaluate_screen_trigger needs action.event and action.cases")
+        }
+        var fired: [Bool] = []
+        for c in cases {
+            var trigger: [String: Any] = ["event_name": event]
+            if let conditions = c.objectValue?["conditions"], conditions.arrayValue != nil {
+                trigger["conditions"] = conditions.foundation
+            }
+            let json: [String: Any] = ["id": "s1", "name": "Screen", "trigger_rules": ["events": [trigger]]]
+            guard let data = try? JSONSerialization.data(withJSONObject: json),
+                  let entry = try? JSONDecoder().decode(ScreenIndexEntry.self, from: data) else {
+                return XCTFail("[\(f.id)] a case did not decode as a ScreenIndexEntry")
+            }
+            let properties = c.objectValue?["properties"]?.objectValue?.mapValues { $0.foundation }
+            fired.append(AutoTriggerEngine().evaluate(
+                entries: [entry], event: event, properties: properties, userTraits: [:],
+                sessionCount: 1, daysSinceInstall: 0, currentScreenName: nil
+            ) != nil)
+        }
+        h.state["fired"] = fired
+    }
 
     private func runEvaluateAudience(_ f: Fixture, _ h: Harness) {
         guard let config = f.setup.config?.objectValue,

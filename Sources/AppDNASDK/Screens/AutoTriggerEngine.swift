@@ -95,15 +95,18 @@ internal class AutoTriggerEngine {
         if let events = triggerRules.events {
             for trigger in events {
                 if trigger.event_name == event {
-                    if let conditions = trigger.conditions, let props = properties {
-                        let allMatch = conditions.allSatisfy { cond in
-                            guard let field = cond.field else { return false }
-                            return ConditionEvaluator.valuesEqual(props[field], cond.value?.value)
-                        }
-                        if allMatch { anyTriggerMatched = true }
-                    } else {
-                        anyTriggerMatched = true
+                    // Each condition is evaluated by its OPERATOR, with the evaluator the user-trait conditions
+                    // use (it compared everything by equality, so "gt 10" meant "== 10"). An event tracked
+                    // without properties is evaluated on none; it no longer fires a conditioned trigger outright.
+                    let props = properties ?? [:]
+                    let allMatch = (trigger.conditions ?? []).allSatisfy { cond in
+                        guard let field = cond.field else { return false }
+                        return AudienceRuleEvaluator.evaluateRule(
+                            AudienceRule(trait: field, operator: cond.operator ?? "equals", value: cond.value),
+                            userTraits: props
+                        )
                     }
+                    if allMatch { anyTriggerMatched = true }
                 }
             }
         }
