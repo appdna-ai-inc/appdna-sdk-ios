@@ -644,7 +644,37 @@ func resolveTemplateString(
     /// rather than the dictionary — a sheet's late `{{step.<field>}}`.
     wholeLocationAnswer: Bool = false
 ) -> String {
+    resolveTemplateStringReadingGoogle(
+        text, hookData: hookData, responses: responses, sessionData: sessionData, userTraits: userTraits,
+        stepInputs: stepInputs, key: key, isOption: isOption, allTyped: allTyped, wholeLocationAnswer: wholeLocationAnswer
+    ).value
+}
+
+/// `resolveTemplateString`, and whether what it drew shows a Google answer's content: a token that resolves (not to
+/// its fallback) where the typed-text rule does not apply, on a path that reads a Google answer under
+/// `googleAnswers` (`GoogleCredit.pathCredits`). An option's stored key (`value`, ...) takes the typed text, so it
+/// shows none. The Kotlin twin is `HostDataResolver.plainStringReadsGoogle`.
+func resolveTemplateStringReadingGoogle(
+    _ text: String,
+    hookData: [String: Any]?,
+    responses: [String: Any],
+    sessionData: [String: Any]? = nil,
+    userTraits: [String: Any]? = nil,
+    stepInputs: [String: Any]? = nil,
+    /// Where `text` sits (`HostDataResolver.typedTextRule`): a token the rule covers resolves a Google
+    /// answer to its typed text. Nil: drawn text, where only a markdown link's target does.
+    key: String? = nil,
+    isOption: Bool = false,
+    /// Every token takes the typed text: text drawn where no Google credit is (a Screen), or the text
+    /// an option keeps for a Google key (`InputOption.googleKeys`).
+    allTyped: Bool = false,
+    /// A token naming a whole location answer draws its line (`formatted_address`, else `address`)
+    /// rather than the dictionary — a sheet's late `{{step.<field>}}`.
+    wholeLocationAnswer: Bool = false,
+    googleAnswers: GoogleCredit.Answers? = nil
+) -> (value: String, readGoogle: Bool) {
     var result = text
+    var readGoogle = false
     let rule = allTyped
         ? HostDataResolver.TypedTextRule(all: true, ranges: [])
         : HostDataResolver.typedTextRule(text, key: key, isOption: isOption)
@@ -659,7 +689,7 @@ func resolveTemplateString(
     // pattern did not match it AT ALL and the literal shipped to the user — the same shape as the
     // pipe bug, where the console advertised a syntax the natives could not read.
     let pattern = "\\{\\{\\s*([a-zA-Z0-9_.\\-]+)\\s*(?:\\|\\s*([^}]*?)\\s*)?\\}\\}"
-    guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return (text, false) }
     let nsRange = NSRange(text.startIndex..., in: text)
     let matches = regex.matches(in: text, range: nsRange)
 
@@ -682,12 +712,16 @@ func resolveTemplateString(
             : Range(match.range(at: 2), in: result).map { String(result[$0]) }
         // A null (a trait identify kept as NSNull, a null in hook data) is unresolved, never "<null>".
         if let resolved = resolved, !(resolved is NSNull) {
+            if let answers = googleAnswers, !rule.covers(match.range.location),
+               GoogleCredit.pathCredits(path, answers) {
+                readGoogle = true
+            }
             result.replaceSubrange(fullRange, with: "\(resolved)")
         } else if let fallback = fallback {
             result.replaceSubrange(fullRange, with: fallback)
         }
     }
-    return result
+    return (result, readGoogle)
 }
 
 /// Whether drawing `text` through `resolveTemplateString` shows a Google answer's content: a token

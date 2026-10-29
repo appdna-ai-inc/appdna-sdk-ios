@@ -642,10 +642,14 @@ enum OnboardingStepPipeline {
                     guard case .string(let s)? = get(.object(json), segs), s.contains("{{") else { continue }
                     let at = sheetPathKey(segs)
                     // A whole location answer (`{{step.home}}`) draws its line, as Android's sheet does.
-                    let r = resolveTemplateString(
+                    // Drawn and judged by ONE resolve: whether it shows Google content follows the typed-text rule
+                    // for where the token sits, and a token that falls back shows none.
+                    let drawn = resolveTemplateStringReadingGoogle(
                         s, hookData: nil, responses: [:], stepInputs: stepInputs, key: at.key, isOption: at.isOption,
-                        wholeLocationAnswer: true
+                        wholeLocationAnswer: true,
+                        googleAnswers: GoogleCredit.Answers(accumulated: [:], stepInputs: stepInputs, sessionStore: [:])
                     )
+                    let r = drawn.value
                     // An option's text that a deferred token fills from a Google answer in the sheet's
                     // inputs: the pick records the key, with the text as the user typed it, as the raw
                     // pass records an option's — so a later `selected` path credits where it is drawn
@@ -654,7 +658,7 @@ enum OnboardingStepPipeline {
                        case .string(let blockId)? = json["id"],
                        case .object(let option)? = get(.object(json), Array(segs.dropLast())),
                        let optionId = option["id"]?.stringValue ?? option["value"]?.stringValue,
-                       templateReadsGoogle(s, answers: GoogleCredit.Answers(accumulated: [:], stepInputs: stepInputs, sessionStore: [:])) {
+                       drawn.readGoogle {
                         lateKeys[blockId, default: [:]][optionId, default: [:]][key] = resolveTemplateString(
                             s, hookData: nil, responses: [:], stepInputs: stepInputs, allTyped: true
                         )
