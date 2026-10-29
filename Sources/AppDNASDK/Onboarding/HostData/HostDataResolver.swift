@@ -300,7 +300,8 @@ enum HostDataResolver {
     /// - the end of the first token after the host, wherever it sits (path or query), so every token
     ///   that follows another token is covered, whatever its position: the earlier token's value is not
     ///   known from the literal (a value substituted in the query may carry a nested URL; one in the path
-    ///   is percent-encoded, so it cannot open a query or a scheme, and is covered only to keep the rule simple).
+    ///   has its `/` and `?` percent-encoded, so it cannot open a query and nothing in the path is fetched
+    ///   as a nested URL, though it may still spell a scheme; it is covered only to keep the rule simple).
     ///
     /// As a UTF-16 range, or none.
     static func nestedURLRanges(_ template: String) -> [NSRange] {
