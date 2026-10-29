@@ -134,7 +134,13 @@ struct LocationFieldView: View {
     let apiClient: APIClient?
 
     @StateObject private var locationSearch: LocationSuggestionSearch
-    @FocusState private var isFocused: Bool
+    /// Whether the text field is being edited, as its own `onEditingChanged` reports it. Plain state:
+    /// this was a `@FocusState` bound to no view, and SwiftUI drops writes to one of those, so it never
+    /// changed, `.onChange(of: isFocused)` never ran, and leaving the field never ended its search — a
+    /// debounced search still pending (the one a blur's commit of a composition after Google's line
+    /// starts, among others) fired and opened the dropdown under a field the user had left (#1147). The
+    /// `input_location` block already reports the leaving through its own state.
+    @State private var isFocused = false
     /// The form step's settlement: Continue settles this field before it submits (a resolve in
     /// flight stores the typed text). `onDisappear` runs only after the answers were submitted.
     @SwiftUI.Environment(\.locationAdvanceSettlement) private var locationSettlement
@@ -320,8 +326,10 @@ struct LocationFieldView: View {
     }
 
     private func selectSuggestion(_ listed: LocationListedSuggestion) {
+        // The keyboard stays as it was, as on Android's form-step field: this line used to write
+        // `isFocused = false` to "dismiss the keyboard", which never did anything (see `isFocused`), and
+        // with `isFocused` live it would mark a field still being edited as left.
         locationSearch.select(listed)
-        isFocused = false  // dismiss keyboard
         // Log the fact of a selection, never the user's location. A raw `print`
         // here is unconditional — it reaches release builds and the host's crash
         // reporter / device console.
