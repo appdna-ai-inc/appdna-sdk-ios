@@ -118,6 +118,9 @@ extension SharedFixtureTests {
         // Every typed text the field stored, in order: a Google line must never be one of them.
         case "stored_texts": return rig.storedTexts
         case "stored_raw_query": return (rig.stored as? [String: Any])?["raw_query"] ?? NSNull()
+        // How many times the field's undo history was dropped: every text the holder set, and every
+        // first edit of Google's line that set none.
+        case "field_history_resets": return holder.textSets
         default: return nil
         }
     }

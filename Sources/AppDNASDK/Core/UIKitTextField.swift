@@ -43,6 +43,9 @@ struct UIKitTextField: UIViewRepresentable {
     /// bring back text the app replaced. UIKit drops it on such a set too on current iOS; this does not
     /// rely on that.
     var clearsUndoOnProgrammaticSet: Bool = false
+    /// Each change of this value clears the field's undo history, even when the text is unchanged: the
+    /// owner says the history holds text it has replaced, which no undo may bring back. nil: never.
+    var undoHistoryGeneration: Int? = nil
 
     func makeUIView(context: Context) -> UITextField {
         let tf = MarkedTextReportingField(frame: .zero)
@@ -65,6 +68,7 @@ struct UIKitTextField: UIViewRepresentable {
     func updateUIView(_ tf: UITextField, context: Context) {
         // Update text only if out of sync — avoids cursor jump on every keystroke
         Self.setText(text, of: tf, clearingUndo: clearsUndoOnProgrammaticSet)
+        Self.clearUndo(of: tf, generation: undoHistoryGeneration, applied: &context.coordinator.appliedUndoHistoryGeneration)
         // Apply placeholder with optional color via attributedPlaceholder
         if let placeholderColor = placeholderColor {
             let attrs: [NSAttributedString.Key: Any] = [.foregroundColor: placeholderColor]
@@ -130,6 +134,14 @@ struct UIKitTextField: UIViewRepresentable {
         if clearingUndo { tf.undoManager?.removeAllActions() }
     }
 
+    /// The owner's request to clear the field's undo history (`undoHistoryGeneration`): when `generation`
+    /// moved on from the one last `applied`, the history is cleared whether or not the text changed.
+    static func clearUndo(of tf: UITextField, generation: Int?, applied: inout Int?) {
+        guard let generation, generation != applied else { return }
+        applied = generation
+        tf.undoManager?.removeAllActions()
+    }
+
     private func applyNonReactive(tf: UITextField) {
         tf.text = text
         if let placeholderColor = placeholderColor {
@@ -156,9 +168,12 @@ struct UIKitTextField: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         let parent: UIKitTextField
+        /// The `undoHistoryGeneration` the field last honoured; the one it was built with clears nothing.
+        var appliedUndoHistoryGeneration: Int?
 
         init(_ parent: UIKitTextField) {
             self.parent = parent
+            appliedUndoHistoryGeneration = parent.undoHistoryGeneration
         }
 
         @objc func textFieldDidChange(_ tf: UITextField) {

@@ -194,8 +194,11 @@ struct LocationFieldView: View {
                     },
                     // An IME composition is not an edit until it commits.
                     onCompositionChange: { locationSearch.compositionChanged($0, settings: search) },
-                    // Google's line, replaced by the user's own text, must not come back by an undo.
-                    clearsUndoOnProgrammaticSet: true
+                    // Google's line, replaced by the user's own text, must not come back by an undo:
+                    // the history goes with every text the holder sets, and with a first edit of the
+                    // line that already left the user's own text.
+                    clearsUndoOnProgrammaticSet: true,
+                    undoHistoryGeneration: locationSearch.textSets
                 )
                 .frame(height: 20)
                 // Every change, programmatic ones included, goes to the holder's

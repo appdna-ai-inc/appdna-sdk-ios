@@ -212,6 +212,13 @@ final class LocationSuggestionSearch: ObservableObject {
     /// A tap's resolve is in flight: the views show progress, and nothing is stored for the field.
     @Published private(set) var isResolving = false
     @Published private(set) var isDropdownOpen = false
+    /// How many times the holder has set the field's text itself (a resolve, a restore, a clear, an
+    /// edit that restarts from the user's own text), plus each first edit of Google's line whose restart
+    /// left the text as the edit had it. Both views hand it to their text field, which clears its undo
+    /// history each time it changes, so an undo can never bring back text the holder replaced, such as
+    /// Google's line, even when the restart set nothing. The Kotlin twin is
+    /// `LocationSuggestionSearch.textSets`, which draws the field afresh on the same counts.
+    @Published private(set) var textSets = 0
 
     /// Whether the list on screen holds Google suggestions: the dropdown then draws Google's logo
     /// under the rows. Read from each suggestion's own `provider`, so a list replaced by a newer search
@@ -371,7 +378,10 @@ final class LocationSuggestionSearch: ObservableObject {
         if let google = shownGoogle {
             shownGoogle = nil
             typed = LocationAnswer.editRestart(rawQuery: google.rawQuery, shown: google.line, edited: newText)
-            setText(typed)
+            // The field's undo history still holds Google's line, so it goes even when the edit already
+            // left the user's own text (the rest of the line deleted, or the typed text pasted over it):
+            // nothing is set then, and no echo is armed, but the field clears its history all the same.
+            if typed == text { textSets += 1 } else { setText(typed) }
         }
         storeTyped(typed)
         search(query: typed, settings: settings)
@@ -402,6 +412,7 @@ final class LocationSuggestionSearch: ObservableObject {
     private func setText(_ newText: String) {
         guard newText != text else { return }
         pendingEcho = newText
+        textSets += 1
         text = newText
     }
 

@@ -2758,8 +2758,11 @@ struct FormInputLocationPlaceholderBlock: View {
                             $0, settings: LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
                         )
                     },
-                    // Google's line, replaced by the user's own text, must not come back by an undo.
-                    clearsUndoOnProgrammaticSet: true
+                    // Google's line, replaced by the user's own text, must not come back by an undo:
+                    // the history goes with every text the holder sets, and with a first edit of the
+                    // line that already left the user's own text.
+                    clearsUndoOnProgrammaticSet: true,
+                    undoHistoryGeneration: searchCompleter.textSets
                 )
                 .frame(height: 24)
                 .onChange(of: searchCompleter.text) { newValue in
