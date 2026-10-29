@@ -217,11 +217,23 @@ enum HostDataResolver {
         return googleMapsHosts.contains(host)
     }
 
-    /// A nested URL's scheme separator in any encoding mix, case-insensitively: `:` or `%3A`, then two
-    /// slashes, each `/` or `%2F`.
+    /// A nested URL's scheme separator, in the forms a lenient URL parser reads as a scheme plus a
+    /// host, in any encoding mix and any case:
+    /// - `:` or `%3A`, then one or more slashes or backslashes, each `/`, `%2F`, `\` or `%5C`
+    ///   (`https://`, `https:/`, `https%3A%2F%2F`, `https:%5C%5C`);
+    /// - `http:` or `https:` with no slash at all (`https:x.example`), each scheme letter written plain
+    ///   or percent-encoded, and the colon `:` or `%3A`. A bare colon with no slash counts only after
+    ///   one of these two schemes, the ones a fetched image is served over, because a Static Maps
+    ///   parameter writes its own colons (`markers=color:red%7C...`) in front of a token that keeps
+    ///   the place.
+    ///
+    /// No case-insensitive option: the classes list both ASCII cases, as the Kotlin twin does, so no
+    /// Unicode case folding (`ſ` to `s`) can differ between the platforms.
     static let nestedSchemeSeparator: NSRegularExpression = {
         // swiftlint:disable:next force_try
-        try! NSRegularExpression(pattern: #"(?::|%3A)(?:/|%2F)(?:/|%2F)"#, options: [.caseInsensitive])
+        try! NSRegularExpression(
+            pattern: #"(?::|%3[Aa])(?:/|%2[Ff]|\\|%5[Cc])+|(?:[Hh]|%[46]8)(?:[Tt]|%[57]4){2}(?:[Pp]|%[57]0)(?:[Ss]|%[57]3)?(?::|%3[Aa])"#
+        )
     }()
 
     /// Inside a URL on one of Google's Maps hosts, the parts that may be another URL, which the Maps
