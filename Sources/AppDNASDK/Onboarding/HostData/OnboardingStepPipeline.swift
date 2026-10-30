@@ -251,7 +251,14 @@ enum OnboardingStepPipeline {
                         )
                     }
                     o[key] = resolve(false)
-                    if templateReadsGoogle(s, answers: answers) { keys[i, default: [:]][key] = resolve(true) }
+                    // Recorded where the text, as drawn, shows Google content: a token that resolves, where the
+                    // typed-text rule does not apply. A token that falls back, or one in a link's target, does not.
+                    let readsGoogle = resolveTemplateStringReadingGoogle(
+                        s, hookData: hook, responses: input.responses,
+                        sessionData: input.templateContext.sessionData, userTraits: input.templateContext.userTraits,
+                        stepInputs: input.inputValues, key: key, isOption: true, googleAnswers: answers
+                    ).readGoogle
+                    if readsGoogle { keys[i, default: [:]][key] = resolve(true) }
                     changed = true
                 }
             }

@@ -246,8 +246,10 @@ extension SharedFixtureTests {
             for (blockId, options) in pick["field_options_overrides"]?.objectValue ?? [:] {
                 pickOptions[blockId] = Self.decodeOptions(options)
             }
+            // `inputs`: what the user entered on the pick step itself before picking (its `step` root).
+            let pickInputs = (pick["inputs"]?.foundation as? [String: Any]) ?? [:]
             let resolvedPick = OnboardingStepPipeline.resolve(OnboardingStepPipeline.Input(
-                step: pickStep, override: Self.creditOverride(pick["override"]), pending: false, inputValues: [:],
+                step: pickStep, override: Self.creditOverride(pick["override"]), pending: false, inputValues: pickInputs,
                 responses: accumulated, templateContext: templateContext, selected: selected,
                 fieldConfigOverrides: [:], fieldOptionsOverrides: pickOptions
             ))
@@ -259,8 +261,19 @@ extension SharedFixtureTests {
             var pickBlocks = Self.withShared(selected) {
                 resolvedPick.blocks.map {
                     OnboardingStepPipeline.displayBlock(
-                        $0, rawResolved: resolvedPick.isRawResolved($0.id), hookData: nil, responses: accumulated, stepInputs: [:]
+                        $0, rawResolved: resolvedPick.isRawResolved($0.id), hookData: nil, responses: accumulated, stepInputs: pickInputs
                     )
+                }
+            }
+            // `via: "view_pass"`: the pick step is drawn as a step with no raw capture draws it — every block
+            // through the view-level pass, against the step's own inputs.
+            if pick["via"]?.stringValue == "view_pass" {
+                pickBlocks = Self.withShared(selected) {
+                    (pickStep.config.content_blocks ?? []).map {
+                        OnboardingStepPipeline.displayBlock(
+                            $0, rawResolved: false, hookData: nil, responses: accumulated, stepInputs: pickInputs
+                        )
+                    }
                 }
             }
             if let inSheet = pick["in_sheet"]?.objectValue {
@@ -285,11 +298,11 @@ extension SharedFixtureTests {
                 return XCTFail("[\(f.id)] a picked option is not on the resolved step")
             }
             var values: [String] = []
-            var pickInputs: [String: Any] = [:]
+            var tapInputs: [String: Any] = [:]
             for option in options {
                 guard let next = SelectOptionTap.apply(
                     option: option, block: block, selectedValues: values, sourcedOptions: block.field_options ?? [],
-                    inputValues: &pickInputs, store: selectedStore
+                    inputValues: &tapInputs, store: selectedStore
                 ) else { return XCTFail("[\(f.id)] the Select refused a pick (its max_selections)") }
                 values = next.selectedValues
             }

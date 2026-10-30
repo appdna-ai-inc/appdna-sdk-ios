@@ -3653,7 +3653,12 @@ func resolveBlockTemplates(
                 for key in ["label", "subtitle", "leading_text"] {
                     if let s = opt[key] as? String, s.contains("{{") {
                         next[key] = fill(s, stepInputs)
-                        if !allTyped && templateReadsGoogle(s, answers: answers) {
+                        // Recorded where the text, as drawn, shows Google content: a token that resolves, where the
+                        // typed-text rule does not apply. A token that falls back, or one in a link's target, does not.
+                        if !allTyped, resolveTemplateStringReadingGoogle(
+                            s, hookData: hookData, responses: responses, stepInputs: stepInputs, key: key, isOption: true,
+                            googleAnswers: answers
+                        ).readGoogle {
                             optionGoogleKeys[i, default: [:]][key] = resolveTemplateString(
                                 s, hookData: hookData, responses: responses, stepInputs: stepInputs, allTyped: true
                             )

@@ -724,15 +724,6 @@ func resolveTemplateStringReadingGoogle(
     return (result, readGoogle)
 }
 
-/// Whether drawing `text` through `resolveTemplateString` shows a Google answer's content: a token
-/// whose path reaches one under `responses` / `step`, or reads a picked option's Google key under
-/// `selected` (`GoogleCredit.pathCredits` over `answers`). An option filled with such text records the
-/// key (`InputOption.googleKeys`).
-func templateReadsGoogle(_ text: String, answers: GoogleCredit.Answers) -> Bool {
-    guard text.contains("{{") else { return false }
-    return HostDataResolver.extractTokens(text).contains { GoogleCredit.pathCredits($0.path, answers) }
-}
-
 // MARK: - 2D Positioning Modifier
 
 /// Applies vertical/horizontal alignment + offset positioning to a content block.
