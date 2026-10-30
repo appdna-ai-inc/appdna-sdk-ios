@@ -1,11 +1,11 @@
 import Foundation
 
-/// Which visual variant a paywall countdown draws — #980.
+/// Which visual variant a paywall countdown draws.
 ///
 /// 🔴 THE CONSOLE OFFERED FOUR AND EVERY PAYWALL DREW ONE. The Variant select persisted
 /// `digital` | `circular` | `flip` | `bar` through `CountdownConfigSchema`, the generator wrote one
 /// on every countdown it produced, and no renderer on either platform read `variant` — so all four
-/// values drew `digital`. #979 removed the control rather than leave a select that did nothing;
+/// values drew `digital`. The console removed the control rather than leave a select that did nothing;
 /// this is the rule behind it now that both platforms draw all four.
 ///
 /// 🔴 A SHARED RULE because the FALLBACK is the part that would diverge. An unrecognised value must

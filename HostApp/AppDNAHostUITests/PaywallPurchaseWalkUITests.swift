@@ -1,15 +1,15 @@
-// PaywallPurchaseWalkUITests.swift — #1018
+// PaywallPurchaseWalkUITests.swift
 //
 // A REAL STOREKIT PURCHASE, THROUGH THE PAYWALL'S OWN CTA, ON A DEVICE.
 //
-// #1018 was parked on #934 — the simulator's scheme has no StoreKit configuration for the TEST
+// This walk was once considered blocked — the simulator's scheme has no StoreKit configuration for the TEST
 // action, so a paywall opened under `xcodebuild test` saw an empty store and the CTA could not buy
-// anything. The stated reason it could not borrow #933's route was that "a UI test drives the app
+// anything. The stated reason it could not borrow the hosted trial-eligibility test's route was that "a UI test drives the app
 // from outside it, and the test process is the only place that can hold an SKTestSession".
 //
 // 🔴 THAT WAS WRONG, and `StoreSessionReachesTheAppUITests` measures it: a session held HERE serves
 // the app this test launches (`store:1 … =$9.99`). `SKTestSession` configures the simulator's
-// StoreKit environment, not the calling process's. So the walk is possible without #934.
+// StoreKit environment, not the calling process's. So the walk is possible without a scheme-level StoreKit configuration.
 //
 // What this proves that a unit test cannot: the CTA a user actually taps reaches StoreKit, the
 // purchase completes against a real (test) store, and the SDK reports it — the whole chain, from
@@ -81,11 +81,11 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
          not the host's, so the host cannot give it one. The published fixture's CTA reads
          "Start Free Trial".
          *
-         🔴 TAPPED AND RETRIED, BECAUSE ONE TAP IS A RACE (#1068). `showPaywall` presents whatever
+         🔴 TAPPED AND RETRIED, BECAUSE ONE TAP IS A RACE. `showPaywall` presents whatever
          config has ALREADY landed, and the SDK fetches it after `configure()` — a tap that arrives
          first does nothing and says nothing. One tap then spent its whole timeout waiting for a
          paywall nobody had asked for a second time, and failed as "the paywall never drew its CTA".
-         `StorePriceUITests` has carried this loop since #923, for the same reason.
+         `StorePriceUITests` carries this loop too, for the same reason.
          */
         let cta = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch
         for attempt in 0..<12 where !cta.exists {
@@ -124,7 +124,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
          🔴 THE ASSERTION IS THE EVENT, not the screen. A paywall may dismiss, stay, or route
          somewhere on success depending on how it is authored — but `purchase_completed` is emitted
          by `EventTracker` once StoreKit has actually granted the product, and the host mirrors
-         every tracked event into `host.lastEvents` (#1047). So this asserts the purchase HAPPENED
+         every tracked event into `host.lastEvents`. So this asserts the purchase HAPPENED
          rather than that the screen changed.
          *
          🔴 AND IT IS READ ONLY ONCE THE HOST IS FRONTMOST AGAIN. `host.lastEvents` lives in the
@@ -168,11 +168,11 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
         )
 
         /*
-         🔴 #1074 — AND THE HOST WAS TOLD THE USER TAPPED, as a fact of its own. `onPaywallAction`
+         🔴 AND THE HOST WAS TOLD THE USER TAPPED, as a fact of its own. `onPaywallAction`
          was declared on iOS and called from nowhere, while Android emitted `CTA_TAPPED` — so the
          same published paywall reported the tap on one platform and nothing on the other. It is
          reported BEFORE the renderer's plan guards, which is what makes a tap that cannot become a
-         purchase distinguishable from one the SDK never received (#1072).
+         purchase distinguishable from one the SDK never received.
          */
         XCTAssertTrue(
             events.label.contains("action:cta_tapped"),

@@ -1,4 +1,4 @@
-// RiveWalkUITests.swift — #990
+// RiveWalkUITests.swift
 //
 // THE RIVE ANIMATION ON A DEVICE, and the fact that it is MOVING.
 //
@@ -23,7 +23,7 @@ final class RiveWalkUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
-    /// #1041 — ITS OWN flow, not the shared `flowId`. Three walks needed three different
+    /// ITS OWN flow, not the shared `flowId`. Three walks needed three different
     /// flows and read one field, so two of them presented a flow they were not written for
     /// and failed on a screen they were never looking at. Empty skips.
     private var flowId: String? { TestCredentials.riveFlowId.isEmpty ? nil : TestCredentials.riveFlowId }
@@ -50,10 +50,10 @@ final class RiveWalkUITests: XCTestCase {
         /*
          * 🔴 ONE STEP, NOT A WALK — and the five-step walk is why this took four device runs.
          *
-         * The Rive step was originally bolted onto #963's location itinerary because that flow
+         * The Rive step was originally bolted onto the location itinerary walk because that flow
          * already existed, and every failure since was about the ITINERARY rather than about Rive:
          * a step name asserted that the SDK never draws, a published copy that predated the step,
-         * and then a step the device passes straight through (#1016 — real, and nothing to do with
+         * and then a step the device passes straight through (real, and nothing to do with
          * this claim). The claim here is "a `rive` block draws on a device and keeps moving", so
          * the flow is one step carrying that block and nothing else
          * (`scripts/spec502/probe-990-rive-only-flow.ts` builds and publishes it).

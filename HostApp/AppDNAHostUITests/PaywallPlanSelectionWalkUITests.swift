@@ -1,8 +1,8 @@
-// PaywallPlanSelectionWalkUITests.swift — #1068
+// PaywallPlanSelectionWalkUITests.swift
 //
 // WHICH PRODUCT DOES THE CTA ACTUALLY BUY?
 //
-// #1018 proved the CTA completes a real StoreKit purchase. It could not prove which PLAN that
+// `PaywallPurchaseWalkUITests` proved the CTA completes a real StoreKit purchase. It could not prove which PLAN that
 // purchase names, because the walk tapped the CTA with the default plan selected and never tapped
 // a different one — so "selection is read at tap time" and "selection is ignored and the default
 // is always bought" produce the identical run.
@@ -54,7 +54,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
 
         let app = XCUIApplication()
 
-        // PASS 1 — the control: the CTA with nothing selected, which is #1018's walk.
+        // PASS 1 — the control: the CTA with nothing selected, which is the purchase walk.
         let pass1 = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: false)
         let boughtByDefault = pass1.bought
         NSLog("[#1068] default selection bought: \(boughtByDefault ?? "nothing")")
@@ -81,7 +81,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         }
 
         /*
-         🔴 #1081 — the selection state is IN the message, so a recurrence names its own half
+         🔴 The selection state is IN the message, so a recurrence names its own half
          instead of needing another run to find out. `selected=false` means the tap never reached
          `selectPlan`; `selected=true` with the wrong product means the purchase path read a stale
          value and the user was charged for a plan they had changed away from.
@@ -129,7 +129,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
 
         /*
-         🔴 THE HARNESS CHECK FIRST, as in #1018. A paywall showing its authored price means either
+         🔴 THE HARNESS CHECK FIRST, as in the purchase walk. A paywall showing its authored price means either
          "the SDK never asked" or "this simulator has no catalogue", and the two are
          indistinguishable from the screen — so an empty store SKIPS with its measurement rather
          than failing as if plan selection were broken.
@@ -183,7 +183,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         )
 
         /*
-         🔴 THE NEGATIVE CONTROL FOR THE INSTRUMENT ITSELF, and it is not optional. #923's first
+         🔴 THE NEGATIVE CONTROL FOR THE INSTRUMENT ITSELF, and it is not optional. The store-price feature's first
          render test read an EMPTY accessibility tree, so "the authored price is absent" passed for
          the worst possible reason. The same trap is live here: if the `.isSelected` trait were
          never applied, every row would read `selected=false` forever — and a check that only ever
@@ -213,7 +213,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             NSLog("[#1068] tapping the annual plan: \(annualRow.label)")
             annualRow.tap()
             /*
-             🔴 #1081 — READ THE SELECTION BACK, before the CTA is pressed. A run bought
+             🔴 READ THE SELECTION BACK, before the CTA is pressed. A run bought
              `premium_monthly` after a tap whose log carried the ANNUAL row's own label and a CTA
              recorded `[enabled=true hittable=true]`, once in roughly ten. From outside, two very
              different faults produce that line:
@@ -259,7 +259,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
          */
         var recorded: [SKTestTransaction] = []
         for attempt in 1...3 where recorded.isEmpty {
-            // #1072 — `isEnabled` goes in the line, not just the label. The renderer disables the
+            // `isEnabled` goes in the line, not just the label. The renderer disables the
             // CTA while `selectedPlanId` is nil or a purchase is in flight, and a tap on a
             // disabled SwiftUI button SUCCEEDS silently — so a run that records nothing needs this
             // value to say whether the button was ever live when it was pressed.
@@ -273,7 +273,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 1)
             }
             /*
-             🔴 #1072 — THE SPLIT THAT NAMES WHICH HALF FAILED, taken WHILE the paywall is still up.
+             🔴 THE SPLIT THAT NAMES WHICH HALF FAILED, taken WHILE the paywall is still up.
              `handleCTATap` sets `isPurchasing`, and the CTA then draws a spinner INSTEAD of its
              label. So one reading separates the two explanations for an empty ledger:
 
@@ -308,8 +308,8 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
     ///
     /// 🔴 ON THE FAILURE PATH ONLY, because reading it costs a dismissal. `host.lastEvents` lives
     /// in the host's own view, UNDERNEATH the presented paywall, so getting at it means taking the
-    /// paywall down — which is exactly the step that made #1018's walk flaky. A passing run must
-    /// not pay for it. One run in seven recorded no transaction at all (#1072) and said nothing
+    /// paywall down — which is exactly the step that made the purchase walk flaky. A passing run must
+    /// not pay for it. One run in seven recorded no transaction at all and said nothing
     /// about why; `purchase_started` present or absent is the difference between "the CTA never
     /// fired" and "StoreKit did not answer".
     private func eventsSeenByTheHost(_ app: XCUIApplication) -> String {

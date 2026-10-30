@@ -13,7 +13,7 @@ import XCTest
 ///     -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
 ///     -only-testing:AppDNASDKTests/VisualSnapshotTests
 ///
-/// 🔴 #1029 — record mode is a FILE, not an environment variable: `touch
+/// 🔴 Record mode is a FILE, not an environment variable: `touch
 /// Tests/AppDNASDKTests/__Snapshots__/.record` before the run and delete it after. No env var
 /// reaches a SwiftPM test bundle running under `xctest` in a simulator (measured: neither
 /// `TEST_RUNNER_RECORD_SNAPSHOTS` nor `SIMCTL_CHILD_RECORD_SNAPSHOTS` arrives, and both runs
@@ -29,7 +29,7 @@ final class VisualSnapshotTests: XCTestCase {
     /// arrive; the sentinel below is what works through the bridge.
     ///
     /// 🔴 FIFTY tests used to declare their OWN `recordMode` local, shadowing this one — so they
-    /// could not be re-recorded however record mode was requested. That is how the #541 golden
+    /// could not be re-recorded however record mode was requested. That is how one golden
     /// stayed pinned to the filter build after the render was corrected, and the iOS suite sat
     /// red on a golden nobody could refresh. One property, read by every call site.
     private var recordMode: SnapshotTestingConfiguration.Record {
@@ -38,7 +38,7 @@ final class VisualSnapshotTests: XCTestCase {
     }
 
     /**
-     #1029 — A FILE, BECAUSE NO ENVIRONMENT VARIABLE SURVIVES THE TRIP INTO THE SIMULATOR.
+     A FILE, BECAUSE NO ENVIRONMENT VARIABLE SURVIVES THE TRIP INTO THE SIMULATOR.
 
      The comment above promised `TEST_RUNNER_RECORD_SNAPSHOTS` reaches the test process. It does
      not, for this scheme: a SwiftPM test bundle runs under `xctest` rather than a runner app, so
@@ -104,7 +104,7 @@ final class VisualSnapshotTests: XCTestCase {
     //
     // No token and no key on purpose: the runner has neither, so these capture the FALLBACK state —
     // surface colour, corner radius, labelled text, and above all the GEOMETRY. Geometry is the part
-    // that broke in #671, and the part a numeric assertion cannot see. Deliberately the same configs
+    // that has broken before, and the part a numeric assertion cannot see. Deliberately the same configs
     // as the Android goldens so the two are directly comparable.
 
     private static let anchoredMapJSON = """
@@ -164,7 +164,7 @@ final class VisualSnapshotTests: XCTestCase {
     }
     """
 
-    // MARK: - #654 / #659 / #663 — a button could be SIZED or ALIGNED, never both
+    // MARK: - a button could be SIZED or ALIGNED, never both
 
     /*
      * The pure helper (`buttonFillsWidth`) is asserted in AuthoredLayoutRenderGatesTests. These two
@@ -267,7 +267,7 @@ final class VisualSnapshotTests: XCTestCase {
     /// Renders the REAL PlanCard from a console-shaped plan JSON, so the pill and the
     /// headline price layout are checked as pixels rather than as decoded fields. The
     /// strings are the production ones from the reported paywall: the length of
-    /// "25,00 zł miesięcznie" is the whole reason #545 existed.
+    /// "25,00 zł miesięcznie" is what the layout has to survive.
     private func renderPlanCard(planJSON: String, style: PlanCardStyle) throws -> some View {
         let plan = try JSONDecoder().decode(PaywallPlan.self, from: Data(planJSON.utf8))
         return PlanCard(plan: plan, isSelected: true, onSelect: {}, cardStyle: style)
@@ -521,7 +521,7 @@ final class VisualSnapshotTests: XCTestCase {
     // one on the CI image is the fix if that is ever wanted. A skip-list here is not -- and
     // `check:fixture-runner-skips` would catch it.
 
-    // MARK: - #581 / #580 — the new Image styles and the Sound Button icon
+    // MARK: - the new Image styles and the Sound Button icon
     //
     // A fixture proves the keys are DECODED; only a snapshot proves they are DRAWN. Both features
     // are entirely visual, so a decode-only test would pass against a renderer that reads every
@@ -580,7 +580,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// #578 — the divider between two SPECIFIC providers.
+    /// The divider between two SPECIFIC providers.
     ///
     /// Three providers with the divider in the middle slot. A decode test cannot catch the bug
     /// this guards: a renderer that reads the slot and then places the divider at the end still
@@ -704,7 +704,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// #595 — a published summary step decoded and composed the way the DEVICE does it: the whole
+    /// A published summary step decoded and composed the way the DEVICE does it: the whole
     /// step JSON through `OnboardingStep` (not a hand-written block through the renderer), then
     /// `ThreeZoneStepLayout`. The reported symptom was a step whose heading, buttons and footnote
     /// all drew but whose summary card stack was simply absent.
@@ -785,7 +785,7 @@ final class VisualSnapshotTests: XCTestCase {
         // would pass. Keeping it meant a permanently red suite; re-recording it here would just
         // re-pin it to the wrong environment.
         //
-        // What still guards #595 is above, and it is the part that actually caught the bug: the
+        // What still guards the summary screen is above, and it is the part that actually caught the bug: the
         // step must decode into FIVE blocks and `summary_screen` must not fall through to
         // `.unknown`. The reported symptom was a card stack that rendered as nothing, and
         // `.unknown` rendering as `EmptyView` is precisely how that happened.
@@ -1227,7 +1227,7 @@ final class VisualSnapshotTests: XCTestCase {
     ///
     /// `testRichText_inlineStyles` above covers bold/italic/link but NOT the AppDNA-specific `++underline++`
     /// marker, which is applied by `applyUnderlineMarkers` AFTER the native markdown parse. That post-processing
-    /// step had no test at all, and #605 reports "linked and underlined Markdown content doesn't render".
+    /// step had no test at all, and a report said "linked and underlined Markdown content doesn't render".
     /// This pins both in one render: the link must be coloured and underlined, the `++` markers must be GONE,
     /// and the word between them must be underlined.
     func testRichText_underlineAndLink() throws {
@@ -1260,7 +1260,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// #560 — per-provider label size. The DTO fixture proves the number is DECODED; only a
+    /// Per-provider label size. The DTO fixture proves the number is DECODED; only a
     /// snapshot proves it is DRAWN, which is the half a decode-only test would let ship broken.
     /// Two providers at different sizes, so the golden fails on a renderer that reads the field
     /// and then ignores it as much as on one that never reads it.
@@ -1596,7 +1596,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    // MARK: - #609 / #654 / #659 — the layout rules that only pixels can settle
+    // MARK: - the layout rules that only pixels can settle
 
     private static func multiButtonsJSON(_ lastRow: String, perRow: Int = 2) -> String {
         """
@@ -1613,7 +1613,7 @@ final class VisualSnapshotTests: XCTestCase {
         """
     }
 
-    /// #609 — three buttons at two per row: 2 then 1, the short row ONE COLUMN wide and centred.
+    /// Three buttons at two per row: 2 then 1, the short row ONE COLUMN wide and centred.
     ///
     /// The Android golden for this exact config caught the bug these two tests exist for: a button
     /// takes the width it is offered, so a lone child with spacers either side still spanned the
@@ -1631,7 +1631,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
     }
 
-    /// #654 / #659 — a width-constrained block must honour `horizontal_align`.
+    /// A width-constrained block must honour `horizontal_align`.
     ///
     /// The reported screen was a **75%**-wide button authored `center` that rendered hard left,
     /// because the sizing frame was applied before the alignment and there was no room left to move

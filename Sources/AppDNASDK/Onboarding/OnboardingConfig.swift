@@ -73,7 +73,7 @@ public struct BackButtonStyle: Codable {
 /**
  How the DISMISS control looks — the ✕ that closes the flow.
 
- 🔴 #1004 — none of this was authorable. The glyph was `Image(systemName: "xmark")` at a hardcoded
+ 🔴 None of this was authorable. The glyph was `Image(systemName: "xmark")` at a hardcoded
  size 14 in `.secondary`, inside a 44×44 frame with 8pt of padding, and the report was the obvious
  consequence: "the skip button's size, its background color and the color of the X cannot be set,
  and it is pushed as far as possible into the top-right corner, which makes it hard to tap".
@@ -138,7 +138,7 @@ public struct OnboardingSettings: Codable {
     public let progress_flash_color: String?
     public let back_button_style: BackButtonStyle?
     public let dismiss_allowed: Bool?
-    /// #1004 — how the ✕ looks. Unset keeps the values that shipped hardcoded.
+    /// How the ✕ looks. Unset keeps the values that shipped hardcoded.
     public let dismiss_button_style: DismissButtonStyle?
     /// Global horizontal content padding in points. Default 24.
     public let content_padding: CGFloat?
@@ -148,7 +148,7 @@ public struct OnboardingSettings: Codable {
     /// previously had no such field and fired no haptics, so a flow's haptic config was iOS-ignored.
     public let haptic: HapticConfig?
     /**
-     #1026 — the flow's own celebration. The console has offered a "Celebration Effect" in the flow
+     The flow's own celebration. The console has offered a "Celebration Effect" in the flow
      settings panel since it shipped; Android parsed it into its config object and drew it nowhere,
      and iOS did not parse it at all. `ConfettiOverlay` existed the whole time — it was simply never
      reached from onboarding.
@@ -243,7 +243,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// When true, the back button is hidden on this step (the step still counts toward total progress).
     public let hide_back: Bool?
     /**
-     #896 — when true, the SDK asks StoreKit for a review prompt as this step APPEARS.
+     When true, the SDK asks StoreKit for a review prompt as this step APPEARS.
 
      🔴 On the step, not on a button, and that is store policy rather than taste: Apple's rule is
      to not call the review prompt in response to a user action, and a tap is exactly that.
@@ -256,7 +256,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public let request_store_review: Bool?
 
     /**
-     #921 — the step advances by itself after this many seconds.
+     The step advances by itself after this many seconds.
 
      A splash screen and a step with a forgotten button are the same shape on the wire; this is one
      of the two fields that tell them apart. `StepAutoAdvance` holds the precedence (and
@@ -265,7 +265,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public let auto_advance_seconds: Double?
 
     /**
-     #921 — the step is DECLARED host-driven: it holds until the app calls
+     The step is DECLARED host-driven: it holds until the app calls
      ``AppDNA/advanceOnboardingStep()``, and never times out.
 
      Carries no rendering of its own. What it buys is that the console's publish warning and the
@@ -275,7 +275,7 @@ public struct OnboardingStep: Codable, Identifiable {
     public let wait_for_host: Bool?
 
     /**
-     #1014 — a tap ANYWHERE on the step advances it.
+     A tap ANYWHERE on the step advances it.
 
      A splash screen that is nothing but an image has no button to hang a CTA on, and the only way
      past it was "Allow skip" — which puts a ✕ in the corner, an affordance that says "leave"
@@ -322,7 +322,7 @@ public struct OnboardingStep: Codable, Identifiable {
         // Step-root first (legacy path), then the layout object where the console actually writes them.
         let rootHideProgress = c.lenient(Bool.self, .hide_progress)
         let rootHideBack = c.lenient(Bool.self, .hide_back)
-        // #896 — same root-then-layout ladder as the two flags above, for the same reason: the
+        // Same root-then-layout ladder as the two flags above, for the same reason: the
         // console has published per-step flags inside `layout` before.
         let rootRequestReview = c.lenient(Bool.self, .request_store_review)
         var layoutHideProgress: Bool? = nil
@@ -337,7 +337,7 @@ public struct OnboardingStep: Codable, Identifiable {
         self.hide_progress = rootHideProgress ?? layoutHideProgress
         self.hide_back = rootHideBack ?? layoutHideBack
         /*
-         #921 — the SAME root-then-layout ladder, and here it is the ONLY path that works.
+         The SAME root-then-layout ladder, and here it is the ONLY path that works.
          `updateNodeData` (the flow editor's only writer) puts every Logic-panel flag into
          `data.stepConfig`, which `buildStepsFromGraph` ships as the step's `layout` — so a timer
          an author sets arrives INSIDE `layout`. The builder also hoists these two to the step root
@@ -350,7 +350,7 @@ public struct OnboardingStep: Codable, Identifiable {
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Double.self, forKey: .auto_advance_seconds) })
         self.wait_for_host = (try? c.decodeIfPresent(Bool.self, forKey: .wait_for_host))
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .wait_for_host) })
-        // #1014 — read at the step root AND under `layout`, like the two flags above: the editor
+        // Read at the step root AND under `layout`, like the two flags above: the editor
         // writes some step settings into `layout` and a reader that knows only one place misses
         // half the flows (`auto_advance_seconds` learned this the same way).
         self.tap_anywhere_advances = (try? c.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances))
@@ -378,7 +378,7 @@ public struct OnboardingStep: Codable, Identifiable {
         let rawSourceKey: CodingKeys = ((try? c.decodeNil(forKey: .config)) == false) ? .config : .layout
         var rawBlocks: [HostJSON]? = (try? c.decodeIfPresent(RawBlocksOnly.self, forKey: rawSourceKey))?.content_blocks
         if (decoded.content_blocks ?? []).isEmpty {
-            // #919 — the step-root copy, element by element.
+            // The step-root copy, element by element.
             if let stepBlocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "step[\(stepId)].content_blocks"), !stepBlocks.isEmpty {
                 decoded.content_blocks = stepBlocks
                 rawBlocks = try? c.decodeIfPresent([HostJSON].self, forKey: .content_blocks)
@@ -421,13 +421,13 @@ public struct OnboardingStep: Codable, Identifiable {
          🔴 `request_store_review` was NOT encoded, and this encoder is the SDK's own onboarding
          cache. So a flow that asked for a review prompt lost the request on the next COLD START —
          the step rendered identically and simply never asked. Found while adding the two fields
-         below, which would have had the same hole (#928).
+         below, which would have had the same hole.
          */
         try c.encodeIfPresent(request_store_review, forKey: .request_store_review)
         try c.encodeIfPresent(auto_advance_seconds, forKey: .auto_advance_seconds)
         try c.encodeIfPresent(wait_for_host, forKey: .wait_for_host)
         /*
-         🔴 And the gate caught the NEXT one the same way: `tap_anywhere_advances` (#1014) was
+         🔴 And the gate caught the NEXT one the same way: `tap_anywhere_advances` was
          decoded, from both the root and the layout rung, and never encoded. A splash authored
          "tap anywhere to advance" would have advanced on the warm launch that wrote the cache and
          had no way forward at all on the next cold one.
@@ -462,13 +462,13 @@ public struct OnboardingStep: Codable, Identifiable {
         case form
         case interactive_chat
         /*
-         #953 — `splash` is a first-class case, not an unknown that falls through to `.custom`.
+         `splash` is a first-class case, not an unknown that falls through to `.custom`.
 
          The fallback below renders a splash correctly today, because both SDKs draw a step from
          its `content_blocks` and a splash is content like any other — what makes it a splash
-         rather than a dead end is `auto_advance_seconds` / `wait_for_host` on the STEP (#921).
-         `check:sdk-parity` still asked for the case and was RED from the moment #931 put the type
-         in the agent catalog: a type the console can publish and the SDK cannot NAME is a type
+         rather than a dead end is `auto_advance_seconds` / `wait_for_host` on the STEP.
+         `check:sdk-parity` still asked for the case and was RED from the moment the type went
+         into the agent catalog: a type the console can publish and the SDK cannot NAME is a type
          nothing can ever branch on, and the gate is right to insist before something needs to.
          */
         case splash
@@ -586,7 +586,7 @@ public struct StepConfig: Codable {
         validation_mode = c.lenient(String.self, .validation_mode)
         field_defaults = nil  // Never from JSON; only set via applyOverrides
         chat_config = try c.decodeIfPresent(ChatConfig.self, forKey: .chat_config)
-        // #919 — the `config`/`layout` copy, which is the one the device prefers.
+        // The `config`/`layout` copy, which is the one the device prefers.
         content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "stepConfig.content_blocks")
         layout_variant = c.lenient(String.self, .layout_variant)
         background = try c.decodeIfPresent(BackgroundStyleConfig.self, forKey: .background)
@@ -799,7 +799,7 @@ public struct FormField: Codable, Identifiable {
     public let validation: FormFieldValidation?
     public let options: [FormFieldOption]?
     public let config: FormFieldConfig?
-    /// #596 — the SAME `config` object, kept raw.
+    /// The SAME `config` object, kept raw.
     ///
     /// `FormFieldConfig` is a typed struct, so every key it does not declare is dropped at decode.
     /// The console's Select field offers six display styles and roughly twenty option-styling keys;
@@ -1084,7 +1084,7 @@ public struct ElementInteractionResult {
     public var fieldConfigPatches: [String: [String: Any]]?
     /// Patches to merge into the step's `inputValues` (keyed by field_id).
     public var inputValuePatches: [String: Any]?
-    /// #657 — replacement options, keyed by blockId. The same shape `StepConfigOverride.fieldOptions`
+    /// Replacement options, keyed by blockId. The same shape `StepConfigOverride.fieldOptions`
     /// takes at render time.
     ///
     /// Without this the refresh action could not change the thing it exists to change: a select's
@@ -1203,7 +1203,7 @@ public struct AppliedInteraction {
     /// apply `inputValuePatches` key by key onto the CURRENT values instead.
     public let inputValues: [String: Any]
     public let fieldConfigOverrides: [String: [String: Any]]
-    /// #657 — per-block replacement options the renderer layers at read time, like the config
+    /// Per-block replacement options the renderer layers at read time, like the config
     /// overrides beside it.
     public let fieldOptionsOverrides: [String: [InputOption]]
     public let advance: Bool

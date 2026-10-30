@@ -1,14 +1,14 @@
-// SubtleControlVisibilityTests.swift — #938
+// SubtleControlVisibilityTests.swift
 //
 // IS THE PAGER DOT ACTUALLY THERE ON A LIGHT PAGE? Rendered, and counted.
 //
 // `ReviewsCarouselView` drew its dots as `Color.white` and `Color.white.opacity(0.3)`. Over a
 // WHITE page that is no dots at all, so a reader had no way to tell how many reviews there were or
-// which one they were on. Android carried the identical constant in three places (#938) and its
+// which one they were on. Android carried the identical constant in three places and its
 // recorded pixels said what it costs there — a reviews carousel on a `#FFFFFF` page came back
 // 0 non-white pixels of 780×444, a blank white rectangle.
 //
-// 🔴 THE INSTRUMENT IS THE ONE #923 ARRIVED AT, FOR THE SAME REASON. Reading the accessibility
+// 🔴 THE INSTRUMENT IS THE ONE THE STORE-PRICE TESTS ARRIVED AT, FOR THE SAME REASON. Reading the accessibility
 // tree came back `Drew: []` there — SwiftUI builds it lazily and a hostless test never triggers it
 // — so what is compared is RENDERS, through `layer.render(in:)` on a hosted view inside a real key
 // window. Dots are not text; there is nothing to read but pixels.

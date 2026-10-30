@@ -1,6 +1,6 @@
 // GzipResponseDecodingTests.swift
 //
-// #857 — does a gzip-encoded answer reach the JSON parser DECODED on iOS?
+// Does a gzip-encoded answer reach the JSON parser DECODED on iOS?
 //
 // The Android SDK set `Accept-Encoding: gzip, deflate` by hand, which is exactly what stops OkHttp
 // decompressing: its transparent path runs ONLY when OkHttp added the header itself. Every gzip
@@ -8,8 +8,8 @@
 // config silently.
 //
 // `APIClient.swift:350` sets the SAME header by hand. URLSession is widely believed to decompress
-// `Content-Encoding: gzip` regardless of who set the header — but "widely believed" is what #857
-// was about on the other platform, so this measures it instead against a real loopback server
+// `Content-Encoding: gzip` regardless of who set the header — but "widely believed" is what went
+// wrong on the other platform, so this measures it instead against a real loopback server
 // serving real gzip bytes.
 //
 // The `deflate` half is the other question: URLSession does not advertise raw deflate on its own,
@@ -67,7 +67,7 @@ final class GzipResponseDecodingTests: XCTestCase {
         return c ^ 0xFFFF_FFFF
     }
 
-    /// 🔴 The question #857 leaves open for iOS: a `Content-Encoding: gzip` answer must PARSE.
+    /// 🔴 The question left open for iOS: a `Content-Encoding: gzip` answer must PARSE.
     func testAGzipAnswerIsDecoded() async throws {
         let json = #"{"orgId":"o","appId":"a","n":7}"#
         let body = gzip(Data(json.utf8))

@@ -9,7 +9,7 @@ func resolveCTAFontWeight(_ raw: String?) -> Font.Weight {
 
 /// The same mapping with an explicit fallback.
 ///
-/// #979 — the fallback is a PARAMETER because the countdown needs two of them: its label has
+/// The fallback is a PARAMETER because the countdown needs two of them: its label has
 /// always drawn semibold and its digits bold, so one shared default would have changed the pixels
 /// of every countdown already in the field.
 func resolvePaywallFontWeight(_ raw: String?, default fallback: Font.Weight) -> Font.Weight {
@@ -27,7 +27,7 @@ struct CTAButton: View {
     let cta: PaywallCTA?
     let isPurchasing: Bool
     /*
-     * 🔴 #1075 — WHETHER THERE IS ANYTHING TO BUY, which this button used to ignore.
+     * 🔴 WHETHER THERE IS ANYTHING TO BUY, which this button used to ignore.
      *
      * It was `.disabled(isPurchasing)` and nothing else, so a paywall whose plans are empty or
      * unresolvable drew a full-strength "Subscribe" that accepted the tap and did nothing:
@@ -50,9 +50,9 @@ struct CTAButton: View {
     /// Override CTA text (from section config.text)
     var textOverride: String? = nil
     /**
-     The selected plan's name, appended AFTER localisation — #1102.
+     The selected plan's name, appended AFTER localisation.
 
-     🔴 WHY IT CANNOT BE PART OF `textOverride`. #1100 made a multi-plan CTA name the plan it will
+     🔴 WHY IT CANNOT BE PART OF `textOverride`. A multi-plan CTA names the plan it will
      buy, and the first version built the whole string ("Subscribe — Annual") and passed it as
      `textOverride` — which is the FALLBACK to `loc("cta.text", …)`. A paywall carrying a translation
      for `cta.text` therefore got the translation and LOST the plan name, so the mitigation vanished
@@ -65,7 +65,7 @@ struct CTAButton: View {
      translated.
     */
     var planNameSuffix: String? = nil
-    /// #1104 — the localised `{cta}` / `{plan}` format; nil = the default.
+    /// The localised `{cta}` / `{plan}` format; nil = the default.
     var planNameFormat: String? = nil
     /// CTA text font size (console "Section Font Size" = cta_font_size). Applied only when no
     /// Style-tab button text_style is set. Parity with Android (PaywallActivity.kt:2548, 17f
@@ -86,9 +86,9 @@ struct CTAButton: View {
     var restoreFontSize: CGFloat? = nil
     /// The CTA↔Restore gap. Unset keeps the previous hardcoded 8.
     var restoreGap: CGFloat? = nil
-    /// #651 — Restore's own fill. Unset renders the plain link exactly as before.
+    /// Restore's own fill. Unset renders the plain link exactly as before.
     var restoreBgColor: String? = nil
-    /// #651 — radius for that fill; only meaningful with `restoreBgColor`.
+    /// Radius for that fill; only meaningful with `restoreBgColor`.
     var restoreCornerRadius: CGFloat? = nil
     /// Restore action
     var onRestore: (() -> Void)? = nil
@@ -99,7 +99,7 @@ struct CTAButton: View {
     private var buttonTextStyle: TextStyleConfig? {
         buttonElement?.textStyle
     }
-    /// #905 — the button's container half, from either spelling (`element_style` or flattened).
+    /// The button's container half, from either spelling (`element_style` or flattened).
     private var buttonContainer: ElementStyleConfig? { buttonElement?.container }
     private var buttonBgColor: Color {
         if let hex = buttonContainer?.background?.color {
@@ -126,14 +126,14 @@ struct CTAButton: View {
     @SwiftUI.Environment(\.paywallBackgroundHex) private var backgroundHex: String?
 
     /**
-     #910 — the restore link's default colour, from the BACKGROUND rather than from the theme.
+     The restore link's default colour, from the BACKGROUND rather than from the theme.
 
      `.secondary` is a system colour: grey in light appearance, and it does not know what the
      paywall is painted. Android's default was `white @ 60%`, which on the light paywall this was
      walked against drew white-on-white — the link was in the view tree, had its authored border,
      and was invisible. Two platforms, two different wrong answers to the same question.
 
-     So both take #891's answer: the shared WCAG ladder the console and both SDKs agree on, kept at
+     So both take the plan tiles' answer: the shared WCAG ladder the console and both SDKs agree on, kept at
      60% so an unauthored restore link still reads as secondary to the CTA.
      */
     private var restoreDefaultColor: Color {
@@ -141,7 +141,7 @@ struct CTAButton: View {
     }
 
     @ViewBuilder
-    /// The label the button draws: localised first, THEN the plan's name appended (#1100 / #1102).
+    /// The label the button draws: localised first, THEN the plan's name appended.
     ///
     /// The already-contains-the-name guard lives here as well, so a translation that happens to
     /// include the plan's name does not receive it twice.
@@ -186,16 +186,16 @@ struct CTAButton: View {
             )
         }
         .disabled(isPurchasing || !canPurchase)
-        // #1075 — and it has to LOOK unavailable, not merely behave so. Android's 0.5, because a
+        // And it has to LOOK unavailable, not merely behave so. Android's 0.5, because a
         // control that refuses a tap while looking normal is the harder defect to report.
         .opacity(canPurchase ? 1 : 0.5)
-        // #910 — the rest of the button's authored container. Its background is already resolved
+        // The rest of the button's authored container. Its background is already resolved
         // into `buttonBgColor` and painted above, so only the other halves are applied here.
         .applyElementStyle(buttonContainer?.withoutBackground)
         .padding(.horizontal)
     }
 
-    /// #651 — Restore could be recoloured and resized but never FILLED, so it could not be made to
+    /// Restore could be recoloured and resized but never FILLED, so it could not be made to
     /// look like a second button beside the CTA. Applied to the composed label so all three styling
     /// branches below get it, and a nil `restoreBgColor` leaves the view tree byte-identical.
     @ViewBuilder
@@ -243,7 +243,7 @@ struct CTAButton: View {
                         .contentShape(Rectangle())
                 }
               })
-              // #910 — the restore link's authored container.
+              // The restore link's authored container.
               .applyElementStyle(sectionStyle?.elements?["restore_text"]?.container)
             }
         }
@@ -271,14 +271,14 @@ struct RestoreLinkView: View {
     var textColor: String? = nil
     var fontSize: CGFloat? = nil
     var style: TextStyleConfig? = nil
-    /// #910 — the `restore_text` element's container half. This view is the SECOND renderer of the
+    /// The `restore_text` element's container half. This view is the SECOND renderer of the
     /// restore link (CTAButton has the other), and the console has ONE control for both, so a
     /// container wired to only one of them is invisible on whichever layout the host happens to
-    /// take — the same defect #905 and #910 each hit on a duplicated render site.
+    /// take — a defect that has already hit other duplicated render sites.
     var elementStyle: ElementStyleConfig? = nil
-    /// #910 — same default as `CTAButton.restoreDefaultColor`; the console has ONE control.
+    /// Same default as `CTAButton.restoreDefaultColor`; the console has ONE control.
     var backgroundHex: String? = nil
-    /// #651 — Restore's own fill + radius, the pair the CTA already has. Unset = the plain link.
+    /// Restore's own fill + radius, the pair the CTA already has. Unset = the plain link.
     var bgColor: String? = nil
     var cornerRadius: CGFloat? = nil
     let onRestore: (() -> Void)?

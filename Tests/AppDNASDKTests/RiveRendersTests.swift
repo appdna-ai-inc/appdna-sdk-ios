@@ -4,12 +4,12 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- #990 — THE RIVE ENGINE DRAWS, proven in pixels.
+ THE RIVE ENGINE DRAWS, proven in pixels.
 
  Rive was the last renderer with no offline proof. Both SDKs fetch a `.riv` over the network and
  there is no bundled-asset rung on that path, so there was nothing to render in a test and the only
  statement anyone could make was that the runtime LINKS — which is exactly the statement that was
- true of `LottieBlockView` for as long as it shipped a placeholder (#982).
+ true of `LottieBlockView` for as long as it shipped a placeholder.
 
  🔴 WHAT MADE IT POSSIBLE: `RiveViewModel(webURL:)` hands the string to the runtime's loader, and a
  `file://` URL is a URL. So a fixture in the test bundle renders through the REAL production path —
@@ -138,7 +138,7 @@ final class RiveRendersTests: XCTestCase {
      artboard and state machine instantiated. Rive draws through the Rive Renderer, whose content is
      GPU-backed, and neither capture path sees that in the simulator. A zero-ink frame there is a
      fact about the camera, not about the engine, and asserting on it would have been a test that
-     fails for a working renderer — the exact false negative #923's first attempt shipped.
+     fails for a working renderer — the exact false negative an earlier render test shipped.
 
      So the observable is the state machine's own output. Advancing it produces STATE CHANGES, and
      a state change is something only a running machine can produce: a placeholder has no artboard,

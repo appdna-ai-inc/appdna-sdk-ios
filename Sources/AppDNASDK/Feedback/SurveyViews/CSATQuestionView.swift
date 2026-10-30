@@ -37,7 +37,7 @@ struct CSATQuestionView: View {
                                 .foregroundColor((selectedRating ?? 0) >= rating ? Color(hex: "#FBBF24") : Color(hex: "#D1D5DB"))
                         }
                     }
-                    // #901 — a control a UI test cannot address is a control a WALK cannot
+                    // A control a UI test cannot address is a control a WALK cannot
                     // operate. These are SF Symbol images inside a Button, so without an
                     // identifier a test is reduced to tapping by index and hoping the order is
                     // what it thinks. The whole survey surface had none.

@@ -1,8 +1,8 @@
-// CtaTappedTooEarlyUITests.swift — #1072
+// CtaTappedTooEarlyUITests.swift
 //
 // WHAT HAPPENS WHEN THE CTA IS TAPPED THE INSTANT IT APPEARS?
 //
-// #1072 is a purchase that recorded nothing: one run in nine tapped the CTA, waited sixty seconds
+// The defect is a purchase that recorded nothing: one run in nine tapped the CTA, waited sixty seconds
 // and StoreKit's ledger stayed empty, while every other run bought in about a second and a half.
 // Twenty further purchases did not reproduce it, so chasing it by repetition was finished.
 //
@@ -106,7 +106,7 @@ final class CtaTappedTooEarlyUITests: XCTestCase {
         /*
          🔴 THE ASSERTION IS ABOUT THE WINDOW, NOT ABOUT THIS RUN'S LUCK. A button a user can see
          and press must do what it says. If it is drawn disabled — even for a frame — then the tap
-         that lands in that frame is swallowed with no feedback, which is the shape #1072 measured.
+         that lands in that frame is swallowed with no feedback, which is the shape of a purchase that records nothing.
          */
         XCTAssertTrue(
             enabledAtFirstSight,

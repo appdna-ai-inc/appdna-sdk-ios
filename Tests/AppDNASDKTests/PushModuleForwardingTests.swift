@@ -300,13 +300,13 @@ final class PushModuleForwardingTests: XCTestCase {
         XCTAssertEqual(events[1].properties?["action"]?.value as? String, "a")
     }
 
-    // MARK: - #968 — a dismissal is not a tap
+    // MARK: - a dismissal is not a tap
 
     func testADismissalEmitsPushDismissedAndNotPushTapped() {
         /*
          * 🔴 THE REASON THE BRANCH AND THE CATEGORY OPTION HAD TO SHIP TOGETHER. iOS routes a tap
          * and a swipe-away through the SAME delegate callback, so once the category opts into
-         * dismiss reporting (`.customDismissAction`, added in `PushActionCategories` for #968),
+         * dismiss reporting (`.customDismissAction`, added in `PushActionCategories` for dismissal reporting),
          * every dismissal arrives here. Without the branch each one would have been recorded as
          * `push_tapped` — inflating the single number a push campaign is judged on, and firing
          * `onPushTapped` plus the tap router for a user who had just REJECTED the notification.
@@ -335,7 +335,7 @@ final class PushModuleForwardingTests: XCTestCase {
     func testABodyTapStillEmitsPushTapped() {
         /*
          * The control. Without it the test above passes if the branch swallowed EVERY response,
-         * which would silently delete the push-open funnel — a far worse defect than the one #968
+         * which would silently delete the push-open funnel — a far worse defect than the one this
          * set out to fix.
          */
         let userInfo: [AnyHashable: Any] = [

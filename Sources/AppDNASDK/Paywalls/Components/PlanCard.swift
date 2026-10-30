@@ -12,7 +12,7 @@ struct PlanCard: View {
     var sectionStyle: SectionStyleConfig? = nil
     /// Gap 11: Card/badge styling from section data.
     var cardStyle: PlanCardStyle = PlanCardStyle()
-    /// #891 — the page this tile sits on, for the unselected text default.
+    /// The page this tile sits on, for the unselected text default.
     // `@SwiftUI.Environment`, qualified: the SDK exports its own `enum Environment`
     // (Configuration.swift) which shadows the property wrapper and fails to compile as
     // "enum 'Environment' cannot be used as an attribute".
@@ -24,7 +24,7 @@ struct PlanCard: View {
     private var showSavings: Bool { cardStyle.showSavings }
 
     /**
-     #905 — the CONTAINER style an element asks for, which the console has always offered and
+     The CONTAINER style an element asks for, which the console has always offered and
      neither platform read.
 
      Its editor gives every element a TextStylePanel and an ElementStylePanel; the second writes
@@ -63,7 +63,7 @@ struct PlanCard: View {
     }
 
     /**
-     #909 — the tile an UNAUTHORED selected plan is painted, and the one place the two platforms
+     The tile an UNAUTHORED selected plan is painted, and the one place the two platforms
      disagreed about what a plan tile IS.
 
      This side fell back to the UNSELECTED colour (`isSelected ? (selectedBg ?? unselBg) : unselBg`),
@@ -115,7 +115,7 @@ struct PlanCard: View {
         return Color.gray.opacity(0.3)
     }
     /**
-     #891 — the unselected tile's text, read off the TILE rather than off the phone.
+     The unselected tile's text, read off the TILE rather than off the phone.
 
      It was `.primary`: a system colour, black in light appearance and white in dark, on a paywall
      that forces no colour scheme. A dark-backgrounded paywall opened on a light-appearance phone
@@ -142,7 +142,7 @@ struct PlanCard: View {
     private var badgeBg: Color { Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) }
     private var badgeFg: Color { Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF") }
 
-    /// #589 — everything the card gives a plan, deliberately absent: no border, no background, no
+    /// Everything the card gives a plan, deliberately absent: no border, no background, no
     /// badge, no subtitle, no selection control. Just the name and price on one centred line.
     ///
     /// Still a Button, and still calls `onSelect` — the layout this exists for is one prominent
@@ -205,7 +205,7 @@ struct PlanCard: View {
                                         .foregroundColor(effectiveTextColor)
                                 }
                             }
-                            // #905 — `plan_name` falls back to `label`, exactly as its text style does.
+                            // `plan_name` falls back to `label`, exactly as its text style does.
                             .applyElementStyle(elementStyle("plan_name") ?? elementStyle("label"))
 
                             if let badge = plan.badge, badgePositionValue == "inline" {
@@ -237,7 +237,7 @@ struct PlanCard: View {
                                         .foregroundColor(isSelected ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
                                 }
                             }
-                            // #910 — the trial label's authored container.
+                            // The trial label's authored container.
                             .applyElementStyle(elementStyle("trial_label"))
                         }
 
@@ -269,7 +269,7 @@ struct PlanCard: View {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 9, weight: .bold))
                                             .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
-                                        // #910 — `featureTextStyle` was RESOLVED and never
+                                        // `featureTextStyle` was RESOLVED and never
                                         // applied: the console's Style tab offers a per-plan
                                         // feature text style, the DTO decoded it, and the view
                                         // drew a hardcoded `.caption2`. A computed property that
@@ -283,7 +283,7 @@ struct PlanCard: View {
                                             } else {
                                                 Text(feat)
                                                     .font(.caption2)
-                                                    // #947 — `.secondary` follows the PHONE; the page
+                                                    // `.secondary` follows the PHONE; the page
                                                     // is in the document. See `pageBackgroundHex`.
                                                     .foregroundColor(isSelected && selectedTextColor != nil
                                                                      ? effectiveTextColor.opacity(0.85)
@@ -303,7 +303,7 @@ struct PlanCard: View {
                     if showIcon, let iconName = plan.icon, !iconName.isEmpty {
                         Image(systemName: iconName)
                             .font(.title3)
-                            // #947 — the plan icon, off the page rather than off the phone.
+                            // The plan icon, off the page rather than off the phone.
                             .foregroundColor(isSelected && selectedTextColor != nil
                                              ? effectiveTextColor
                                              : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
@@ -333,7 +333,7 @@ struct PlanCard: View {
                         // recedes on dark backgrounds and lets the selected card + its border stand out,
                         // matching Android + the console preview. Explicit unselected_bg_color still wins.
                         let unselBg = cardStyle.unselectedBgColor.map { Color(hex: $0) } ?? Color.white.opacity(0.1)
-                        // #909 — an unauthored SELECTED tile is the accent tint, not the unselected
+                        // An unauthored SELECTED tile is the accent tint, not the unselected
                         // colour. See `selectedTint`.
                         return isSelected ? (selectedBg ?? selectedTint) : unselBg
                     }())
@@ -405,7 +405,7 @@ struct PlanCard: View {
         }
     }
 
-    /// #588 — this plan's own price colour, which beats BOTH the section's `elements.price` style
+    /// This plan's own price colour, which beats BOTH the section's `elements.price` style
     /// and the selected/unselected text colour. Section styling paints every plan the same; the
     /// point of this field is to make one tier's price stand out from the others, so anything that
     /// could override it would defeat it.
@@ -414,7 +414,7 @@ struct PlanCard: View {
     }
 
     /**
-     #913 — the billing period, drawn SMALL beside the price.
+     The billing period, drawn SMALL beside the price.
 
      `periodTextStyle` was declared on this view and read by nothing: the period was folded into
      `displayPrice` here while Android rendered `plan.period` at five sites, so one document gave
@@ -429,7 +429,7 @@ struct PlanCard: View {
      */
     @ViewBuilder
     private var periodView: some View {
-        // #933 — `displayPeriod`: an authored period wins, and a plan that authored
+        // `displayPeriod`: an authored period wins, and a plan that authored
         // none now reads the STORE's, phrased in the device's language.
         if let period = plan.displayPeriod, !period.isEmpty {
             Group {
@@ -470,7 +470,7 @@ struct PlanCard: View {
     private var priceBlockView: some View {
         if (cardStyle.priceLayout ?? "inline") == "headline_stacked" {
             VStack(alignment: .leading, spacing: 2) {
-                // #913 — the period rides WITH the price on both layouts, baseline-aligned so a
+                // The period rides WITH the price on both layouts, baseline-aligned so a
                 // small "/month" sits on the price's baseline rather than centred against it.
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     currentPriceView
@@ -522,7 +522,7 @@ struct PlanCard: View {
                 .cornerRadius(badge.corner_radius ?? 6)
                 .fixedSize(horizontal: false, vertical: true)
         } else {
-            // #587 — the plan's own subtitle type wins over the section style, for the same reason
+            // The plan's own subtitle type wins over the section style, for the same reason
             // the price colour does. `fixedSize(vertical:)` is what lets it WRAP to its two lines
             // rather than truncate: `lineLimit(2)` alone caps the count, it does not grant the
             // height, and in a tight card the second line was being clipped away.
@@ -620,7 +620,7 @@ struct PlanCard: View {
                 badgeShape(shape)
                     .stroke(borderCol, lineWidth: borderW)
             )
-            // #905 — the badge's authored container style, applied OUTSIDE its own chrome so an
+            // The badge's authored container style, applied OUTSIDE its own chrome so an
             // authored border or padding surrounds the badge rather than replacing it.
             .applyElementStyle(elementStyle("badge"))
         }
@@ -629,7 +629,7 @@ struct PlanCard: View {
     private func badgeShape(_ style: String) -> some Shape {
         switch style {
         /*
-         * #988 — `square` is accepted as an alias for `rectangle`, which Android has done since it
+         * `square` is accepted as an alias for `rectangle`, which Android has done since it
          * shipped. Without it the value fell through to `default:` and drew a **capsule** — the
          * opposite of what the word means, so one hand-written document was a box on Android and a
          * pill here. The Console never writes it (its picker offers capsule/rectangle/rounded), so

@@ -1,4 +1,4 @@
-// TabGroupsRenderTests.swift — #960
+// TabGroupsRenderTests.swift
 //
 // Does `plan_display_style: "tab_groups"` draw something OTHER than the default stack?
 //
@@ -14,7 +14,7 @@
 // assertion passed against a view the harness could not read at all. Renders are compared instead,
 // which `SurfaceSnapshotTests` proves this target can produce.
 //
-// The plans live under `layout.sections[].config.plans`, where a real paywall keeps them (#923) —
+// The plans live under `layout.sections[].config.plans`, where a real paywall keeps them —
 // a fixture that put them at the root would pass against code that reaches no real paywall.
 import XCTest
 import SwiftUI

@@ -1,4 +1,4 @@
-// PresentableHostTests.swift — #1078
+// PresentableHostTests.swift
 //
 // A PAYWALL THAT DOES NOT PRESENT EARNS NOTHING, AND NOBODY WAS TOLD.
 //

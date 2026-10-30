@@ -1,6 +1,6 @@
-// SurveyFeedbackFormUITests.swift — #901
+// SurveyFeedbackFormUITests.swift
 //
-// The end-to-end half of #901: answer a survey NEGATIVELY, let the sheet dismiss, and assert the
+// The end-to-end half of the feedback-form fix: answer a survey NEGATIVELY, let the sheet dismiss, and assert the
 // feedback form actually appears. That is the branch where the old code presented an alert on a
 // controller that was already being dismissed, which UIKit silently refuses.
 //
@@ -14,7 +14,7 @@ final class SurveyFeedbackFormUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
-    /// #1041 — ITS OWN survey. This walk waits for `survey.rating.1`, so it needs a survey whose
+    /// ITS OWN survey. This walk waits for `survey.rating.1`, so it needs a survey whose
     /// FIRST question is a NUMERIC rating. Sharing `surveyId` with the survey walk — whose
     /// survey opens on an emoji scale — made it look for a control that cannot exist and
     /// report "the survey never presented — config did not arrive": a sentence about the
@@ -67,7 +67,7 @@ final class SurveyFeedbackFormUITests: XCTestCase {
     }
 
     /**
-     #920 — A FORM THAT IS TAKEN AWAY GOES, AND IS RECORDED AS TAKEN AWAY.
+     A FORM THAT IS TAKEN AWAY GOES, AND IS RECORDED AS TAKEN AWAY.
 
      The test above proves the form appears. This proves the other half: when the host tears its
      presentation stack down — a window rebuilt, a root view controller swapped, a deep link

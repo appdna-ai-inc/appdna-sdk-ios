@@ -3,7 +3,7 @@ import Foundation
 /**
  WHEN an onboarding flow's authored celebration fires.
 
- 🔴 #1026 — the console has offered a "Celebration Effect" in the flow settings panel since it
+ 🔴 The console has offered a "Celebration Effect" in the flow settings panel since it
  shipped. Android parsed it into its config object and no composable read it; iOS did not parse it
  at all. `ConfettiOverlay` existed on both platforms the whole time — onboarding was simply never
  one of its callers, so the control did nothing, on both platforms, for every flow.
@@ -21,7 +21,7 @@ import Foundation
 
  It is a shared FUNCTION, driven by `onboarding_celebration_moment`, because the thing that went
  wrong with the last two particle defects was two platforms disagreeing about when an effect fires
- (#997's double gate, and `PaywallConfig.kt` defaulting to a trigger that could not fire). A rule
+ (a double gate, and `PaywallConfig.kt` defaulting to a trigger that could not fire). A rule
  each platform states for itself is a rule they can state differently.
  */
 public enum OnboardingCelebration {

@@ -61,7 +61,7 @@ extension SharedFixtureTests {
         case "parse_window_date":         runParseWindowDate(f, h)
         case "countdown_initial_seconds": runCountdownInitialSeconds(f, h)
         case "form_date_bounds":          runFormDateBounds(f, h)
-        // #772 — WHICH copy of content_blocks the real decoder resolves, per step shape.
+        // WHICH copy of content_blocks the real decoder resolves, per step shape.
         case "resolve_content_blocks":    runResolveContentBlocks(f, h)
         default:
             return false
@@ -70,7 +70,7 @@ extension SharedFixtureTests {
     }
 
     /**
-     #772 — which copy of `content_blocks` the REAL step decoder resolves, per step shape.
+     Which copy of `content_blocks` the REAL step decoder resolves, per step shape.
 
      The `layout_empty_falls_through_to_root` case is the one that diverged: this side has always
      fallen back on EMPTY (`if (decoded.content_blocks ?? []).isEmpty`), Android only on absent, so
@@ -253,7 +253,7 @@ extension SharedFixtureTests {
         SessionDataStore.shared.clearAll()
         defer { SessionDataStore.shared.clearAll() }
         SessionDataStore.shared.setOnboardingResponses(responses)
-        // #1150 — read it back from the persisted copy, the way a cold start does.
+        // Read it back from the persisted copy, the way a cold start does.
         if f.action.raw["relaunch"]?.boolValue == true { SessionDataStore.shared.reloadFromDisk() }
 
         guard let loc = AppDNA.getLocationData(fieldId: fieldId) else {
@@ -291,7 +291,7 @@ extension SharedFixtureTests {
     // MARK: location_answer_from_input
 
     /**
-     #963 — the dropdown's two lines, through the REAL `LocationAnswer.displayLines`.
+     The dropdown's two lines, through the REAL `LocationAnswer.displayLines`.
 
      The suggestion goes through `LocationAnswer.decodeSuggestions` first, the same parser the
      search uses, so the case data is a server suggestion and not a hand-built `LocationData`.
@@ -349,7 +349,7 @@ extension SharedFixtureTests {
         SessionDataStore.shared.clearAll()
         defer { SessionDataStore.shared.clearAll() }
         SessionDataStore.shared.setOnboardingResponses(["step_location": [fieldId: stored]])
-        // #1150 / Read it back from the persisted copy, the way a cold start does.
+        // Read it back from the persisted copy, the way a cold start does.
         if f.action.raw["relaunch"]?.boolValue == true { SessionDataStore.shared.reloadFromDisk() }
         guard let loc = AppDNA.getLocationData(fieldId: fieldId) else {
             h.state["location_data"] = NSNull()

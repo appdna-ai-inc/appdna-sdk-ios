@@ -116,7 +116,7 @@ func fieldBorderWidth(_ block: ContentBlock) -> CGFloat {
     return CGFloat(block.field_style?.border_width ?? 1)
 }
 
-/// The input text's size — `field_style.font_size` first (#1053), then the two `field_config`
+/// The input text's size — `field_style.font_size` first, then the two `field_config`
 /// spellings the console writes, then 14.
 ///
 /// 🔴 THREE SPELLINGS OF ONE IDEA, and `field_style.font_size` was the one nothing read. The
@@ -135,7 +135,7 @@ func fieldInputFontSize(_ block: ContentBlock) -> CGFloat {
     )
 }
 
-/// The input text's weight from `field_style.font_weight` (#1053). `nil` means "leave the system
+/// The input text's weight from `field_style.font_weight`. `nil` means "leave the system
 /// default", which is not the same as `.regular` for a UIFont.
 func fieldInputFontWeight(_ block: ContentBlock) -> UIFont.Weight? {
     switch block.field_style?.font_weight?.lowercased() {
@@ -160,8 +160,8 @@ func fieldInputFont(_ block: ContentBlock) -> UIFont {
     return UIFont.systemFont(ofSize: size)
 }
 
-/// A field's border colour, swapping to `field_style.error_border_color` while it is in error
-/// (#1053).
+/// A field's border colour, swapping to `field_style.error_border_color` while it is in
+/// error.
 ///
 /// `error_text_color` was already drawn beside it on both platforms; the border was not, so an
 /// authored error colour showed on the message and not on the field it belonged to.
@@ -268,7 +268,7 @@ struct FormInputTextAreaBlock: View {
                 TextEditor(text: $text)
                     .foregroundColor(textColor)
                     .accentColor(onDark ? .white : nil)
-                    // #1053 — the authored field font applies to a textarea as well, which is
+                    // The authored field font applies to a textarea as well, which is
                     // where a larger size is most visible. `Font(UIFont)` keeps one source for the
                     // size/weight ladder rather than a second SwiftUI-side copy of it.
                     .font(Font(fieldInputFont(block)))
@@ -471,7 +471,7 @@ struct FormInputDateBlock: View {
         // heights set by the picker itself). Accepts a numeric `input_height`
         // or `height` in field_config, or the semantic `sm | md | lg` shorthand
         // on field_style.height.
-        // #1052 — through CompactPickerHeight, which the shared fixture drives and Android now
+        // Through CompactPickerHeight, which the shared fixture drives and Android now
         // calls too. Never re-stated here.
         let numericHeight: Double? = cfgDouble(block.field_config?["input_height"])
             ?? cfgDouble(block.field_config?["height"])
@@ -542,7 +542,7 @@ struct FormInputDateBlock: View {
                     // the width slider.
                     let authoredBorderColor = block.field_style?.border_color
                     /*
-                     #1053 — `field_style.error_border_color` while the field IS in error. The error
+                     `field_style.error_border_color` while the field IS in error. The error
                      MESSAGE already honoured `error_text_color` here on both platforms; the border
                      did not, so an authored error colour showed on the text and not on the field it
                      belonged to. `dateError` is the one real per-field error state either renderer
@@ -1005,7 +1005,7 @@ struct FormInputSelectBlock: View {
                 imageTilesSelectView(options: options, fieldId: fieldId)
             case "bubble":
                 bubbleSelectView(options: options, fieldId: fieldId)
-            // #1013 — the category row: the same pills in ONE horizontally scrolling line.
+            // The category row: the same pills in ONE horizontally scrolling line.
             case "bubble_scroll":
                 bubbleSelectView(options: options, fieldId: fieldId, scrolls: true)
             case "list":
@@ -1031,7 +1031,7 @@ struct FormInputSelectBlock: View {
                 selectedValues = saved
             }
             /*
-             * #1013 — A CATEGORY ROW OPENS ON ITS FIRST CATEGORY.
+             * A CATEGORY ROW OPENS ON ITS FIRST CATEGORY.
              *
              * `bubble_scroll` exists to filter the blocks beneath it, so a row with nothing chosen
              * filters all of them away: the step opens EMPTY, and the author has authored a screen
@@ -2286,7 +2286,7 @@ struct FormInputSegmentedBlock: View {
 
     @State private var selectedValue: String = ""
 
-    /// #1013 — the one authored key that decides whether this is a segmented control at all.
+    /// The one authored key that decides whether this is a segmented control at all.
     /// See `SegmentedPresentation`: a Select presentation renders through the Select, which draws
     /// all seven of them; absent / `segmented` / unknown keeps the control, as before.
     private var displayStyle: String? {
@@ -2703,13 +2703,13 @@ struct FormInputPlaceholderBlock: View {
 
 // MARK: - AC-046: Location Input with geocoding-proxy autocomplete
 
-// #963 — the `LocationSearchCompleter` that used to live here (an `MKLocalSearchCompleter` wrapper)
+// The `LocationSearchCompleter` that used to live here (an `MKLocalSearchCompleter` wrapper)
 // is gone. Apple's place index takes no country bias, no language tag and has no
 // city/region/country result type, so three of the four Console settings on this block could not be
 // honoured on this surface at any price — and the fourth, the character threshold, was not read
 // either. The search is now `LocationAutocomplete`/`LocationSuggestionSearch`, shared with the
-// form-step Location field and matching what Android has done on both surfaces since #963's first
-// half.
+// form-step Location field and matching what Android already does on both
+// surfaces.
 
 /// Location input with autocomplete powered by the AppDNA geocoding proxy.
 /// User types to search, selects a result, and the formatted address + coordinates are stored.
@@ -2793,7 +2793,7 @@ struct FormInputLocationPlaceholderBlock: View {
                 )
                 .frame(height: 24)
                 .onChange(of: searchCompleter.text) { newValue in
-                    // #963 — honour the author's Min characters. The Console seeds
+                    // Honour the author's Min characters. The Console seeds
                     // `location_min_chars: 3` on every Location content block
                     // (`StepContentEditor.tsx:2845`) and this surface searched from the FIRST
                     // keystroke, so an authored threshold did nothing and every block issued two
@@ -2875,7 +2875,7 @@ struct FormInputLocationPlaceholderBlock: View {
                                 }
                                 .frame(width: CGFloat(ddIconSize), height: CGFloat(ddIconSize))
 
-                                // #963 — a proxy suggestion has no pre-split title/subtitle the way
+                                // A proxy suggestion has no pre-split title/subtitle the way
                                 // an `MKLocalSearchCompletion` did, so the two lines come from the
                                 // one rule every surface and both platforms share.
                                 let lines = LocationAnswer.displayLines(listed.data)
@@ -2965,7 +2965,7 @@ struct FormInputLocationPlaceholderBlock: View {
     /// cancelled, the dropdown closes, nothing is stored while the resolve is in flight, and the
     /// answer is the resolved selection (with `mapbox_id`) or, on any non-success, the typed text.
     ///
-    /// What #963 replaced here: an `MKLocalSearch` round trip and a `CLGeocoder` reverse-geocode per
+    /// What the shared search replaced here: an `MKLocalSearch` round trip and a `CLGeocoder` reverse-geocode per
     /// selection. What resolving replaces: storing the suggestion itself, which for Mapbox is a temporary
     /// result that may not be stored.
     private func selectResult(_ listed: LocationListedSuggestion) {
@@ -3209,7 +3209,7 @@ private extension View {
 ///
 /// One engine, two authoring presets: the console seeds a chooser set (slider / toggle /
 /// preview / CTA) or a detail set (badge / heading / media / CTA), and the author edits from
-/// there. That is what the reporter asked for on #542 — one mechanism, as long as they choose
+/// there. That is what the reporter asked for — one mechanism, as long as they choose
 /// what goes on it.
 ///
 /// Presentation-only by design: values set inside are NOT reported to the host app. The

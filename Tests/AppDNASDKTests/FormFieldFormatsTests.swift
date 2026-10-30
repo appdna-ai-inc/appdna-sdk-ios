@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- #984 — the URL rule, exercised rather than read.
+ The URL rule, exercised rather than read.
 
  🔴 The cases are the point, not the regex. `URL(string: "not a url")` returns a NON-NIL relative
  URL rather than nil, so a check written the obvious way accepts everything — which is why the rule

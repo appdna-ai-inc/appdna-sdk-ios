@@ -1,4 +1,4 @@
-// DeferredDeepLinkRetryTests.swift — #1063
+// DeferredDeepLinkRetryTests.swift
 //
 // A TRANSPORT FAILURE MUST NOT SPEND THE ONE CHANCE.
 //

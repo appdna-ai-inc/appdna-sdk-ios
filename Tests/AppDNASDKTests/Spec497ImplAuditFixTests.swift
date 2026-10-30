@@ -1,6 +1,6 @@
 // Spec497ImplAuditFixTests.swift
 //
-// Implementation (native iOS) — the tests the audit found missing (M6) and the
+// Native iOS — tests for behaviour that had no test, and the
 // regression tests for the minors fixed with them:
 //   M6  purchase right after `configure` while the bootstrap is in flight; Q5 through the observer;
 //       same-product `beginPurchase` / `waitForPurchaseToEnd`; paywall `purchase_restore_failed`.

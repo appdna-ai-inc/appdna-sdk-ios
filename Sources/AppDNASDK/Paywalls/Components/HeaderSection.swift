@@ -7,7 +7,7 @@ struct HeaderSection: View {
     /// Per-section style with element overrides.
     var sectionStyle: SectionStyleConfig? = nil
     /**
-     #881 — the width the floating dismiss control occupies in the top corner, reserved on BOTH
+     The width the floating dismiss control occupies in the top corner, reserved on BOTH
      sides so centred text stays centred.
 
      The header title is centred across the full width and the dismiss control is an overlay with
@@ -21,7 +21,7 @@ struct HeaderSection: View {
      */
     var closeInset: CGFloat = 0
     /**
-     #891 — the background this header is drawn on, so an unauthored title colour is readable on
+     The background this header is drawn on, so an unauthored title colour is readable on
      it. It used `.primary`: black in light appearance, white in dark, on a paywall that forces no
      colour scheme — so a dark-backgrounded paywall opened on a light-appearance phone drew a black
      title on it, and the words were gone.
@@ -38,7 +38,7 @@ struct HeaderSection: View {
         data?.subtitle_style ?? sectionStyle?.elements?["subtitle"]?.textStyle
     }
 
-    /// #910 — an element's authored container, by key. Every element that offers a text style
+    /// An element's authored container, by key. Every element that offers a text style
     /// offers a container beside it in the same console panel, so the two are read the same way.
     private func elementStyle(_ key: String) -> ElementStyleConfig? {
         sectionStyle?.elements?[key]?.container
@@ -69,7 +69,7 @@ struct HeaderSection: View {
                 .frame(maxWidth: .infinity, alignment: imageAlignment)
             }
 
-            // #910 — the title's authored container style, applied to the whole branch.
+            // The title's authored container style, applied to the whole branch.
             Group { if let title = data?.title {
                 if let ts = titleTextStyle {
                     Text(loc?("section-header.title", title) ?? title)
@@ -83,7 +83,7 @@ struct HeaderSection: View {
             } }
             .applyElementStyle(elementStyle("title"))
 
-            // #910 — the subtitle's authored container, applied to the whole branch exactly as
+            // The subtitle's authored container, applied to the whole branch exactly as
             // the title's is.
             Group { if let subtitle = data?.subtitle {
                 if let ts = subtitleTextStyle {

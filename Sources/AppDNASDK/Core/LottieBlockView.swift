@@ -2,7 +2,7 @@ import Lottie
 import SwiftUI
 
 /*
- * 🔴 #996 — `lottie_json` and `color_overrides` are GONE, by the owner's decision (2026-10-19).
+ * 🔴 `lottie_json` and `color_overrides` are GONE, by the owner's decision (2026-10-19).
  *
  * Both were declared here, in the Kotlin DTO and in the Zod schema, and read by NO renderer on
  * either platform: an inline animation document and a per-layer recolour that nothing applied. The
@@ -27,7 +27,7 @@ public struct LottieBlock: Codable {
 public struct LottieBlockView: View {
     let block: LottieBlock
 
-    /// Bumped on each tap so `.id()` restarts the animation from frame 0 (#982, `play_on_tap`).
+    /// Bumped on each tap so `.id()` restarts the animation from frame 0 (`play_on_tap`).
     @State private var playOnTapTrigger = 0
 
     private var alignmentValue: Alignment {
@@ -40,7 +40,7 @@ public struct LottieBlockView: View {
 
     public var body: some View {
         /*
-         #982 — THE REAL ENGINE. This drew a purple placeholder box reading "Lottie Animation" for
+         THE REAL ENGINE. This drew a purple placeholder box reading "Lottie Animation" for
          as long as the block type has existed, while Android rendered the animation; 27 blocks
          across 19 flows on dev used it, 3 of those flows ACTIVE.
 

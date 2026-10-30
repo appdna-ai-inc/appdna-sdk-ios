@@ -40,7 +40,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
     }
 
 
-    /// #1103 — the CELEBRATE signal reaches the renderer, and it is a FOURTH observer rather than a
+    /// The CELEBRATE signal reaches the renderer, and it is a FOURTH observer rather than a
     /// reading of `.paywallPurchaseSuccess`.
     ///
     /// 🔴 The distinction is the whole fix. Only `on_success.action == "show_message"` posts

@@ -74,7 +74,7 @@ import UserNotifications
     /// `.destructive` alone (never `.foreground`, so it never opens the app); `text_reply` → a text-input action whose placeholder is `action_value`.
     public static func category(from userInfo: [AnyHashable: Any]) -> UNNotificationCategory? {
         /*
-         * #987 — a push with NO buttons gets the button-less `defaultCategory` rather than nil, so
+         * A push with NO buttons gets the button-less `defaultCategory` rather than nil, so
          * it can still report its dismissal. This is the guard that matters: the one further down
          * only catches a push whose `actions` array exists and parses to nothing.
          */
@@ -129,7 +129,7 @@ import UserNotifications
             actions: actions,
             intentIdentifiers: [],
             /*
-             * #968 — `.customDismissAction` is what makes a dismissal OBSERVABLE at all. iOS
+             * `.customDismissAction` is what makes a dismissal OBSERVABLE at all. iOS
              * delivers `UNNotificationDismissActionIdentifier` to the delegate ONLY for a category
              * registered with this option; without it `push_dismissed` cannot fire, which is why
              * Android had the event and this platform did not.
@@ -139,7 +139,7 @@ import UserNotifications
              * its own would start recording every dismissal as `push_tapped` — a wrong number is
              * worse than a missing one.
              *
-             * #987 closed the other half: a push with no buttons gets `defaultCategory` below, so
+             * The other half: a push with no buttons gets `defaultCategory` below, so
              * every AppDNA notification carries a category that reports dismissals.
              */
             options: [.customDismissAction]
@@ -147,7 +147,7 @@ import UserNotifications
     }
 
     /**
-     #987 — THE BUTTON-LESS CATEGORY, so every AppDNA push can report a dismissal.
+     THE BUTTON-LESS CATEGORY, so every AppDNA push can report a dismissal.
 
      iOS delivers `UNNotificationDismissActionIdentifier` only for a category registered with
      `.customDismissAction`, and a category used to exist only when the push carried buttons — so a
@@ -178,7 +178,7 @@ import UserNotifications
 
     /// Whether this payload carries action BUTTONS, as distinct from merely having a category.
     ///
-    /// #987 made `category(from:)` non-nil for every AppDNA push, so it stopped being the test for
+    /// `category(from:)` is non-nil for every AppDNA push, so it is not the test for
     /// "are there buttons to register". The notification service extension still needs that test:
     /// it exists to register a BUTTON category before the notification is shown, and the
     /// button-less default is registered by the app at configure instead — where it is registered

@@ -101,7 +101,7 @@ final class SessionDataStore {
 
     /// Clear everything (onboarding + computed + session).
     /// Re-reads the persisted copy, as a cold start does — `init` runs the same loaders. The shared fixture
-    /// `location_data_after_relaunch` (#1150) drives it so both platforms prove an answer survives a relaunch.
+    /// `location_data_after_relaunch` drives it so both platforms prove an answer survives a relaunch.
     func reloadFromDisk() {
         queue.sync {
             _onboardingResponses = loadDict(key: Keys.onboardingResponses) as? [String: [String: Any]] ?? [:]

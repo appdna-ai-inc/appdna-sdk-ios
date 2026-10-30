@@ -1,7 +1,7 @@
 import Foundation
 
 /*
- #1013 — WHAT A `visibility_condition` IS EVALUATED AGAINST, as one rule both platforms call.
+ WHAT A `visibility_condition` IS EVALUATED AGAINST, as one rule both platforms call.
 
  `responses` holds COMPLETED steps only: a step writes its answers under its own id when it ends
  (`responses[step.id] = data`). So a condition naming a field on the step currently on screen

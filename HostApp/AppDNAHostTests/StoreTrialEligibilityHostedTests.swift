@@ -1,9 +1,9 @@
-// StoreTrialEligibilityHostedTests.swift — #933 / #934
+// StoreTrialEligibilityHostedTests.swift
 //
 // THE PARKED PROOF, RUN. This is `Tests/AppDNASDKTests/StoreTrialEligibilitySessionTests.swift`
 // moved into an APP-HOSTED test target, which is the one thing it was waiting for.
 //
-// #933 held itself open on a state a sandbox account cannot be put into on demand: a user who has
+// The trial-eligibility proof waited on a state a sandbox account cannot be put into on demand: a user who has
 // ALREADY used the trial. `SKTestSession` can manufacture it — its transaction history is what
 // `isEligibleForIntroOffer` is computed from — but `buyProduct(identifier:)` fails with an unknown
 // StoreKit error in the package's HOSTLESS test target, so the test could only skip with its
@@ -33,7 +33,7 @@
 //
 // THE STATE THAT CANNOT OCCUR ON DEMAND, MANUFACTURED.
 //
-// #933 held itself open on one sentence: the only state where a wrong trial implementation is
+// The trial-eligibility proof rests on one sentence: the only state where a wrong trial implementation is
 // visible is a store account **that has already used the trial**. On a fresh account every
 // implementation looks correct, including one with no eligibility check at all — which is exactly
 // the shape of defect that reaches production believing it is covered.

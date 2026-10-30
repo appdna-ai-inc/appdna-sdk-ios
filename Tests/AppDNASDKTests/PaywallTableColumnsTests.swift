@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- #971 — the comparison table's column headers, from both shapes `columns` arrives in.
+ The comparison table's column headers, from both shapes `columns` arrives in.
 
  ## The defect this locks
 

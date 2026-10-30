@@ -1,23 +1,23 @@
-// PaywallErrorBannerBlocksCtaUITests.swift — #1072
+// PaywallErrorBannerBlocksCtaUITests.swift
 //
 // AFTER A PURCHASE FAILS, CAN THE USER STILL TAP BUY?
 //
-// 🔴 #1072 is "one purchase in seven records no StoreKit transaction at all, with no sign of why",
+// 🔴 The defect is "one purchase in seven records no StoreKit transaction at all, with no sign of why",
 // and the "no sign of why" is the clue: a SwiftUI `Button` that never receives a touch runs no
 // action, so it logs nothing, emits nothing, and calls no delegate. Everything inside
-// `handleCTATap` — including #1074's `onAction?(.ctaTapped)`, which fires BEFORE the guards — is
+// `handleCTATap` — including `onAction?(.ctaTapped)`, which fires BEFORE the guards — is
 // unreachable. From outside, that is indistinguishable from a store that refused.
 //
 // Three candidates were eliminated by measurement first: the resolution path is id-based end to end,
 // `isPurchasing` is reset on every exit from `handlePurchase`, and the plan rows are hittable at 9 of
-// 9 positions. The drift mechanism behind #1081 cannot reach the CTA either — `PaywallRenderer`
+// 9 positions. The tap-drift mechanism behind a missed plan tap cannot reach the CTA either — `PaywallRenderer`
 // excludes `cta` from the ScrollView (`section.type != "cta"`), so it is always pinned outside it.
 //
 // What is left is something COVERING the pinned CTA, and there is a specific candidate. The
 // post-purchase error banner is pinned with a HARDCODED `.padding(.bottom, 80)` while the renderer
 // separately MEASURES the pinned group as `pinnedZoneHeight` and uses that measurement only to
 // decide overflow. Any paywall whose pinned zone is taller than 80 points — a CTA plus a restore
-// link plus legal text, or a section authored `zone: "bottom"`, which #884 made possible for ANY
+// link plus legal text, or a section authored `zone: "bottom"`, which is possible for ANY
 // section — has its CTA underneath that banner. The banner has an opaque red background, so it is
 // hit-testable, and when `errorAllowRetry` is set it stays up until the user finds the Retry button.
 //
@@ -85,7 +85,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
             + "enabled=\(before.isEnabled) hittable=\(before.isHittable)")
 
         /*
-         🔴 THE FAILURE IS FORCED, because waiting for one is what made #1072 unreproducible for
+         🔴 THE FAILURE IS FORCED, because waiting for one is what made the defect unreproducible for
          weeks. `failTransactionsEnabled` makes StoreKit refuse the next purchase, which is the state
          a user reaches by cancelling the sheet or having a card declined — the common case, not an
          exotic one.
@@ -97,7 +97,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         /*
          Give the refusal time to land and the banner time to animate in — and say how long it took.
          This waited 10 seconds, and one slow run in six (72s end to end, against ~45s) logged
-         `banner up=false` while #1108 was being chased: a refusal that lands at second 11 and a
+         `banner up=false` while a slow-run failure was being chased: a refusal that lands at second 11 and a
          banner that never comes printed the same line. 30 seconds, with the elapsed time.
         */
         let tappedAt = Date()
@@ -142,10 +142,10 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
          🔴 The ledger, not `host.lastEvents`. This step used to wait for "purchase" in the host's
          event mirror — which is drawn in the host's view, UNDERNEATH the presented paywall, so it is
          not in the accessibility tree while the paywall is up. The step failed on every run (7 of 7
-         on 2026-10-24, whatever the SDK did), which made this test unable to tell #1072 from a
+         on 2026-10-24, whatever the SDK did), which made this test unable to tell the defect from a
          working CTA. A refused attempt is recorded too, so ANY new transaction is the attempt.
         */
-        sleep(2) // measured (#1107): a purchase sent straight after re-enabling can still come back failed
+        sleep(2) // measured: a purchase sent straight after re-enabling can still come back failed
         let attemptsBefore = session.allTransactions().count
         after.tap()
         let sawRetry = waitUntil(timeout: 20) { session.allTransactions().count > attemptsBefore }
@@ -158,7 +158,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     }
 
     /*
-     #1105 — THE FAILURE BANNER, OPERATED. iOS's banner is the presentation both platforms now draw,
+     THE FAILURE BANNER, OPERATED. iOS's banner is the presentation both platforms now draw,
      so this walks the paywall the way a user whose card is declined would, against a paywall that
      authors `on_failure: retry` with text no default could produce
      (`scripts/spec502/probe-1105-failure-banner-walk.ts`):
@@ -248,7 +248,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     }
 
     /*
-     #1107 — THE RETRY BUYS. A refused purchase, then the store is allowed to accept, then the
+     THE RETRY BUYS. A refused purchase, then the store is allowed to accept, then the
      banner's retry pill is tapped: a StoreKit transaction must follow. The old pill only hid the
      banner, so nothing was bought until the user found the purchase button themselves.
     */
@@ -306,7 +306,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     }
 
     /*
-     #1109 — A PAYWALL'S PURCHASE CELEBRATION REACHES THE DEVICE. The effect could not be stored
+     A PAYWALL'S PURCHASE CELEBRATION REACHES THE DEVICE. The effect could not be stored
      before, so no published paywall carried one. The walk paywall is given confetti in `#34C759` (a
      green it has nowhere else) by `scripts/spec502/probe-1109-paywall-effect-persists.ts --keep`; a
      purchase that succeeds must then put that green on screen. The confetti is not in the
@@ -367,7 +367,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     }
 
     /*
-     #1104 — WHAT THE CTA SAYS, READ OFF THE DEVICE. The walk paywall is published by
+     WHAT THE CTA SAYS, READ OFF THE DEVICE. The walk paywall is published by
      `scripts/spec502/probe-1104-cta-plan-name-walk.ts` with a format, naming switched off, and/or a
      sticky footer; this logs every CTA label (the pinned CTA and the sticky footer's) with the default
      plan and then with Monthly selected. The invariant asserted here holds for every configuration:
@@ -435,7 +435,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
 
     // MARK: - helpers
 
-    /// The banner's authored message on the #1105 walk paywall.
+    /// The banner's authored message on the walk paywall.
     private func authoredBanner(_ app: XCUIApplication) -> XCUIElement {
         app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Walk 1105")).firstMatch
     }
@@ -452,7 +452,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
 
     /// The pinned CTA. Matched by its accessibility identifier where the renderer sets one, else by
     /// being the paywall's purchase button — never by position, which is what this test measures.
-    /// #1100 appends the selected plan's name ("Continue — Annual"), so a label PREFIX is accepted.
+    /// The default CTA label appends the selected plan's name ("Continue — Annual"), so a label PREFIX is accepted.
     private func ctaButton(_ app: XCUIApplication) -> XCUIElement? {
         let byId = app.buttons["paywall.cta"]
         if byId.exists { return byId }
@@ -478,11 +478,11 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
     private func bannerIsUp(_ app: XCUIApplication) -> Bool { bannerElement(app) != nil }
 
     /*
-     #1111 — TAP THE BANNER WHERE IT IS DRAWN, NOT WHERE IT IS ARRIVING FROM. The banner slides in
+     TAP THE BANNER WHERE IT IS DRAWN, NOT WHERE IT IS ARRIVING FROM. The banner slides in
      from the bottom edge, and it is in the accessibility tree from the first frame of that
      transition — screenshot `04-second-refusal` shows it "existing" with nothing yet on screen. A tap
      sent then lands on the empty space it is moving through. That used to dismiss it anyway, because
-     the dismiss gesture covered the whole SCREEN — which is the #1111 defect: the same catcher ate
+     the dismiss gesture covered the whole SCREEN — which was a defect of its own: the same catcher ate
      every tap on the CTA. With the gesture scoped to the card, the tap has to hit the card, so the
      frame is polled until it stops moving.
     */

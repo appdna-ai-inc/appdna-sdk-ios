@@ -1,13 +1,13 @@
-// StorePriceRenderTests.swift — #923
+// StorePriceRenderTests.swift
 //
 // DOES THE PRICE ON THE SCREEN COME FROM THE STORE? Rendered, and read back.
 //
 // 🔴 Why this file exists. The shared fixture pins the substitution, and
 // `StorePriceLookupSessionTests` pins the lookup against a live StoreKit — but neither of them
-// DRAWS anything, and #923 is a claim about what a user sees. The obvious instrument, a UI test
+// DRAWS anything, and the store-price substitution is a claim about what a user sees. The obvious instrument, a UI test
 // tapping the host app, cannot answer it on this bridge: a simulator launched through a scheme
 // serves no StoreKit catalogue, measured at `store:0` with a direct `Product.products(for:)`
-// probe, and every documented way of attaching one was tried and ruled out (#934).
+// probe, and every documented way of attaching one was tried and ruled out.
 //
 // `SKTestSession` DOES work in this target. And `SurfaceSnapshotTests` already renders a real
 // `PaywallRenderer` in a real key window. Putting the two together gives the missing link:

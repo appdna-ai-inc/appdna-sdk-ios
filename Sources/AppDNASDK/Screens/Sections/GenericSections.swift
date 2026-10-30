@@ -23,7 +23,7 @@ internal enum ContentBlocksSectionRenderer: SectionRenderer {
         guard let blocksData = data["blocks"]?.value else { return [] }
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: blocksData)
-            // #919 — a bad block costs that block, not the section.
+            // A bad block costs that block, not the section.
             return try JSONDecoder().decodeLenientArray(ContentBlock.self, from: jsonData, in: "screen.section.content_blocks")
         } catch {
             print("[SDUI] Failed to parse content blocks: \(error)")
@@ -179,7 +179,7 @@ internal enum HeroSectionRenderer: SectionRenderer {
     private static func parseOverlayBlocks(_ data: Any) -> [ContentBlock] {
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: data)
-            // #919 — a bad block costs that block, not the section.
+            // A bad block costs that block, not the section.
             return try JSONDecoder().decodeLenientArray(ContentBlock.self, from: jsonData, in: "screen.section.content_blocks")
         } catch {
             return []
@@ -318,7 +318,7 @@ internal enum ImageSectionRenderer: SectionRenderer {
 internal enum VideoSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
         /*
-         * #981 — A SCREEN SECTION SPELLS ITS RICH-MEDIA KEYS UNPREFIXED, and a CONTENT BLOCK
+         * A SCREEN SECTION SPELLS ITS RICH-MEDIA KEYS UNPREFIXED, and a CONTENT BLOCK
          * spells the same settings with a `video_` / `lottie_` / `rive_` prefix. The screens
          * editor writes the unprefixed form (`SectionPropertiesPanel.tsx:520-547`) and that is
          * what this renderer has always read; Android's `VideoSectionRenderer` reads BOTH, so a
@@ -356,7 +356,7 @@ internal enum VideoSectionRenderer: SectionRenderer {
 
 internal enum LottieSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
-        // #981 — both spellings, as in `VideoSectionRenderer` above.
+        // Both spellings, as in `VideoSectionRenderer` above.
         let lottieURL = section.data?["lottie_url"]?.value as? String ?? section.data?["url"]?.value as? String
         let height = section.data?["height"]?.value as? Double
             ?? section.data?["lottie_height"]?.value as? Double ?? 200
@@ -386,7 +386,7 @@ internal enum LottieSectionRenderer: SectionRenderer {
 
 internal enum RiveSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
-        // #981 — both spellings, as above.
+        // Both spellings, as above.
         let riveURL = section.data?["rive_url"]?.value as? String ?? section.data?["url"]?.value as? String
         let height = section.data?["height"]?.value as? Double ?? 200
 

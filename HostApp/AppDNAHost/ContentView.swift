@@ -1,4 +1,4 @@
-// ContentView.swift — #908
+// ContentView.swift
 //
 // The same four demo buttons the Android sample carries, so a walk on one platform has a
 // counterpart on the other. Each button has an `accessibilityIdentifier`, because that is what a
@@ -9,7 +9,7 @@ import AppDNASDK
 
 struct ContentView: View {
     /*
-     #923 — what the SIMULATOR'S STORE actually holds, rendered where a UI test can read it.
+     What the SIMULATOR'S STORE actually holds, rendered where a UI test can read it.
 
      🔴 Written because "the paywall shows the authored price" has two very different causes that
      look identical from outside: the SDK never asked, or the SDK asked and this simulator has no
@@ -23,10 +23,10 @@ struct ContentView: View {
     @State private var storeProbe = "—"
 
     /*
-     #1047 — EVERY EVENT THE SDK TRACKS, RENDERED WHERE A UI TEST CAN READ IT.
+     EVERY EVENT THE SDK TRACKS, RENDERED WHERE A UI TEST CAN READ IT.
 
      🔴 A UI test can only assert what is DRAWN. The SDK's stdout is invisible under
-     `xcodebuild test` (the #1033 lesson, which is why `simctl launch --console-pty` exists here),
+     `xcodebuild test` (which is why `simctl launch --console-pty` exists here),
      so an event that renders nothing — a survey follow-up branch, a dismissal, a permission
      outcome — could be read out of logcat on Android and only INFERRED on this platform.
 
@@ -47,7 +47,7 @@ struct ContentView: View {
     ]
 
     /*
-     #1086 — the STORED location answer, recomputed on demand rather than as a plain computed
+     The STORED location answer, recomputed on demand rather than as a plain computed
      property.
 
      🔴 A computed property here would be read during body evaluation and then never again, because
@@ -131,7 +131,7 @@ struct ContentView: View {
                 .frame(height: 0)
 
             /*
-             #1086 — the STORED location answer, read back from the SDK rather than from the screen.
+             The STORED location answer, read back from the SDK rather than from the screen.
              A dropdown that drew "Lisbon, Portugal" proves the provider answered; it says nothing
              about whether the city, country, coordinates and zone were persisted in the shape both
              SDKs decode. This reads `getLocationData(fieldId:)`, which is the host-facing API an
@@ -157,7 +157,7 @@ struct ContentView: View {
         .onChange(of: events.joined) { _ in refreshLocationReadback() }
         .onAppear {
             AppDNA.lifecycleDelegate = TrackedEventLog.shared
-            // #1074 — the paywall delegate is a SEPARATE registration, and the action it carries
+            // The paywall delegate is a SEPARATE registration, and the action it carries
             // is the only report of a CTA tap that could not become a purchase.
             AppDNA.paywall.setDelegate(TrackedEventLog.shared)
             Launch.autoPresentIfAsked()

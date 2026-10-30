@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// The render rules behind #609 and #660, on the iOS side.
+/// The Multi-buttons layout and summary-stat render rules, on the iOS side.
 ///
 /// These are the iOS half of `AuthoredLayoutRenderGatesTest.kt`. Both files assert the same rules
 /// against the same inputs on purpose: every bug in this group was a layout or suppression rule
@@ -9,7 +9,7 @@ import XCTest
 /// screenshot is not run in CI.
 final class AuthoredLayoutRenderGatesTests: XCTestCase {
 
-    // MARK: - #609 — Multi-buttons row planning
+    // MARK: - Multi-buttons row planning
 
     func testThreeButtonsAtTwoPerRowIsTheTwoThenOneLayout() {
         // The layout that was actually asked for.
@@ -32,7 +32,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
         XCTAssertEqual(multiButtonRowPlan(childCount: 0, perRow: 2), [])
     }
 
-    // MARK: - #654 / #659 / #663 — a button could be SIZED or ALIGNED, never both
+    // MARK: - a button could be SIZED or ALIGNED, never both
 
     /*
      * Three reports, one defect. The button hardcoded `.frame(maxWidth: .infinity)`, so
@@ -56,7 +56,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
         XCTAssertTrue(buttonFillsWidth("240px"))
     }
 
-    // MARK: - #609 — the per-child button border that nothing read
+    // MARK: - the per-child button border that nothing read
 
     /*
      * Reported after the element itself passed: "Border color doesn't apply — the border never
@@ -127,7 +127,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
         }
     }
 
-    // MARK: - #663 — a percentage width is a fraction of the CONTAINER
+    // MARK: - a percentage width is a fraction of the CONTAINER
 
     func testAPercentageResolvesAgainstTheMeasuredContainer() {
         // 75% of a 400pt container is 300pt — not 75% of the phone, which is what it used to be.
@@ -142,12 +142,12 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
     }
 
     func testTheSameAuthoredPercentageIsTheSameWidthInTheSameContainer() {
-        // The cross-platform point of #663: the answer depends on the container, NOT the device.
+        // The cross-platform point: the answer depends on the container, NOT the device.
         // Two different phones laying out the same 400pt container must agree.
         XCTAssertEqual(relativeWidth(0.75, container: 400), relativeWidth(0.75, container: 400))
     }
 
-    // MARK: - #654 / #659 — horizontal_align on a width-constrained block, on iOS too
+    // MARK: - horizontal_align on a width-constrained block, on iOS too
 
     func testAConstrainedBlockWithAnAlignmentNeedsTheOuterBox() {
         // iOS had the SAME defect as Android: the inner position modifier resolves inside the
@@ -169,7 +169,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
         XCTAssertFalse(needsOuterAlignmentBox(elementWidth: "300px", horizontalAlign: ""))
     }
 
-    // MARK: - #660 — a summary stat whose token never resolved
+    // MARK: - a summary stat whose token never resolved
 
     func testAResolvedStatPassesThroughUntouched() {
         let stat: [String: Any] = ["label": "Region", "value": "Central Region"]
@@ -179,7 +179,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
     }
 
     func testAnUnresolvedValueKeepsTheCardWhenTheLabelStillSaysSomething() {
-        // The #660 regression: a change dropped the whole card, so a booking summary lost rows
+        // The regression: a change dropped the whole card, so a booking summary lost rows
         // wholesale when one key was missing from the host payload.
         let stat: [String: Any] = ["label": "Region", "value": "{{hook_data.region.name}}"]
         let out = sanitizeSummaryStat(stat)

@@ -1,8 +1,8 @@
-// StoreTrialEligibilitySessionTests.swift — #933
+// StoreTrialEligibilitySessionTests.swift
 //
 // THE STATE THAT CANNOT OCCUR ON DEMAND, MANUFACTURED.
 //
-// #933 held itself open on one sentence: the only state where a wrong trial implementation is
+// The trial-eligibility proof rests on one sentence: the only state where a wrong trial implementation is
 // visible is a store account **that has already used the trial**. On a fresh account every
 // implementation looks correct, including one with no eligibility check at all — which is exactly
 // the shape of defect that reaches production believing it is covered.

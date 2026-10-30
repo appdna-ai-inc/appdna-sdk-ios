@@ -783,7 +783,7 @@ final class PaywallConfigDecodingTests: XCTestCase {
         XCTAssertEqual(section.data?.labelColorVal, "#FFFFFF")
         XCTAssertEqual(section.data?.descriptionColor, "#AAAAAA")
         XCTAssertEqual(section.data?.icon, "calendar")
-        // #992 — `affects_price` was removed from the model. The wire key STAYS in the JSON
+        // `affects_price` was removed from the model. The wire key STAYS in the JSON
         // above on purpose: a published paywall may still carry it, and the decoder must ignore
         // an unknown key rather than failing the section.
     }

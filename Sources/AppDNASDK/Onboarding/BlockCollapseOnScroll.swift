@@ -3,7 +3,7 @@ import Foundation
 /**
  HOW FAR a block authored `collapse_on_scroll` has collapsed, given how far the step has scrolled.
 
- 🔴 #993 — iOS applied this and Android decoded it and stopped there. `collapse_on_scroll` and
+ 🔴 IOS applied this and Android decoded it and stopped there. `collapse_on_scroll` and
  `collapse_threshold` are two declarations in the Kotlin and no use: every application of the key
  in the Android SDK is in `PaywallActivity`, which is a different surface. So one authored
  document produced a block that faded away on one platform and sat still on the other.

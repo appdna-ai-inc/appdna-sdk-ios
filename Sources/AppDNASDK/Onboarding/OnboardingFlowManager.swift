@@ -30,7 +30,7 @@ final class OnboardingFlowManager {
         // Resolve flow config
         guard let activeFlow = resolveFlow(flowId: flowId) else {
             /*
-             * #855 — DO NOT ASSERT A FACT THIS HAS NOT CHECKED.
+             * DO NOT ASSERT A FACT THIS HAS NOT CHECKED.
              *
              * "Onboarding flow not found" while the SDK is still configuring is wrong: at that
              * moment nothing has been looked up, because no config has loaded. The old line sent

@@ -101,7 +101,7 @@ public struct ElementStyleConfig: Codable {
 
 extension ElementStyleConfig {
     /**
-     #910 — the same container minus its background, for a site that has ALREADY drawn it.
+     The same container minus its background, for a site that has ALREADY drawn it.
 
      The CTA button resolves its fill from `element_style.background.color` and paints it itself,
      with its own corner radius. Handing the whole container to `applyElementStyle` as well would
@@ -148,7 +148,7 @@ public struct SectionPositionConfig: Codable {
 /**
  One entry under `style.elements` — what the CONSOLE writes there.
 
- #905 — this used to be an `ElementStyleConfig`, i.e. the SDK modelled an element entry AS the
+ This used to be an `ElementStyleConfig`, i.e. the SDK modelled an element entry AS the
  style, with `text_style` nested inside it. The console writes the other shape: a `text_style` AND
  an `element_style` side by side, because its editor offers a TextStylePanel and an
  ElementStylePanel per element. So the whole container half — border, radius, padding, opacity,
@@ -215,7 +215,7 @@ public struct LocalizationConfig: Codable {
 // MARK: - SwiftUI View extensions for applying design tokens
 
 extension View {
-    /// #609 — a button's OWN authored font size, applied after `applyTextStyle` so it wins.
+    /// A button's OWN authored font size, applied after `applyTextStyle` so it wins.
     ///
     /// Same specificity rule as the button's `text_color`, and for the same reason: the control sits
     /// on the button panel beside Height, so it has to beat the generic Typography size rather than
@@ -262,10 +262,10 @@ extension View {
     /**
      An authored `TextStyleConfig` when there is one, and a named default when there is not.
 
-     #954 — every social-proof element was repeating this four-line `if let ts = … { } else { }`
+     Every social-proof element was repeating this four-line `if let ts = … { } else { }`
      dance, and the one that did NOT repeat it correctly is how the testimonial ended up with a
-     hardcoded `.white.opacity(0.8)` that vanished on a light page — #947's defect, one line below
-     where #947 looked. One helper, so the fallback is written once and is visibly a fallback.
+     hardcoded `.white.opacity(0.8)` that vanished on a light page, one line below
+     where the same defect had been fixed for the review count. One helper, so the fallback is written once and is visibly a fallback.
      */
     func applyTextStyleOrDefault(_ style: TextStyleConfig?, font: Font, color: Color) -> some View {
         Group {
@@ -311,7 +311,7 @@ extension View {
         guard let s = style else { return AnyView(self) }
         let defaultRadius = CGFloat(s.corner_radius ?? 0)
         let border = s.border
-        // #886 — through the seam, so the fixture that holds the two platforms to one answer
+        // Through the seam, so the fixture that holds the two platforms to one answer
         // drives the SAME resolution the screen does. Resolved once; read by both branches.
         let sh = StyleEngine.resolveShadow(s.shadow)
 
@@ -432,7 +432,7 @@ struct ResolvedShadow: Equatable {
 }
 
 /**
- #886 — the four values a shadow really draws with, or nil when it draws nothing.
+ The four values a shadow really draws with, or nil when it draws nothing.
 
  A SEAM rather than inline arithmetic, so a shared fixture can drive the REAL resolution on both
  platforms. Android used to pass only `blur` to `Modifier.shadow` as an elevation — no colour, no
@@ -464,7 +464,7 @@ extension StyleEngine {
 
 extension View {
     /**
-     #905 — apply a per-element container style, or nothing at all.
+     Apply a per-element container style, or nothing at all.
 
      `applyContainerStyle` always wraps (padding, clip, overlay, shadow, opacity), which is right
      for a SECTION container that always exists and wrong for an element that usually asks for

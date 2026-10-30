@@ -12,7 +12,7 @@ struct SurveyRoot: Codable {
 public struct SurveyConfig: Codable {
     public let name: String?
     public let survey_type: String? // "nps", "csat", "custom"
-    /// #936 — a question that cannot decode costs that question, not the survey.
+    /// A question that cannot decode costs that question, not the survey.
     @LenientArray public var questions: [SurveyQuestion]?
     public let trigger_rules: SurveyTriggerRules?
     public let appearance: SurveyAppearance?
@@ -22,7 +22,7 @@ public struct SurveyConfig: Codable {
 /// A single survey question.
 /// Choice config wrapper — Firestore nests options inside choice_config
 public struct ChoiceConfig: Codable {
-    /// #936 — one malformed option costs that option.
+    /// One malformed option costs that option.
     @LenientArray public var options: [SurveyQuestionOption]?
 }
 
@@ -39,19 +39,18 @@ public struct SurveyQuestion: Codable {
     public let rating_config: RatingConfig?
     public let choice_config: ChoiceConfig?     // Firestore format
     /*
-     #936 — THE FIELD THAT DROPPED A WHOLE SURVEY.
+     THE FIELD THAT DROPPED A WHOLE SURVEY.
 
      It maps from the bare key `options`, and a stored survey on dev holds a DICTIONARY there. iOS
      threw, which failed the question, which failed the survey, and the SDK dropped the whole
      document and carried on — so the survey did not exist on iPhone and did exist on Android,
-     which reads `as? List<*>` and gets null. Same shape as #919's two, in a surface #919 did not
-     reach. Lenient now: a dictionary yields nil and `choice_config.options` answers instead.
+     which reads `as? List<*>` and gets null. Lenient now: a dictionary yields nil and `choice_config.options` answers instead.
     */
     @LenientArray private var _options: [SurveyQuestionOption]?  // Legacy flat format
     public let emoji_config: EmojiConfig?
     public let free_text_config: FreeTextConfig?
     /*
-     #998 — the likert scale. Android has rendered one since its first survey release and iOS had
+     The likert scale. Android has rendered one since its first survey release and iOS had
      no field for it at all, so `SurveyRenderer`'s `default:` arm drew an EmptyView: the question
      text appeared and the control did not. The owner's call was to make it real on every surface
      rather than retire it.
@@ -87,7 +86,7 @@ public struct SurveyQuestion: Codable {
         /*
          The interpolated copy carries the RESOLVED config, so a question authored under the legacy
          `scale_config` keeps its anchor labels through interpolation. Setting the alias to nil here
-         would silently drop them — the shape of defect #936 records on `options`.
+         would silently drop them.
         */
         self.likert_config = likert_config; self.scale_config = nil
     }
@@ -111,7 +110,7 @@ public struct NPSConfig: Codable {
     public let high_label: String?
 }
 
-/// #998 — likert scale bounds and anchor labels. Mirrors Android `LikertConfig`.
+/// Likert scale bounds and anchor labels. Mirrors Android `LikertConfig`.
 public struct LikertConfig: Codable {
     public let min: Int?
     public let max: Int?
@@ -159,7 +158,7 @@ public struct SurveyQuestionOption: Codable {
      * `IconRefSchema` accepts a bare string OR `{ library, name, color, size }`, and every other
      * surface in this SDK decodes it through `IconReference`'s dual-shape decoder. This one field
      * was declared `String?`, so the object form threw — and because `ChoiceConfig.options` is
-     * `@LenientArray` ("one malformed option costs that option", #936) the respondent silently
+     * `@LenientArray` ("one malformed option costs that option") the respondent silently
      * saw ONE FEWER CHOICE. A bare string still decodes exactly as before, and `IconView` renders
      * all four libraries instead of printing the raw name as text.
      */
@@ -254,7 +253,7 @@ public struct SurveyTheme: Codable, SparseMergeable {
     // Configurable thank-you text for interpolation
     public let thank_you_text: String?
     // Gradients + typography (previously authored by console but
-    // silently ignored by the SDK — see audit). Now decoded + merged so the
+    // silently ignored by the SDK). Now decoded + merged so the
     // dark variant can override any of them.
     public let gradient: GradientConfig?
     public let button_gradient: GradientConfig?

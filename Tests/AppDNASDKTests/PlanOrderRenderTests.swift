@@ -1,16 +1,16 @@
-// PlanOrderRenderTests.swift — #1097
+// PlanOrderRenderTests.swift
 //
 // DOES THE AUTHORED RANK DECIDE THE ORDER THE PLANS DRAW IN? Rendered, and compared.
 //
 // 🔴 Why this file exists. `PaywallPlanOrder.sorted` is named for "the order a paywall's plans
 // draw in", and the shared fixture `resolve_plan_order` pins it — by calling it DIRECTLY. That
-// proves the sorter sorts and cannot see whether anything calls it, which is how #1097 happened:
+// proves the sorter sorts and cannot see whether anything calls it, which is how a real defect happened:
 // the sort was wired into `selectedPlan` and `onAppear`, both of which look a plan up BY ID where
 // order is irrelevant by construction, and not into `case "plans":`, the one site that draws.
 // Deleting the call at every site left the fixture green.
 //
 // So the claim has to be measured where it is made — on the rows. The technique is the one
-// `StorePriceRenderTests` established for #923, for the reason recorded there: reading
+// `StorePriceRenderTests` established, for the reason recorded there: reading
 // `accessibilityLabel` off a hosted view in this target comes back EMPTY, because SwiftUI builds
 // that tree lazily and a hostless test never triggers it. Renders are compared instead.
 //
@@ -21,7 +21,7 @@
 // A == B says the rank decided what was drawn: the screen is identical to one that simply authored
 // the plans in that order. A != C says honouring the rank CHANGED the screen, and is also the
 // harness's own negative control — a blank or orderless render would make A == C and fail it.
-// Neither assertion is worth anything alone, which is the lesson of #923's empty tree.
+// Neither assertion is worth anything alone, which is the lesson of the store-price test's empty tree.
 import XCTest
 import SwiftUI
 import UIKit
@@ -167,14 +167,14 @@ final class PlanOrderRenderTests: XCTestCase {
         return try JSONDecoder().decode(PaywallConfig.self, from: Data(json.utf8))
     }
 
-    /// 🔴 #1081 — THE ROOT CTA DRAWS THE SELECTED PLAN'S OWN LABEL, which it did not before.
+    /// 🔴 THE ROOT CTA DRAWS THE SELECTED PLAN'S OWN LABEL, which it did not before.
     ///
     /// The section arm resolved `selectedPlanCtaText ?? topLevelText ?? sectionText`; this arm read
     /// `cta.text ?? "Continue"`, so the same authored `plans[].cta_text` worked or did nothing
     /// depending on whether the layout happened to contain a `cta` section. Android never had the
     /// split — it synthesises a `__root_cta__` section so both cases share one chain.
     ///
-    /// It matters for #1081: a tap that drifts far enough for the scroll view to claim it leaves the
+    /// It matters for a missed plan tap: a tap that drifts far enough for the scroll view to claim it leaves the
     /// selection alone, and the CTA then buys the plan chosen BEFORE it with nothing on screen naming
     /// what is about to be bought. A CTA reading "Start Annual" is what makes that visible first.
     func testTheRootCTADrawsTheSelectedPlansOwnLabel() throws {
@@ -196,9 +196,9 @@ final class PlanOrderRenderTests: XCTestCase {
         )
     }
 
-    /// 🔴 #1100 — ON A MULTI-PLAN PAYWALL THE CTA NAMES THE PLAN, when nothing else does.
+    /// 🔴 ON A MULTI-PLAN PAYWALL THE CTA NAMES THE PLAN, when nothing else does.
     ///
-    /// #1081 measured that a plan tap drifting ~14pt is claimed by the ScrollView, so the selection
+    /// It was measured that a plan tap drifting ~14pt is claimed by the ScrollView, so the selection
     /// does not change and the CTA buys the plan chosen before it. That is iOS's own convention and
     /// is deliberately left alone; what made it a wrong purchase rather than a visible mistake is
     /// that nothing named what was about to be bought. Measured on dev: 6 of 129 plans carried a
@@ -231,7 +231,7 @@ final class PlanOrderRenderTests: XCTestCase {
         )
     }
 
-    /// Two plans, a ROOT `cta`, and no per-plan `cta_text` — the shape #1100's default is for.
+    /// Two plans, a ROOT `cta`, and no per-plan `cta_text` — the shape the default CTA label is for.
     private func twoPlanRootCtaConfig(rootCtaText: String) throws -> PaywallConfig {
         let json = """
         {

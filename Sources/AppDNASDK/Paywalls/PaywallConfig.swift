@@ -40,7 +40,7 @@ struct PaywallConfig: Codable {
     }
 
     /**
-     #923 — a copy with the STORE's price on every plan, wherever that plan lives.
+     A copy with the STORE's price on every plan, wherever that plan lives.
 
      The root `plans` array, the top-level `sections`, and `layout.sections` are three places a
      paywall's plans can be written, and the renderer reads whichever is present. Applying to one
@@ -75,19 +75,19 @@ struct PaywallConfig: Codable {
     }
 
     /**
-     #933 — a copy with the STORE's ISO billing period on every plan, wherever that plan lives.
+     A copy with the STORE's ISO billing period on every plan, wherever that plan lives.
 
      🔴 Deliberately the same THREE assignments as `applyingStorePrices`, including `_sections` and
-     `layout?.sections`. #923's first version of the price substitution mapped only the root `plans`
+     `layout?.sections`. The first version of the price substitution mapped only the root `plans`
      array, while every real paywall carries its plans in `layout.sections[].config.plans` — so the
      feature passed its fixture, passed its live-StoreKit test, and reached nothing on screen.
      Walking fewer places here would repeat that exactly.
      */
     /**
-     #933 slice 3 — a copy with the STORE's free-trial period on every eligible plan.
+     A copy with the STORE's free-trial period on every eligible plan.
 
      The same three assignments as `applyingStorePrices` and `applyingStorePeriods`, for the reason
-     recorded on those: #923's first substitution walked only the root `plans` array and so reached
+     recorded on those: the first price substitution walked only the root `plans` array and so reached
      no real paywall.
      */
     func applyingStoreTrials(_ trials: [String: String]) -> PaywallConfig {
@@ -144,7 +144,7 @@ struct PaywallLayout: Codable {
     let spacing: CGFloat?
     let padding: CGFloat?
     let footer_padding: CGFloat?  // Bottom padding for CTA/footer zone (default 8)
-    // #919 — a section with a bad field costs that section, not the whole paywall.
+    // A section with a bad field costs that section, not the whole paywall.
     @LenientArray var sections: [PaywallSection]?
     let background: PaywallBackground?
     let global_style: AnyCodable?
@@ -164,7 +164,7 @@ struct PaywallSection: Codable {
     /// When true, this section fades out and collapses to 0 height as the user scrolls.
     let collapse_on_scroll: Bool?
     /**
-     #884 — which zone this section lives in: "body" (scrolls) or "bottom" (pinned with the CTA).
+     Which zone this section lives in: "body" (scrolls) or "bottom" (pinned with the CTA).
 
      Until now only the `cta` section, and a `legal` placed after it, could be pinned — so a
      paywall's plan tiles scrolled away while the button that buys them stayed. On a short screen
@@ -180,7 +180,7 @@ struct PaywallSection: Codable {
     /// Section data — server writes as "config", SDK historically used "data". Accept both.
     var data: PaywallSectionData? { _data ?? _config }
 
-    /// #923 — replace this section's plans, in whichever of the two keys carries them.
+    /// Replace this section's plans, in whichever of the two keys carries them.
     ///
     /// 🔴 A paywall's plans live in `layout.sections[].config.plans`, not at the document root, and
     /// the renderer reads them from there (`config.sections.first(type: "plans")?.data?.plans ??
@@ -236,7 +236,7 @@ struct PaywallSectionData: Codable {
     let showRestore: Bool?          // CTA section: show restore button
     let restorePosition: String?    // CTA section: "above" | "below" (default: "below")
     let restoreTextColor: String?   // CTA section: restore link text color
-    /// #651 — Restore's own fill + radius, the pair the CTA already has.
+    /// Restore's own fill + radius, the pair the CTA already has.
     let restoreBgColor: String?
     let restoreCornerRadius: Double?
     /// The gap between the CTA button and the Restore link. Was a
@@ -301,7 +301,7 @@ struct PaywallSectionData: Codable {
     // Divider section
     let thickness: CGFloat?
     /// A DIVIDER's line style, and it maps from the bare key `style` — which the console also
-    /// uses for a per-element style MAP on header / features / plans / legal sections. #919: four
+    /// uses for a per-element style MAP on header / features / plans / legal sections. Four
     /// sections of one ACTIVE paywall threw here and iOS dropped the whole paywall; Android read
     /// null and rendered. Lenient now: an object yields nil and the divider takes its default.
     @LenientScalar var lineStyle: String?         // solid | dashed | dotted
@@ -313,7 +313,7 @@ struct PaywallSectionData: Codable {
     let labelBgColor: String?
     let labelFontSize: CGFloat?
     /*
-     * #979 — the countdown's four remaining console controls. The editor has offered Label Font
+     * The countdown's four remaining console controls. The editor has offered Label Font
      * Weight, Digit Size, Digit Font Weight and Text Color since the section existed; no renderer
      * on any platform read them, so eight of its ten controls wrote keys nothing looked at.
      *
@@ -376,7 +376,7 @@ struct PaywallSectionData: Codable {
     /// `style.elements.item_text.text_style.color`. Exposed in the console
     /// Content tab so users don't have to drop into the Style tab.
     let itemTextColor: String?
-    /// #591 — the feature subtitle's own type, and the shape an item image is clipped to. Section-
+    /// The feature subtitle's own type, and the shape an item image is clipped to. Section-
     /// level for the same reason `itemTextColor` is: one setting keeps every subtitle in a paywall
     /// looking alike, which is the concern that got subtitles removed from these items in April.
     let itemSubtitleColor: String?
@@ -413,11 +413,11 @@ struct PaywallSectionData: Codable {
     let descriptionColor: String?
     let icon: String?
     /*
-     #992 — `affects_price` was REMOVED here. It was declared on this model and on Android's,
+     `affects_price` was REMOVED here. It was declared on this model and on Android's,
      read by NEITHER renderer, and written by no console control: a dead key in a PUBLIC model.
      *
      The owner's call (2026-10-22) was to remove rather than build, and the reason is worth keeping
-     where someone would be tempted to re-add it: unlike the styling keys #1053 built out, a toggle
+     where someone would be tempted to re-add it: unlike the styling keys that were built out, a toggle
      that recomposes a DISPLAYED PRICE is money. A wrong composition rule misquotes what a user is
      charged, and the store-price ladder would have to compose too. It is only a decode, so it
      comes back cheaply the day add-on pricing is actually designed.
@@ -688,7 +688,7 @@ struct PaywallPlan: Codable, Identifiable {
     let price_display: String?
     let period: String?
     /**
-     #923 — whether this plan's price comes from the STORE or from `price_display`.
+     Whether this plan's price comes from the STORE or from `price_display`.
 
      🔴 The DEFAULT IS THE STORE, so this is an opt-OUT and `nil` means "ask". It exists for a plan
      that deliberately shows a marketing price — a struck-through "was $19.99", a price the app
@@ -697,7 +697,7 @@ struct PaywallPlan: Codable, Identifiable {
      */
     let use_store_price: Bool?
     /**
-     #923 — the store's localized price for this plan's product, filled in by the PRESENTER just
+     The store's localized price for this plan's product, filled in by the PRESENTER just
      before the screen is built, or nil when the lookup failed, timed out or did not know the
      product.
 
@@ -707,14 +707,14 @@ struct PaywallPlan: Codable, Identifiable {
      */
     var resolvedStorePrice: String?
     /**
-     #933 — the STORE's ISO billing period for this plan's product (`P1M`, `P1Y`), filled in by the
+     The STORE's ISO billing period for this plan's product (`P1M`, `P1Y`), filled in by the
      presenter beside `resolvedStorePrice`. Never authored and never published: it is what StoreKit
      told this device, normalised to the spelling Play reports directly.
      */
     var resolvedStorePeriod: String?
 
     /**
-     #933 slice 3 — the store's own free-trial period, as an ISO duration, filled by the presenter
+     The store's own free-trial period, as an ISO duration, filled by the presenter
      ONLY when the store says THIS user is eligible for it.
 
      🔴 PROMISE ONLY ON A POSITIVE SIGNAL. A trial sentence is a promise, and showing "7 days free"
@@ -738,7 +738,7 @@ struct PaywallPlan: Codable, Identifiable {
     let icon: String?
     let image_url: String?
     /**
-     #933 — the period drawn beside the price, phrased in the device's language.
+     The period drawn beside the price, phrased in the device's language.
 
      🔴 AN AUTHORED `period` WINS. Additive on purpose: an author who typed "mo" keeps "mo", so no
      published paywall changes appearance, while a plan that authored nothing — 0 of 81 in
@@ -760,17 +760,17 @@ struct PaywallPlan: Codable, Identifiable {
     let price_total_display: String?
     /// Render `description` as a coloured pill instead of plain text.
     let description_badge: PaywallDescriptionBadge?
-    /// #588 — this plan's price colour. Beats the section's `elements.price` style and the
+    /// This plan's price colour. Beats the section's `elements.price` style and the
     /// selected/unselected text colour, because the whole point is to make ONE tier's price stand
     /// out from the others; anything that could override it would defeat it.
     let price_color: String?
-    /// #587 — this plan's subtitle type. Section-level `elements.description` styles every plan
+    /// This plan's subtitle type. Section-level `elements.description` styles every plan
     /// identically, which is the opposite of what an author wants when one tier should read
     /// differently.
     let subtitle_color: String?
     let subtitle_font_size: Double?
     let subtitle_align: String?
-    /// #589 — `card` (default) or `text_only`: name and price on one centred line, with no border,
+    /// `card` (default) or `text_only`: name and price on one centred line, with no border,
     /// background, badge, subtitle or selection control. Still selectable — it is a plan.
     let display_mode: String?
     let text_only_font_size: Double?
@@ -779,7 +779,7 @@ struct PaywallPlan: Codable, Identifiable {
     /// Display name — try label first (Firestore), then name (legacy)
     var displayName: String { label ?? name ?? "" }
     /// Display price — try price_display first (Firestore), then price (legacy)
-    /// Display price — the STORE's, falling back to what the author typed (#923).
+    /// Display price — the STORE's, falling back to what the author typed.
     ///
     /// Every layout reads this one property, which is why the substitution lives here rather than
     /// at the eight render sites that would each have had to remember it.
@@ -792,7 +792,7 @@ struct PaywallPlan: Codable, Identifiable {
         ).priceDisplay
     }
 
-    /// Where `displayPrice` came from — `store`, or one of the three authored reasons (#923).
+    /// Where `displayPrice` came from — `store`, or one of the three authored reasons.
     /// Reported with `paywall_view` so a customer asking why their paywall shows the old price has
     /// an answer in the data rather than a guess.
     var priceSource: String {
@@ -810,11 +810,11 @@ struct PaywallPlan: Codable, Identifiable {
     /// "7-day", and an authored label got a double "Free week free trial").
     /// Now centralised so all layouts + Android render the identical string.
     /**
-     #933 — an ISO duration in `trial_duration` is PHRASED rather than printed raw.
+     An ISO duration in `trial_duration` is PHRASED rather than printed raw.
 
      `trial_duration` is author-supplied text, and the two stores express a trial period as an ISO
      duration (`P7D`, `P1W`). A config that carries the store's own spelling — an import, a
-     hand-edited document or a generator, the same route #959's numeric price arrived by — rendered
+     hand-edited document or a generator — rendered
      literally as **"P7D free trial"**. `BillingPeriodPhrase` turns that into "7 days free trial";
      anything it cannot parse is printed exactly as authored, so "7-day" is untouched.
     */
@@ -825,7 +825,7 @@ struct PaywallPlan: Codable, Identifiable {
             return "\(phrased) free trial"
         }
         /*
-         #989 — `trial.duration_days`, which was DECODED AND READ BY NOTHING on either platform.
+         `trial.duration_days`, which was DECODED AND READ BY NOTHING on either platform.
 
          The schema requires `{ duration_days, label }` together, so most plans carry both and the
          label wins — but 2 of 19 plans on dev have the object with no label, and those drew no
@@ -841,7 +841,7 @@ struct PaywallPlan: Codable, Identifiable {
             return "\(phrased) free trial"
         }
         /*
-         #933 slice 3 — nothing authored, so the STORE's trial, phrased.
+         Nothing authored, so the STORE's trial, phrased.
 
          Last rung on purpose: an authored label and an authored duration both win, so no published
          paywall changes wording. Only a plan that said nothing gains a sentence — and only when
@@ -886,10 +886,10 @@ struct PaywallPlan: Codable, Identifiable {
         self.label = c.lenient(String.self, .label)
         self.price = PaywallPlan.looseString(c, .price)
         self.price_display = PaywallPlan.looseString(c, .price_display)
-        // #923 — absent means "ask the store", so only an explicit `false` opts out.
+        // Absent means "ask the store", so only an explicit `false` opts out.
         self.use_store_price = try? c.decodeIfPresent(Bool.self, forKey: .use_store_price)
         self.resolvedStorePrice = nil
-        // #933 — filled by the presenter after the store answers, never decoded: it is not in
+        // Filled by the presenter after the store answers, never decoded: it is not in
         // `CodingKeys` because it is not in the published document.
         self.resolvedStorePeriod = nil
         self.resolvedStoreTrial = nil
@@ -911,7 +911,7 @@ struct PaywallPlan: Codable, Identifiable {
         // Same defensive stance as every other optional here: a malformed badge object
         // must cost the author their pill, never the whole paywall.
         self.description_badge = try? c.decodeIfPresent(PaywallDescriptionBadge.self, forKey: .description_badge)
-        // #587 / #588 / #589 — per-plan presentation. `try?` throughout for the same reason as the
+        // Per-plan presentation. `try?` throughout for the same reason as the
         // badge above: a malformed override must cost the author that override, never the paywall.
         self.price_color = try? c.decodeIfPresent(String.self, forKey: .price_color)
         self.subtitle_color = try? c.decodeIfPresent(String.self, forKey: .subtitle_color)
@@ -968,9 +968,9 @@ struct PaywallCTA: Codable {
     let height: Double?
     let font_size: Double?
     let padding_vertical: Double?
-    /// #1104 — `false` stops a multi-plan CTA naming the selected plan (default: it does, #1100).
+    /// `false` stops a multi-plan CTA naming the selected plan (default: it does).
     let name_plan: Bool?
-    /// #1104 — where the CTA text and the plan's name go: `{cta}` and `{plan}`, default `{cta} — {plan}`.
+    /// Where the CTA text and the plan's name go: `{cta}` and `{plan}`, default `{cta} — {plan}`.
     let plan_format: String?
 
     /// Resolved bg_color — from style object, direct field, or default
@@ -1035,7 +1035,7 @@ struct PaywallExtraButton: Codable, Identifiable {
     let font_size: Double?
     /// `filled` (default) draws a button; `text` draws a tappable label like the restore link.
     let style: String?
-    /// #651 — its own radius; unset inherits the CTA's.
+    /// Its own radius; unset inherits the CTA's.
     let corner_radius: Double?
 
     /// Identifiable for ForEach without requiring the console to mint ids.
@@ -1062,7 +1062,7 @@ struct PaywallDismiss: Codable {
     /// Whether dismiss is allowed — defaults to true for backward compat.
     var isAllowed: Bool { allowed ?? true }
 
-    /// #652 — the Back button is its OWN control, not a style of the close button. A
+    /// The Back button is its OWN control, not a style of the close button. A
     /// paywall can want both at once, each with its own placement, colour, size and delay.
     let back: PaywallBackButton?
 
@@ -1075,7 +1075,7 @@ struct PaywallDismiss: Codable {
     }
 }
 
-/// #652 — the second dismissal affordance, configured independently of the close button.
+/// The second dismissal affordance, configured independently of the close button.
 struct PaywallBackButton: Codable {
     let enabled: Bool?
     /// `chevron` (default) | `arrow` | `text_link`.

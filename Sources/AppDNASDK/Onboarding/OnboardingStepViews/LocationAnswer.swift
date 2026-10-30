@@ -194,7 +194,7 @@ struct LocationSuggestionItem: Sendable {
 
 /// The two lines one autocomplete suggestion shows in the dropdown.
 ///
-/// 🔴 ONE RULE FOR EVERY SURFACE AND BOTH PLATFORMS (#963). This used to be four rules: the iOS
+/// 🔴 ONE RULE FOR EVERY SURFACE AND BOTH PLATFORMS. This used to be four rules: the iOS
 /// content block took MapKit's own `title`/`subtitle`, the iOS form-step field showed
 /// `city` over `"state, country"`, and the two Android surfaces each split the address on its first
 /// comma — one with a city/country fallback and one without. Routing the iOS content block through

@@ -43,7 +43,7 @@ struct OnboardingFlowHost: View {
     /// arrival on a step; back-then-forward is a new one). Bumped wherever `currentIndex` changes, in
     /// the same transaction, so the new step's first frame is already pending.
     @StateObject private var hostDataCoordinator = HostDataPendingCoordinator()
-    /// #921 — the pending step-level auto-advance, cancelled when the step changes or the flow goes.
+    /// The pending step-level auto-advance, cancelled when the step changes or the flow goes.
     @State private var autoAdvance = StepAutoAdvanceTimer()
     @State private var presentationSerial = 0
     /// The per-step interaction data layer, its stamps, the flow-level
@@ -64,7 +64,7 @@ struct OnboardingFlowHost: View {
     // Dynamic color flash on step-advance (the progress fill briefly animates to flash_color).
     @State private var progressFlashing = false
     /**
-     #1026 — the flow's celebration, armed by the renderer because the renderer is the only thing
+     The flow's celebration, armed by the renderer because the renderer is the only thing
      that knows when a step appeared or completed.
 
      It is a SERIAL rather than a Bool: `ConfettiOverlay` starts itself in `onAppear`, so a second
@@ -164,7 +164,7 @@ struct OnboardingFlowHost: View {
                         onSkip: {
                             handleStepSkipped(step: step)
                         },
-                        // #1014 — the host's guarded advance, for the handler that actually
+                        // The host's guarded advance, for the handler that actually
                         // receives a tap on content.
                         onContentTap: { tapAnywhereAdvance() },
                         flowId: flow.id,
@@ -190,7 +190,7 @@ struct OnboardingFlowHost: View {
                         removal: .move(edge: .leading)
                     ))
                     /*
-                     * #1014 — a tap ANYWHERE advances the step.
+                     * A tap ANYWHERE advances the step.
                      *
                      * A splash that is nothing but an image has no button to hang a CTA on, and the
                      * only way past it was "Allow skip" — a ✕ in the corner, which says "leave"
@@ -465,7 +465,7 @@ struct OnboardingFlowHost: View {
         let backColor: Color = backStyle?.icon_color.flatMap { Color(hex: $0) } ?? (chromeOnDark ? UnstyledInk.darkChrome : Color(hex: "#6B7280"))
         let hasBack = flow.settings.allow_back && !navigationHistory.isEmpty && !currentStepHidesBack
         let dismissAllowed = flow.settings.dismiss_allowed ?? true
-        // #1004 — the ✕'s own style. Unset resolves to the values that shipped hardcoded.
+        // The ✕'s own style. Unset resolves to the values that shipped hardcoded.
         let dismissStyle = flow.settings.dismiss_button_style
         // back⇄X switch: show the dismiss in the leading slot on the first/no-history step.
         let leadingIsClose = !hasBack && dismissAllowed && (backStyle?.close_on_first == true)
@@ -546,7 +546,7 @@ struct OnboardingFlowHost: View {
                 .disabled(isProcessing)
             }
         }
-        // #1004 — "pushed as far as possible into the top-right corner, which makes it hard to
+        // "pushed as far as possible into the top-right corner, which makes it hard to
         // tap". 8 is what shipped; an author can now move it in.
         .padding(.horizontal, dismissStyle?.resolvedInset ?? 8)
     }
@@ -710,7 +710,7 @@ struct OnboardingFlowHost: View {
 
     private func handleStepAppear(step: OnboardingStep) {
         /*
-         #921 — a step that advances by itself, scheduled as it appears.
+         A step that advances by itself, scheduled as it appears.
 
          Before the pending host-data call rather than after, so the timer a splash declares is not
          hostage to a delegate that never replies — the whole point of the field is a screen that
@@ -768,7 +768,7 @@ struct OnboardingFlowHost: View {
             onSettled: {
                 onStepViewed(step.id, stepIndex)
                 /*
-                 #896 — ask StoreKit for a review as the step APPEARS, never from a tap.
+                 Ask StoreKit for a review as the step APPEARS, never from a tap.
 
                  Beside `onStepViewed` because that is the "this step was really seen" moment, and
                  it fires exactly once per view even when the user has already moved on. The
@@ -1185,7 +1185,7 @@ struct OnboardingFlowHost: View {
     }
 
     /**
-     #1014 — THE STEP'S TAP-ANYWHERE ADVANCE, in one place.
+     THE STEP'S TAP-ANYWHERE ADVANCE, in one place.
 
      🔴 It had three call sites and three copies of the guard, and a fourth was needed the moment
      the real consumer was found: the keyboard-dismiss handler inside `ThreeZoneStepLayout`, which
@@ -1212,7 +1212,7 @@ struct OnboardingFlowHost: View {
     }
 
     /**
-     What the progress bar's "Skip" link does — #1056.
+     What the progress bar's "Skip" link does.
 
      🔴 `settings.skip_to_step` WAS DECODED BY BOTH PLATFORMS AND READ BY NEITHER. It sits one field
      away from `progress_skip_label` in `OnboardingSettings`, and this link was the only thing it
@@ -1613,7 +1613,7 @@ struct OnboardingStepRouter: View {
     private let forwardNext: ([String: Any]?) -> Void
     let onSkip: () -> Void
     /**
-     #1014 — WHAT A TAP ON THIS STEP'S CONTENT SHOULD DO.
+     WHAT A TAP ON THIS STEP'S CONTENT SHOULD DO.
 
      🔴 The flow host owns the tap-anywhere flag and the advance; the step's content lives in
      here. The host's own gesture only ever saw taps that MISSED the content, because the
@@ -1709,7 +1709,7 @@ struct OnboardingStepRouter: View {
     /// `presentation`: a router reused for a new presentation (a 0→1→0 inside the exit animation
     /// keeps `.id(currentIndex)`) reads an empty entry on its very first frame.
     @State private var fieldConfigOverridesByPresentation: [Int: [String: [String: Any]]] = [:]
-    /// #657 — per-block replacement options pushed back by a refresh interaction. Layered at read
+    /// Per-block replacement options pushed back by a refresh interaction. Layered at read
     /// time like `fieldConfigOverrides`, because `ContentBlock` is immutable. Keyed by presentation.
     @State private var fieldOptionsOverridesByPresentation: [Int: [String: [InputOption]]] = [:]
 
@@ -2003,7 +2003,7 @@ struct OnboardingStepRouter: View {
      🔴 THE CONTENT SLOT IS `maxHeight: .infinity`, AND THAT IS THE WHOLE POINT.
 
      Says a fullscreen or anchored map must not break scrolling. A map that ate the
-     available height and left the content unbounded would do exactly that — and #671 was a map that
+     available height and left the content unbounded would do exactly that — and an earlier map defect
      only LOOKED like it had broken scrolling, so the real version is not a subtle bug to ship on top
      of it. The content keeps the whole remaining height; the anchored strips take their own.
 
@@ -2075,12 +2075,12 @@ struct OnboardingStepRouter: View {
             responses: accumulatedResponses,
             hookData: hostDataContext,
             inputValues: $inputValues,
-            // #1013 — so a condition naming a field on THIS step reacts while the step is open.
+            // So a condition naming a field on THIS step reacts while the step is open.
             stepId: step.id,
             currentStepIndex: currentStepIndex,
             totalSteps: totalSteps,
             onInteract: handleInteract,
-            // #1014 — the step's tap-anywhere advance, handed to the handler that actually
+            // The step's tap-anywhere advance, handed to the handler that actually
             // RECEIVES a tap on content. Same guard as the renderer's own gesture, so a tap that
             // reaches both still advances once: `advanceOrComplete()` moves the index and the
             // guard re-reads the NEW step's flag.
@@ -2105,7 +2105,7 @@ struct OnboardingStepRouter: View {
             case .value_prop:
                 ValuePropStepView(config: effectiveConfig, onNext: { onNext(nil) })
             case .custom, .splash:
-                // #953 — the LEGACY path, taken only by a step with no `content_blocks` at all.
+                // The LEGACY path, taken only by a step with no `content_blocks` at all.
                 // A splash always carries content (that is what it is), so this branch is reached
                 // only by a malformed one — and a bare "continue" view is the right answer for it,
                 // exactly as it is for a custom step.
@@ -2208,7 +2208,7 @@ struct OnboardingStepRouter: View {
             }
             return
         }
-        // #1095 — the assembly itself lives in `StepAdvancePayload` so a unit test can reach the
+        // The assembly itself lives in `StepAdvancePayload` so a unit test can reach the
         // SAME code the device runs. The fixture runner used to keep its own copy, which is why the
         // iOS suite passed 1542/0 with this merge deleted.
         onNext(StepAdvancePayload.build(inputValues: inputValues, toggleValues: toggleValues, extra: extra))
@@ -2268,7 +2268,7 @@ struct OnboardingStepRouter: View {
             // Don't advance — user will return from in-app browser
         case "rate_app":
             /*
-             #896 — a button that takes the user to the App Store to leave a review.
+             A button that takes the user to the App Store to leave a review.
 
              🔴 It opens the REVIEW PAGE; it does not ask StoreKit for the in-place sheet. Apple's
              rule is explicit — don't call the review prompt in response to a user action — and a
@@ -2343,8 +2343,8 @@ struct OnboardingStepRouter: View {
             emitAuthAction(action, actionValue: actionValue)
 
         /*
-         #1091 — `continue` is an authored SYNONYM of `next`, and it used to fall to the default
-         below and throw the step's answers away. The #963 walk flow authors its CTA exactly this
+         `continue` is an authored SYNONYM of `next`, and it used to fall to the default
+         below and throw the step's answers away. A location-picker flow authored its CTA exactly this
          way, and a selected location was lost every time.
          */
         case "continue":
@@ -2358,10 +2358,10 @@ struct OnboardingStepRouter: View {
              action for which losing them is the right behaviour, and advancing with the data is
              otherwise identical.
 
-             It is the structural half of #1091 and the larger one. A new action the console ships
+             This is the larger half of the fix. A new action the console ships
              before an SDK release supports it, an action one platform has and the other does not,
              or a plain typo all took this branch, and the cost was the user's answers — silently.
-             Same silence class as #1074 and #1080, so it says so now.
+             A silent loss is the worst kind, so it says so now.
              */
             Log.warning("Onboarding: unrecognised block action \"\(action)\" — advancing and "
                 + "keeping the step's answers")
@@ -2584,7 +2584,7 @@ enum RequiredFieldGate {
                       let input = stat["input"] as? String, input != "none",
                       String(describing: stat["required"] ?? "") == "true"
                 else { continue }
-                // #595 — a stat with no authored `field_id` used to be skipped here, so `required`
+                // A stat with no authored `field_id` used to be skipped here, so `required`
                 // was silently dropped. It now falls back to the same derived key the renderer's
                 // control writes; deriving it anywhere but `summaryStatFieldId` would gate on a key
                 // nothing writes.
@@ -2602,7 +2602,7 @@ enum RequiredFieldGate {
             }
         }
 
-        // #585 — a MINIMUM selection count gates the CTA.
+        // A MINIMUM selection count gates the CTA.
         //
         // 🔴 `min_selections` has been in the Zod schema since an earlier fix, with a console control on
         // form fields, and NOTHING on any platform ever read it. An author could set "Min

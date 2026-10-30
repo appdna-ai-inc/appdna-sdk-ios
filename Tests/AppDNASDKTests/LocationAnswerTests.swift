@@ -5,7 +5,7 @@
 // stored.
 //
 // NEGATIVE CONTROL: the content block's old MapKit `finalize` stored `"city": ""`, `"state": ""`
-// and `"timezone": "UTC"` for these inputs, and never `timezone_offset` / `raw_query`. #963 removed
+// and `"timezone": "UTC"` for these inputs, and never `timezone_offset` / `raw_query`. A later change removed
 // that path — the proxy resolves the place — so these assertions now sit directly on the rule both
 // writers call.
 //

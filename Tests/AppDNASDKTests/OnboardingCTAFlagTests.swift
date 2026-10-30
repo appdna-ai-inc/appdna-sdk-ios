@@ -116,7 +116,7 @@ final class OnboardingCTAFlagTests: XCTestCase {
         XCTAssertTrue(OnboardingCTAFlag.applyTo(responses: [:], step: s, stepData: ["a": "1"]).isEmpty)
     }
 
-    // MARK: - the derived stat key (#595)
+    // MARK: - the derived stat key
 
     func testAuthoredStatFieldIdWins() {
         XCTAssertEqual(summaryStatFieldId(blockId: "block_5", index: 2, stat: ["field_id": "group_size"]),

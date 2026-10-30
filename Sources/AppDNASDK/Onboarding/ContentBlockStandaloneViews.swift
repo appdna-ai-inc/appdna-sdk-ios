@@ -233,7 +233,7 @@ struct CountdownTimerBlockView: View {
         return ZStack {
             Circle().stroke(Color(hex: "#E5E7EB"), lineWidth: 4)
             /*
-             #1066 — the ring SWEEPS. `to:` was a hardcoded `0.75`, the console preview's static
+             The ring SWEEPS. `to:` was a hardcoded `0.75`, the console preview's static
              mock ported into a renderer: the digits counted down while the ring never moved, and it
              was still at 75% when the timer expired. A preview is allowed a frozen value because it
              has no clock; a renderer is not, and `barFraction` — which the bar variant beside it

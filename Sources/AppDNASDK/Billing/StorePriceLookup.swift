@@ -3,7 +3,7 @@ import StoreKit
 
 /// Asks the App Store what a paywall's products cost, bounded, and never fails.
 ///
-/// #923 — the renderer's door to StoreKit. `PriceResolver` could already do this and had ZERO
+/// The renderer's door to StoreKit. `PriceResolver` could already do this and had ZERO
 /// callers; `StoreKit2Bridge.loadProducts` sits inside `purchase(...)`, long after the screen has
 /// been drawn. So a paywall showed whatever an author typed, and a price change in App Store
 /// Connect never reached it.
@@ -23,7 +23,7 @@ enum StorePriceLookup {
     /// Localized display prices by product id. Products the store does not know are simply absent,
     /// which is the same signal as a failed lookup and resolves the same way.
     /**
-     #933 — what the store knows about a product: its localized price and its ISO billing period.
+     What the store knows about a product: its localized price and its ISO billing period.
 
      Both come off the SAME `Product`, so they are fetched in ONE call. A second lookup for the
      period would double the round-trips and could disagree with the price it sits beside — a
@@ -34,7 +34,7 @@ enum StorePriceLookup {
         let periodIso: String?
 
         /**
-         #933 slice 3 — the free-trial period, as ISO, and ONLY when this user can actually have it.
+         The free-trial period, as ISO, and ONLY when this user can actually have it.
 
          🔴 A TRIAL SENTENCE IS A PROMISE. `isEligibleForIntroOffer` is a real per-user flag: a user
          who has already taken the trial on this Apple ID answers false, and this stays nil, so the

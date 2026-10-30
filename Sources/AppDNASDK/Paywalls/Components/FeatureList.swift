@@ -4,7 +4,7 @@ import SwiftUI
 /// Supports plain string features and rich structured items with icons, images, and excluded state.
 struct FeatureList: View {
     /**
-     #947 — the page this list is drawn on, so a colour nobody authored follows the DOCUMENT
+     The page this list is drawn on, so a colour nobody authored follows the DOCUMENT
      rather than the phone.
 
      `.primary` and `.secondary` are system colours: black in light appearance, white in dark. A
@@ -16,15 +16,15 @@ struct FeatureList: View {
          dark page,  light appearance   0 ink of 1,131,840 px
 
      Zero. The feature list — the reason most paywalls exist — was not on the screen for any user
-     whose phone setting disagreed with the author's background. #891 fixed exactly this for the
-     plan tiles and the header; this is the same defect in the sections it did not reach.
+     whose phone setting disagreed with the author's background. The same fix was already in place
+     for the plan tiles and the header; this is the same defect in the sections it did not reach.
      */
     @SwiftUI.Environment(\.paywallBackgroundHex) private var pageBackgroundHex: String?
 
     let features: [String]
 
     /*
-     * #1076 — a feature row is TAPPABLE, and reports `.featureSelected`.
+     * A feature row is TAPPABLE, and reports `.featureSelected`.
      *
      * Rows were decorative until now, which is why `featureSelected` had no emitter on either
      * platform. The owner asked for all four cases, so the rows gain a tap.
@@ -52,7 +52,7 @@ struct FeatureList: View {
     /// icon_color / iconColorOverride pattern so a Content-tab value always
     /// wins when both are set.
     var itemTextColorOverride: String? = nil
-    /// #591 — a feature item's optional second line, and its own type.
+    /// A feature item's optional second line, and its own type.
     ///
     /// Section-level rather than per-item, exactly like `item_text_color` and `item_font_size`
     /// above. A subtitle was REMOVED from these items in April because AI-generated ones made
@@ -60,7 +60,7 @@ struct FeatureList: View {
     /// for the section keeps every subtitle in a paywall looking alike. The TEXT stays per item.
     var subtitleColorOverride: String? = nil
     var subtitleFontSize: CGFloat? = nil
-    /// #591 — `rounded` (default, unchanged), `circle`, or `square`.
+    /// `rounded` (default, unchanged), `circle`, or `square`.
     var itemImageShape: String? = nil
     /// The cross on an EXCLUDED item. Authorable for the same reason every other colour here is.
     var itemExcludedColor: String? = nil
@@ -104,7 +104,7 @@ struct FeatureList: View {
          🔴 BOTH keys are drawn, and this used to be an `if/else` that drew only one.
 
          A `features` section may carry the plain `features` string array, the structured `items`
-         array, or both. Android has rendered both, deliberately, since #591 — its own comment gives
+         array, or both. Android already rendered both, deliberately — its own comment gives
          the reason: "Both keys can be present on an older document, and rendering only one of them
          would trade this bug for its mirror image." iOS drew `items` when present and SILENTLY
          DROPPED every plain string beside them, so the same published document showed N+M rows on
@@ -155,7 +155,7 @@ struct FeatureList: View {
         .padding(.horizontal)
     }
 
-    /// #910 — the item's authored container style, from `item_text` or its `item` alias, exactly
+    /// The item's authored container style, from `item_text` or its `item` alias, exactly
     /// as the text style resolves.
     private var itemElementStyle: ElementStyleConfig? {
         sectionStyle?.elements?["item_text"]?.container ?? sectionStyle?.elements?["item"]?.container
@@ -169,7 +169,7 @@ struct FeatureList: View {
             } else if let hex = itemTextColorOverride, !hex.isEmpty {
                 Text(text).font(.body).foregroundColor(Color(hex: hex))
             } else {
-                // #947 — off the PAGE, not off the phone. See the note on `pageBackgroundHex`.
+                // Off the PAGE, not off the phone. See the note on `pageBackgroundHex`.
                 Text(text).font(.body).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
             }
         }
@@ -183,7 +183,7 @@ struct FeatureList: View {
             // Icon: custom emoji/SF Symbol, or default check/cross — with optional circle bg
             featureIcon(item: item, isIncluded: isIncluded)
 
-            // #591 — title, and the subtitle under it when the author wrote one. `.top` alignment
+            // Title, and the subtitle under it when the author wrote one. `.top` alignment
             // rather than the row's default centring: with two lines of text against a single icon,
             // centring floats the icon against the gap between them.
             VStack(alignment: .leading, spacing: 2) {
@@ -192,7 +192,7 @@ struct FeatureList: View {
                     Text(subtitle)
                         .font(.system(size: subtitleFontSize ?? 12))
                         .foregroundColor(
-                            // #947 — the subtitle's `.secondary` had the same problem as the
+                            // The subtitle's `.secondary` had the same problem as the
                             // title's `.primary`; 70% of the page's ink is this repo's `secondary`.
                             subtitleColorOverride.flatMap { $0.isEmpty ? nil : Color(hex: $0) }
                                 ?? PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)
@@ -205,7 +205,7 @@ struct FeatureList: View {
         .opacity(isIncluded ? 1.0 : 0.4)
     }
 
-    /// #591 — the shape an uploaded feature image is clipped to.
+    /// The shape an uploaded feature image is clipped to.
     ///
     /// `AnyShape` rather than a `switch` returning three different `.clipShape` calls: SwiftUI's
     /// `clipShape` takes one concrete `Shape`, so branching at the call site would need the whole
@@ -226,7 +226,7 @@ struct FeatureList: View {
                 Text(emoji).font(.body)
             } else if let ref = NamedIcon.reference(item?.icon) {
                 /*
-                 #1067 — THROUGH THE RESOLVER, not `Image(systemName:)`. The console writes
+                 THROUGH THE RESOLVER, not `Image(systemName:)`. The console writes
                  `icon: "check"`, which is a LUCIDE name and not an SF Symbol (`checkmark` is), so
                  this drew nothing at all and the icon vanished silently. `IconView` maps the name
                  through the lucide/material tables and falls back to an emoji and then a visible
@@ -253,7 +253,7 @@ struct FeatureList: View {
             }
         }
 
-        // #910 — the icon's authored container, applied to whichever of the two shapes is drawn.
+        // The icon's authored container, applied to whichever of the two shapes is drawn.
         // The authored circle background stays its own thing: an author can have both.
         Group {
             if let bgHex = iconBgColor {

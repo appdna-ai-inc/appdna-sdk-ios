@@ -104,7 +104,7 @@ public protocol AppDNALifecycleDelegate: AnyObject {
     /// flush retry.
     func onSdkRuntimeUnlocked()
 
-    /// #935 — part of a published config could not be decoded and was DROPPED; the rest still
+    /// Part of a published config could not be decoded and was DROPPED; the rest still
     /// renders.
     ///
     /// `surface` is the kind (`"onboarding_flow"`, `"paywall"`, …), `id` the document it came
@@ -120,7 +120,7 @@ public protocol AppDNALifecycleDelegate: AnyObject {
     /// host implementing this.
     func onConfigurationIssue(surface: String, id: String?, detail: String)
 
-    /// #1047 — EVERY event the SDK tracks, with the properties sent with it, immediately after the
+    /// EVERY event the SDK tracks, with the properties sent with it, immediately after the
     /// event is queued.
     ///
     /// Integrators asked for this to forward AppDNA analytics into their own pipeline without

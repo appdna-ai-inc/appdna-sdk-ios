@@ -2,7 +2,7 @@ import XCTest
 import SwiftUI
 @testable import AppDNASDK
 
-/// Implementation-audit ROUND 3 regressions (iOS):
+/// Host-data regressions (iOS) in nested sheets and carousels:
 ///   - a carousel inside an option sheet had its pages' `sheet_step_paths` applied TWICE (the outer
 ///     renderer's recursive apply, then the nested page renderer's) → a user-typed `{{…}}` re-scanned;
 ///   - a consent-coloured CTA on a carousel page gated on `[page]` only, not the step's layered list.
@@ -71,7 +71,7 @@ final class HostDataAuditRound3Tests: XCTestCase {
                                                   rawResolvedIds: view.rawResolvedIds).canAdvance)
     }
 
-    /// Audit — Screens/SDUI pass no gate list, so a carousel page keeps gating on itself (Screens
+    /// Screens/SDUI pass no gate list, so a carousel page keeps gating on itself (Screens
     /// unchanged in P1). The renderer forwards `gateBlocks` as-is; it must not substitute the section's blocks.
     func testCarouselInScreensKeepsPageOnlyGate() throws {
         let carousel = try block(#"{ "id": "car", "type": "carousel", "children": [ { "id": "t", "type": "text", "text": "x" } ] }"#)

@@ -3,7 +3,7 @@ import Foundation
 /**
  The brand colours a social-login provider falls back to when an author sets none.
 
- 🔴 #1030 — these were written out TWICE on this platform once the chip rule needed a measurable
+ 🔴 These were written out TWICE on this platform once the chip rule needed a measurable
  background: once as `Color`s in the renderer and once as hexes beside them. Two copies of a
  constant table is how `#24292E` and `#24292F` ended up one character apart across platforms, and
  `check:authorability` reads a bare hex in a renderer as a colour an author cannot reach — which

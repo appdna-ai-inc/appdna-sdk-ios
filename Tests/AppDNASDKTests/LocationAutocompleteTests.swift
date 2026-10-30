@@ -1,6 +1,6 @@
 // LocationAutocompleteTests.swift
 //
-// #963 — what the ONE location autocomplete call actually puts on the wire, and what it reads back.
+// What the ONE location autocomplete call actually puts on the wire, and what it reads back.
 //
 // This is the assertion the gate cannot make. `check:location-config-reach` proves each surface
 // hands its resolved settings to this function; only a request can prove the function SENDS them,
@@ -119,7 +119,7 @@ final class LocationAutocompleteTests: XCTestCase {
 
     /// Everything below reads `StubProxy.bodies`. If the stub were bypassed, or the body never
     /// decoded, every "the key is absent" assertion would pass against an empty capture — the exact
-    /// shape of failure that let #982 close with a feature that did not work.
+    /// shape of failure that once let a feature that did not work pass as done.
     func testTheHarnessSeesTheBody() async {
         _ = await fetch(settings(type: "city", bias: "pt", language: "pt-PT"))
         XCTAssertEqual(StubProxy.bodies.count, 1, "the stub protocol served no request")
@@ -142,7 +142,7 @@ final class LocationAutocompleteTests: XCTestCase {
         XCTAssertEqual(body["limit"] as? Int, 5)
     }
 
-    /// #964 — an unauthored setting must be ABSENT rather than a substituted default: the proxy
+    /// An unauthored setting must be ABSENT rather than a substituted default: the proxy
     /// (`GeocodingService.autocomplete`) applies its own default for a missing key, which a value
     /// invented on the device would override. Both platforms, every surface.
     func testAnUnauthoredSettingIsAbsentRatherThanDefaulted() async throws {

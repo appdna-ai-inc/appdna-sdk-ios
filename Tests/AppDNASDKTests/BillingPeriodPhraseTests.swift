@@ -1,9 +1,9 @@
-// BillingPeriodPhraseTests.swift — #933
+// BillingPeriodPhraseTests.swift
 //
 // The store's ISO period, phrased — and phrased IDENTICALLY to Android.
 //
 // 🔴 EVERY EXPECTED STRING HERE IS COPIED FROM `BillingPeriodPhraseTest.kt`, deliberately, because
-// the thing most likely to go wrong is not either table alone but the two DRIFTING. #959 was that
+// the thing most likely to go wrong is not either table alone but the two DRIFTING. A past defect was that
 // exact shape in a different place: iOS coerced a numeric price and Android dropped it, and the
 // fixture corpus carried the divergence for months because no test asserted the same input on both
 // platforms. A period that reads "/3 mois" on iOS and "/3 moiss" on Android would be the same

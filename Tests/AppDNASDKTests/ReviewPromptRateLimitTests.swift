@@ -1,4 +1,4 @@
-// ReviewPromptRateLimitTests.swift — #939
+// ReviewPromptRateLimitTests.swift
 //
 // THE PART OF A REVIEW REQUEST THAT IS OURS, AND IS ASSERTABLE.
 //
@@ -6,7 +6,7 @@
 // step arriving and the SDK asking, and nothing more. What IS ours is the rate limit: three a
 // year, ninety days apart, kept in `UserDefaults`. Nothing tested it on either platform.
 //
-// 🔴 #928's class is why it matters. `request_store_review` was decoded and never encoded, so it
+// 🔴 A past cache defect is why it matters. `request_store_review` was decoded and never encoded, so it
 // vanished from the cache on a cold start and a flow asked again every launch. The rate limit is
 // the same shape of state — if it did not survive a restart, a user would be asked on every cold
 // start, which is the behaviour the limit exists to prevent.
@@ -68,7 +68,7 @@ final class ReviewPromptRateLimitTests: XCTestCase {
     }
 
     /**
-     🔴 THE COLD-START ASSERTION, which is the one #928 is a warning about.
+     🔴 THE COLD-START ASSERTION, which is the one that cache defect is a warning about.
 
      `UserDefaults` is the store, so the state outlives the process by construction — but "by
      construction" is what was said about `request_store_review` reaching the cache, and it did

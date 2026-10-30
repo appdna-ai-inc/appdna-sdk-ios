@@ -1,4 +1,4 @@
-// TriggerOperatorTests.swift — #1064
+// TriggerOperatorTests.swift
 //
 // THE OPERATOR VOCABULARY, AND WHAT AN UNKNOWN ONE MUST DO.
 //
@@ -93,7 +93,7 @@ final class TriggerOperatorTests: XCTestCase {
 
     func testAnUnknownFrequencyDecodesToOnce() throws {
         /*
-         The other half of #1064: the console's `recurring` was in neither SDK. Here it fell to
+         The other half of the trigger-frequency fix: the console's `recurring` was in neither SDK. Here it fell to
          `.once`; on Android it took the most permissive branch, so the same published survey was a
          one-off on this platform and unlimited on the other. Android answers `once` now too, and
          this pins the behaviour THIS side is already correct about so it cannot drift back.

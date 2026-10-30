@@ -11,7 +11,7 @@ struct FormStepView: View {
     @State private var values: [String: Any] = [:]
     @State private var errors: [String: String] = [:]
 
-    /// #985 — which field has the keyboard, so `focus_border_color` has a state to apply to.
+    /// Which field has the keyboard, so `focus_border_color` has a state to apply to.
     @FocusState private var focusedFieldId: String?
     @State private var showValidationToast = false
     /// The step's Location fields register here, so Continue can settle a field whose resolve is
@@ -414,7 +414,7 @@ struct FormStepView: View {
 
     // MARK: - Select
 
-    /// #596 — a form Select renders through the SAME engine the `input_select` CONTENT block uses
+    /// A form Select renders through the SAME engine the `input_select` CONTENT block uses
     /// whenever the author picked a layout other than the dropdown.
     ///
     /// The console offers six display styles on a form Select. iOS honoured NONE of them: this
@@ -650,7 +650,7 @@ struct FormStepView: View {
             }
 
             /*
-             * #984 — `min_length` and `validate_format` were DECODED BY BOTH PLATFORMS AND READ BY
+             * `min_length` and `validate_format` were DECODED BY BOTH PLATFORMS AND READ BY
              * NEITHER, so neither ever rejected anything.
              *
              * `max_length` has always truncated in `FormFieldRendererExtras`, which is what made
@@ -659,7 +659,7 @@ struct FormStepView: View {
              * `!== false`, so it is ON for every URL field ever authored and did nothing.
              *
              * Both messages are shared verbatim with Android and pinned by
-             * `scripts/__tests__/default-user-copy-parity.test.ts` — the gate #977 exists for.
+             * `scripts/__tests__/default-user-copy-parity.test.ts`.
              */
             if let minLength = field.config?.min_length,
                minLength > 0,

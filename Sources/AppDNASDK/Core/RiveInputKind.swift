@@ -1,7 +1,7 @@
 import Foundation
 
 /*
- #1024 — WHAT KIND OF RIVE INPUT AN AUTHORED VALUE MEANS, as one rule both platforms call.
+ WHAT KIND OF RIVE INPUT AN AUTHORED VALUE MEANS, as one rule both platforms call.
 
  Rive distinguishes three input kinds — boolean, number and trigger — and the SDK only ever
  receives JSON, which has no way to say which one is meant. So the kind is inferred from the VALUE

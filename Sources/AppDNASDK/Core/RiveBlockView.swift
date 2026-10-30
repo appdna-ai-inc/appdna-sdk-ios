@@ -30,7 +30,7 @@ public struct RiveBlockView: View {
 
     public var body: some View {
         /*
-         #982 — THE REAL ENGINE. This drew a blue placeholder box reading "Rive Animation" for as
+         THE REAL ENGINE. This drew a blue placeholder box reading "Rive Animation" for as
          long as the block type has existed, while Android drove a real `RiveAnimationView`.
 
          🔴 `RiveViewModel` is built ONCE per block and held in `@StateObject`, not rebuilt in
@@ -67,7 +67,7 @@ private struct RiveBlockHost: View {
             if let viewModel = model.viewModel {
                 viewModel.view()
                     /*
-                     🔴 #1024 — AFTER THE FILE HAS LOADED, NOT ON APPEAR.
+                     🔴 AFTER THE FILE HAS LOADED, NOT ON APPEAR.
                      *
                      `RiveViewModel(webURL:)` fetches over the network, so at `.onAppear` there is
                      no artboard and no state machine to set an input on: every `setInput` went
@@ -148,7 +148,7 @@ private struct RiveBlockHost: View {
     */
     private func applyInputs(_ inputs: [String: AnyCodable], to viewModel: RiveViewModel) {
         /*
-         🔴 #1024 — THE KIND COMES FROM `RiveInputKind`, which Android calls too. The mapping was
+         🔴 THE KIND COMES FROM `RiveInputKind`, which Android calls too. The mapping was
          written twice in two languages and the two disagreed: a STRING fired a trigger here and
          was ignored entirely on Android, so one authored document produced two behaviours and the
          silent one was the other platform's.

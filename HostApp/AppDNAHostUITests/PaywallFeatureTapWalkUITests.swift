@@ -1,4 +1,4 @@
-// PaywallFeatureTapWalkUITests.swift — #1076
+// PaywallFeatureTapWalkUITests.swift
 //
 // A FEATURE ROW IS TAPPABLE, AND THE PAYWALL STILL SCROLLS.
 //
@@ -31,7 +31,7 @@ final class PaywallFeatureTapWalkUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
 
-        // Tap-and-retry: `showPaywall` presents whatever config has already landed (#1068).
+        // Tap-and-retry: `showPaywall` presents whatever config has already landed.
         let open = app.buttons["host.paywall"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         let anyFeature = app.staticTexts.containing(
@@ -67,7 +67,7 @@ final class PaywallFeatureTapWalkUITests: XCTestCase {
         /*
          The action reaches the host through `AppDNAPaywallDelegate.onPaywallAction`, which
          `TrackedEventLog` folds into the same zero-opacity label the other walks read — and which
-         lives UNDER the paywall, so the paywall has to come down first (#1018).
+         lives UNDER the paywall, so the paywall has to come down first.
          */
         let close = app.buttons.matching(
             NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "xmark", "close"),

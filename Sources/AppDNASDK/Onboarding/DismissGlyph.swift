@@ -3,7 +3,7 @@ import SwiftUI
 /**
  The ✕ that closes an onboarding flow, with its authored style.
 
- 🔴 #1004 — every value here was hardcoded: `Image(systemName: "xmark")` at size 14 in `.secondary`
+ 🔴 Every value here was hardcoded: `Image(systemName: "xmark")` at size 14 in `.secondary`
  inside a 44×44 frame, with the row inset 8pt from the screen edge. The report named all of it —
  "its size, its background color and the color of the X cannot be set, and it is pushed as far as
  possible into the top-right corner, which makes it hard to tap".

@@ -2,10 +2,10 @@ import SwiftUI
 import MapKit
 import PhotosUI
 
-/// #609 — how a Multi-buttons group splits its children into rows.
+/// How a Multi-buttons group splits its children into rows.
 ///
 /// Pure so the layout rule is asserted by a test and a shared fixture rather than by eye: the bugs
-/// this element exists to fix (#654/#659) were all layout rules only a screenshot could check.
+/// this element exists to fix were all layout rules only a screenshot could check.
 /// Returns the number of buttons on each row, in order. Mirrors Android `multiButtonRowPlan`.
 func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
     if childCount <= 0 { return [] }
@@ -15,7 +15,7 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
     return Array(repeating: n, count: full) + (rest > 0 ? [rest] : [])
 }
 
-/// #654 / #659 / #663 — whether a button should stretch to the width it is offered.
+/// Whether a button should stretch to the width it is offered.
 ///
 /// A button hardcoded `.frame(maxWidth: .infinity)` on iOS, `fillMaxWidth()` on Android and
 /// `w-full` in the console preview, so `element_width: "auto"` — the one value that means "be as
@@ -29,7 +29,7 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
 /// `buttonFillsWidth`.
 func buttonFillsWidth(_ elementWidth: String?) -> Bool { elementWidth != "auto" }
 
-/// #609 — the width of a button's AUTHORED border, in points.
+/// The width of a button's AUTHORED border, in points.
 ///
 /// Pure because the bug was a hardcoded constant nobody could see: all three surfaces stroked a
 /// fixed 1.5 of the BACKGROUND colour, and only for `outline`. A filled button with border width 40
@@ -39,7 +39,7 @@ func buttonFillsWidth(_ elementWidth: String?) -> Bool { elementWidth != "auto" 
 func authoredButtonBorderWidth(_ authored: Double?, variant: String?, hasColour: Bool = false) -> Double {
     if let authored { return max(0, authored) }
     /*
-     * 🔴 #1007 — AN AUTHORED COLOUR IMPLIES A VISIBLE BORDER.
+     * 🔴 AN AUTHORED COLOUR IMPLIES A VISIBLE BORDER.
      *
      * "Border color" and "Border width" are two separate controls, and the width's input is empty
      * by default. So an author who picked a border colour and did not then find and fill the
@@ -53,7 +53,7 @@ func authoredButtonBorderWidth(_ authored: Double?, variant: String?, hasColour:
     return variant == "outline" ? 1.5 : 0
 }
 
-/// #609 — the hex of a button's authored border colour, or nil to fall back to its own colour.
+/// The hex of a button's authored border colour, or nil to fall back to its own colour.
 ///
 /// Blank counts as unset: the console's ColorPicker writes an empty string for "transparent", and
 /// treating that as a real colour would stroke a ring in nothing and hide the fill's own outline.
@@ -63,7 +63,7 @@ func authoredButtonBorderColorHex(_ authored: String?) -> String? {
     return authored
 }
 
-/// #609 — how much EMPTY column a short last row puts on each side of itself.
+/// How much EMPTY column a short last row puts on each side of itself.
 ///
 /// A short row cannot be centred by spacers alone while its children are free to grow: a button
 /// takes the width it is offered, so a lone child in an `HStack` with `Spacer()`s still spans the
@@ -79,10 +79,10 @@ func multiButtonFillerWeight(rowSize: Int, perRow: Int, stretchLastRow: Bool) ->
     return CGFloat(n - rowSize) / 2
 }
 
-/// Placeholder shown where a summary stat's value could not be resolved (#660).
+/// Placeholder shown where a summary stat's value could not be resolved.
 let unresolvedStatPlaceholder = "\u{2014}"
 
-/// One summary stat, made safe to render (#660).
+/// One summary stat, made safe to render.
 ///
 /// Returns nil only when the card would say nothing at all. Mirrors Android
 /// `sanitizeSummaryStat` in ContentBlockRenderer.kt — the two must agree, because a stat that
@@ -99,7 +99,7 @@ func sanitizeSummaryStat(_ stat: [String: Any]) -> [String: Any]? {
     return next
 }
 
-/// #609 — the rows of a Multi-buttons group.
+/// The rows of a Multi-buttons group.
 ///
 /// Its own view because it needs ONE piece of state: the group's width. A short last row is centred
 /// by pinning its children to a single column and letting the spacers take the rest, and a column
@@ -157,13 +157,13 @@ private struct MultiButtonsWidthKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// #663 — carries the measured container width up from the renderer's own layout.
+/// Carries the measured container width up from the renderer's own layout.
 private struct ContainerWidthPrefKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// #654 / #659 — the outer full-width box a width-constrained block aligns inside.
+/// The outer full-width box a width-constrained block aligns inside.
 ///
 /// Applied OUTSIDE the sizing frame, which is the whole point: `BlockPositionModifier` runs inside
 /// it, where a block already constrained to 300pt has no room left to move. Only wraps when the
@@ -199,7 +199,7 @@ struct OuterAlignmentBoxModifier: ViewModifier {
 
  - **full-bleed** cancels the step's horizontal padding. In an anchored strip or behind the content
    there is no padding to cancel, so applying it would push the map 20pt OFF each edge — the same
-   negative-inset shape that crashed the whole step on Android in #671.
+   negative-inset shape that once crashed the whole step on Android.
  - **corner radius** defaults to 12 for a card in a column and to 0 for a map meant to meet the
    screen edges. An author who set a radius still gets it; only the default moves.
 
@@ -297,7 +297,7 @@ enum UnstyledInk {
 }
 
 struct ContentBlockRendererView: View {
-    /// #663 — the width this renderer is laid out in, measured once and handed to every child.
+    /// The width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
 
     let blocks: [ContentBlock]
@@ -310,7 +310,7 @@ struct ContentBlockRendererView: View {
     var hookData: [String: Any]? = nil
     /// Input values for form input blocks. Key = field_id, Value = field value.
     @Binding var inputValues: [String: Any]
-    /// #1013 — the presented step's id, so a `visibility_condition` naming a field on THIS step
+    /// The presented step's id, so a `visibility_condition` naming a field on THIS step
     /// evaluates against what the control holds right now (`VisibilityScope`). Empty = no merge,
     /// which is what Screens, SDUI and option sheets get.
     var stepId: String = ""
@@ -328,7 +328,7 @@ struct ContentBlockRendererView: View {
     /// Per-block field_config overrides (from `ElementInteractionResult.fieldConfigPatches`),
     /// folded onto the resolved block at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
-    /// #657 — per-block replacement options from a refresh interaction, layered at read time.
+    /// Per-block replacement options from a refresh interaction, layered at read time.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
     /// Where in the step a Map block is being drawn. See `MapPlacement`.
     var mapPlacement: MapPlacement = .inline
@@ -413,7 +413,7 @@ struct ContentBlockRendererView: View {
                         ),
                         fieldOptionsOverrides
                     )
-                // #993 — one shared rule with the Kotlin, which decoded both keys and acted on
+                // One shared rule with the Kotlin, which decoded both keys and acted on
                 // neither. `collapse_threshold` is how many points of scroll it takes; 50 is what
                 // shipped here, and a zero or negative one would divide by zero.
                 let shouldCollapse = resolvedBlock.collapse_on_scroll == true
@@ -434,7 +434,7 @@ struct ContentBlockRendererView: View {
                     .environment(\.appdnaRawResolved, isRaw)
                     .applyRelativeSizing(width: resolvedBlock.element_width, height: effectiveHeight, useMinHeight: isExpandableBlock)
                     .applyBlockContainerStyle(resolvedBlock)
-                    // #654/#659 — a width-constrained block needs a full-width box OUTSIDE its
+                    // A width-constrained block needs a full-width box OUTSIDE its
                     // sizing frame to align within; the inner `BlockPositionModifier` is resolving
                     // inside the constrained width and has nowhere to move. Same fix, same shape as
                     // Android's `BlockSizingBox`.
@@ -454,7 +454,7 @@ struct ContentBlockRendererView: View {
                     }
             }
         }
-        // #663 — publish the width blocks are actually being laid out in, so a percentage
+        // Publish the width blocks are actually being laid out in, so a percentage
         // `element_width` is a fraction of THIS, not of the device screen. Android has always used
         // the real container (`fillMaxWidth(fraction)`) and so has the console preview; measuring
         // here is what makes the third surface agree with the other two.
@@ -473,7 +473,7 @@ struct ContentBlockRendererView: View {
             // What the block draws behind its own content, for a Google logo inside it.
             .modifier(GoogleAttributionBlockBackdrop(block: block))
             .applyBlockStyle(block.block_style)
-            // #1006 — AFTER the background, so the background is what widens. Negative horizontal
+            // AFTER the background, so the background is what widens. Negative horizontal
             // padding is SwiftUI's "extend outward"; Compose has to measure for it instead
             // (`Modifier.fullBleedHorizontal`), which is why the inset lives in one shared place.
             .padding(
@@ -819,7 +819,7 @@ struct ContentBlockRendererView: View {
         let previewOnSelect = (block.field_config?["gallery_preview_on_select"]?.value as? Bool) ?? false
         let galleryAlignment: Alignment = block.gallery_align == "start" ? .leading : (block.gallery_align == "end" ? .trailing : .center)
         /*
-         #1021 — an optional title above the strip, belonging to the ELEMENT rather than to a
+         An optional title above the strip, belonging to the ELEMENT rather than to a
          separate heading block an author has to add and keep aligned with it.
 
          🔴 It sits INSIDE the empty check on purpose: a cleared gallery renders nothing at all,
@@ -971,7 +971,7 @@ struct ContentBlockRendererView: View {
                 phoneMockup(url: url, height: imgHeight, alt: block.alt, thin: block.image_frame == "phone_thin", fit: imageFit)
             } else if block.image_frame == "glow" || block.image_frame == "color_frame",
                       let urlString = block.image_url, let url = URL(string: urlString) {
-                // #581 — effects on the plain image rather than mockups. Settings come from
+                // Effects on the plain image rather than mockups. Settings come from
                 // `field_config`: ContentBlock sits at the JVM 255-argument ceiling, so a new
                 // top-level field would compile and then die at runtime with a bare ClassFormatError.
                 let isGlow = block.image_frame == "glow"
@@ -1042,14 +1042,14 @@ struct ContentBlockRendererView: View {
     }
 
     /// Phone mockup: device bezel + dynamic-island notch, image as the "screen".
-    /// #581 — `thin: true` is the same mockup with a narrower bezel. One function rather than two,
+    /// `thin: true` is the same mockup with a narrower bezel. One function rather than two,
     /// because everything except the padding and the two radii is identical, and a copy is how the
     /// notch or the width cap ends up different between them.
     private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false, fit: String = "cover") -> some View {
         let pad: CGFloat = thin ? 4 : 10
         let outerR: CGFloat = thin ? 32 : 40
         let innerR: CGFloat = thin ? 28 : 30
-        // #610 — the screen was `height` tall by a HARDCODED 260 wide, so Height changed only the
+        // The screen was `height` tall by a HARDCODED 260 wide, so Height changed only the
         // height: at the default 200 the "phone" was LANDSCAPE (260×200) and every other height was
         // some other arbitrary shape. A phone has a FIXED shape, so the screen takes a 9:19.5 aspect
         // (modern iPhone) and the authored height scales the whole device proportionally. The 260
@@ -1064,7 +1064,7 @@ struct ContentBlockRendererView: View {
             BundledAsyncPhaseImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
-                    // #610 — image_fit is honored INSIDE the mockup. It was hardcoded to .fill,
+                    // Image_fit is honored INSIDE the mockup. It was hardcoded to .fill,
                     // which is why the reporter's "Fit" attempt did nothing. Same semantics as
                     // styledImage: none → intrinsic, fill → stretch, contain/fit → .fit, else cover.
                     if fit == "none" {
@@ -1117,7 +1117,7 @@ struct ContentBlockRendererView: View {
             return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
         }()
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
-        // #609 — authored width/colour win; the outline default is the fallback, not the rule.
+        // Authored width/colour win; the outline default is the fallback, not the rule.
         let borderColourHex = authoredButtonBorderColorHex(block.border_color)
         let borderWidth = CGFloat(authoredButtonBorderWidth(
             block.border_width, variant: btnVariant, hasColour: borderColourHex != nil,
@@ -1131,7 +1131,7 @@ struct ContentBlockRendererView: View {
         let channel: StepInteraction? = isRefresh ? stepInteraction : nil
         let isLoading = channel?.loadingBlockId == block.id
         // The spinner takes the colour the LABEL actually draws in: an authored `text_color`
-        // wins (#594), else a Typography style's colour (`applyTextStyle` bakes `.primary` when the
+        // wins, else a Typography style's colour (`applyTextStyle` bakes `.primary` when the
         // style sets none), else the variant's foreground.
         let labelColor: Color = {
             if let hex = block.text_color, !hex.isEmpty { return Color(hex: hex) }
@@ -1143,7 +1143,7 @@ struct ContentBlockRendererView: View {
             if let onTapOverride {
                 onTapOverride()
             } else if isRefresh {
-                // #657 — refresh the step in place. Until now `onElementInteraction` could only be
+                // Refresh the step in place. Until now `onElementInteraction` could only be
                 // fired by a fixed set of interactive blocks (OTP, press-hold, the pickers…), never
                 // by a button, so a "show more" or "refresh results" button had no way to ask the host
                 // for new content without ALSO advancing — which sent the user to the next screen.
@@ -1159,14 +1159,14 @@ struct ContentBlockRendererView: View {
                 onAction(block.action ?? "next", block.action_value)
             }
         } label: {
-            // #580 — the icon and its spacing are authored. `sound_icon_gap` defaults to the 8 the
+            // The icon and its spacing are authored. `sound_icon_gap` defaults to the 8 the
             // button has always used, so a button with no icon settings lays out identically.
             HStack(spacing: CGFloat(numFromConfig(block, "sound_icon_gap") ?? 8)) {
                 // Gap 6: icon_emoji
                 if let emoji = block.icon_emoji, !emoji.isEmpty {
                     Text(emoji)
                 }
-                // #580 — an authored icon: a built-in play triangle, or an uploaded image.
+                // An authored icon: a built-in play triangle, or an uploaded image.
                 //
                 // Defaults to "none". The button has never drawn an icon, so anything else would
                 // change the appearance of every sound button already authored — a fix nobody asked
@@ -1180,7 +1180,7 @@ struct ContentBlockRendererView: View {
                         EmptyView()
                     }
                 }
-                // #594 — the button-specific `text_color` beats the generic Typography colour.
+                // The button-specific `text_color` beats the generic Typography colour.
                 // 
                 // It was the other way round: `block.style.color` was applied last and silently won, so the "Text"
                 // picker sitting right beside "Background" did nothing whenever a Typography colour was also set —
@@ -1230,14 +1230,14 @@ struct ContentBlockRendererView: View {
             }
             // Apply authored button_height (resize the button) instead of only intrinsic padding.
             .padding(.vertical, block.button_height == nil ? 14 : 0)
-            // #654/#659/#663 — `element_width: "auto"` means "as wide as the label"; this was an
+            // `element_width: "auto"` means "as wide as the label"; this was an
             // unconditional `.infinity`, so an auto-width button still spanned the row. `nil` here
             // means unconstrained, which is exactly the content width SwiftUI would pick anyway.
             .frame(maxWidth: buttonFillsWidth(block.element_width) ? .infinity : nil)
             .frame(height: block.button_height.map { CGFloat($0) })
             .background(buttonBackground(block: block, btnVariant: btnVariant, bgColor: bgColor))
             .clipShape(RoundedRectangle(cornerRadius: radius))
-            // #609 — the AUTHORED border. "Border color" and "Border width" sit on every button
+            // The AUTHORED border. "Border color" and "Border width" sit on every button
             // panel and on every multi-buttons child, and this overlay read neither: it stroked the
             // BACKGROUND colour at a hardcoded 1.5, and only for `outline`. A filled button with a
             // yellow border at width 40 therefore drew nothing, which is what was reported.
@@ -1269,7 +1269,7 @@ struct ContentBlockRendererView: View {
         return nil
     }
 
-    /// #580 — the Sound Button's icon. Authored source, size, colour and spacing.
+    /// The Sound Button's icon. Authored source, size, colour and spacing.
     @ViewBuilder
     private func soundButtonIcon(_ block: ContentBlock) -> some View {
         let kind = (block.field_config?["sound_icon"]?.value as? String) ?? "none"
@@ -1376,14 +1376,14 @@ struct ContentBlockRendererView: View {
         let titleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_title_size"]) ?? 14, weight: 500)
         let subtitleFont = FontResolver.font(family: family, size: cfgDouble(fc?["banner_subtitle_size"]) ?? 13, weight: 400)
         /*
-         * #1005 — the four things a real app's info banner needed and this did not have: the icon
+         * The four things a real app's info banner needed and this did not have: the icon
          * beside the FIRST line rather than always centred, a way to leave the icon out, a colour
          * per text, and a link under the subtitle. Every default here is what was drawn before.
          */
         let hideIcon = (fc?["banner_hide_icon"]?.value as? Bool) ?? false
         let iconAlign = (fc?["banner_icon_align"]?.value as? String) ?? "center"
         /*
-         * #1005 — AN UPLOADED ICON, which is the half an emoji cannot cover: a real app's info
+         * AN UPLOADED ICON, which is the half an emoji cannot cover: a real app's info
          * banner carries its own mark, and "paste any emoji" is not a way to set one. A URL wins
          * over the glyph; the size applies to BOTH, because an 18pt PNG is unreadable and the
          * glyph has to stay at 18 for every banner already published.
@@ -1442,7 +1442,7 @@ struct ContentBlockRendererView: View {
                          * NOTHING. Measured in the walk: after tapping it, Safari's state was 1
                          * (not running) and the host app's was 4 (still foreground). A `Link`'s own
                          * activation does not survive the step's tap handling — the same consumer
-                         * #1014 found sitting above everything the blocks carry.
+                         * that sits above everything the blocks carry.
                          *
                          * Routing it through `URLSafety.open` fixes the second half too, which the
                          * walk could not see: Android's banner link goes through its own
@@ -1592,7 +1592,7 @@ struct ContentBlockRendererView: View {
     }
 
     // Session summary screen (end-of-lesson): optional headline + 2-column stat-card grid.
-    /// #593 — stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
+    /// Stat sizes ride in the same string bag as `min`/`max`/`step`, so they arrive as
     /// strings from the console. Coerced the same way `statDouble` coerces those, with a fallback
     /// rather than a zero-size font on anything unparseable.
     private func summaryStatSize(_ stat: [String: Any], _ key: String, _ fallback: CGFloat) -> CGFloat {
@@ -1626,7 +1626,7 @@ struct ContentBlockRendererView: View {
         // bg_color = card bg, text_color = headline + label, summary_align = headline align,
         // stats_layout = horizontal (2-col, default) | vertical (single full-width column). Parity w/ Android.
         let cardBg = Color(hex: block.bg_color ?? "#1F2937")
-        // #595 was a CONSOLE defect (the preview's step surface is light by default, so a white
+        // An invisible headline was a CONSOLE defect (the preview's step surface is light by default, so a white
         // headline was invisible there). On DEVICE the default stays #FFFFFF deliberately.
         //
         // 🔴 `.primary` was tried here and reverted: it follows the SYSTEM appearance, not the
@@ -1669,12 +1669,12 @@ struct ContentBlockRendererView: View {
                         // could not be advanced at all. A gate for a control that does not exist is worse
                         // than neither.
                         let statInput = (m["input"] as? String) ?? "none"
-                        // #595 — an author who set an `input` but no `field_id` got an EMPTY CARD:
+                        // An author who set an `input` but no `field_id` got an EMPTY CARD:
                         // the control was skipped on the blank id and the else-branch drew this stat's
                         // (also blank) value and label. Fall back to a stable derived key so the
                         // control renders. `RequiredFieldGate` derives the SAME key.
                         let statFieldId = summaryStatFieldId(blockId: block.id, index: statIndex, stat: m)
-                        // #593 — the sub-headline's own type. `color` above styles the VALUE; the
+                        // The sub-headline's own type. `color` above styles the VALUE; the
                         // label under it had no colour, size or alignment at all, and neither did a
                         // slider/stepper's displayed number — the same text through a different
                         // control. An authored label colour drops the 0.7 opacity with it: an
@@ -2078,7 +2078,7 @@ struct ContentBlockRendererView: View {
             if let hex = block.divider_color, !hex.isEmpty { return Color(hex: hex) }
             return Color.gray.opacity(0.3)
         }()
-        // #615 — the LINE took `divider_color` and the TEXT between the segments was pinned to
+        // The LINE took `divider_color` and the TEXT between the segments was pinned to
         // `.secondary`, so "or continue with email" could not be themed at all: on a dark step it
         // read as unstyled grey next to lines the author had coloured. Unset keeps `.secondary`, so
         // every existing flow renders byte-identically.
@@ -2115,7 +2115,7 @@ struct ContentBlockRendererView: View {
             }
         }
 
-        // #578 — the divider is a SLOT in the stack, not one of two fixed ends.
+        // The divider is a SLOT in the stack, not one of two fixed ends.
         //
         // `top` is slot 0 and `bottom` is the last slot, kept as their own values so no flow
         // authored before this release changes and an older SDK build still understands them.
@@ -2174,7 +2174,7 @@ struct ContentBlockRendererView: View {
             return socialLoginBgColor(providerType, style: btnStyle, blockAccent: blockAccentColor, blockBg: blockBgColor)
         }()
         /*
-         * #1030 — the same background as a HEX, because `Color` cannot be measured back and the
+         * The same background as a HEX, because `Color` cannot be measured back and the
          * chip rule needs a luminance. Resolved through the same brand table the view uses, so the
          * two cannot answer differently.
          */
@@ -2217,7 +2217,7 @@ struct ContentBlockRendererView: View {
                 // Localize the provider label like Android (loc "block.<id>.provider.<index>"),
                 // falling back to the authored label then the brand default.
                 Text(loc?("block.\(blockId).provider.\(index)", provider.label ?? socialLoginDefaultLabel(providerType)) ?? provider.label ?? socialLoginDefaultLabel(providerType))
-                    // #560 — per-provider label size. `.body` is ~17pt, which is the size this
+                    // Per-provider label size. `.body` is ~17pt, which is the size this
                     // rendered at before the field existed, so an unset value is byte-identical to
                     // the previous behaviour rather than a silent restyle of every existing flow.
                     .font(.system(size: provider.font_size.map { CGFloat($0) } ?? 17, weight: .semibold))
@@ -2263,7 +2263,7 @@ struct ContentBlockRendererView: View {
                     .foregroundColor(mono))
             }
             /*
-             * #1003 — THE OFFICIAL MARK, not a letter.
+             * THE OFFICIAL MARK, not a letter.
              *
              * This drew `Text("G")` in a rounded bold font, so a Sign in with Google button could
              * not be made to match Google's own branding guidelines — which require the official
@@ -2278,7 +2278,7 @@ struct ContentBlockRendererView: View {
                let data = try? Data(contentsOf: url),
                let image = UIImage(data: data) {
                 /*
-                 * #1030 — A WHITE CHIP WHEN THE BUTTON IS TOO DARK TO READ A BLUE ARM AGAINST.
+                 * A WHITE CHIP WHEN THE BUTTON IS TOO DARK TO READ A BLUE ARM AGAINST.
                  *
                  * The mark is red, yellow, green and BLUE, and the Google provider's default fill
                  * is `#4285F4`: the blue arm and crossbar disappear into it and the mark reads as
@@ -2342,7 +2342,7 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    /// #1030 — built FROM the hex table rather than restating it. Parity with Android
+    /// Built FROM the hex table rather than restating it. Parity with Android
     /// (`ContentBlockRenderer.kt`): email and unknown providers honour the block's `accent_color`
     /// then `bg_color` before the brand accent, and that order now lives in one place.
     private func socialLoginBgColor(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> Color {
@@ -2352,7 +2352,7 @@ struct ContentBlockRendererView: View {
         return Color(hex: hex)
     }
 
-    /// #1030 — the hex the view above turns into a `Color`. ONE table, in `SocialBrandDefaults`:
+    /// The hex the view above turns into a `Color`. ONE table, in `SocialBrandDefaults`:
     /// a `Color` carries no readable components, the chip rule needs a luminance, and two copies
     /// of a constant list is how `#24292E` and `#24292F` ended up one character apart.
     private func socialLoginBgHex(_ type: String, style: String, blockAccent: String? = nil, blockBg: String? = nil) -> String? {
@@ -2458,7 +2458,7 @@ struct ContentBlockRendererView: View {
     /**
      Fold markdown the parsers do NOT know into the subset they do.
 
-     #893 — both platforms parse the same documented subset (`**bold**`, `*italic*`,
+     Both platforms parse the same documented subset (`**bold**`, `*italic*`,
      `[link](url)`, `++underline++`) and NEITHER knows a blockquote, so a `>` reached the screen
      verbatim: a generated testimonial rendered as `> "I always quit after missing a day…"`,
      chevron and all, on a social-proof screen. Seen on a device.
@@ -2466,7 +2466,7 @@ struct ContentBlockRendererView: View {
      🔴 Converting rather than teaching the parsers a new rule, and that is the point: `*…*` is
      already supported on both, already styled the same on both, and already covered by whatever
      tests those paths have. A second blockquote implementation in two languages is two things
-     that can drift — the shape of #885 and #891, and not worth repeating for a chevron.
+     that can drift, and not worth risking for a chevron.
 
      A line already containing `*` is left exactly as it is: wrapping it would nest emphasis
      markers and the parser would make a worse mess than the one being fixed. Mirrors Android
@@ -2668,7 +2668,7 @@ struct ContentBlockRendererView: View {
         let showLbl = block.show_label != false
         // Progress/Loading v2 — label placement relative to the bar.
         let placement = block.label_placement ?? "above"
-        // #584 — the label's own colour and size. It rendered in `.secondary` with no control at
+        // The label's own colour and size. It rendered in `.secondary` with no control at
         // all, so an author could style the bar and its track and not the words beside them. Every
         // displayed piece of text should be colourable on its own.
         let labelView = AnyView(
@@ -2770,7 +2770,7 @@ struct ContentBlockRendererView: View {
 
     // MARK: - Row (HStack container)
 
-    /// #609 — the Multi-buttons element: several CTAs laid out N per row, on one shared background.
+    /// The Multi-buttons element: several CTAs laid out N per row, on one shared background.
     ///
     /// The answer to "use a Row" was rejected for a good reason: these have to BE buttons, with
     /// every Button setting, because each one triggers a different thing in the host app. So the
@@ -2796,7 +2796,7 @@ struct ContentBlockRendererView: View {
             return out
         }()
         /*
-         * #1006 — a shared background that reaches the screen edges.
+         * A shared background that reaches the screen edges.
          *
          * The background itself is drawn by `applyBlockStyle` around this view, so the bleed is two
          * paddings: the rows gain the step's inset BACK (so the buttons do not move at all), and
@@ -3692,7 +3692,7 @@ func resolveBlockTemplates(
             // renderer means no current or future renderer can leak it, and a fixture can see it as a
             // count. A stat whose LABEL alone is unresolved keeps its value and loses the caption.
             //
-            // 🔴 #660 — dropping the stat was too much. A five-stat booking summary,
+            // 🔴 Dropping the stat was too much. A five-stat booking summary,
             // all bound to `hook_data.booking.*`. Until the host supplies them EVERY card vanished,
             // so the screen read as "the summary screen does not render at all" on both platforms —
             // and an author had no way to tell a mis-typed path from a host that sent nothing.
@@ -3839,7 +3839,7 @@ struct SummaryStatInput: View {
     let fieldId: String
     let valueColor: Color
     let labelColor: Color
-    /// #593 — authored sizes, so a stat hosting a control matches one that shows a fixed value.
+    /// Authored sizes, so a stat hosting a control matches one that shows a fixed value.
     var labelSize: CGFloat = 13
     var valueSize: CGFloat = 24
     let label: String
@@ -3856,7 +3856,7 @@ struct SummaryStatInput: View {
         return fallback
     }
 
-    /// Seed order, and the middle entry is the point of #558.
+    /// Seed order, and the middle entry is the point.
     ///
     /// 1. what the user has already set on this step
     /// 2. the stat's own resolved `value` — this is the PRE-FILL. `value: "{{responses.group_size}}"`

@@ -98,7 +98,7 @@ public final class AppDNA: @unchecked Sendable {
     public static weak var lifecycleDelegate: AppDNALifecycleDelegate?
 
     /**
-     #1047 — hand every tracked event to the host's observer, if it set one.
+     Hand every tracked event to the host's observer, if it set one.
 
      🔴 `onEventTracked` is an OBSERVER, and on this platform the protocol enforces it: the method
      is not `throws`, so a host cannot throw out of it, and it is called AFTER the event is already
@@ -563,7 +563,7 @@ public final class AppDNA: @unchecked Sendable {
     /// what fires for fetched values. What it does guarantee is that any BUNDLED config has been
     /// loaded, because that happens before this flips.
     ///
-    /// 🔴 #855 — this exists because a host could not tell two very different answers apart.
+    /// 🔴 This exists because a host could not tell two very different answers apart.
     /// `present` returns `false` both when a flow does not exist and when the SDK simply has not
     /// loaded its config yet, and on a COLD FIRST LAUNCH that second window is long: measured at
     /// ~3s on an iPhone simulator and ~20-25s on a Pixel-class Android emulator, because configure
@@ -1085,7 +1085,7 @@ public final class AppDNA: @unchecked Sendable {
         let resolved = delegate ?? AppDNA.onboarding.delegate
 
         /*
-         * #855 — THE NOT-READY CASE IS ANSWERED HERE, BECAUSE THE MANAGER DOES NOT EXIST YET.
+         * THE NOT-READY CASE IS ANSWERED HERE, BECAUSE THE MANAGER DOES NOT EXIST YET.
          *
          * 🔴 Found by a device run, not by a test. `onboardingFlowManager` is assigned in
          * `initializeManagers`, which runs at the END of the bootstrap — so before the SDK is
@@ -1175,7 +1175,7 @@ public final class AppDNA: @unchecked Sendable {
     /// compiles in the HOST app's configuration, so guarding it made every Flutter customer's
     /// Release archive fail to compile (`type 'AppDNA' has no member 'debugAppliedConfigVersion'`)
     /// — the identical failure `previewScreen` above already hit. CI can't catch it because
-    /// nothing builds a wrapper in Release. Keep it unguarded. (Issue #527.)
+    /// nothing builds a wrapper in Release. Keep it unguarded.
     public static func debugAppliedConfigVersion(flowId: String? = nil) -> Int? {
         shared.remoteConfigManager?.debugAppliedOnboardingVersion(flowId: flowId)
     }

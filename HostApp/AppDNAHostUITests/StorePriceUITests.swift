@@ -1,4 +1,4 @@
-// StorePriceUITests.swift — #923
+// StorePriceUITests.swift
 //
 // Does the paywall show what the STORE charges, or what an author typed?
 //
@@ -17,7 +17,7 @@
 //     premium_annual    $34.99   P1Y
 //
 // The paywall under test authors `AUTHORED-11.11` / `AUTHORED-99.99` against those same product
-// ids. Before #923 the screen read AUTHORED-11.11 while StoreKit held $4.49 — the defect, exactly.
+// ids. Before the store-price substitution the screen read AUTHORED-11.11 while StoreKit held $4.49 — the defect, exactly.
 //
 // Needs a backend, a key and a published paywall, so it SKIPS unless `TestCredentials` is filled
 // in: `packages/appdna-sdk-ios/**` is a public mirror and carries no credentials.

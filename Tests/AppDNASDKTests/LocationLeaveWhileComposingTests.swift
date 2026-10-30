@@ -1,6 +1,6 @@
 // LocationLeaveWhileComposingTests.swift
 //
-// Leaving a location field while the input method is composing after Google's line (#1147): the twin
+// Leaving a location field while the input method is composing after Google's line: the twin
 // of Android's `LocationFieldBlurComposingComposeTest`, on both surfaces — the form step's field and
 // the `input_location` content block — each with a second text field to move to.
 //

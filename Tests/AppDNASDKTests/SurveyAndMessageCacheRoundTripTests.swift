@@ -1,14 +1,14 @@
-// SurveyAndMessageCacheRoundTripTests.swift — #944
+// SurveyAndMessageCacheRoundTripTests.swift
 //
 // `RemoteConfigManager.cacheAllFetchedConfigs()` does not only encode paywalls and onboarding
 // flows. It encodes SURVEYS and IN-APP MESSAGES through the same typed `JSONEncoder`, and those two
-// had no round-trip test either — so the same hole #928 found in `OnboardingStep` was open in two
+// had no round-trip test either — so the same hole once found in `OnboardingStep` was open in two
 // more surfaces, unexamined.
 //
 // 🔴 A SURVEY IS THE WORST CASE OF THE THREE. It carries three `@LenientArray` properties, nested
 // one inside another — `questions`, `choice_config.options` and the legacy flat `options` — plus a
 // `ThemeSet` whose decoder accepts a FLAT theme and whose encoder always writes `{ light, dark }`.
-// That is a shape CHANGE across the cache, which is exactly the class of thing the #928 syntax gate
+// That is a shape CHANGE across the cache, which is exactly the class of thing the cache-key syntax gate
 // is blind to: every key is encoded, and the question is whether the value survives the trip.
 //
 // Same disciplines as the paywall half: the production writer, a marker key the typed encode cannot
@@ -136,7 +136,7 @@ final class SurveyAndMessageCacheRoundTripTests: XCTestCase {
 
      `ThemeSet.init(from:)` accepts either shape and the encoder only ever writes the keyed one, so
      the cache stores a DIFFERENT shape than the document it came from. That is a transform across
-     the round trip — the thing the #928 syntax gate cannot see at all, because both halves name
+     the round trip — the thing the cache-key syntax gate cannot see at all, because both halves name
      every key they touch.
      */
     func testAFlatThemeComesBackThroughTheKeyedShapeTheEncoderWrites() throws {

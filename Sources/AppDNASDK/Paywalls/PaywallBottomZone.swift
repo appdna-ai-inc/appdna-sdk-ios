@@ -1,12 +1,12 @@
 import Foundation
 
 /**
- #903 — how much of the screen the pinned group may take before it stops being a pinned group.
+ How much of the screen the pinned group may take before it stops being a pinned group.
 
- #884 let any section carry `zone: "bottom"`, which pins it above the CTA. Pin the plans and the
+ Any section may carry `zone: "bottom"`, which pins it above the CTA. Pin the plans and the
  CTA — the case it exists for — and the paywall reads better. Pin the header, the features, a
  testimonial and a comparison table as well and the scrolling body becomes a sliver: the same
- defect #884 fixed, arriving from the other direction.
+ defect the bottom zone fixed, arriving from the other direction.
 
  Two guards existed and both were advice — the console's Zone control warns, and the generator's
  prompt says "plans + cta and nothing more". Neither is enforcement and neither can see a phone's

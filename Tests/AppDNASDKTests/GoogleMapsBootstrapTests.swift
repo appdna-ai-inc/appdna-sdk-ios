@@ -1,7 +1,7 @@
 import XCTest
 @testable import AppDNASDK
 
-/// #671 on CocoaPods hosts — the precheck that stands between an onboarding map and a
+/// The interactive map on CocoaPods hosts — the precheck that stands between an onboarding map and a
 /// `GMSServicesException` must accept exactly the layouts the Maps SDK searches.
 ///
 /// The rule was measured on GoogleMaps 9.4.0 (a minimal simulator app, one install per layout):

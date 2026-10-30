@@ -3,7 +3,7 @@ assets, redistributed here as a test fixture under the MIT licence it ships with
 
 It exists so an offline test can prove the Rive engine RENDERS. Both SDKs fetch a `.riv` over the
 network and there is no bundled-asset rung on that path, so without a file in the test bundle there
-is nothing to draw (#990). It carries a state machine, which lets the same test exercise the
+is nothing to draw. It carries a state machine, which lets the same test exercise the
 `rive_state_machine` config key.
 
 ────────────────────────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ struct PaywallRenderer: View {
     var onPromoCodeSubmit: ((String, @escaping (Bool) -> Void) -> Void)? = nil
 
     /*
-     * #1074 — WHAT THE USER DID, reported separately from what it achieved.
+     * WHAT THE USER DID, reported separately from what it achieved.
      *
      * `AppDNAPaywallDelegate.onPaywallAction` was declared on iOS and called from nowhere, while
      * Android fired `CTA_TAPPED` — so a host implementing it heard the tap on one platform and
@@ -22,12 +22,12 @@ struct PaywallRenderer: View {
     var onAction: ((PaywallAction) -> Void)? = nil
 
     @State private var selectedPlanId: String?
-    /// #903 — the pinned group's measured height, the viewport's, and the latched verdict.
+    /// The pinned group's measured height, the viewport's, and the latched verdict.
     @State private var pinnedZoneHeight: CGFloat = 0
     @State private var paywallViewportHeight: CGFloat = 0
     @State private var bottomZoneOverflowed = false
     @State private var showDismiss = false
-    /// #652 — the Back button has its OWN delay, so it cannot ride on `showDismiss`.
+    /// The Back button has its OWN delay, so it cannot ride on `showDismiss`.
     @State private var showBack = false
     @State private var isPurchasing = false
     @State private var isDismissing = false
@@ -69,11 +69,11 @@ struct PaywallRenderer: View {
 
     /// The plans this paywall offers, in the order they draw — the ONE resolution every site shares.
     ///
-    /// #1097 was four copies of these three lines drifting apart: two applied the authored rank and
+    /// There used to be four copies of these three lines, drifting apart: two applied the authored rank and
     /// two did not, and the one that drew was among those that did not.
     private var resolvedPlans: [PaywallPlan] {
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-        // #1056 — the authored rank, which both platforms decoded and neither read.
+        // The authored rank, which both platforms decoded and neither read.
         return PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
     }
 
@@ -91,17 +91,17 @@ struct PaywallRenderer: View {
     }
 
     /**
-     The CTA's label, resolved once for all three places a CTA is drawn (#1100).
+     The CTA's label, resolved once for all three places a CTA is drawn.
 
      🔴 WHY THE BUTTON NAMES THE PLAN. A tap on a plan row that drifts ~14pt is claimed by the
      `ScrollView` the rows live in, so the selection does not change and the CTA buys the plan chosen
-     BEFORE it — measured under #1081, and iOS's own convention, so the tolerance is deliberately
+     BEFORE it — measured, and iOS's own convention, so the tolerance is deliberately
      left alone. What made that a wrong purchase rather than a visible mistake is that nothing on
      screen named what was about to be bought. A button reading "Subscribe — Annual" shows a stale
      selection before the money moves instead of on the receipt after.
 
      An author can already say it exactly, per plan, with `plans[].cta_text`, and that still wins.
-     This is the default for the paywalls where nobody did: measured on dev when #1100 was written,
+     This is the default for the paywalls where nobody did: measured on dev when this was written,
      6 of 129 plans carried the field and 27 of 30 ACTIVE multi-plan paywalls had none.
 
      Deliberately conservative, because it changes copy on live paywalls:
@@ -112,7 +112,7 @@ struct PaywallRenderer: View {
        - the plan's `displayName` is `label ?? name`, which is the short word an author typed
          ("Annual"), not a price string.
 
-     It is one function rather than three because #1081 WAS the three drifting apart: the section arm
+     It is one function rather than three because three copies HAVE drifted apart: the section arm
      resolved the per-plan label, the root arm did not, and the same authored field worked or did
      nothing depending on the layout.
      */
@@ -121,9 +121,9 @@ struct PaywallRenderer: View {
     }
 
     /**
-     The selected plan's name to append to the CTA, or nil to leave the CTA alone (#1100 / #1102).
+     The selected plan's name to append to the CTA, or nil to leave the CTA alone.
 
-     🔴 IT IS A SUFFIX RATHER THAN PART OF THE LABEL, and #1102 is why. The label is the FALLBACK to
+     🔴 IT IS A SUFFIX RATHER THAN PART OF THE LABEL. The label is the FALLBACK to
      `loc("cta.text", …)`, so a paywall with a translation got the translation and lost the appended
      name — the mitigation disappearing on exactly the paywalls hardest to check, since a device walk
      in the default locale would never show it. The suffix is composed AFTER localisation instead
@@ -138,7 +138,7 @@ struct PaywallRenderer: View {
          become "Start Annual — Annual" whichever string localisation produced.
     */
     private var planNameSuffix: String? {
-        // #1104 — the author can switch naming off for the whole paywall (it defaults on).
+        // The author can switch naming off for the whole paywall (it defaults on).
         guard config.cta?.name_plan != false else { return nil }
         guard selectedPlanCtaText == nil else { return nil }
         let plans = resolvedPlans
@@ -155,7 +155,7 @@ struct PaywallRenderer: View {
         CTAPlanName.compose(base: loc(locKey, ctaLabel(authored) ?? fallback), plan: planNameSuffix, format: planNameFormat)
     }
 
-    /// #1104 — where the CTA text and the plan's name go, localised so a locale can reorder them.
+    /// Where the CTA text and the plan's name go, localised so a locale can reorder them.
     private var planNameFormat: String {
         loc("cta.plan_format", config.cta?.plan_format ?? CTAPlanName.defaultFormat)
     }
@@ -176,7 +176,7 @@ struct PaywallRenderer: View {
     }
 
     /**
-     #884 — sections an author pinned to the bottom zone.
+     Sections an author pinned to the bottom zone.
 
      > Owner, 2026-10-16: *"don't you think this whole section should be tied to low zone not to
      > top to look better in therms of UI/UX?"* — about the plan tiles.
@@ -197,11 +197,11 @@ struct PaywallRenderer: View {
     }
 
     /**
-     #903 — the pinned group, capped against the viewport.
+     The pinned group, capped against the viewport.
 
      Pinning the plans and the CTA is what the zone is for; pinning the header, the features and a
-     table as well turns the body into a sliver, which is #884's defect arriving from the other
-     direction. Past `PaywallBottomZone.maxFraction` everything except the CTA goes back to the
+     table as well turns the body into a sliver, which is the defect the zone fixed, arriving from
+     the other direction. Past `PaywallBottomZone.maxFraction` everything except the CTA goes back to the
      body in its authored position — degrade, never clip, because a group that hides the button is
      worse than a scrolling one.
 
@@ -213,7 +213,7 @@ struct PaywallRenderer: View {
         bottomZoneOverflowed ? [] : authoredBottomZoneSections
     }
 
-    /// #903 — record the pinned group's height and latch the verdict once it is known.
+    /// Record the pinned group's height and latch the verdict once it is known.
     private func recordPinnedHeight(_ geo: GeometryProxy) {
         // The reader is a zero-height probe at the TOP of the group, so the group's height is the
         // distance from it to the bottom of the window.
@@ -264,13 +264,13 @@ struct PaywallRenderer: View {
     @State private var promoState: PromoState = .idle
 
     var body: some View {
-        // #891 — the page's background travels down the hierarchy, so every default text colour is
+        // The page's background travels down the hierarchy, so every default text colour is
         // chosen against the surface it is drawn on. Through the ENVIRONMENT rather than a
         // parameter: `PlanCard` alone has five call sites, and five places to forget one is how
-        // the screens surface lost its styling in #904.
+        // the screens surface once lost its styling.
         content
             .environment(\.paywallBackgroundHex, pageBackgroundHex)
-            // #903 — the viewport the pinned-zone cap is measured against.
+            // The viewport the pinned-zone cap is measured against.
             .background(GeometryReader { geo in
                 Color.clear.onAppear { paywallViewportHeight = geo.size.height }
                     .onChange(of: geo.size.height) { paywallViewportHeight = $0 }
@@ -301,7 +301,7 @@ struct PaywallRenderer: View {
                         // section array are pinned INSIDE the bottom inset
                         // below the CTA, so skip them here too.
                         let isPinnedLegal = section.type == "legal" && pinnedFooterLegalIds.contains(section.id ?? "")
-                        // #884 — a section pinned to the bottom zone renders there, not here.
+                        // A section pinned to the bottom zone renders there, not here.
                         let isBottomZone = bottomZoneIds.contains(section.id ?? "") && section.zone == "bottom"
                         if section.type != "cta" && section.type != "sticky_footer" && !isPinnedLegal && !isBottomZone {
                             let shouldCollapse = section.collapse_on_scroll == true
@@ -328,14 +328,14 @@ struct PaywallRenderer: View {
             .safeAreaInset(edge: .bottom) {
                 // Bottom-pinned CTA + sticky footer (Apple HIG pattern)
                 VStack(spacing: 0) {
-                    // #903 — measure this group and latch the verdict. The reader sits INSIDE the
+                    // Measure this group and latch the verdict. The reader sits INSIDE the
                     // group so it measures what is pinned, including the CTA, which is what the
                     // user actually loses body height to.
                     Color.clear.frame(height: 0).background(GeometryReader { geo in
                         Color.clear.onAppear { recordPinnedHeight(geo) }
                             .onChange(of: geo.frame(in: .global).minY) { _ in recordPinnedHeight(geo) }
                     })
-                    // #884 — the authored bottom-zone sections, above the CTA, in authored order.
+                    // The authored bottom-zone sections, above the CTA, in authored order.
                     ForEach(Array(bottomZoneSections.enumerated()), id: \.offset) { _, pinned in
                         sectionView(for: pinned)
                             .padding(.horizontal, config.layout?.padding ?? 20)
@@ -345,7 +345,7 @@ struct PaywallRenderer: View {
                     if let ctaSec = ctaSection {
                         let topLevelText = config.cta?.text
                         let sectionText = ctaSec.data?.ctaText ?? ctaSec.data?.text
-                        // #1100 — one resolution for all three CTA sites: the plan's own label,
+                        // One resolution for all three CTA sites: the plan's own label,
                         // else the authored text, else the authored text naming the plan.
                         let ctaText = ctaLabel(topLevelText ?? sectionText)
                         let showRestore = ctaSec.data?.showRestore ?? false
@@ -362,10 +362,10 @@ struct PaywallRenderer: View {
                             textColor: ctaSec.data?.restoreTextColor,
                             fontSize: ctaSec.data?.restoreFontSize.map { CGFloat($0) },
                             style: ctaSec.style?.elements?["restore_text"]?.textStyle,
-                            // #910 — and its container half, so both restore renderers agree.
+                            // And its container half, so both restore renderers agree.
                             elementStyle: ctaSec.style?.elements?["restore_text"]?.container,
                             backgroundHex: pageBackgroundHex,
-                            // #651 — Restore's own fill + radius.
+                            // Restore's own fill + radius.
                             bgColor: ctaSec.data?.restoreBgColor,
                             cornerRadius: ctaSec.data?.restoreCornerRadius.map { CGFloat($0) },
                             // The restore link's action is authorable too; unset restores.
@@ -384,7 +384,7 @@ struct PaywallRenderer: View {
                             CTAButton(
                                 cta: config.cta,
                                 isPurchasing: isPurchasing,
-                                // #1075 — the same condition the root-`cta` fallback has always
+                                // The same condition the root-`cta` fallback has always
                                 // carried, and the one Android has always carried. Without it this
                                 // button accepted a tap it could do nothing with.
                                 canPurchase: selectedPlanId != nil,
@@ -417,7 +417,7 @@ struct PaywallRenderer: View {
                         /*
                          * Fallback: top-level CTA button (when no CTA section exists in layout).
                          *
-                         * 🔴 #1081 — `selectedPlanCtaText` FIRST, because this arm used to ignore it
+                         * 🔴 `selectedPlanCtaText` FIRST, because this arm used to ignore it
                          * and that made an authored label work or not depending on the layout. The
                          * SECTION arm above resolves `selectedPlanCtaText ?? topLevelText ??
                          * sectionText`; this one read `cta.text ?? "Continue"`, so a paywall whose
@@ -426,7 +426,7 @@ struct PaywallRenderer: View {
                          * `__root_cta__` section for exactly this case, so the root CTA goes through
                          * its one resolution chain and the per-plan label wins there too.
                          *
-                         * It matters for #1081 specifically. A tap that drifts far enough for the
+                         * It matters for a drifting tap specifically. A tap that drifts far enough for the
                          * scroll view to claim it does not change the selection, and the CTA then
                          * buys the plan selected BEFORE it — silently, because nothing on screen
                          * names what is about to be bought. A CTA that reads "Start Annual — $34.99"
@@ -512,7 +512,7 @@ struct PaywallRenderer: View {
                         if errorAllowRetry {
                             Button {
                                 /*
-                                 #1107 — the retry RETRIES. It used to hide the banner and stop
+                                 The retry RETRIES. It used to hide the banner and stop
                                  there, so a user who tapped "Try Again" saw the banner vanish and
                                  nothing else happen, while Android started the purchase again. It
                                  now runs the CTA's own path — the selected plan, the in-progress
@@ -541,7 +541,7 @@ struct PaywallRenderer: View {
                      screen, a pinned group measured a frame late), the user's instinctive second tap
                      clears the obstruction rather than vanishing into it.
 
-                     #1111 — and ONLY the banner. This gesture used to sit on the outer
+                     And ONLY the banner. This gesture used to sit on the outer
                      `VStack { Spacer(); banner }`, whose `contentShape(Rectangle())` is the whole
                      SCREEN: while the banner was up, a tap on the CTA, a plan row, anything, only
                      hid the banner, so a user retrying a failed purchase bought nothing and saw
@@ -556,7 +556,7 @@ struct PaywallRenderer: View {
                      🔴 ABOVE THE PINNED ZONE, MEASURED — it used to be a hardcoded `80`.
                      *
                      * The pinned group is the CTA plus whatever is pinned with it: a restore link,
-                     * legal text, and since #884 ANY section authored `zone: "bottom"` — the plan
+                     * legal text, and ANY section authored `zone: "bottom"` — the plan
                      * tiles included. Its real height is already measured into `pinnedZoneHeight`
                      * (`recordPinnedHeight`), and was used only to decide overflow. The banner
                      * guessed it as 80, so on any paywall whose pinned group is taller the banner
@@ -579,7 +579,7 @@ struct PaywallRenderer: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // #652 — the Back button, rendered INDEPENDENTLY of the close control.
+            // The Back button, rendered INDEPENDENTLY of the close control.
             //
             // The first pass made "back" a dismiss STYLE, so a paywall could have a chevron or an X
             // but never both, and the two shared one position/colour/size. They are two buttons.
@@ -636,14 +636,14 @@ struct PaywallRenderer: View {
         .onAppear {
             // Select default plan — try section.data.plans, then top-level config.plans
             let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-            // #1056 — the authored rank, which both platforms decoded and neither read.
+            // The authored rank, which both platforms decoded and neither read.
             let plans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
             if !plans.isEmpty {
                 selectedPlanId = plans.first(where: { $0.isDefault == true })?.id ?? plans.first?.id
             }
 
             // Handle dismiss delay — always show dismiss when config.dismiss is nil (default behavior)
-            // #652 — the Back button's own delay, independent of the close button's.
+            // The Back button's own delay, independent of the close button's.
             let backDelay = config.dismiss?.back?.delaySeconds ?? 0
             if backDelay > 0 {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(backDelay)) {
@@ -685,7 +685,7 @@ struct PaywallRenderer: View {
                 onEnded: { _ in
                     purchasing.wrappedValue = false
                 },
-                // #1103 — the purchase SUCCEEDED, whichever `on_success` branch runs next.
+                // The purchase SUCCEEDED, whichever `on_success` branch runs next.
                 onCelebrate: { _ in
                     guard let effect = particleTrigger, effect == "on_purchase" else { return }
                     confetti.wrappedValue = true
@@ -693,7 +693,7 @@ struct PaywallRenderer: View {
                 onFailure: { notif in
                     let info = notif.userInfo ?? [:]
                     /*
-                     * 🔴 #1103 — STOP CELEBRATING. `handleCTATap` starts the particle effect when
+                     * 🔴 STOP CELEBRATING. `handleCTATap` starts the particle effect when
                      * the CTA is TAPPED (it reads `trigger == "on_purchase"` and fires on the one
                      * moment that is definitely not a purchase), and nothing ever set it back. So a
                      * user who cancelled the sheet or had a card declined watched a congratulatory
@@ -702,7 +702,7 @@ struct PaywallRenderer: View {
                      * Clearing it here removes that, which is the user-visible half. Moving the
                      * trigger to the success path proper is the other half and needs plumbing the
                      * three `post_purchase.on_success` branches that dismiss without posting
-                     * `.paywallPurchaseSuccess` — recorded on #1103 rather than rushed here.
+                     * `.paywallPurchaseSuccess` — left for its own change rather than rushed here.
                      */
                     confetti.wrappedValue = false
                     errorText.wrappedValue = info["message"] as? String ?? "Payment failed."
@@ -836,7 +836,7 @@ struct PaywallRenderer: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(button.bg_color.map { Color(hex: $0) } ?? Color.secondary.opacity(0.25))
-                        // #651 — an extra button had a Background but always inherited the CTA's
+                        // An extra button had a Background but always inherited the CTA's
                         // radius, so a pill CTA forced every extra button to be a pill. Unset still
                         // inherits, so existing paywalls are untouched.
                         .clipShape(RoundedRectangle(cornerRadius: CGFloat(button.corner_radius ?? config.cta?.resolvedCornerRadius ?? 12)))
@@ -865,7 +865,7 @@ struct PaywallRenderer: View {
             }
         case "purchase":
             handleCTATap()
-        // #1076 — AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
+        // AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
         // because that is what every unauthored CTA has always done and changing it would break
         // paywalls that rely on it — but the host is told, which is the whole point of `.custom`:
         // an action "defined in the paywall config" that only the host can mean anything by.
@@ -892,7 +892,7 @@ struct PaywallRenderer: View {
 
     private var dismissButton: some View { dismissGlyph("xmark") }
 
-    /// #652 — the standalone Back control. Its own glyph, side, colour, size and delay.
+    /// The standalone Back control. Its own glyph, side, colour, size and delay.
     @ViewBuilder
     private func backAffordance(_ back: PaywallBackButton) -> some View {
         let glyphSize: CGFloat = back.size ?? 16
@@ -976,7 +976,7 @@ struct PaywallRenderer: View {
     }
 
     /**
-     #881 — the dismiss control's footprint, reserved on BOTH sides of the header.
+     The dismiss control's footprint, reserved on BOTH sides of the header.
 
      The header title is centred across the FULL width and the dismiss control is an overlay with
      nothing holding space for it, so a title whose first line reaches the edge runs underneath. On
@@ -998,7 +998,7 @@ struct PaywallRenderer: View {
     private var headerCloseInset: CGFloat { PaywallHeaderInset.resolve(config.dismiss) }
 
     /**
-     #891 — the page's own background, so text nobody authored can be read against IT rather than
+     The page's own background, so text nobody authored can be read against IT rather than
      against the phone's appearance setting. `value` and `color` are the two spellings Firestore
      has used; a gradient or an image yields nil and the default falls back to light-on-dark, which
      is what this surface has always assumed for those.
@@ -1018,7 +1018,7 @@ struct PaywallRenderer: View {
         case "features":
             return AnyView(FeatureList(
                 features: (section.data?.features ?? []).enumerated().map { i, f in loc("feature.\(i)", f) },
-                // #1076 — a feature row now reports that the user tapped it.
+                // A feature row now reports that the user tapped it.
                 onFeatureSelected: { onAction?(.featureSelected) },
                 richItems: section.data?.items,
                 columns: Int(section.data?.featureColumns ?? 1),
@@ -1038,9 +1038,9 @@ struct PaywallRenderer: View {
             // Plans can be in section.data.plans OR top-level config.plans
             let sectionPlans = section.data?.plans ?? []
             /*
-             * 🔴 #1097 — THE SORT BELONGS HERE, because this is the only site that DRAWS.
+             * 🔴 THE SORT BELONGS HERE, because this is the only site that DRAWS.
              *
-             * #1056 added `PaywallPlanOrder.sorted` for "the order a paywall's plans draw in" and
+             * `PaywallPlanOrder.sorted` was added for "the order a paywall's plans draw in" and
              * wired it into `selectedPlan` and `onAppear` — both of which resolve a plan with
              * `first(where: { $0.id == … })`, where order is irrelevant by construction. This site,
              * the one where order IS the entire question, did not call it, so an authored rank
@@ -1061,9 +1061,9 @@ struct PaywallRenderer: View {
              * CTA section: top-level cta.text takes priority, then section config text.
              *
              * 🔴 THROUGH `ctaLabel` LIKE THE OTHER THREE. This arm resolved the text itself, so it
-             * got neither the selected plan's own `cta_text` (#1081) nor the multi-plan default
-             * (#1100). Whether it is reachable today is beside the point: a CTA site that resolves
-             * its own label is how #1081 happened, and a fourth one sitting here would be the next
+             * got neither the selected plan's own `cta_text` nor the multi-plan default.
+             * Whether it is reachable today is beside the point: a CTA site that resolves
+             * its own label is how the arms drifted before, and a fourth one sitting here would be the next
              * one. The `ctaLabel(` count is pinned by a test so a fifth cannot appear quietly.
              */
             let topLevelText = config.cta?.text
@@ -1087,7 +1087,7 @@ struct PaywallRenderer: View {
                 restoreTextColor: section.data?.restoreTextColor,
                 restoreFontSize: section.data?.restoreFontSize.map { CGFloat($0) },
                 restoreGap: section.data?.restoreGap,
-                // #651 — the other CTA path (a paywall whose restore link is drawn INSIDE the CTA
+                // The other CTA path (a paywall whose restore link is drawn INSIDE the CTA
                 // component) has to honour the same pair, or the control would work on one layout
                 // and silently do nothing on the other.
                 restoreBgColor: section.data?.restoreBgColor,
@@ -1281,9 +1281,9 @@ struct PaywallRenderer: View {
         let quoteTextStyle = style?.elements?["quote"]?.textStyle
         let authorNameTextStyle = style?.elements?["author_name"]?.textStyle
         let authorRoleTextStyle = style?.elements?["author_role"]?.textStyle
-        // #913 — and their containers, from the ElementStylePanel the console shows beside each
+        // And their containers, from the ElementStylePanel the console shows beside each
         // TextStylePanel. Resolved once: `author_name` is drawn at TWO sites below, the card/quote
-        // layouts and the `minimal` one, and wiring only the first is how #905 and #910 each
+        // layouts and the `minimal` one, and wiring only the first is how earlier elements
         // reached a device with an authored border that drew nowhere.
         let quoteElementStyle = style?.elements?["quote"]?.container
         let authorNameElementStyle = style?.elements?["author_name"]?.container
@@ -1355,7 +1355,7 @@ struct PaywallRenderer: View {
                     }
                 }
             } else if let name = data?.authorName {
-                // Minimal: just author name inline. #913 — the SECOND site this element is drawn
+                // Minimal: just author name inline. The SECOND site this element is drawn
                 // at, and it honours the same text style and container as the card layouts: the
                 // console has one control, and a host sees whichever layout it authored.
                 Group {
@@ -1473,7 +1473,7 @@ struct PaywallRenderer: View {
                 // hardcoded to `.caption`(~12pt)/medium/system-grey, so the label size was silently
                 // dropped and the default color differed on every countdown (grey vs dark-red) from Android.
                 Text(loc("countdown.label", label))
-                    // #979 — `label_font_weight` is a console control that reached no renderer.
+                    // `label_font_weight` is a console control that reached no renderer.
                     .font(.system(size: data?.labelFontSize ?? 14, weight: resolvePaywallFontWeight(data?.labelFontWeight, default: .semibold)))
                     .foregroundColor(Color(hex: data?.labelColor ?? "#7F1D1D"))
             }
@@ -1493,7 +1493,7 @@ struct PaywallRenderer: View {
     }
 
     /*
-     * #978 — the countdown's six expiry/format fields, passed through in one place.
+     * The countdown's six expiry/format fields, passed through in one place.
      *
      * `auto_advance` is wired to the renderer's own dismiss rather than to anything the view
      * reaches for: the paywall owns its lifecycle, and a view that dismissed itself would bypass
@@ -1518,7 +1518,7 @@ struct PaywallRenderer: View {
             digitFontSize: data?.digitFontSize,
             digitFontWeight: data?.digitFontWeight,
             digitColorHex: data?.textColor,
-            // #980 — the Variant the console offers and no renderer read.
+            // The Variant the console offers and no renderer read.
             variant: data?.variant
         )
     }
@@ -1538,7 +1538,7 @@ struct PaywallRenderer: View {
             }
         }()
 
-        // #910 — the `text` element, which the console's Style tab offers for this section and
+        // The `text` element, which the console's Style tab offers for this section and
         // neither half of which was read: not the text style, not the container. An author styling
         // the legal paragraph got nothing at all.
         let textElementStyle = style?.elements?["text"]?.textStyle
@@ -1581,7 +1581,7 @@ struct PaywallRenderer: View {
                             // launches Safari — we want a sheet-style in-app browser
                             // so users stay in the app.
                             Button {
-                                onAction?(.linkTapped)   // #1076
+                                onAction?(.linkTapped)   // reported before the browser opens
                                 InAppBrowser.present(url: url)
                             } label: {
                                 Text(link.label ?? "")
@@ -1600,7 +1600,7 @@ struct PaywallRenderer: View {
         // link in the legal paragraph launches Safari. OpenURLAction
         // returns .handled so SwiftUI doesn't pass the URL to UIApplication.
         .environment(\.openURL, OpenURLAction { url in
-            onAction?(.linkTapped)   // #1076 — a markdown link inside the legal paragraph counts
+            onAction?(.linkTapped)   // A markdown link inside the legal paragraph counts
             InAppBrowser.present(url: url)
             return .handled
         })
@@ -1657,7 +1657,7 @@ struct PaywallRenderer: View {
                         .foregroundColor(Color(hex: data?.labelColor ?? "#9CA3AF"))
                         .padding(.horizontal, 8)
                         /*
-                         * #976 — `label_bg_color`, which this hard-coded to `.clear` while Android
+                         * `label_bg_color`, which this hard-coded to `.clear` while Android
                          * has always honoured it (`PaywallActivity.kt`, the divider's label
                          * background with a 4dp corner). Both SDKs DECODE the key; only one drew
                          * it, so a divider authored with a label chip rendered as a chip on
@@ -1707,7 +1707,7 @@ struct PaywallRenderer: View {
         let bgColor = Color(hex: data?.backgroundColor ?? "#FFFFFF")
 
         VStack(spacing: 8) {
-            // CTA button — #1100's one resolution, as the other two sites use.
+            // CTA button — the one `ctaLabel` resolution, as the other two sites use.
             if let ctaText = ctaLabel(data?.ctaText) {
                 Button {
                     handleCTATap()
@@ -1725,7 +1725,7 @@ struct PaywallRenderer: View {
                 .frame(height: data?.ctaHeight ?? 52)
                 .background(Color(hex: data?.ctaBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                 .clipShape(RoundedRectangle(cornerRadius: data?.ctaCornerRadius ?? 14))
-                // #1075 — the sticky footer's own CTA, under the same rule as the section one and
+                // The sticky footer's own CTA, under the same rule as the section one and
                 // Android's: a button that cannot resolve a plan refuses the tap and shows it.
                 .disabled(isPurchasing || selectedPlanId == nil)
                 .opacity(selectedPlanId == nil ? 0.5 : 1)
@@ -1750,7 +1750,7 @@ struct PaywallRenderer: View {
             if let legalText = data?.legalText {
                 // The size and colour are now authored. Unset keeps the previous
                 // hardcoded 10pt / `.secondary`, so a published paywall is unchanged. This is what
-                // made #648 look like a Legal-section bug: the footer Subtitle was pinned at 10pt
+                // made a footer size problem look like a Legal-section bug: the footer Subtitle was pinned at 10pt
                 // while the Legal SECTION honoured its authored size, so a 13pt legal paragraph
                 // genuinely rendered larger than this line — which the author had sized to 16.
                 Text(loc("sticky_footer.legal", legalText))
@@ -1854,15 +1854,15 @@ struct PaywallRenderer: View {
                 autoScroll: data?.autoScroll ?? false,
                 autoScrollIntervalMs: data?.autoScrollIntervalMs ?? 3000,
                 showIndicators: data?.showIndicators ?? true,
-                // #947 — the inactive indicator. `#666666` reads on both pages so it was never a
-                // defect, but Android resolves this from the page (#938) and two SDKs drawing a
-                // different grey for the same unauthored field is the divergence #946 asked to
-                // close. Same function, same answer, on both.
+                // The inactive indicator. `#666666` reads on both pages so it was never a
+                // defect, but Android resolves this from the page and two SDKs drawing a
+                // different grey for the same unauthored field is a divergence worth
+                // closing. Same function, same answer, on both.
                 indicatorColor: data?.indicatorColor
                     ?? PaywallTextDefaults.readableHex(on: pageBackgroundHex),
                 hasAuthoredIndicatorColor: data?.indicatorColor != nil,
-                // #947 — the ACTIVE indicator, read off the page. White over a white page is one
-                // dot's worth of nothing, and Android's equivalent was fixed in #938.
+                // The ACTIVE indicator, read off the page. White over a white page is one
+                // dot's worth of nothing, and Android's equivalent was fixed the same way.
                 indicatorActiveColor: data?.indicatorActiveColor
                     ?? PaywallTextDefaults.readableHex(on: pageBackgroundHex),
                 height: data?.height,
@@ -1917,7 +1917,7 @@ struct PaywallRenderer: View {
             }
         } else {
         // Vertical timeline (default)
-        // #947 — the timeline's rail, read off the page. It was white, so on a light paywall the
+        // The timeline's rail, read off the page. It was white, so on a light paywall the
         // steps floated with nothing joining them.
         let connectorColor = Color(
             hex: data?.lineColor
@@ -2015,7 +2015,7 @@ struct PaywallRenderer: View {
                         }
                     }
 
-                    // #913 — the icon grid's two text elements, each with the container the
+                    // The icon grid's two text elements, each with the container the
                     // console's ElementStylePanel writes beside its text style.
                     Group { if let label = item.label ?? item.title {
                         let ts = style?.elements?["title"]?.textStyle
@@ -2259,12 +2259,12 @@ struct PaywallRenderer: View {
                     Text(loc("toggle.label", label))
                         .font(.subheadline.weight(.medium))
                         /*
-                         🔴 #947 — this default was the literal `"#FFFFFF"`, which over a white
+                         🔴 This default was the literal `"#FFFFFF"`, which over a white
                          page is a label that is not on the screen. It is the one site on this
                          surface the appearance-drift probe could NOT see: a fixed hex does not
                          change with the phone, so it scored zero drift while being invisible.
                          Two different defects, two different measurements — the other is the
-                         light-page ink count Android's sweep uses (#946).
+                         light-page ink count Android's sweep uses.
                         */
                         .foregroundColor(
                             data?.labelColorVal.map { Color(hex: $0) }
@@ -2273,7 +2273,7 @@ struct PaywallRenderer: View {
                 if let desc = data?.description {
                     Text(loc("toggle.description", desc))
                         .font(.caption)
-                        // #947 — `#9CA3AF` reads on both pages, so only the authored path changes
+                        // `#9CA3AF` reads on both pages, so only the authored path changes
                         // here: it is a real mid-grey rather than an assumption about the backdrop.
                         .foregroundColor(Color(hex: data?.descriptionColor ?? "#9CA3AF"))
                 }
@@ -2300,10 +2300,10 @@ struct PaywallRenderer: View {
                 starColor: data?.starColor ?? "#FBBF24",
                 textStyle: style?.elements?["text"]?.textStyle,
                 authorStyle: style?.elements?["author"]?.textStyle,
-                // #905 — `elements[…]` is a SectionElementConfig now; the card wants the
+                // `elements[…]` is a SectionElementConfig now; the card wants the
                 // container half of it, from either spelling.
                 cardStyle: style?.elements?["card"]?.container,
-                // #910 — the other two elements' containers, from the same panel.
+                // The other two elements' containers, from the same panel.
                 textElementStyle: style?.elements?["text"]?.container,
                 authorElementStyle: style?.elements?["author"]?.container,
                 loc: loc
@@ -2533,7 +2533,7 @@ struct PaywallRenderer: View {
 
         // Explicit vertical stack cases
         /*
-         #960 — a tab bar, one tab per plan, with the SELECTED plan's full card beneath it.
+         A tab bar, one tab per plan, with the SELECTED plan's full card beneath it.
 
          The console has offered this style in its picker since it shipped and neither renderer had
          a case for it, so an author picked "Tab groups", saw the console preview draw it,
@@ -2550,7 +2550,7 @@ struct PaywallRenderer: View {
          */
         case "tab_groups":
             let tabAccent = Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-            // #947 — read off the PAGE, not `.primary`/`.secondary`, which follow the PHONE's
+            // Read off the PAGE, not `.primary`/`.secondary`, which follow the PHONE's
             // appearance and so drew different pixels in light and dark for the same paywall.
             let tabInactiveInk = PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)
             let tabRule = PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.2)
@@ -2927,7 +2927,7 @@ struct PaywallRenderer: View {
     private func selectPlan(_ planId: String) {
         selectedPlanId = planId
         /*
-         * #1076 — the user CHOSE this plan. Only reached from a tap: `.onAppear` seeds
+         * The user CHOSE this plan. Only reached from a tap: `.onAppear` seeds
          * `selectedPlanId` directly rather than through here, so the default selection is not
          * reported as a change the user made.
          */
@@ -2939,27 +2939,27 @@ struct PaywallRenderer: View {
 
     private func handleCTATap() {
         /*
-         * 🔴 #1074 — REPORTED BEFORE THE GUARDS, and that ordering is the whole point. The two
+         * 🔴 REPORTED BEFORE THE GUARDS, and that ordering is the whole point. The two
          * `guard`s below return SILENTLY: no delegate call, no event, no log. A user sees a button
          * do nothing, the host learns nothing, and from outside the app a swallowed tap is
-         * indistinguishable from a purchase the store refused — which is exactly why #1072 could
-         * not be diagnosed. The action means "the user tapped the CTA", so it fires whenever they
+         * indistinguishable from a purchase the store refused — which is exactly why a dead CTA
+         * once could not be diagnosed. The action means "the user tapped the CTA", so it fires whenever they
          * did, whatever happens next.
          */
         onAction?(.ctaTapped)
         guard let planId = selectedPlanId else {
-            // #1072 / #1081 — a CTA that buys nothing used to be silent. Say which guard stopped it.
+            // A CTA that buys nothing used to be silent. Say which guard stopped it.
             Log.warning("Paywall CTA tapped with no plan selected — nothing to purchase")
             return
         }
         // Plans can be in section.data.plans OR top-level config.plans
         let sectionPlans = config.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
-        // #1097 — sorted for the same reason Android's `effectivePlans()` is: this lookup is by id
+        // Sorted for the same reason Android's `effectivePlans()` is: this lookup is by id
         // and so cannot care about order TODAY, but every one of these four resolution sites now
-        // reads the same order, which is what stopped being true and cost #1097.
+        // reads the same order, which once stopped being true and drew the wrong plan order.
         let allPlans = PaywallPlanOrder.sorted(sectionPlans.isEmpty ? (config.plans ?? []) : sectionPlans)
         /*
-         * #1081 — a plan tap can fail to take, and the CTA then buys the plan selected BEFORE it:
+         * A plan tap can fail to take, and the CTA then buys the plan selected BEFORE it:
          * measured once in roughly ten runs, with the row's own label in the log and the CTA
          * recorded enabled and hittable. The selection state at the instant of the press is the
          * one fact that separates the two possible halves — a tap that never reached `selectPlan`
@@ -2968,7 +2968,7 @@ struct PaywallRenderer: View {
          *
          * It also names which collection resolved the plan, because the rows and this lookup can
          * read DIFFERENT arrays — root `plans` versus a `plans` section — and that mismatch buys a
-         * product the row never showed (the shape behind #923).
+         * product the row never showed.
          */
         Log.debug("Paywall CTA: selectedPlanId=\(planId) resolvedFrom=\(sectionPlans.isEmpty ? "config.plans" : "section.data.plans") "
             + "candidates=\(allPlans.map { $0.id }.joined(separator: ","))")
@@ -2980,7 +2980,7 @@ struct PaywallRenderer: View {
         // Haptic on CTA tap
         HapticEngine.triggerIfEnabled(config.haptic?.triggers?.on_button_tap, config: config.haptic)
         /*
-         * 🔴 #1103 — THE CELEBRATION DOES NOT START HERE ANY MORE. This read
+         * 🔴 THE CELEBRATION DOES NOT START HERE ANY MORE. This read
          * `trigger == "on_purchase"` and fired on the CTA TAP, which is the one moment that is
          * definitely not a purchase — so a user who cancelled the sheet or had a card declined
          * watched a congratulatory animation, and nothing ever stopped it. It now fires from
@@ -3225,9 +3225,9 @@ private struct PaywallScrollOffsetPrefKey: PreferenceKey {
 }
 
 /**
- #895 — the dismiss control's footprint, as a value both platforms can be held to.
+ The dismiss control's footprint, as a value both platforms can be held to.
 
- #881 computed this inline on each platform and pinned it with a SOURCE gate: a gate that reads
+ This used to be computed inline on each platform and pinned it with a SOURCE gate: a gate that reads
  the arithmetic cannot tell you the two renderers agree, only that they contain similar text. They
  did not agree — this side reserved space for a `swipe` dismiss and Android did not, so one
  authored paywall wrapped its title differently on each platform and nothing said so.
@@ -3253,7 +3253,7 @@ enum PaywallHeaderInset {
     }
 }
 
-/// #891 — the paywall's own background colour, for any view choosing a default text colour.
+/// The paywall's own background colour, for any view choosing a default text colour.
 private struct PaywallBackgroundHexKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }

@@ -1,4 +1,4 @@
-// TrackedEventVisibilityUITests.swift — #1047
+// TrackedEventVisibilityUITests.swift
 //
 // THE GENERAL GAP, not one event. A UI test can only assert what is DRAWN, and the SDK's stdout is
 // invisible under `xcodebuild test` — so on this platform every claim about an event that renders
@@ -35,7 +35,7 @@ final class TrackedEventVisibilityUITests: XCTestCase {
 
         /*
          🔴 THE NEGATIVE CONTROL FIRST. An empty label would make every `contains` below pass for
-         the worst possible reason — the harness seeing nothing — which is the shape #923's first
+         the worst possible reason — the harness seeing nothing — which is the shape the store-price feature's first
          render test shipped. So the test asserts the log has CONTENT before asserting what is in
          it. The SDK tracks `session_started` and `app_opened` at configure, so by the time the
          host screen is up there is something.

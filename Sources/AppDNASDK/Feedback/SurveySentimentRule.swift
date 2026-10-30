@@ -3,7 +3,7 @@ import Foundation
 /**
  WHICH follow-up branch a completed survey takes — in one place both platforms are held to.
 
- 🔴 #1011 — this lived inline in both renderers and classified an emoji answer against a HARD-CODED
+ 🔴 This lived inline in both renderers and classified an emoji answer against a HARD-CODED
  literal of the five default emoji. The Console's own default scale is not that list (it writes 😟
  and 🙂 where the SDKs had 😕 and 😊), so a survey created in the Console and answered with either
  middle face came back `neutral`, and any custom scale came back neutral for every answer —

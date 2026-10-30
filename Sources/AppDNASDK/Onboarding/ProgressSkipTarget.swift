@@ -1,6 +1,6 @@
 import Foundation
 
-/// Where the progress bar's "Skip" link goes — #1056.
+/// Where the progress bar's "Skip" link goes.
 ///
 /// 🔴 `OnboardingSettings.skip_to_step` WAS DECODED BY BOTH PLATFORMS AND READ BY NEITHER. It sits
 /// one field away from `progress_skip_label`, and this link was the only thing it could have meant:

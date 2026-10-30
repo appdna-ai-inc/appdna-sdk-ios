@@ -2,14 +2,14 @@ import Foundation
 
 /// The ONE location-autocomplete call in the iOS SDK.
 ///
-/// 🔴 #963 — THERE WERE TWO SEARCHES, AND THE SECOND ONE HONOURED NOTHING. The form-step Location
+/// 🔴 THERE WERE TWO SEARCHES, AND THE SECOND ONE HONOURED NOTHING. The form-step Location
 /// field POSTed to the geocoding proxy with all four Console settings; the `input_location` content
 /// block ran `MKLocalSearchCompleter` against Apple's place index, which takes no country bias, no
 /// language tag and has no city/region/country result type — so three of the four settings an
 /// author could set on that block were structurally impossible to honour, and the SDK read none of
 /// them. Setting Type = "City" produced street addresses, silently.
 ///
-/// Android has had one search for both surfaces since #963's first half
+/// Android already had one search for both surfaces
 /// (`fetchLocationSuggestions` in `LocationFieldComposable.kt`). This is iOS's, and the two
 /// surfaces now differ only in their `defaultMinChars`.
 ///
@@ -80,7 +80,7 @@ enum LocationAutocomplete {
 /// user tapped.
 struct LocationListingRequest: Equatable {
     let query: String
-    /// Each nil when the author chose none — see `LocationSearchSettings.type` (#964).
+    /// Each nil when the author chose none — see `LocationSearchSettings.type`.
     let type: String?
     let biasCountry: String?
     let language: String?

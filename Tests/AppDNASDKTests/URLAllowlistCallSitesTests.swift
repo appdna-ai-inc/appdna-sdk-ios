@@ -5,7 +5,7 @@ import XCTest
  The scheme allowlist, asserted at the CALL SITES — the iOS sibling of Android's
  `UrlAllowlistCallSitesTest`.
 
- 🔴 #1005 — Android has had this gate since `PaywallActivity` was found building
+ 🔴 Android has had this gate since `PaywallActivity` was found building
  `Intent(ACTION_VIEW, Uri.parse(configString))` by hand on the money path, and iOS never grew one.
  So the banner's "Learn more" shipped as `Link(linkText, destination: URL(string: authored))`,
  which hands a CONFIG-SUPPLIED url straight to the system with no scheme check at all — and the

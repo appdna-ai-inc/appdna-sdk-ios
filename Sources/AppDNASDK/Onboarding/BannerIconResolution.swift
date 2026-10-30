@@ -3,9 +3,9 @@ import Foundation
 /**
  WHICH mark a warning/info banner draws, and at what size.
 
- 🔴 #1005 — reported against a rebuild of a real app's info banner, which carries the app's own
+ 🔴 Reported against a rebuild of a real app's info banner, which carries the app's own
  icon. The console offered ten emoji presets and a box to paste any other emoji, which makes the
- capability visible (that was the #601 fix) and is still not a way to set a brand's mark. So an
+ capability visible and is still not a way to set a brand's mark. So an
  image can now be uploaded, and the precedence has to be identical on both platforms: an uploaded
  URL wins, an empty one falls back to the authored glyph, and an unauthored glyph falls back to the
  variant's own icon — which the caller passes in, because the variant table lives with the colours.
@@ -14,7 +14,7 @@ import Foundation
  always drawn at and has to stay the default, or every published banner silently restyles; but an
  uploaded PNG at 18pt is unreadable, so the same number has to be settable and has to apply to
  both. One function, driven by `banner_icon_resolution`, so iOS and Android cannot disagree — which
- is exactly what `collapse_on_scroll` (#993), `label_bg_color` and `blur_background` each did.
+ is exactly what `collapse_on_scroll`, `label_bg_color` and `blur_background` each did.
  */
 public enum BannerIconResolution {
 

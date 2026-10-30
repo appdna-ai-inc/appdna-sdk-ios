@@ -138,7 +138,7 @@ struct LocationFieldView: View {
     /// this was a `@FocusState` bound to no view, and SwiftUI drops writes to one of those, so it never
     /// changed, `.onChange(of: isFocused)` never ran, and leaving the field never ended its search — a
     /// debounced search still pending (the one a blur's commit of a composition after Google's line
-    /// starts, among others) fired and opened the dropdown under a field the user had left (#1147). The
+    /// starts, among others) fired and opened the dropdown under a field the user had left. The
     /// `input_location` block already reports the leaving through its own state.
     @State private var isFocused = false
     /// The form step's settlement: Continue settles this field before it submits (a resolve in
@@ -167,7 +167,7 @@ struct LocationFieldView: View {
         return LocationData.fromStoredAnswer(value)
     }
 
-    /// #963 — resolved by the shared `LocationSearchSettings`, the same one the `input_location`
+    /// Resolved by the shared `LocationSearchSettings`, the same one the `input_location`
     /// content block uses, so the two surfaces cannot drift apart again.
     private var search: LocationSearchSettings {
         LocationSearchSettings.from(fieldConfig: field.config, defaultMinChars: 2)

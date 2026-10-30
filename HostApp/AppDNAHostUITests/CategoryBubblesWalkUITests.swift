@@ -1,4 +1,4 @@
-// CategoryBubblesWalkUITests.swift — #1013, the category row and the filter it drives, on a device.
+// CategoryBubblesWalkUITests.swift — the category row and the filter it drives, on a device.
 //
 // Two defects, both of which only a device can settle:
 //
@@ -55,7 +55,7 @@ final class CategoryBubblesWalkUITests: XCTestCase {
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
         /*
-         * 🔴 IS THIS THIS PUBLISH, OR A CACHED ONE? (#1033's lesson.) A refused bootstrap falls back
+         * 🔴 IS THIS THIS PUBLISH, OR A CACHED ONE? A refused bootstrap falls back
          * to "serving cached config only" and renders whatever it had, and the walk then asserts
          * today's expectations against another day's flow and fails far from the cause. The eight
          * bubble labels are this publish's, so finding the last one proves the device has it.
@@ -77,7 +77,7 @@ final class CategoryBubblesWalkUITests: XCTestCase {
          *
          * `bubble_scroll` now opens on its first category through the same `SegmentedDefault` rule,
          * on both platforms, so this is the authored first frame rather than an empty one. The
-         * other two selects must still be absent, which is the claim: before #1013 none of the
+         * other two selects must still be absent, which is the claim: before this fix none of the
          * three could appear at all, because a same-step condition resolved against an empty map.
          */
         XCTAssertTrue(app.staticTexts["First — pick one"].waitForExistence(timeout: 10),

@@ -4,7 +4,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- #982 — THE ANIMATION DRAWS, proven in pixels.
+ THE ANIMATION DRAWS, proven in pixels.
 
  The engines being linked is a BUILD fact and this issue is a PIXEL one: `LottieBlockView` shipped
  a placeholder for as long as the block type existed, and a placeholder is a perfectly good view —
@@ -12,8 +12,8 @@ import XCTest
  real renderer from a modelled one, which is exactly why the stub survived every gate.
 
  So this renders the REAL `LottieBlockView` over a real `.json` in a real key window — the same
- harness `SurfaceSnapshotTests` uses, and the one that caught the invisible selected plan in #966
- and the unsubstituted price in #923 — and reads the pixels back.
+ harness `SurfaceSnapshotTests` uses, and the one that caught an invisible selected plan
+ and an unsubstituted store price — and reads the pixels back.
 
  🔴 THE CONTROL IS THE WHOLE TEST. "The frame has dark pixels" would pass for the placeholder too:
  it drew a play glyph and two lines of text. So the assertions are DIFFERENCES — a block with a

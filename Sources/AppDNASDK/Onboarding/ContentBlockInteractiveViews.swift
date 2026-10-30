@@ -28,7 +28,7 @@ func resolvedFieldConfig(_ block: ContentBlock, _ overrides: [String: [String: A
     return resolved
 }
 
-/// #657 — replace a block's `field_options` with host-supplied ones from a refresh interaction.
+/// Replace a block's `field_options` with host-supplied ones from a refresh interaction.
 ///
 /// Separate from `resolvedFieldConfig` because options are a SIBLING of `field_config`, not a key
 /// inside it: merging them into `field_config` would compile, do nothing visible, and look fixed.

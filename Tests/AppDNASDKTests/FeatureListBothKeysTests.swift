@@ -4,12 +4,12 @@ import UIKit
 @testable import AppDNASDK
 
 /**
- #972 — a `features` section draws BOTH the plain `features` strings and the structured `items`.
+ A `features` section draws BOTH the plain `features` strings and the structured `items`.
 
  ## The defect this locks
 
  `FeatureList.body` was an `if/else`: when `items` was non-empty it drew those and silently dropped
- every plain string beside them. Android has drawn both since #591, deliberately — its own comment
+ every plain string beside them. Android already draws both, deliberately — its own comment
  gives the reason: *"Both keys can be present on an older document, and rendering only one of them
  would trade this bug for its mirror image."* So the same published document rendered N+M rows on
  Android and M on iOS, and the rows iOS dropped were ones an author had set.

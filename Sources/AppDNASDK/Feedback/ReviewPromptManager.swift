@@ -30,7 +30,7 @@ final class ReviewPromptManager {
     }
 
     /*
-     #897 — `triggerTwoStepReview` WAS HERE, AND IT IS NOT COMING BACK.
+     `triggerTwoStepReview` WAS HERE, AND IT IS NOT COMING BACK.
 
      It presented a UIAlertController titled "Enjoying <app>?" with "Yes! 😊" / "Not really", and
      called `SKStoreReviewController.requestReview` only on "Yes". That is review gating. Apple's
@@ -50,7 +50,7 @@ final class ReviewPromptManager {
     /**
      Open the app's App Store review page, where the user can leave a review themselves.
 
-     #896 — this is the OTHER half of asking for a review, and the halves are not interchangeable.
+     This is the OTHER half of asking for a review, and the halves are not interchangeable.
      `triggerReview` asks StoreKit for the in-place sheet and MUST NOT be called in response to a
      tap — Apple names that rule explicitly. Opening the review page from a button the user chose
      IS allowed, because no system prompt is invoked: the user asked to go to the store.
@@ -81,7 +81,7 @@ final class ReviewPromptManager {
             UIApplication.shared.open(url) { opened in
                 if opened {
                     /*
-                     * #974 — `store` is the property a funnel can GROUP BY. This event used to
+                     * `store` is the property a funnel can GROUP BY. This event used to
                      * carry only `app_store_id` here and only `package` on Android, two disjoint
                      * keys, so a report grouped by either saw one platform's traffic and presented
                      * it as the whole number. `app_store` / `google_play` is the same vocabulary
@@ -108,7 +108,7 @@ final class ReviewPromptManager {
     // MARK: - Private
 
     /**
-     #939 — THE QUOTA IS SPENT ONLY WHEN THE PROMPT IS ACTUALLY ASKED FOR.
+     THE QUOTA IS SPENT ONLY WHEN THE PROMPT IS ACTUALLY ASKED FOR.
 
      🔴 This used to count the request, stamp the date and fire `review_prompt_shown` BEFORE
      looking for a scene — so an app with no foreground window scene (backgrounded, mid-transition,
@@ -132,7 +132,7 @@ final class ReviewPromptManager {
         AppDNA.track(event: "review_prompt_shown", properties: ["prompt_type": "direct"])
     }
 
-    /// The rate-limit state, in `UserDefaults` so it survives a cold start (#928's class).
+    /// The rate-limit state, in `UserDefaults` so it survives a cold start.
     private func recordPromptShown() {
         let count = defaults.integer(forKey: "\(prefix)request_count")
         defaults.set(count + 1, forKey: "\(prefix)request_count")

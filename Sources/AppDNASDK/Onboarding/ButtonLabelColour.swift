@@ -4,7 +4,7 @@ import Foundation
  WHICH authored colour a button's label draws in, in ONE place both platforms can be held to.
 
  🔴 The two renderers disagreed, and the Kotlin documented the disagreement as if it were parity.
- #594 made the button's own `text_color` beat the generic Typography colour on iOS, because the
+ On iOS the button's own `text_color` already beat the generic Typography colour, because the
  "Text" picker sits beside "Background" on the button panel and a control that loses silently is a
  control that does not exist. Android kept a later `style = effectiveStyle.copy(color = block.style
  ?.color ?: textColor)`, so `style.color` won there — the opposite rule, in a comment that still
@@ -39,7 +39,7 @@ public enum ButtonLabelColour {
 /**
  WHETHER a block's own background reaches the screen edges, and the inset it has to cancel to do it.
 
- 🔴 #1006 — "the shared background behind the buttons never reaches the screen edges, even with the
+ 🔴 "the shared background behind the buttons never reaches the screen edges, even with the
  width set to 100%". It could not: `element_width: 100%` is 100% of the CONTENT COLUMN, and the
  column is inset by the step's horizontal padding. A background that has to pass that inset is a
  different thing from a width, which is why it needs its own control rather than a bigger number.

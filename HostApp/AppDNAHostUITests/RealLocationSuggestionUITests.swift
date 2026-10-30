@@ -1,20 +1,20 @@
 import XCTest
 
 /**
- #1086 / #995 — A REAL PROVIDER SUGGESTION IS SELECTED, AND WHAT GETS STORED IS REAL.
+ A REAL PROVIDER SUGGESTION IS SELECTED, AND WHAT GETS STORED IS REAL.
 
  Every earlier proof of the location path read a SEEDED cache entry, because no geocoding key
  existed anywhere: `LocationSearchUITests` deliberately asserts text that NAMES the cache key it was
- stored under, which answers #963's question (does the authored `location_type` reach the request?)
+ stored under, which answers one question (does the authored `location_type` reach the request?)
  and says nothing about a provider ever having answered.
 
  A real key exists now. This types a city the seed does not cover, so the proxy misses the cache and
- calls the provider for real, and then asserts the thing #995 actually asked for: *"a selected one
+ calls the provider for real, and then asserts the thing that actually matters: *"a selected one
  stores a real city, country, coordinates and time zone."*
 
  🔴 THE ASSERTION IS ON WHAT WAS STORED, NOT ON WHAT WAS DRAWN. A dropdown row proves the provider
  answered; it says nothing about whether the structured answer reached the store in the shape both
- SDKs decode — which is the half #995 called "most likely to bite", because a wrong assumption about
+ SDKs decode — which is the half most likely to bite, because a wrong assumption about
  a provider's response shape looks exactly like "no results". So the app is TERMINATED and
  RELAUNCHED, and the answer is read back through `AppDNA.getLocationData(fieldId:)` — the same API an
  integrator would call — from `UserDefaults`, where `setOnboardingResponses` persists it
@@ -27,7 +27,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
 
     /// Not seeded by `seed-963-geocode-cache.ts` (which seeds `lisb`), so this query reaches the
     /// provider. A city whose name is the same in English and Portuguese, so `language` cannot
-    /// turn it into a homonym the way "Vienna" with `de` does (#995).
+    /// turn it into a homonym the way "Vienna" with `de` does.
     private static let query = "Porto"
 
     /// The first step's content-block field — see `probe-963-location-walk-flow.ts`.
@@ -125,7 +125,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         /*
          🔴 DISMISS, DO NOT KILL. Reading the host's readback needs the host view, and the earlier
          version got there by terminating and relaunching the app — which turned this into a test of
-         whether `UserDefaults` had flushed before a SIGKILL, a question #1086 never asked. Three
+         whether `UserDefaults` had flushed before a SIGKILL, a question this test never meant to ask. Three
          runs read UNANSWERED for that reason alone.
 
          The flow has a Close control, so the honest route is to leave the flow the way a user can
@@ -141,7 +141,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         let stored = try readback(in: app)
         NSLog("[#1086] stored answer, read through AppDNA.getLocationData: \(stored)")
 
-        // ── the shape #995 asked for ──────────────────────────────────────────────────────────
+        // ── the stored shape ──────────────────────────────────────────────────────────────────
         XCTAssertTrue(stored.contains("city="), "no city was stored — \(stored)")
         XCTAssertTrue(stored.contains("country="), "no country was stored — \(stored)")
         XCTAssertTrue(stored.contains("lat="), "no latitude was stored — \(stored)")
@@ -167,7 +167,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
      🔴 NOT YET COMPILED OR RUN — the Mac bridge wedged before it could be. Build it before
      trusting anything it says, and read its result as the A/B described below.
 
-     #1091 — THE A/B THAT LOCALISES THE LOSS: type, and advance WITHOUT selecting.
+     THE A/B THAT LOCALISES THE LOSS: type, and advance WITHOUT selecting.
 
      The docs say typed-but-unselected text stores `{formatted_address, raw_query}` with null
      coordinates. So this exercises the same content-block → `inputValues` → advance → responses
@@ -175,11 +175,11 @@ final class RealLocationSuggestionUITests: XCTestCase {
 
        typed stores, selected does not → the loss is in the SELECTION write specifically;
        neither stores                  → the whole content-block answer path is broken on iOS,
-                                         which is a much larger defect than #1086 was chasing.
+                                         which is a much larger defect than the one being chased.
 
      Either answer is worth having, and it costs one run instead of a guess.
      */
-    /// #1158 — a selected answer interpolates into the NEXT step's copy. The flow's step-2 heading is
+    /// A selected answer interpolates into the NEXT step's copy. The flow's step-2 heading is
     /// `Welcome from {{responses.<step>.<field>.city}} · {{responses.<step>.<field>.timezone}}`, the form
     /// the docs give; selecting Porto must make step 2 read the place, not the raw token or nothing.
     func testASelectedAnswerInterpolatesIntoTheNextStep() throws {

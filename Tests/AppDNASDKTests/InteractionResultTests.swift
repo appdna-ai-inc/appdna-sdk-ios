@@ -359,7 +359,7 @@ final class InteractionResultTests: XCTestCase {
         XCTAssertEqual(replies, 0, "a late advance never runs")
     }
 
-    // MARK: - Audit minors
+    // MARK: - stale router copies, fold order, tap refresh and latching
 
     func testStaleFireReadsTheLiveBase() {
         // A fold run through an OLD router copy (whose copied `configOverride` is nil) must still see the

@@ -28,7 +28,7 @@ final class DeferredDeepLinkManager {
     private static let firstLaunchKey = "ai.appdna.sdk.first_launch_completed"
     private static let expiryHours: TimeInterval = 72
 
-    /// Failed attempts so far, so a transport error does not spend the one chance (#1063).
+    /// Failed attempts so far, so a transport error does not spend the one chance.
     private static let failedAttemptsKey = "ai.appdna.sdk.ddl_failed_attempts"
 
     /// 🔴 A TRANSPORT FAILURE IS NOT AN ANSWER. `markLaunched()` used to run on every path out of
@@ -72,7 +72,7 @@ final class DeferredDeepLinkManager {
         let path = "orgs/\(orgId)/apps/\(appId)/config/deferred_deep_links/visitors/\(visitorId)"
         Log.debug("DeferredDeepLink: checking \(path)")
 
-        // 🔴 NOT an answer either: without a Firestore handle nothing was asked (#1063).
+        // 🔴 NOT an answer either: without a Firestore handle nothing was asked.
         guard let db = AppDNA.firestoreDB else {
             recordFailedAttempt(reason: "Firestore is not available")
             completion(nil)
@@ -186,7 +186,7 @@ final class DeferredDeepLinkManager {
     }
 
     /// Count a check that never got an answer, and give up once it has happened `maxFailedAttempts`
-    /// times — at which point the chance IS spent, so the SDK stops asking (#1063).
+    /// times — at which point the chance IS spent, so the SDK stops asking.
     private func recordFailedAttempt(reason: String) {
         let attempts = UserDefaults.standard.integer(forKey: Self.failedAttemptsKey) + 1
         if attempts >= Self.maxFailedAttempts {

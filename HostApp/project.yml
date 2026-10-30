@@ -1,4 +1,4 @@
-# XcodeGen spec for the iOS host app — #908.
+# XcodeGen spec for the iOS host app.
 #
 # SPM cannot build a runnable .app, and XCUITest needs an application target to attach to, so the
 # host lives in a GENERATED Xcode project rather than a committed one: an .xcodeproj is a large
@@ -60,7 +60,7 @@ targets:
         # dialog. Without those two lines the catalogue ships inside the .app and nothing reads it:
         # the SDK asks StoreKit for its products, gets an empty answer, falls back to the authored
         # price, and the screen looks exactly as it did before the feature existed. Measured on
-        # #923 — "the store knows none of 2 product(s)" with the file sitting in the bundle.
+        # "the store knows none of 2 product(s)" with the file sitting in the bundle.
         #
         # 🔴 Folded into THIS block rather than added as a second `settings:` on the target. YAML
         # takes the later duplicate key, so a second block would have silently discarded the bundle
@@ -69,7 +69,7 @@ targets:
     dependencies:
       - package: AppDNASDK
         product: AppDNASDK
-  # #934 / #933 / #1018 — AN APP-HOSTED UNIT-TEST TARGET.
+  # AN APP-HOSTED UNIT-TEST TARGET.
   #
   # 🔴 The package's own test target is HOSTLESS, and that is the whole limitation these three
   # issues kept hitting: `SKTestSession.buyProduct(identifier:)` and `Product.purchase()` both fail
@@ -110,13 +110,13 @@ targets:
     platform: iOS
     sources:
       - AppDNAHostUITests
-      # #934 — the catalogue, as a RESOURCE of the UI-test bundle, so a UI test can hold an
+      # The catalogue, as a RESOURCE of the UI-test bundle, so a UI test can hold an
       # `SKTestSession` over it. The hosted unit-test target reaches the copy inside the host .app;
       # a UI-test bundle is installed separately and sees neither the host's resources nor the
       # package's, so `Bundle(for:).url(forResource:)` found nothing and the test skipped.
       - path: AppDNAHost/AppDNATestProducts.storekit
         buildPhase: resources
-      # #1018 — the HOST's catalogue too, because the purchase walk buys a product a real paywall
+      # The HOST's catalogue too, because the purchase walk buys a product a real paywall
       # plan references (`premium_monthly`), and the session has to serve that id rather than the
       # trial fixture's.
       - path: AppDNAHost/Products.storekit

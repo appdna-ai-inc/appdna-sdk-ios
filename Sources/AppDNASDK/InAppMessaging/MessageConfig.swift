@@ -267,7 +267,7 @@ public struct TriggerCondition: Codable {
              🔴 `.unknown`, NOT `.eq`. This used to be `?? .eq`, which did not merely lose the
              operator — it silently substituted a DIFFERENT one. A condition authored `neq`
              therefore selected precisely the audience the author had excluded, on iOS only;
-             Android's `else -> false` never matched it. Measured on #1064, where the console's
+             Android's `else -> false` never matched it. Measured when the console's
              survey schema allowed three operators no SDK implemented.
              *
              An unrecognised operator is a configuration error, and the safe reading of one is "this

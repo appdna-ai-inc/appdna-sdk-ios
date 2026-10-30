@@ -1,6 +1,6 @@
 // SurfaceSnapshotTests.swift
 //
-// #908 — a RENDERED iOS FRAME, without a host app.
+// A RENDERED iOS FRAME, without a host app.
 //
 // Rules 23 and 24 say a render change is walked on a device and operated. Android has a sample app
 // and an emulator that takes taps; iOS has neither — there is no host app in the repo or on the
@@ -21,8 +21,8 @@
 //       APPDNA_SNAPSHOT_DIR=/tmp/appdna-snaps APPDNA_SNAPSHOT_CASE=header_inset_swipe
 //
 // What it does NOT do: operate anything. A frame is drawn at rest — no taps, no scrolling, no
-// branch. For that an iOS host app is still the answer, which is why #908 stays open until one
-// exists; this is the half that can be had tonight.
+// branch. For that an iOS host app is still the answer, which is what the host app's UI tests
+// cover; this is the half that needs no host.
 import XCTest
 import SwiftUI
 import UIKit
@@ -196,7 +196,7 @@ final class SurfaceSnapshotTests: XCTestCase {
     // MARK: - Scenarios
 
     /**
-     #997 — A PARTICLE EFFECT AUTHORED `on_purchase` DRAWS.
+     A PARTICLE EFFECT AUTHORED `on_purchase` DRAWS.
 
      Both overlays used to gate twice: the parent decided when to show the overlay, and the overlay
      then re-checked the authored trigger and refused anything that was not `on_appear`. So the
@@ -206,7 +206,7 @@ final class SurfaceSnapshotTests: XCTestCase {
 
      🔴 THE PROOF COULD NOT BE A DEVICE WALK, so it is a render (Rule 25). The moment this effect
      exists for is a completed purchase, the simulator serves no StoreKit catalogue under
-     `xcodebuild test` (#934) and there is no device proof of a real purchase yet (#1018). What a
+     `xcodebuild test` and there is no device proof of a real purchase yet. What a
      render CAN do is put the overlay on a key window with the authored trigger and read the pixels
      back — which is the whole assertion, because the trigger is the only thing that changed.
 
@@ -264,9 +264,9 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
 
         // 🔴 The control FIRST, and it is inside the same test on purpose: a harness that cannot
-        // see green at all would pass every assertion below for the worst possible reason (#923).
+        // see green at all would pass every assertion below for the worst possible reason.
         // The control goes through the SAME capture: a harness that cannot see green at all would
-        // pass every assertion below for the worst possible reason (#923).
+        // pass every assertion below for the worst possible reason.
         try inFlightFrame(
             of: ZStack { Color.black; Text("control").foregroundColor(.white) },
             named: "confetti_control_none",
@@ -287,7 +287,7 @@ final class SurfaceSnapshotTests: XCTestCase {
     }
 
 
-    /// #895 — a long header title with each dismiss style, which is the pair that disagreed.
+    /// A long header title with each dismiss style, which is the pair that disagreed.
     func testHeaderInsetAcrossDismissStyles() throws {
         let title = "Keep every habit you have built so far"
         for style in ["x_button", "swipe", "text_link"] {
@@ -318,7 +318,7 @@ final class SurfaceSnapshotTests: XCTestCase {
                 "the inset for \(style) is not what the fixture says",
             )
             try write(render(config), named: "header_inset_\(style)")
-            // #891 — the frame has to CONTAIN the title, in the colour the background demands.
+            // The frame has to CONTAIN the title, in the colour the background demands.
             // A paywall that renders its chrome and nothing else is not a rendered paywall, and a
             // title drawn in the system `.primary` on this dark page would be near-black.
             XCTAssertTrue(
@@ -328,7 +328,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
     }
 
-    /// #905 — a per-element container style, which the console has always offered and neither
+    /// A per-element container style, which the console has always offered and neither
     /// platform read. A green border round the plan label and a red one round the price is a
     /// deliberately unsubtle choice: the frame has to show whether it arrived at all.
     func testPerElementStyles() throws {
@@ -398,12 +398,12 @@ final class SurfaceSnapshotTests: XCTestCase {
                       "no green pixel — the label's authored border did not draw")
         XCTAssertTrue(try frameContains("element_styles", colour: "#EF4444"),
                       "no red pixel — the price's authored border did not draw")
-        // #910 — the header and feature elements, which were text-style-only until now.
+        // The header and feature elements, which were text-style-only until now.
         XCTAssertTrue(try frameContains("element_styles", colour: "#7C3AED"),
                       "no violet pixel — the header title's authored border did not draw")
         XCTAssertTrue(try frameContains("element_styles", colour: "#0EA5E9"),
                       "no blue pixel — the feature row's authored border did not draw")
-        // #910 — the rest of the elements the issue names. Each colour is distinct so a frame
+        // The rest of the elements the issue names. Each colour is distinct so a frame
         // cannot pass by drawing one border twice.
         for (colour, what) in [
             ("#DB2777", "the header subtitle"),
@@ -418,7 +418,7 @@ final class SurfaceSnapshotTests: XCTestCase {
     }
 
     /**
-     #913 — the four elements #910 left container-less: the testimonial's `quote`, `author_name` and
+     The four elements left container-less: the testimonial's `quote`, `author_name` and
      `author_role`, and the icon grid's `description` (with its `title` beside it).
 
      A SECOND frame rather than more sections on the first: a paywall tall enough to carry both sets
@@ -480,7 +480,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
     }
 
-    /// #891 — the unselected plan tile, whose text colour is a SYSTEM colour on this platform, in
+    /// The unselected plan tile, whose text colour is a SYSTEM colour on this platform, in
     /// both appearances. The frame is the evidence: light and dark must both stay readable.
     func testPlanTilesInBothAppearances() throws {
         let json = """
@@ -510,7 +510,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         for scheme in [ColorScheme.light, ColorScheme.dark] {
             let name = "plan_tiles_\(scheme == .light ? "light" : "dark")"
             try write(render(config).environment(\.colorScheme, scheme), named: name)
-            // #891 — this paywall's page is WHITE, so the unselected tile's text must be the dark
+            // This paywall's page is WHITE, so the unselected tile's text must be the dark
             // one in BOTH appearances. Before, it was `.primary`: dark in light appearance and
             // WHITE in dark appearance, so the same paywall lost its plan names on a phone set to
             // dark. The frame is the evidence, and it has to hold in both.
@@ -522,21 +522,21 @@ final class SurfaceSnapshotTests: XCTestCase {
     }
 
     /*
-     * #966 / #962 — EVERY plan display style the Console offers, RENDERED on a white page.
+     * EVERY plan display style the Console offers, RENDERED on a white page.
      *
      * 🔴 This instrument did not exist on iOS. `grep -c plan_display_style` over both iOS snapshot
      * suites returned 0, so the harness that found a three-defect cluster on Android — a selected
      * card whose 16%-white fill vanished, and the name and price with it — had no iOS counterpart.
-     * #966 closed with that named as a gap and an argued equivalent proof; this replaces the
+     * An argued equivalent proof stood in for it; this replaces the
      * argument with pixels.
      *
      * The list is the CONSOLE's picker, read off `SectionContentEditor.tsx`, not iOS's `switch`.
      * Reading the switch would only assert that iOS agrees with itself: a style an author can pick
-     * and iOS falls through on is exactly the defect #960 found, and it draws the vertical stack
+     * and iOS falls through on is exactly a defect found before, and it draws the vertical stack
      * rather than nothing, so the frame alone cannot report it. What this asserts is the weaker and
      * still useful claim — whatever each style draws, it is VISIBLE on a white page.
      *
-     * `carousel_cards` is in the list for #962: Android grew its own arm (full-width pages plus a
+     * `carousel_cards` is in the list because Android grew its own arm (full-width pages plus a
      * page-dot indicator) where it used to share `horizontal_scroll`'s peeking pager, and the two
      * Console choices have to look different on both platforms.
      */
@@ -551,7 +551,7 @@ final class SurfaceSnapshotTests: XCTestCase {
          * paywall, so the frame carries the close button and the pinned CTA whatever the plans do —
          * and the close button is dark on a white page. `frameContains(dark)` would therefore pass
          * for a plans section that drew absolutely nothing, which is the shape of the false green
-         * #923's accessibility-tree read produced.
+         * an earlier accessibility-tree read produced.
          *
          * So the same paywall is rendered with an EMPTY plans array first, and every style has to
          * put meaningfully more dark ink on the page than that baseline does.
@@ -613,7 +613,7 @@ final class SurfaceSnapshotTests: XCTestCase {
             /*
              * Against the chrome-only baseline, not against zero. `product_as_cta` is included
              * here even though it is excluded from the ink assertion below: its rows are
-             * accent-filled with white content (#961), so it adds no DARK ink of its own — which
+             * accent-filled with white content, so it adds no DARK ink of its own — which
              * is why it gets the weaker `>=` and the comment that says so out loud.
              */
             if style == "product_as_cta" {
@@ -638,7 +638,7 @@ final class SurfaceSnapshotTests: XCTestCase {
         }
 
         /*
-         * #962 — `carousel_cards` AND `horizontal_scroll` ARE TWO CONSOLE CHOICES AND MUST NOT
+         * `carousel_cards` AND `horizontal_scroll` ARE TWO CONSOLE CHOICES AND MUST NOT
          * DRAW THE SAME THING. Android rendered them with one arm until this issue, so an author
          * who picked the second silently got the first.
          *
@@ -664,7 +664,7 @@ final class SurfaceSnapshotTests: XCTestCase {
     }
 
     /**
-     #1075 — A CTA THAT CANNOT BUY MUST LOOK LIKE IT CANNOT BUY.
+     A CTA THAT CANNOT BUY MUST LOOK LIKE IT CANNOT BUY.
 
      `CTAButton` — the button a `cta` SECTION renders — was `.disabled(isPurchasing)` and nothing
      else. So a paywall whose plans are empty or unresolvable drew a full-strength "Subscribe"
@@ -679,7 +679,7 @@ final class SurfaceSnapshotTests: XCTestCase {
      dimmed fill from an authored one.
 
      🔴 AND THE FIRST ASSERTION IS THE CONTROL. "The authored colour is absent" passes against a
-     harness that renders nothing at all (#923 paid for that lesson twice), so the WITH-a-plan
+     harness that renders nothing at all (the store-price tests paid for that lesson twice), so the WITH-a-plan
      frame has to show the authored colour before the WITHOUT frame is allowed to mean anything.
      */
     func testACTAThatCannotBuyIsDimmed() throws {

@@ -320,7 +320,7 @@ struct SurveyContainerView: View {
         case "emoji_scale":
             EmojiScaleView(question: q, answer: binding)
         /*
-         #998 — `scale` is accepted beside `likert` because Android accepts both and a stored
+         `scale` is accepted beside `likert` because Android accepts both and a stored
          question may carry either. A type this switch does not name falls to `default:` and draws
          NOTHING, which is exactly how a likert question reached a respondent as empty space.
         */
@@ -363,7 +363,7 @@ struct SurveyContainerView: View {
             free_text_config: question.free_text_config,
             image_url: question.image_url,
             /*
-             #998 — the anchor labels go through the SAME interpolation the NPS ones do, and they
+             The anchor labels go through the SAME interpolation the NPS ones do, and they
              have to be passed EXPLICITLY: this init defaults `likert_config` to nil, so every
              rendered question would otherwise lose its labels on the way through the copy. That is
              precisely the defect the `options`/`emoji` comment above records, and the reason the

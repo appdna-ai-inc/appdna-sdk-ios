@@ -1,4 +1,4 @@
-// StorePriceLookupSessionTests.swift — #923
+// StorePriceLookupSessionTests.swift
 //
 // The link the fixture cannot reach: `StorePriceLookup` against a LIVE StoreKit.
 //
@@ -6,7 +6,7 @@
 // both platforms. What it cannot pin is the half before that — that the SDK really asks StoreKit,
 // really gets the catalogue back, and really maps product id → localized display price. Nothing
 // but a live store can answer that, and the paywall's UI test cannot: a simulator launched by a
-// scheme serves no catalogue on this bridge (#934), measured at `store:0` with a direct
+// scheme serves no catalogue on this bridge, measured at `store:0` with a direct
 // `Product.products(for:)` probe.
 //
 // `SKTestSession` can, in THIS target, over `AppDNATestProducts.storekit` — the same mechanism
@@ -15,7 +15,7 @@
 //     real StoreKit  →  StorePriceLookup  →  (here)  →  StorePriceSubstitution  →  displayPrice
 //                                                       ^^^^^^^^^^^^^^^^^^^^^^ the shared fixture
 //
-// What remains unproven is only the pixel, and that is #934's to unblock.
+// What remains unproven here is only the pixel; `StorePriceRenderTests` covers that.
 import XCTest
 import StoreKit
 import StoreKitTest

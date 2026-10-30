@@ -65,7 +65,7 @@ extension PushActionCategories {
     static func registerFromDeliveredNotifications() {
         guard !NotificationProxyBootstrap.isRunningUnderXCTest else { return }
         /*
-         * #987 — the button-less `appdna_default` category, registered once per launch so EVERY
+         * The button-less `appdna_default` category, registered once per launch so EVERY
          * AppDNA push can report a dismissal rather than only those carrying buttons.
          *
          * 🔴 At CONFIGURE, not lazily on arrival. A category has to be registered before the

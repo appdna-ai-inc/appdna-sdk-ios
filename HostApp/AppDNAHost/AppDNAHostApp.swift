@@ -1,4 +1,4 @@
-// AppDNAHostApp.swift — #908
+// AppDNAHostApp.swift
 //
 // The iOS counterpart of `packages/appdna-sdk-android/sample`. Android has had one all along,
 // which is why every device walk this month has an Android column and an "iOS unproven" note.
@@ -47,7 +47,7 @@ enum Launch {
     static var screenId: String { arg("appdnaScreen") ?? "demo_screen" }
 
     /*
-     #1086 — the field id whose STORED location answer the host reads back.
+     The field id whose STORED location answer the host reads back.
      `getLocationData(fieldId:)` scans every onboarding response for that key, so the walk can
      assert what was persisted rather than what the dropdown drew. Without it the only evidence a
      suggestion was really selected is a screenshot of the suggestion, which says nothing about
@@ -63,7 +63,7 @@ enum Launch {
         /*
          `-appdnaLogLevel info` (or debug). The SDK defaults to `.warning`, so every `Log.info` is
          SUPPRESSED — including the lines that say which branch a decision took. That cost a cycle
-         on #923: the store-price lookup logs its three failure modes at info, the paywall rendered
+         on the store-price substitution: the store-price lookup logs its three failure modes at info, the paywall rendered
          the authored price, and the log had nothing in it either way, which is indistinguishable
          from the code never running.
         */
@@ -85,7 +85,7 @@ enum Launch {
     }
 
     /*
-     #920 — TEAR THE PRESENTATION STACK DOWN WHILE A FORM IS UP.
+     TEAR THE PRESENTATION STACK DOWN WHILE A FORM IS UP.
 
      The defect is a feedback form orphaned when its presenter goes away for a reason of the host's
      own. Reproducing it needs a host that does exactly that, deterministically, at a moment a test

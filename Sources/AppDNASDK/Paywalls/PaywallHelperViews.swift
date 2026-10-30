@@ -4,7 +4,7 @@ import AVKit
 // MARK: - Countdown timer (social proof sub-type)
 
 struct CountdownTimerView: View {
-    /// #947 — the page, so a colour nobody authored follows the DOCUMENT rather than the phone.
+    /// The page, so a colour nobody authored follows the DOCUMENT rather than the phone.
     /// `.primary` and `.secondary` are black in light appearance and white in dark, and a paywall
     /// forces no colour scheme — so this view drew differently for two users looking at the same
     /// published document. Measured as pixels that change between the two appearances.
@@ -14,7 +14,7 @@ struct CountdownTimerView: View {
     var valueTextStyle: TextStyleConfig? = nil
 
     /*
-     * #978 — the six fields that were decoded by both SDKs and read by NOTHING.
+     * The six fields that were decoded by both SDKs and read by NOTHING.
      *
      * A timer reached zero and sat at `00:00:00`, which is the one outcome none of
      * `on_expire_action`'s three values describes. They were in the type definitions, so every
@@ -37,7 +37,7 @@ struct CountdownTimerView: View {
     /// dismiss closure in rather than this view reaching for one.
     var onExpire: (() -> Void)? = nil
     /*
-     * #979 — the digits' own three console controls. Unset, they keep exactly the values this view
+     * The digits' own three console controls. Unset, they keep exactly the values this view
      * hard-coded (`.title2` ≈ 22pt, bold, the page-readable ink), so a countdown nobody has styled
      * draws the pixels it drew before. `valueTextStyle` still wins outright where it is set: it is
      * the design-system channel and the more specific of the two.
@@ -46,7 +46,7 @@ struct CountdownTimerView: View {
     var digitFontWeight: String? = nil
     var digitColorHex: String? = nil
     /*
-     * #980 — `digital` | `circular` | `flip` | `bar`. The console's Variant select offered all four,
+     * `digital` | `circular` | `flip` | `bar`. The console's Variant select offered all four,
      * `CountdownConfigSchema` persisted all four, the generator wrote one on every countdown it
      * produced, and NO renderer on any platform read it: every paywall countdown drew `digital`.
      *
@@ -113,7 +113,7 @@ struct CountdownTimerView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
             } else {
-                // #980 — the authored variant, through the shared rule that owns the fallback.
+                // The authored variant, through the shared rule that owns the fallback.
                 switch PaywallCountdownVariant.resolve(variant) {
                 case "circular": circularTimer
                 case "flip": flipTimer
@@ -177,7 +177,7 @@ struct CountdownTimerView: View {
 
 
     /*
-     * #980 — the three variants beyond `digital`, ported from the onboarding countdown block so an
+     * The three variants beyond `digital`, ported from the onboarding countdown block so an
      * authored value looks the same on a paywall as it does in a flow.
      *
      * Each reuses this view's own ink, digit font and segment maths rather than re-deriving them:
@@ -213,7 +213,7 @@ struct CountdownTimerView: View {
 
     /// How much of the countdown is left, 0…1 — the ring's sweep and the bar's width.
     ///
-    /// 🔴 One shared rule with Android and with the onboarding block (#1066): this was a frozen
+    /// 🔴 One shared rule with Android and with the onboarding block: this was a frozen
     /// `0.75` in the onboarding renderers, the preview's mock, and the ring never moved.
     private var progressFraction: CGFloat {
         CGFloat(CountdownProgress.remainingFraction(remainingSeconds: remaining, initialSeconds: seconds))
@@ -223,7 +223,7 @@ struct CountdownTimerView: View {
     private var circularTimer: some View {
         ZStack {
             // The TRACK, derived from the page-readable ink rather than a hardcoded light grey:
-            // #946's lesson, which `check:authorability` caught as an orphan literal here. A fixed
+            // a fixed colour cannot follow the page, which `check:authorability` caught as an orphan literal here. A fixed
             // `#E5E7EB` is invisible on a light page and a bright band on a dark one.
             Circle().stroke(digitInk.opacity(0.2), lineWidth: 4)
             Circle().trim(from: 0, to: progressFraction)
@@ -310,8 +310,8 @@ struct CountdownTimerView: View {
         .frame(minWidth: 40)
         .padding(.vertical, 6)
         /*
-         * #979 — the chip was a hard-coded `Color.white.opacity(0.1)`, which on a light page is
-         * invisible: Android has drawn it in the page-readable ink since #946, so one platform
+         * The chip was a hard-coded `Color.white.opacity(0.1)`, which on a light page is
+         * invisible: Android already drew it in the page-readable ink, so one platform
          * showed a grey chip behind each number and the other showed none. Byte-identical on a
          * dark page, where `readable` IS white.
          */
@@ -332,7 +332,7 @@ extension Color {
         }
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         /*
-         * #885 — a string that is not pure hex is not a colour.
+         * A string that is not pure hex is not a colour.
          *
          * The line above only trims the ENDS, so what reaches `case 6` is any six-character
          * alphanumeric run — and a CSS colour NAME of exactly six letters is one: `orange`,
@@ -376,7 +376,7 @@ extension Color {
         let lowered = hex.lowercased().trimmingCharacters(in: .whitespaces)
         if lowered == "transparent" || lowered == "clear" { return false }
         let clean = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        // #885 — same guard as `Color(hex:)`: a non-hex string is not a light colour, it is not a
+        // Same guard as `Color(hex:)`: a non-hex string is not a light colour, it is not a
         // colour at all. Without it `orange` scanned as 0 and reported "dark" with confidence.
         guard !clean.isEmpty, clean.allSatisfy({ $0.isHexDigit }) else { return false }
         var int: UInt64 = 0
@@ -465,7 +465,7 @@ struct Line: Shape {
 // MARK: - Carousel sub-view
 
 struct CarouselView: View {
-    /// #947 — the page, so a colour nobody authored follows the DOCUMENT rather than the phone.
+    /// The page, so a colour nobody authored follows the DOCUMENT rather than the phone.
     /// `.primary` and `.secondary` are black in light appearance and white in dark, and a paywall
     /// forces no colour scheme — so this view drew differently for two users looking at the same
     /// published document. Measured as pixels that change between the two appearances.
@@ -477,7 +477,7 @@ struct CarouselView: View {
     let autoScrollIntervalMs: Int
     let showIndicators: Bool
     let indicatorColor: String
-    /// #947 — whether `indicatorColor` came from the document. An authored colour is drawn as
+    /// Whether `indicatorColor` came from the document. An authored colour is drawn as
     /// authored; a resolved default is drawn at `subtleAlpha`, matching Android.
     var hasAuthoredIndicatorColor: Bool = false
     let indicatorActiveColor: String
@@ -529,8 +529,8 @@ struct CarouselView: View {
                 HStack(spacing: 6) {
                     ForEach(0..<pages.count, id: \.self) { idx in
                         /*
-                         #947 — the inactive dot at `subtleAlpha`, which is what Android draws
-                         (#938). Both defaults now resolve from the PAGE, so the same published
+                         The inactive dot at `subtleAlpha`, which is what Android draws.
+                         Both defaults now resolve from the PAGE, so the same published
                          document shows the same two greys on either platform; an authored
                          `indicator_color` is still taken at full strength.
                         */
@@ -570,13 +570,13 @@ struct ReviewsCarouselView: View {
     let textStyle: TextStyleConfig?
     let authorStyle: TextStyleConfig?
     let cardStyle: ElementStyleConfig?
-    /// #910 — the container halves of the same two elements. `card` already had one; the console
+    /// The container halves of the same two elements. `card` already had one; the console
     /// offers an ElementStylePanel for `text` and `author` too, and neither was read.
     var textElementStyle: ElementStyleConfig? = nil
     var authorElementStyle: ElementStyleConfig? = nil
     let loc: (String, String) -> String
 
-    /// #938 — the page this carousel is drawn on, so a dot nobody authored can be read off it.
+    /// The page this carousel is drawn on, so a dot nobody authored can be read off it.
     ///
     /// Taken from the environment rather than added as a parameter: the renderer already publishes
     /// it (`PaywallRenderer.swift:182`) and every call site keeps working untouched. Spelled
@@ -688,12 +688,12 @@ struct ReviewsCarouselView: View {
             HStack(spacing: 6) {
                 ForEach(0..<reviews.count, id: \.self) { idx in
                     /*
-                     * #938 — a dot nobody authored, READ OFF THE PAGE.
+                     * A dot nobody authored, READ OFF THE PAGE.
                      *
                      * This was `Color.white` and `Color.white.opacity(0.3)`. Over a WHITE page that
                      * is no dots at all, so a reader had no way to tell how many reviews there
                      * were or which one they were on. Android carried the identical constant and
-                     * now resolves it the same way (#938).
+                     * now resolves it the same way.
                      *
                      * Byte-identical on a dark page: `readable` returns `#FFFFFF` wherever white
                      * passes AA, so a dark paywall draws exactly what it drew before.

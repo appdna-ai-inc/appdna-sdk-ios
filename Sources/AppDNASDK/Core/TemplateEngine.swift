@@ -161,7 +161,7 @@ final class TemplateEngine {
             let fieldPath = parts[2]
             guard let step = context.onboardingResponses[stepId] else { return nil }
             if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context) }
-            // #1158 — `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
+            // `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
             // structured answer (a location selection) arrives as `field.city`. Walk it.
             let keys = fieldPath.split(separator: ".").map(String.init)
             var value: Any? = step[keys[0]]

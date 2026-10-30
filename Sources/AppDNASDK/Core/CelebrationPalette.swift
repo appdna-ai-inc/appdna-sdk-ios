@@ -13,7 +13,7 @@ import Foundation
 /**
  WHICH COLOURS a celebration draws when a document authors none.
 
- 🔴 #1040 — the two overlays disagreed, and nothing could see it. `ConfettiOverlay.swift` returned
+ 🔴 The two overlays disagreed, and nothing could see it. `ConfettiOverlay.swift` returned
  SwiftUI's semantic colours (`.red` is #FF3B30) and `ConfettiOverlay.kt` returned Compose's named
  constants (`Color.Red` is #FF0000) for four of the six, so every `fireworks` and every plain
  `confetti` with no authored `colors` — the default the editor produces — drew pure RGB on Android

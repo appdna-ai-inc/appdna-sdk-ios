@@ -1,16 +1,16 @@
-// SocialProofRenderTests.swift — #954, #955
+// SocialProofRenderTests.swift
 //
 // DOES THE SOCIAL-PROOF SECTION DRAW ITS CAPTION AND ITS AUTHOR? Rendered, and compared.
 //
 // 🔴 Why pixels. Two fields decoded, travelled the wire and reached no view: `text` on the
-// `app_rating` variant (#954) and `author_name` anywhere (#955). Both were caught by reading the
+// `app_rating` variant and `author_name` anywhere. Both were caught by reading the
 // renderer, and reading a renderer is how they got there in the first place — `PaywallConfig`
 // decodes both, the console wrote both, and nothing drew either. The only statement worth making
 // is about what ends up on screen.
 //
 // The harness is `StorePriceRenderTests`': a real `PaywallRenderer` in a real key window,
 // `layer.render(in:)`, PNG out. Not the accessibility tree — SwiftUI builds that lazily and a
-// hostless test never triggers it, which is how #923's first attempt passed for the worst possible
+// hostless test never triggers it, which is how an earlier store-price test passed for the worst possible
 // reason.
 //
 // 🔴 EVERY ASSERTION HAS ITS CONTROL. "Adding the caption changed the screen" means nothing unless
@@ -82,7 +82,7 @@ final class SocialProofRenderTests: XCTestCase {
         }.pngData())
     }
 
-    // MARK: - #954: the caption
+    // MARK: - the caption
 
     func testTheCaptionIsDrawnOnTheAppRatingVariant() throws {
         let withCaption = try renderPNG(try config(
@@ -115,7 +115,7 @@ final class SocialProofRenderTests: XCTestCase {
         )
     }
 
-    // MARK: - #955: the author
+    // MARK: - the author
 
     func testTheAuthorIsDrawnUnderTheQuote() throws {
         let quoteOnly = #"{ "sub_type": "app_rating", "testimonial": "Two weeks in and I have not missed a day" }"#
@@ -138,11 +138,11 @@ final class SocialProofRenderTests: XCTestCase {
         )
     }
 
-    // MARK: - #947's defect, one line further down
+    // MARK: - the review-count colour defect, one line further down
 
     /*
      The quote was `.foregroundColor(.white.opacity(0.8))` — a colour that follows nothing, so it
-     was invisible on a light page exactly as the review count was until #947. The assertion is
+     was invisible on a light page exactly as the review count once was. The assertion is
      that the quote's colour now RESPONDS to the page: the same section on a white page and on a
      near-black page must render differently, and it could not before, because white is white.
      */

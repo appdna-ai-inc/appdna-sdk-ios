@@ -1,8 +1,8 @@
-// OrphanedFeedbackFormTests.swift — #920
+// OrphanedFeedbackFormTests.swift
 //
 // A feedback form that is TAKEN AWAY is not a form the user dismissed.
 //
-// #901 fixed the presentation — the form lands on the controller underneath, which is staying.
+// An earlier fix corrected the presentation — the form lands on the controller underneath, which is staying.
 // This is the reverse: the form is up and its presenter goes away for a reason of the host's own
 // (a window torn down, a root view controller swapped, a deep link replacing the stack). UIKit
 // takes the alert down with its presenter and, before this, nothing was recorded — so

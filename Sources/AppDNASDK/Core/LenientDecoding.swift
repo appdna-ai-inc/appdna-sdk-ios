@@ -2,7 +2,7 @@ import Foundation
 
 /// Decode an array element by element, keeping what parses and dropping what does not.
 ///
-/// 🔴 #919 — ONE BAD FIELD USED TO DELETE A WHOLE SURFACE, on this platform only.
+/// 🔴 ONE BAD FIELD USED TO DELETE A WHOLE SURFACE, on this platform only.
 ///
 /// `[ContentBlock]` is a throwing decode: a single `badge_size: "md"` where the DTO declares
 /// `Double?` throws, which fails the step's `StepConfig`, which fails the step, which fails the
@@ -11,7 +11,7 @@ import Foundation
 /// So a customer's onboarding was INVISIBLE on iPhone and perfect on Android, with nothing in the
 /// console, nothing in analytics, and nothing in `log show` to say so.
 ///
-/// Measured while proving #921: a real dev flow dropped on exactly that field, and a real dev
+/// Measured: a real dev flow dropped on exactly that field, and a real dev
 /// paywall dropped on a `config.style` written as an object where the DTO expects a String.
 ///
 /// This is the per-ELEMENT version of something the SDK already does per-DOCUMENT: one bad paywall
@@ -83,7 +83,7 @@ extension KeyedDecodingContainer {
          🔴 THE VALUE ITSELF MAY NOT BE AN ARRAY. Tolerating bad ELEMENTS is only half the job: a
          survey on dev holds a DICTIONARY under `questions[0].options`, where the DTO declares
          `[SurveyQuestionOption]`, and the array decode throws before any element is reached — so
-         the first version of this helper still dropped the whole document (#936). Android reads
+         the first version of this helper still dropped the whole document. Android reads
          `as? List<*>` and gets null; so do we now.
         */
         // Absent and explicitly null are ordinary states and say nothing; only a value that IS
@@ -104,7 +104,7 @@ extension KeyedDecodingContainer {
                 "[Decode] dropped \(dropped) of \(wrapped.count) \(T.self) in \(context()) — the rest "
                 + "still renders. Reason(s): \(reasons)"
             )
-            // #935 — and off the device, to the host and to us. A log nobody can read is how this
+            // And off the device, to the host and to us. A log nobody can read is how this
             // class of defect stayed invisible.
             ConfigurationIssueReporter.report(
                 surface: context(), id: nil, detail: reasons, dropped: dropped, total: wrapped.count
@@ -152,7 +152,7 @@ extension JSONDecoder {
 /// @LenientArray var sections: [PaywallSection]?
 /// ```
 ///
-/// Measured cause (#919): one ACTIVE dev paywall wrote `config.style` as a per-element style map
+/// Measured cause: one ACTIVE dev paywall wrote `config.style` as a per-element style map
 /// where the DTO declares `String`, on four of its sections. iOS threw, dropped the whole paywall,
 /// and the screen did not exist; Android rendered it. Now the four sections are dropped and the
 /// rest of the paywall is a paywall.
@@ -168,7 +168,7 @@ public struct LenientArray<T: Codable>: Codable {
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() { wrappedValue = nil; return }
-        // 🔴 Not an array at all → nil, not a throw. See `decodeLenientArray` above (#936).
+        // 🔴 Not an array at all → nil, not a throw. See `decodeLenientArray` above.
         guard let wrapped = try? container.decode([FailableDecodable<T>].self) else {
             Log.error("[Decode] a \([T].self) field is not an array — the field is ignored, as Android ignores it.")
             wrappedValue = nil
@@ -205,7 +205,7 @@ extension KeyedDecodingContainer {
     /// A scalar that is ABSENT or of the WRONG TYPE both yield nil, which is Android's semantics
     /// and now ours.
     ///
-    /// 🔴 #919 — this is the whole asymmetry, in one line. Android reads every scalar as
+    /// 🔴 This is the whole asymmetry, in one line. Android reads every scalar as
     /// `(map["k"] as? Number)` / `as? String`: a `"md"` where a number belongs gives null, the
     /// field falls back to its default, and the block renders. iOS called
     /// `try decodeIfPresent(Double.self, …)`, which THROWS — failing the block, then the step,
@@ -213,7 +213,7 @@ extension KeyedDecodingContainer {
     ///
     /// 🔴 A NUMERIC STRING IS NOT PARSED, deliberately. `"12"` could plausibly become `12`, and
     /// Android returns null for it, so parsing here would trade one divergence for another. The
-    /// console's `normalizeStepNumerics` coerces those at the write path (#929); what reaches a
+    /// console's `normalizeStepNumerics` coerces those at the write path; what reaches a
     /// device as a string is a document that went round it, and both platforms should then do the
     /// same thing — nothing.
     ///
@@ -231,7 +231,7 @@ extension KeyedDecodingContainer {
 /// place to put that call, and writing an init just to soften one field means listing every other
 /// field — the rebuild that deleted `chat_config` once already.
 ///
-/// 🔴 Measured need (#919): `PaywallSectionData.lineStyle` is `String?` and maps from the key
+/// 🔴 Measured need: `PaywallSectionData.lineStyle` is `String?` and maps from the key
 /// `"style"` — it is a DIVIDER's line style, `solid | dashed | dotted`. The console writes a
 /// per-element style MAP under `config.style` for header, features, plans and legal sections, so
 /// four sections of one ACTIVE paywall threw on a field that was never meant for them, and iOS

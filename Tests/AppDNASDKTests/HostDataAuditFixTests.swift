@@ -1,9 +1,9 @@
 import XCTest
 @testable import AppDNASDK
 
-/// Implementation-audit regressions (iOS): M1 step view on a superseded call, m1
-/// self-route presentation, m2 chips/segmented resync, m3 repeat.max clamp, m4 single resolution of
-/// host / interaction options, m5 memo key, and `fieldConfigPatches` through the structural walker.
+/// Host-data regressions (iOS): the step view on a superseded call, self-route
+/// presentation, chips/segmented resync, the repeat.max clamp, single resolution of
+/// host / interaction options, the memo key, and `fieldConfigPatches` through the structural walker.
 @MainActor
 final class HostDataAuditFixTests: XCTestCase {
 

@@ -1,6 +1,6 @@
 import Foundation
 
-/// How far a countdown has run, as a fraction of its own starting value — #1066.
+/// How far a countdown has run, as a fraction of its own starting value.
 ///
 /// 🔴 BOTH PLATFORMS HAD THIS FROZEN AT 0.75. The `circular` variant's ring was a hardcoded
 /// `trim(to: 0.75)` on iOS and `sweepAngle = 270f` on Android — the console preview's static mock,

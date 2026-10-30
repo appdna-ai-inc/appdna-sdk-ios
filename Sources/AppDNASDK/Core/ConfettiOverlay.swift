@@ -22,7 +22,7 @@ public struct ConfettiOverlay: View {
     }
 
     /*
-     * #1040 — ONE LIST, not a `switch` per platform. The semantic colours this used to return
+     * ONE LIST, not a `switch` per platform. The semantic colours this used to return
      * (`.red` is #FF3B30) and the Compose constants Android returned (`Color.Red` is #FF0000) are
      * different colours, so an unauthored celebration drew differently on the two platforms. The
      * hexes in `CelebrationPalette` are what these semantic values resolve to in the light
@@ -32,7 +32,7 @@ public struct ConfettiOverlay: View {
         CelebrationPalette.colors(type: effect.type, authored: effect.colors).map { Color(hex: $0) }
     }
 
-    /// #1040 — the shared rule, so "circle or glyph" is one question with one answer.
+    /// The shared rule, so "circle or glyph" is one question with one answer.
     private var particleShape: String { CelebrationPalette.glyph(type: effect.type) }
 
     public var body: some View {
@@ -56,7 +56,7 @@ public struct ConfettiOverlay: View {
         }
         .allowsHitTesting(false)
         /*
-         🔴 #956 — NO SECOND GATE. This used to re-check `effect.trigger == "on_appear"`, and every
+         🔴 NO SECOND GATE. This used to re-check `effect.trigger == "on_appear"`, and every
          caller already decides WHEN to render the overlay: the paywall sets `showConfetti` only
          after a purchase when the trigger says `on_purchase`, the survey only on completion, a
          message only when its own condition fires. So the re-check could not admit anything the

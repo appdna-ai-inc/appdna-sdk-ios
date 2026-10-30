@@ -1,14 +1,14 @@
 import Foundation
 
 /**
- #1095 — what a step advance CARRIES, as a pure function both the renderer and the fixture runner
+ What a step advance CARRIES, as a pure function both the renderer and the fixture runner
  call. The mirror of Android's `StepAdvancePayload`, added for the same reason.
 
  🔴 It exists because a test that re-implements the thing under test can only ever agree with it.
  `SharedFixtureTests`'s flag-CTA branch assembled this dictionary itself, so the iOS suite passed
  **1542 tests, 0 failures** with the renderer's own `extra` merge deleted. The fixture was driving
  `OnboardingCTAFlag.parse` and `applyTo` for real — which its comment correctly claims — and nothing
- about the payload. Android had the identical gap (#1094) and was measured the same way.
+ about the payload. Android had the identical gap and was measured the same way.
 
  The ordering is the behaviour worth pinning, and it is kept exactly as the renderer had it:
 

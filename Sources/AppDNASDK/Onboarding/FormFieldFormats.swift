@@ -1,7 +1,7 @@
 import Foundation
 
 /**
- #984 — the ONE format rule both platforms apply, written down once per platform and kept
+ The ONE format rule both platforms apply, written down once per platform and kept
  character-for-character identical.
 
  🔴 `URL(string:)` is NOT the rule, and that is the whole reason this type exists. Foundation

@@ -1,10 +1,10 @@
-// PaywallPlanEdgeTapUITests.swift — #1081
+// PaywallPlanEdgeTapUITests.swift
 //
 // DOES A PLAN ROW TAKE A TAP ANYWHERE ON ITSELF, OR ONLY IN THE MIDDLE?
 //
 // 🔴 Why this exists when `PaywallPlanSelectionWalkUITests` already taps a plan. That walk has now
 // run **38 times with no recurrence**, and reading the whole selection-to-purchase path eliminated
-// both state-based explanations for #1081: the path is id-based end to end, so an index can never
+// both state-based explanations for a plan tap that does not take: the path is id-based end to end, so an index can never
 // choose what is bought; and `isPurchasing` is reset on every exit from `handlePurchase`, so the CTA
 // cannot be left stuck disabled.
 //
@@ -15,7 +15,7 @@
 // a corner, or on the gap between two rows.
 //
 // So this taps each row at nine normalised positions and asks the row itself whether the tap took.
-// A failure here is #1081, reproduced on demand rather than waited for; all nine passing is
+// A failure here is that missed tap, reproduced on demand rather than waited for; all nine passing is
 // evidence that a centre-biased explanation is the wrong family, which is worth knowing too.
 //
 // This repo has already shipped one defect of precisely this shape: a keyboard-dismiss tap handler
@@ -65,7 +65,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
 
         /*
          🔴 THE INSTRUMENT'S OWN CONTROL, because "the tap did not take" passes for free on a
-         harness that cannot read selection at all — #923's render test read an empty accessibility
+         harness that cannot read selection at all — an earlier store-price render test read an empty accessibility
          tree and its absence assertion sailed through. The fixture's default is the monthly plan, so
          before any tap exactly one row reports itself selected and it must be that one.
         */
@@ -156,7 +156,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
     /// points as a matter of course.
     private static let drifts: [CGFloat] = [0, 2, 4, 6, 8, 10, 14, 20]
 
-    /// 🔴 THE DISCRIMINATING EXPERIMENT for #1081, and the reason it tests BOTH axes.
+    /// 🔴 THE DISCRIMINATING EXPERIMENT for a missed plan tap, and the reason it tests BOTH axes.
     ///
     /// The paywall's content sits in `ScrollView(showsIndicators: false)` (PaywallRenderer.swift:206)
     /// and every plan row is a SwiftUI `Button`. If the scroll view is what swallows a drifting tap,
@@ -164,7 +164,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
     /// drift ACROSS it, because only the vertical pan competes for the gesture. If both axes behave
     /// identically the scroll view is exonerated and the cause is something else.
     ///
-    /// Either way the answer is a number, which is what #1081 has been missing: "a plan tap can fail
+    /// Either way the answer is a number, which is what the report has been missing: "a plan tap can fail
     /// to take" with no idea what distinguishes the failures.
     @available(iOS 17.0, *)
     func testHowFarATapMayDriftBeforeThePlanRowStopsTakingIt() throws {
@@ -295,7 +295,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
 
         // The harness check first: an empty catalogue makes every row draw its authored price, and
-        // then nothing about selection can be proved from the screen (#1018).
+        // then nothing about selection can be proved from the screen.
         let probe = app.staticTexts["host.storeProducts"]
         XCTAssertTrue(probe.waitForExistence(timeout: 15))
         let sawBoth = XCTNSPredicateExpectation(

@@ -4,12 +4,12 @@
 // branch. Every value asserted is produced by a REAL SDK symbol:
 //
 //   unfold_blockquotes  REAL: `ContentBlockRendererView.normaliseMarkdown`, the rich_text
-//                       renderer's blockquote pass (#893).
+//                       renderer's blockquote pass.
 //   parse_colour   REAL: `Color(hex:)` in Paywalls/PaywallHelperViews.swift — the SDK's only colour
 //                  parser on this platform, read back through UIColor so the fixture can compare
 //                  0-255 channels against Android's.
 //
-// #885. The pairing this fixture exists for: Android's `StyleEngine.parseColor` and this
+// The pairing this fixture exists for: Android's `StyleEngine.parseColor` and this
 // initialiser must answer the same thing for the same string. They did not. Android's paywall and
 // survey renderers each carried a private copy that read 8-char hex as ARGB rather than RGBA and
 // fell back to black / white rather than transparent, and this side rendered a six-letter CSS
@@ -72,7 +72,7 @@ extension SharedFixtureTests {
     // MARK: resolve_field_input_style
 
     /**
-     #1053 — the three `field_style` keys both natives DECODED, neither drew, and no console
+     The three `field_style` keys both natives DECODED, neither drew, and no console
      control wrote, through the resolvers the renderers actually call.
 
      🔴 The font size is a ladder of THREE spellings of one pixel. The console's two sliders write
@@ -152,7 +152,7 @@ extension SharedFixtureTests {
     // MARK: resolve_plan_order
 
     /**
-     #1056 — the order a paywall's plans draw in, through the REAL `PaywallPlanOrder`.
+     The order a paywall's plans draw in, through the REAL `PaywallPlanOrder`.
 
      🔴 `sort_order` was DECODED by both platforms and read by NEITHER, so order came from the
      array's own order and a document carrying an explicit rank drew its plans in whatever order
@@ -161,7 +161,7 @@ extension SharedFixtureTests {
      🔴 WHAT THIS DRIVER DOES NOT PROVE, stated because it previously claimed otherwise. It called
      the sorter "the renderer calls on both of its plan-resolution sites" — and a driver that calls
      `PaywallPlanOrder.sorted` directly can see that the SORTER sorts and nothing about whether any
-     renderer calls it. #1097 is what that bought: the sort was wired into the two sites that look a
+     renderer calls it. That blind spot let a real defect through: the sort was wired into the two sites that look a
      plan up BY ID, never into the one that draws, and this fixture stayed green throughout. The
      render-order claim is `PlanOrderRenderTests` (iOS) and `PlanOrderRenderTest` (Android), which
      compare what was DRAWN; this one pins the ordering rule itself, which is still worth pinning.
@@ -189,7 +189,7 @@ extension SharedFixtureTests {
     // MARK: resolve_progress_skip_target
 
     /**
-     #1056 — where the progress bar's "Skip" link goes, through the REAL `ProgressSkipTarget` both
+     Where the progress bar's "Skip" link goes, through the REAL `ProgressSkipTarget` both
      renderers call.
 
      The three `nil` reasons are the point: no target, an empty/whitespace target, and a target
@@ -213,7 +213,7 @@ extension SharedFixtureTests {
     // MARK: resolve_countdown_progress
 
     /**
-     #1066 — how far a countdown has run, through the REAL `CountdownProgress` both indicators read.
+     How far a countdown has run, through the REAL `CountdownProgress` both indicators read.
 
      The ring was frozen at 0.75 on BOTH platforms — the preview's mock in two renderers — so the
      cases that matter are the ones a frozen value gets wrong: full, half, expired, and the clamps.
@@ -235,7 +235,7 @@ extension SharedFixtureTests {
     // MARK: resolve_countdown_variant
 
     /**
-     #980 — which variant a paywall countdown draws, through the REAL `PaywallCountdownVariant` the
+     Which variant a paywall countdown draws, through the REAL `PaywallCountdownVariant` the
      renderer dispatches on. The fallback is the part that would diverge between platforms, so the
      off-list and empty-string cases carry as much weight as the four real values.
      */
@@ -257,7 +257,7 @@ extension SharedFixtureTests {
     // MARK: resolve_named_icon_library
 
     /**
-     #1067 — which library a BARE icon string belongs to, through the REAL `NamedIcon` both feature
+     Which library a BARE icon string belongs to, through the REAL `NamedIcon` both feature
      renderers call.
 
      The unknown-name case is the one that matters: it must answer `lucide` and never `emoji`,
@@ -277,7 +277,7 @@ extension SharedFixtureTests {
     // MARK: resolve_element_container
 
     /**
-     #905 — the per-element container style, through the REAL DTO: the entry decodes as
+     The per-element container style, through the REAL DTO: the entry decodes as
      `SectionElementConfig` and resolves through `container`, which is what the renderer reads.
      */
     private func runElementContainer(_ f: Fixture, _ h: Harness) {
@@ -308,7 +308,7 @@ extension SharedFixtureTests {
     // MARK: resolve_plan_period
 
     /**
-     #913 — a plan's billing period, through the REAL `PaywallPlan` decode.
+     A plan's billing period, through the REAL `PaywallPlan` decode.
 
      The field was on both DTOs and readable by neither surface that matters: this platform
      declared `periodTextStyle` and never drew it, so a period authored anywhere showed on Android
@@ -329,12 +329,12 @@ extension SharedFixtureTests {
                 return NSNull()
             }
             /*
-             #933 — a case may carry a `store_period` BESIDE its `value`, because the store's ISO
+             A case may carry a `store_period` BESIDE its `value`, because the store's ISO
              period is filled in by the presenter and is never part of a published document, so it
              cannot live inside the plan the decoder reads.
 
              `displayPeriod` rather than `period`: for every case without a `store_period` the two
-             are identical, which is why the assertions written before #933 still stand unchanged.
+             are identical, which is why the assertions written before store periods existed still stand unchanged.
             */
             plan.resolvedStorePeriod = c.objectValue?["store_period"]?.stringValue
             guard let period = plan.displayPeriod, !period.isEmpty else { return NSNull() }
@@ -345,7 +345,7 @@ extension SharedFixtureTests {
     // MARK: resolve_location_search
 
     /**
-     #963 — the Console's four location settings, resolved for the surface that offers them.
+     The Console's four location settings, resolved for the surface that offers them.
 
      🔴 FOUR SURFACES, NOT TWO. A form-step Location field takes its config as a typed
      `FormFieldConfig`; an `input_location` content block takes a free-form `field_config` map. The
@@ -398,7 +398,7 @@ extension SharedFixtureTests {
     // MARK: parse_blocks_leniently
 
     /**
-     #919 — a wrongly-typed field must not delete its block, and an undecodable element must not
+     A wrongly-typed field must not delete its block, and an undecodable element must not
      truncate the ones after it. Through the REAL `[ContentBlock]` decode, the lenient one.
 
      Before this the array decode THREW on the first bad element, which failed the step, then the
@@ -673,7 +673,7 @@ extension SharedFixtureTests {
     // MARK: resolve_compact_picker_height
 
     /**
-     #1052 — how tall a compact date pill is, through the REAL `CompactPickerHeight` the renderer
+     How tall a compact date pill is, through the REAL `CompactPickerHeight` the renderer
      calls.
 
      🔴 Driven through the production rule, never re-stated: the whole point is that this platform
@@ -697,7 +697,7 @@ extension SharedFixtureTests {
     // MARK: visibility_in_step_scope
 
     /**
-     #1013 — whether a block is drawn, through the REAL `evaluateVisibilityCondition` the renderer
+     Whether a block is drawn, through the REAL `evaluateVisibilityCondition` the renderer
      calls, with the step's live inputs in scope.
 
      🔴 Driven through the production evaluator, never re-stated: the whole point is that this
@@ -735,7 +735,7 @@ extension SharedFixtureTests {
     // MARK: segmented_presentation
 
     /**
-     #1013 — whether a Segmented input draws a segmented control, through the REAL
+     Whether a Segmented input draws a segmented control, through the REAL
      `SegmentedPresentation` the renderer calls.
      */
     private func runSegmentedPresentation(_ f: Fixture, _ h: Harness) {
@@ -752,7 +752,7 @@ extension SharedFixtureTests {
     // MARK: track_events_with_observer
 
     /**
-     #1047 — `onEventTracked` fires for every event, through the REAL `EventTracker.track` and the
+     `onEventTracked` fires for every event, through the REAL `EventTracker.track` and the
      REAL `AppDNA.lifecycleDelegate`.
 
      🔴 Driven through the production chokepoint, never re-stated: the claim is that a host sees
@@ -809,7 +809,7 @@ extension SharedFixtureTests {
     // MARK: resolve_rive_input_kind
 
     /**
-     #1024 — which kind of Rive input an authored value means, through the REAL `RiveInputKind`
+     Which kind of Rive input an authored value means, through the REAL `RiveInputKind`
      the renderer calls.
 
      🔴 The cases come out of the fixture's JSON through `AnyCodable`, which is the SAME path a
@@ -832,7 +832,7 @@ extension SharedFixtureTests {
     // MARK: resolve_likert_bounds
 
     /**
-     #998 — a likert scale's bounds and anchor visibility, through the REAL `LikertScaleRule` the
+     A likert scale's bounds and anchor visibility, through the REAL `LikertScaleRule` the
      renderer calls.
 
      🔴 Driven through the production rule, never re-stated: the clamp exists because a reversed
@@ -861,7 +861,7 @@ extension SharedFixtureTests {
     // MARK: resolve_store_price
 
     /**
-     #923 — whether a plan shows the STORE's price or the one an author typed, through the REAL
+     Whether a plan shows the STORE's price or the one an author typed, through the REAL
      policy both renderers call.
 
      The authored string is the FALLBACK on every failure path, so most cases here are failures:
@@ -892,7 +892,7 @@ extension SharedFixtureTests {
     // MARK: resolve_step_auto_advance
 
     /**
-     #921 — whether a step advances by itself, through the REAL `OnboardingStep` DECODE and the
+     Whether a step advances by itself, through the REAL `OnboardingStep` DECODE and the
      real policy, not the policy alone.
 
      Decoding the step is the load-bearing half: the console writes these two fields inside the
@@ -926,7 +926,7 @@ extension SharedFixtureTests {
     // MARK: bottom_zone_overflows
 
     /**
-     #903 — whether a pinned bottom zone is too tall to stay pinned, through the REAL
+     Whether a pinned bottom zone is too tall to stay pinned, through the REAL
      `PaywallBottomZone.overflows`. Values are `[pinnedPx, viewportPx]`.
      */
     private func runBottomZoneOverflows(_ f: Fixture, _ h: Harness) {
@@ -947,7 +947,7 @@ extension SharedFixtureTests {
     // MARK: paywall_default_text_colour
 
     /**
-     #891 — the colour a paywall gives text nobody authored, through the REAL
+     The colour a paywall gives text nobody authored, through the REAL
      `PaywallTextDefaults.readableHex`.
      */
     private func runDefaultTextColour(_ f: Fixture, _ h: Harness) {
@@ -964,7 +964,7 @@ extension SharedFixtureTests {
     // MARK: paywall_header_close_inset
 
     /**
-     #895 — the header's reserved footprint, through the REAL `PaywallHeaderInset.resolve`.
+     The header's reserved footprint, through the REAL `PaywallHeaderInset.resolve`.
 
      A `null` case means no `dismiss` object at all, which is the common authored shape and the one
      that must still reserve: absent means dismissable.
@@ -993,7 +993,7 @@ extension SharedFixtureTests {
     // MARK: resolve_shadow
 
     /**
-     #886 — the four values a shadow draws with, through the REAL `StyleEngine.resolveShadow`.
+     The four values a shadow draws with, through the REAL `StyleEngine.resolveShadow`.
 
      `[colorArgbHex, radius, dx, dy]`, or null when the shadow does not draw at all.
      */
@@ -1022,7 +1022,7 @@ extension SharedFixtureTests {
     // MARK: unfold_blockquotes
 
     /**
-     #893 — a blockquote becomes the italic syntax both parsers already render.
+     A blockquote becomes the italic syntax both parsers already render.
 
      Drives the REAL `normaliseMarkdown` the rich_text renderer calls, so the two platforms are
      held to one answer for a chevron that used to reach the screen verbatim.

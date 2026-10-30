@@ -240,7 +240,7 @@ extension View {
     private func styledSection(_ style: SectionStyle?) -> some View {
         if let s = style {
             let radius = CGFloat(s.border_radius ?? 0)
-            // #886 — through `StyleEngine.resolveShadow`, the ONE seam that says what an authored
+            // Through `StyleEngine.resolveShadow`, the ONE seam that says what an authored
             // shadow means, so this surface cannot drift from a block or a paywall section. The
             // screens `ShadowConfig` is the screens spelling of the same five fields.
             let resolvedShadow = StyleEngine.resolveShadow(s.shadow.map {

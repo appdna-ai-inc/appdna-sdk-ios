@@ -121,7 +121,7 @@ final class PushTokenManager {
 
     /// Track that a push notification was DISMISSED — swiped away without being opened.
     ///
-    /// #968 — the only negative signal a push campaign has, and this platform could not emit it:
+    /// The only negative signal a push campaign has, and this platform could not emit it:
     /// iOS reports a dismissal solely for a category registered with `.customDismissAction`, which
     /// `PushActionCategories` now sets. Android has emitted it from a delete intent all along, so a
     /// funnel built on this event measured one platform and read as zero dismissals on the other.

@@ -1,15 +1,15 @@
 import CoreGraphics
 
 /*
- #1052 — HOW TALL A COMPACT DATE PILL IS, as one rule both platforms call.
+ HOW TALL A COMPACT DATE PILL IS, as one rule both platforms call.
 
  iOS has read `field_style.height` as a `sm | md | lg` shorthand since the compact picker shipped,
  alongside a numeric `field_config.input_height` that takes precedence. Android read neither, and
  no console control wrote either — so a real iOS capability was reachable by nobody and ignored by
  the other platform. Three surfaces, three answers.
 
- The rule lives here rather than inside the view for the reason #998's `LikertScaleRule` does: a
- clamp written twice in two languages agrees until one of them is edited (#1037), and the shared
+ The rule lives here rather than inside the view for the reason `LikertScaleRule` does: a
+ clamp written twice in two languages agrees until one of them is edited, and the shared
  behavioural fixture has to call the same function the renderer calls or it only agrees with
  itself.
 

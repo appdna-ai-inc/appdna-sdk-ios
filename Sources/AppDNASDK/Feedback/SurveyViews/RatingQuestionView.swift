@@ -53,7 +53,7 @@ struct RatingQuestionView: View {
                             .font(.system(size: 28))
                             .foregroundColor((selectedRating ?? 0) >= rating ? accentColor : Color(hex: "#D1D5DB"))
                     }
-                    // #901 — every survey control carries an identifier, because a control a
+                    // Every survey control carries an identifier, because a control a
                     // UI test cannot address is a control a WALK cannot operate. The whole
                     // surface had none, so the first end-to-end attempt could not even find
                     // the stars to tap.

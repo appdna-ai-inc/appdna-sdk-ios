@@ -10,7 +10,7 @@ extension Notification.Name {
     /// its CTA (`isPurchasing = false`). Mirrors Android's `PaywallActivity.purchaseEndedSignal`.
     static let paywallPurchaseEnded = Notification.Name("ai.appdna.paywallPurchaseEnded")
     /**
-     A purchase SUCCEEDED and an authored `particle_effect` should now celebrate it — #1103.
+     A purchase SUCCEEDED and an authored `particle_effect` should now celebrate it.
 
      🔴 IT IS ITS OWN SIGNAL, and the four branches of `on_success` are why. The effect used to start
      in `handleCTATap`, which reads `trigger == "on_purchase"` and fires on the one moment that is
@@ -169,7 +169,7 @@ final class PaywallManager {
             }
         }
         /*
-         #923 — the view event fires AFTER the store lookup, not before, so it describes the
+         The view event fires AFTER the store lookup, not before, so it describes the
          screen the user actually saw. It carries `price_source` per plan: `store`, or one of
          `authored_opt_out` / `authored_no_product` / `authored_lookup_failed`. That is what
          answers "why is my paywall showing the old price" — without it the question has no answer
@@ -217,7 +217,7 @@ final class PaywallManager {
                 onPromoCodeSubmit: delegate == nil ? nil : { code, completion in
                     delegate?.onPromoCodeSubmit(paywallId: id, code: code, completion: completion)
                 },
-                // #1074 — the one wire that was missing. Android has emitted CTA_TAPPED since its
+                // The one wire that was missing. Android has emitted CTA_TAPPED since its
                 // manager was written; iOS declared the callback and called it from nowhere.
                 onAction: { action in
                     delegate?.onPaywallAction(paywallId: id, action: action)
@@ -227,7 +227,7 @@ final class PaywallManager {
             hostingController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
 
             /*
-             * 🔴 #1078 — THE HOST IS CHOSEN HERE, AT PRESENT TIME, NOT WHERE THE CALL CAME FROM.
+             * 🔴 THE HOST IS CHOSEN HERE, AT PRESENT TIME, NOT WHERE THE CALL CAME FROM.
              *
              * `AppDNA.showPaywall` resolves `topViewController()` synchronously and then
              * `presentPaywall` dispatches this block onto the main queue. In between, that
@@ -279,7 +279,7 @@ final class PaywallManager {
         }
 
         /*
-         #923 — ASK THE STORE WHAT THESE PRODUCTS COST, before the screen is built.
+         ASK THE STORE WHAT THESE PRODUCTS COST, before the screen is built.
 
          Until this, `price_display` was a free-text field and the only thing a user ever saw: a
          price change in App Store Connect did not reach the paywall, so the store charged the new
@@ -296,11 +296,11 @@ final class PaywallManager {
         let group = DispatchGroup()
         var storePrices: [String: String] = [:]
         var storePeriods: [String: String] = [:]
-        // #933 slice 3 — present only for a product this user is ELIGIBLE for a free trial on.
+        // Present only for a product this user is ELIGIBLE for a free trial on.
         var storeTrials: [String: String] = [:]
 
         group.enter()
-        // #933 — ONE round-trip for both facts. The period comes off the same `Product` as the
+        // ONE round-trip for both facts. The period comes off the same `Product` as the
         // price, and a second lookup could disagree with the price it sits beside.
         StorePriceLookup.facts(for: productIds, timeout: 1.5) { facts in
             for (id, f) in facts {
@@ -564,7 +564,7 @@ final class PaywallManager {
     // MARK: - Post-purchase actions
 
     private func handlePostPurchaseSuccess(config: PostPurchaseSuccessConfig?, paywallId: String, delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
-        // #1103 — the purchase really did succeed, so an authored `on_purchase` effect fires HERE,
+        // The purchase really did succeed, so an authored `on_purchase` effect fires HERE,
         // before any branch. Every branch reaches this line; only one of them posts
         // `.paywallPurchaseSuccess`, which is why this is a signal of its own.
         NotificationCenter.default.post(name: .paywallPurchaseCelebrate, object: nil)
@@ -634,7 +634,7 @@ final class PaywallManager {
 
         case "show_error", "retry":
             // Show error inline via notification (PaywallRenderer listens)
-            // #1105 — an EMPTY message or retry text falls back to the default, as on Android and in
+            // An EMPTY message or retry text falls back to the default, as on Android and in
             // the console preview. `??` alone kept "" and drew an empty red banner here, while Android
             // drew no banner at all for the same document.
             NotificationCenter.default.post(name: .paywallPurchaseFailure, object: nil, userInfo: [

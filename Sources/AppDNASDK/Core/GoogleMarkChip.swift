@@ -3,7 +3,7 @@ import Foundation
 /**
  WHETHER Google's four-colour mark needs a white chip behind it.
 
- 🔴 #1030 — the official mark is red, yellow, green and BLUE, and the Google provider's default
+ 🔴 The official mark is red, yellow, green and BLUE, and the Google provider's default
  button fill is `#4285F4`. On that fill the blue arm and crossbar vanish into the button and the
  mark reads as a "C": intact at 4×, illegible at render size. Google's own "Sign in with Google"
  guidelines put the mark on a white surface — a white button, or a white circular chip when the
@@ -24,8 +24,8 @@ import Foundation
  not load-bearing for any real brand colour.
 
  Shared with Android via `google_mark_chip`, because "which surface is light enough" is exactly
- the kind of rule two platforms state differently: `collapse_on_scroll` (#993),
- `background_full_bleed` (#1036) and the celebration palette (#1040) each drifted that way.
+ the kind of rule two platforms state differently: `collapse_on_scroll`,
+ `background_full_bleed` and the celebration palette each drifted that way.
  */
 public enum GoogleMarkChip {
 

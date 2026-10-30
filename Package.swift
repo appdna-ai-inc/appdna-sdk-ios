@@ -36,7 +36,7 @@ let package = Package(
         // the version nothing was tested against.
         .package(url: "https://github.com/googlemaps/ios-maps-sdk.git", from: "9.4.0"),
         /*
-         * #982 — THE ANIMATION ENGINES, and they are a deliberate cost.
+         * THE ANIMATION ENGINES, and they are a deliberate cost.
          *
          * `LottieBlockView` and `RiveBlockView` were PLACEHOLDERS — a rounded panel with a play
          * glyph and the filename — for as long as the block types have existed, while Android
@@ -75,14 +75,14 @@ let package = Package(
                 // dependency: the three-product spelling this replaced was a workaround for 8.4.0's
                 // split package, and it only ever built against a warm module cache.
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
-                // #982 — the real renderers behind `LottieBlockView` / `RiveBlockView`.
+                // The real renderers behind `LottieBlockView` / `RiveBlockView`.
                 .product(name: "Lottie", package: "lottie-ios"),
                 .product(name: "RiveRuntime", package: "rive-ios"),
             ],
             resources: [
                 .copy("PrivacyInfo.xcprivacy"),
                 /*
-                 * #1003 — Google's official "G" for Sign in with Google buttons, UNMODIFIED.
+                 * Google's official "G" for Sign in with Google buttons, UNMODIFIED.
                  *
                  * The provider glyph was a `Text("G")` in a rounded bold font on both platforms —
                  * a letter, not the mark — so a sign-in button could not be made to match Google's
@@ -141,7 +141,7 @@ let package = Package(
                 // can hold a real `GMSMapView` and assert on it. `AppDNASDK` linking it is not
                 // enough: a Swift module does not re-export its dependencies, so without this the
                 // test cannot `import GoogleMaps` and the only thing left to check would be that
-                // our own code did not throw — which is exactly the kind of proof #671 slipped past.
+                // our own code did not throw — which is exactly the kind of proof a map that would not move once slipped past.
                 .product(name: "GoogleMaps", package: "ios-maps-sdk"),
             ],
             // The StoreKit test configuration the SKTestSession tests load
@@ -149,11 +149,11 @@ let package = Package(
             // subscriptions each in its own group (no offer, free-trial intro, pay-up-front intro).
             resources: [
                 .copy("AppDNATestProducts.storekit"),
-                // #982 — a minimal, valid Lottie (one dark square translating left→right over 30
+                // A minimal, valid Lottie (one dark square translating left→right over 30
                 // frames) so a render test can prove the engine DRAWS, rather than that it links.
                 .copy("LottieProbe.json"),
                 /*
-                 * #990 — a real `.riv`, because nothing else can prove the Rive engine draws.
+                 * A real `.riv`, because nothing else can prove the Rive engine draws.
                  *
                  * Both SDKs fetch a `.riv` over the network and there is no bundled-asset rung on
                  * that path, so an offline render test needs a file in the bundle. This one is

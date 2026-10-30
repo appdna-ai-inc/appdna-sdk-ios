@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /// Per-item flag + message serving on the SDK read side. Covers the exact logic where the
-/// R1/R2 audit bugs lived: flag `.value` unwrap, null-flag → unset, prune-to-index-keyset (removal),
+/// earlier bugs lived: flag `.value` unwrap, null-flag → unset, prune-to-index-keyset (removal),
 /// empty-set clear, and per-item message decode. Drives the REAL parsers via test seams.
 final class PerItemFlagMessageServingTests: XCTestCase {
 

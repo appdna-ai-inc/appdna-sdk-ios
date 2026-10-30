@@ -1,11 +1,11 @@
 import Foundation
 
 /**
- #933 — the STORE's billing period, as words a user can read.
+ The STORE's billing period, as words a user can read.
 
  Both stores report a subscription's period structurally — StoreKit's
  `subscription.subscriptionPeriod`, Play's `billingPeriod` — as an ISO-8601 duration: `P1W`, `P1M`,
- `P3M`, `P1Y`. The SDKs have captured it since #923 (`PriceResolver`) and rendered NONE of it: the
+ `P3M`, `P1Y`. The SDKs captured it (`PriceResolver`) and rendered NONE of it: the
  period beside a price was whatever an author typed into `plan.period`, which 0 of 81 production
  plans carried. So a paywall showed the store's real price with no period at all, or with one that
  nobody updated when the product changed.
@@ -17,7 +17,7 @@ import Foundation
 
  🔴 THIS FILE AND `BillingPeriodPhrase.kt` MUST AGREE TO THE CHARACTER. Same ten languages, same
  plural rules, same separators — a period that reads "/3 mois" on iOS and "/3 moiss" on Android is
- the #959 class of defect in a new place. `BillingPeriodPhraseTests.swift` and
+ a cross-platform divergence a user can see. `BillingPeriodPhraseTests.swift` and
  `BillingPeriodPhraseTest.kt` assert the identical table, and
  `check:billing-period-phrase-parity` compares the two sources.
 

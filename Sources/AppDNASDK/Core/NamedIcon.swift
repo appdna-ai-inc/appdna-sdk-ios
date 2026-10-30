@@ -1,6 +1,6 @@
 import Foundation
 
-/// What a BARE ICON STRING on a paywall item means — #1067.
+/// What a BARE ICON STRING on a paywall item means.
 ///
 /// 🔴 A NAME IS NOT AN EMOJI AND IS NOT AN SF SYMBOL. The console writes `icon: "check"` on a
 /// features item, and before this each platform guessed differently and both guessed wrong:

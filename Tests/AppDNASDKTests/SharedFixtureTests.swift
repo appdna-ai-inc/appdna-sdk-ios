@@ -630,7 +630,7 @@ final class SharedFixtureTests: XCTestCase {
         if let stepInput = session["current_step_input"]?.objectValue {
             responses["current_step"] = stepInput.mapValues { $0.foundation }
         }
-        // #1158 — stored step responses, for the `onboarding.*` / `responses.*` roots.
+        // Stored step responses, for the `onboarding.*` / `responses.*` roots.
         for (stepId, step) in (session["responses"]?.objectValue ?? [:]) {
             if let fields = step.objectValue { responses[stepId] = fields.mapValues { $0.foundation } }
         }
@@ -942,7 +942,7 @@ final class SharedFixtureTests: XCTestCase {
         // either half here would let the fixture pass with the SDK's copy deleted.
         case OnboardingCTAFlag.actionName:
             /*
-             #1095 — the PAYLOAD comes from the SDK's own `StepAdvancePayload.build`, not a copy
+             The PAYLOAD comes from the SDK's own `StepAdvancePayload.build`, not a copy
              assembled here. This branch used to merge the flag into its own dictionary, so the iOS
              suite passed 1542 tests / 0 failures with the renderer's merge deleted. The runner was
              driving the real `parse` and `applyTo` and nothing about what an advance carries.
@@ -969,7 +969,7 @@ final class SharedFixtureTests: XCTestCase {
         // only peeked would let a route leak into the next flow and still pass.
         case PendingCompletionRoute.actionName:
             /*
-             #1096 — the step's own answers travel with this advance, because production ends in
+             The step's own answers travel with this advance, because production ends in
              `advanceCollectingStepData()` exactly like `next`. This branch used to pass
              setup-only responses, so no fixture could see the payload half: the sibling fixture
              proves the route is recorded and the flow advances, and neither notices the answers
@@ -1491,11 +1491,11 @@ final class SharedFixtureTests: XCTestCase {
     /// and the thing under test is what the merge leaves ALONE. A merge that rebuilt the block
     /// array from only the named blocks would delete the heading and the button, and every
     /// assertion about the named block would still pass.
-    /// #657 — a refresh button's interaction, driven through the REAL public functions: the result
+    /// A refresh button's interaction, driven through the REAL public functions: the result
     /// type the bridges build, the pure applier, and the same read-time option override the renderer
     /// uses. Nothing here reimplements the behaviour, which is the only way this fixture can fail
     /// when the behaviour regresses. Mirrors Android `runRefreshStepInteraction`.
-    /// #609 — the Multi-buttons arrangement, through the real decoder and the real row-plan rule.
+    /// The Multi-buttons arrangement, through the real decoder and the real row-plan rule.
     private func runMultiButtonsLayout(_ fixture: Fixture, _ h: Harness) {
         guard let cfgJSON = fixture.setup.config?.foundation,
               let cfgData = try? JSONSerialization.data(withJSONObject: cfgJSON),
@@ -1522,12 +1522,12 @@ final class SharedFixtureTests: XCTestCase {
             && !plan.isEmpty && plan.last != perRow
         h.state["group_background"] = group.block_style?.background_color ?? ""
 
-        // #609 follow-up — the per-child settings that shipped on the panel and nothing read.
+        // The per-child settings that shipped on the panel and nothing read.
         // "Border color doesn't apply … on device or in preview" was true on all three surfaces:
         // each hardcoded a 1.5 ring in the BACKGROUND colour and drew it only for `outline`, so a
         // filled button at width 40 drew nothing. Resolved through the SAME pure helpers the
         // renderer uses, so a fixture cannot pass while the screen stays wrong.
-        // #1007 — the colour is PASSED, exactly as the renderer passes it: an authored border
+        // The colour is PASSED, exactly as the renderer passes it: an authored border
         // colour with no width implies a hairline, and a driver that omitted the argument would
         // measure a rule the screen does not follow.
         h.state["child_border_widths"] = children.map {
@@ -1665,7 +1665,7 @@ final class SharedFixtureTests: XCTestCase {
     // MARK: - Driver: compose_cta_plan_name
     //
     // REAL: CTAPlanName.compose(base:plan:format:) — the one function both CTA text sites and
-    // CTAButton call (#1104).
+    // CTAButton call.
     private func runComposeCtaPlanName(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             return XCTFail("[\(f.id)] compose_cta_plan_name needs action.cases")
@@ -1761,19 +1761,19 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_label_position"] = SharedFixtureTests.orNull(block.field_style?.label_position)
             h.state["parsed_label_align"] = SharedFixtureTests.orNull(block.field_style?.label_align)
             h.state["parsed_label_font_family"] = SharedFixtureTests.orNull(block.field_style?.label_font_family)
-            // #560 follow-up — per-provider label size. Two providers, one with and one without,
+            // Per-provider label size. Two providers, one with and one without,
             // so an omitted size must decode as nil rather than 0.
             let provs = block.providers ?? []
             h.state["parsed_provider_count"] = provs.count
             h.state["parsed_provider0_font_size"] = SharedFixtureTests.orNull(provs.first?.font_size)
             h.state["parsed_provider0_text_color"] = SharedFixtureTests.orNull(provs.first?.text_color)
             h.state["parsed_provider1_font_size"] = SharedFixtureTests.orNull(provs.count > 1 ? provs[1].font_size : nil)
-            // #581 — the Style section. `image_frame` is top-level; its settings ride in
+            // The Style section. `image_frame` is top-level; its settings ride in
             // field_config because ContentBlock is at the JVM argument ceiling.
             h.state["parsed_image_frame"] = SharedFixtureTests.orNull(block.image_frame)
             h.state["parsed_frame_color"] = SharedFixtureTests.orNull(block.field_config?["frame_color"]?.value as? String)
             h.state["parsed_frame_glow_color"] = SharedFixtureTests.orNull(block.field_config?["frame_glow_color"]?.value as? String)
-            // #580 — the Sound Button's authored icon.
+            // The Sound Button's authored icon.
             // The warning banner's subtitle, alignment, own chrome and per-role
             // typography. All in `field_config` because Android's ContentBlock is at 245 of the
             // JVM's 255-param ceiling, so these could not become top-level fields at any price.
@@ -1787,7 +1787,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_banner_corner_radius"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_corner_radius"]))
             h.state["parsed_banner_title_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_title_size"]))
             h.state["parsed_banner_subtitle_size"] = SharedFixtureTests.orNull(cfgDouble(block.field_config?["banner_subtitle_size"]))
-            // #1005 — icon placement, a colour per text, and the link under the subtitle.
+            // Icon placement, a colour per text, and the link under the subtitle.
             h.state["parsed_banner_hide_icon"] = SharedFixtureTests.orNull(block.field_config?["banner_hide_icon"]?.value as? Bool)
             h.state["parsed_banner_icon_align"] = SharedFixtureTests.orNull(block.field_config?["banner_icon_align"]?.value as? String)
             h.state["parsed_banner_title_color"] = SharedFixtureTests.orNull(block.field_config?["banner_title_color"]?.value as? String)
@@ -1801,7 +1801,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_sound_icon_size"] = SharedFixtureTests.orNull(
                 (block.field_config?["sound_icon_size"]?.value as? Int).map(Double.init)
                     ?? (block.field_config?["sound_icon_size"]?.value as? Double))
-            // #578 — the divider slot.
+            // The divider slot.
             h.state["parsed_divider_position"] = SharedFixtureTests.orNull(block.divider_position)
             h.state["parsed_divider_after_index"] = SharedFixtureTests.orNull(
                 (block.field_config?["divider_after_index"]?.value as? Int).map(Double.init)
@@ -1820,7 +1820,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_opt0_sheet_first_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.first?.type)
             h.state["parsed_opt0_sheet_last_type"] = SharedFixtureTests.orNull(opts.first?.sheet_blocks?.last?.type)
             h.state["parsed_opt1_sheet_block_count"] = (opts.count > 1 ? (opts[1].sheet_blocks ?? []) : []).count
-            // #585 — the min-selection gate, in BOTH directions plus the untouched state.
+            // The min-selection gate, in BOTH directions plus the untouched state.
             //
             // Driven through the REAL `RequiredFieldGate`, the same type the CTA consults, so a gate
             // that stops reading `min_selections` fails here rather than shipping a control that
@@ -1849,7 +1849,7 @@ final class SharedFixtureTests: XCTestCase {
 
             // The gate, exercised in BOTH directions plus the deadlock case.
             if block.type == .summary_screen {
-                // #595 — derived through the SDK's OWN `summaryStatFieldId`, not by reading
+                // Derived through the SDK's OWN `summaryStatFieldId`, not by reading
                 // `field_id` directly. A stat that carries an `input` but no `field_id` used to be
                 // invisible here exactly as it was invisible to the renderer and the gate, so the
                 // empty-card bug could never have been caught by this driver. The exact derived
@@ -1957,7 +1957,7 @@ final class SharedFixtureTests: XCTestCase {
                 let rawStats = (r.field_config?["summary_stats"]?.value as? [Any]) ?? []
                 let firstStat = rawStats.first as? [String: Any]
                 h.state["resolved_stat0_value"] = (firstStat?["value"] as? String) ?? ""
-                // #660 — a stat that cannot resolve and has a usable LABEL keeps its place and shows
+                // A stat that cannot resolve and has a usable LABEL keeps its place and shows
                 // a placeholder; one with nothing to say is still dropped. The count plus the
                 // per-index values prove no raw token reaches a renderer either way.
                 h.state["resolved_stat_count"] = rawStats.count
@@ -1976,7 +1976,7 @@ final class SharedFixtureTests: XCTestCase {
                 if resolvedKids.count > 1 {
                     h.state["resolved_child1_text"] = resolvedKids[1].text ?? ""
                 }
-                // #558 — a stat BOUND to an earlier answer that also hosts a control must open on the
+                // A stat BOUND to an earlier answer that also hosts a control must open on the
                 // RESOLVED value, not the authored default. Read off `r`, not the raw block: the first
                 // version read the unresolved `{{responses.group_size}}`, found it non-numeric, fell
                 // back to the default and asserted 9 — the very bug it forbids, passing as correct.
@@ -2022,7 +2022,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_post_purchase_success_confetti"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_success?.confetti)
             h.state["parsed_post_purchase_failure_action"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_failure?.action)
             h.state["parsed_post_purchase_failure_allow_dismiss"] = SharedFixtureTests.orNull(paywall.post_purchase?.on_failure?.allow_dismiss)
-            // #1109 — the console now persists and publishes these; read off the decoded paywall.
+            // The console now persists and publishes these; read off the decoded paywall.
             h.state["parsed_particle_effect_type"] = SharedFixtureTests.orNull(paywall.particle_effect?.type)
             h.state["parsed_particle_effect_trigger"] = SharedFixtureTests.orNull(paywall.particle_effect?.trigger)
             h.state["parsed_particle_effect_intensity"] = SharedFixtureTests.orNull(paywall.particle_effect?.intensity)
@@ -2039,7 +2039,7 @@ final class SharedFixtureTests: XCTestCase {
             // objects, not the raw JSON, so a field the model silently drops shows up here.
             let plansSection = paywall.sections.first { $0.type == "plans" }
             h.state["parsed_price_layout"] = SharedFixtureTests.orNull(plansSection?.data?.priceLayout)
-            // #960 — which plan LAYOUT the document asked for; see the Android runner.
+            // Which plan LAYOUT the document asked for; see the Android runner.
             h.state["parsed_plan_display_style"] = SharedFixtureTests.orNull(plansSection?.data?.planDisplayStyle)
             h.state["parsed_strikethrough_font_size"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughFontSize)
             h.state["parsed_strikethrough_gap"] = SharedFixtureTests.orNull(plansSection?.data?.strikethroughGap)
@@ -2072,7 +2072,7 @@ final class SharedFixtureTests: XCTestCase {
             h.state["parsed_legal_font_size"] = SharedFixtureTests.orNull(legalSection?.data?.fontSize)
             h.state["parsed_legal_alignment"] = SharedFixtureTests.orNull(legalSection?.data?.alignment)
             /*
-             * #979 — the countdown section's vocabulary. Eight of its ten console controls wrote a
+             * The countdown section's vocabulary. Eight of its ten console controls wrote a
              * key no renderer read, and the generator wrote two more of its own, so a value failing
              * to reach the DTO was indistinguishable from an unstyled countdown. The four at the
              * end (`label_font_weight`, `digit_*`, `text_color`) had no field on either platform's
@@ -2505,7 +2505,7 @@ final class SharedFixtureTests: XCTestCase {
     }
 
     /**
-     #968 — a push swiped away, through the REAL entry point the system uses.
+     A push swiped away, through the REAL entry point the system uses.
 
      iOS routes a dismissal through the SAME `userNotificationCenter(_:didReceive:)` delegate
      callback as a tap, distinguished only by `UNNotificationDismissActionIdentifier` — and it

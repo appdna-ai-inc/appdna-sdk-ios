@@ -6,7 +6,7 @@ import GoogleMaps
 /**
  Tier 2 — proof that the bundled interactive map is a REAL, LIVE map.
 
- 🔴 THIS IS THE TEST #671 NEEDED AND DID NOT HAVE.
+ 🔴 THIS IS THE TEST A REPORTED FROZEN MAP NEEDED AND DID NOT HAVE.
 
  That report said a Flutter host's map would not move. Every check we had agreed the code was fine:
  the block parsed, the URL built, the fixtures matched, the snapshot rendered. All of them were
@@ -50,7 +50,7 @@ final class GoogleInteractiveMapTests: XCTestCase {
             .nilIfEmpty
     }
 
-    /// A three-stop route, the shape reported in #671.
+    /// A three-stop route, the shape of the reported frozen map.
     private func routeBlock(interactive: Bool = true, fit: Bool = true) throws -> ContentBlock {
         let json = """
         {"id":"m1","type":"map","field_config":{

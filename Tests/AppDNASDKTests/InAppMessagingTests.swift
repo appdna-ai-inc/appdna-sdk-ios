@@ -168,7 +168,7 @@ final class InAppMessagingTests: XCTestCase {
     /// switch, headed "mirrors MessageManager's condition evaluation" — a test that re-implements
     /// the thing under test can only ever agree with it, and this one did: it reproduced the old
     /// six-operator set, so neither the `neq` inversion nor the missing `in` / `not_in` could ever
-    /// have failed here (#1064). The evaluation now lives on the operator itself and both managers
+    /// have failed here. The evaluation now lives on the operator itself and both managers
     /// call it, so this calls it too.
     private func evaluateCondition(
         field: String,

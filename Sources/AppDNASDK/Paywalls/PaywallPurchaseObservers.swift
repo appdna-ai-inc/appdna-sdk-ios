@@ -23,7 +23,7 @@ final class PaywallPurchaseObservers: ObservableObject {
     /// Registers the four observers, replacing any this holder already has (a repeated `onAppear`).
     ///
     /// `onCelebrate` is separate from `onSuccess` because only one of the four `on_success` branches
-    /// posts `.paywallPurchaseSuccess`, while a celebration belongs to all of them (#1103).
+    /// posts `.paywallPurchaseSuccess`, while a celebration belongs to all of them.
     func register(
         onSuccess: @escaping (Notification) -> Void,
         onEnded: @escaping (Notification) -> Void,

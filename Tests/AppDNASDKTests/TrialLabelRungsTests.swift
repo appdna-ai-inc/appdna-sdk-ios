@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 /**
- #989 — THE FOUR RUNGS OF A TRIAL SENTENCE, in order.
+ THE FOUR RUNGS OF A TRIAL SENTENCE, in order.
 
  `trial.duration_days` was required by the console schema, decoded by both SDKs, and read by NONE
  of the three rungs that existed — so a plan carrying the object with no `label` drew no trial text

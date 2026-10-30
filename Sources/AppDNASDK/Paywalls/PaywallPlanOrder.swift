@@ -1,6 +1,6 @@
 import Foundation
 
-/// The order a paywall's plans draw in — #1056.
+/// The order a paywall's plans draw in.
 ///
 /// 🔴 `PaywallPlan.sort_order` WAS DECODED BY BOTH PLATFORMS AND READ BY NEITHER. Plan order came
 /// from the array's own order, so a document that carried an explicit rank — a generator's output,

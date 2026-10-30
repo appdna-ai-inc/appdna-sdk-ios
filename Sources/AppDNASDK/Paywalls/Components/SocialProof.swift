@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Star rating and review count display.
 struct SocialProof: View {
-    /// #947 — the page this sits on, so `.secondary` stops following the phone. Same reason as
+    /// The page this sits on, so `.secondary` stops following the phone. Same reason as
     /// `FeatureList`: a system colour is black in light appearance and white in dark, and a paywall
     /// forces no colour scheme, so the review count vanished for anyone whose phone disagreed with
     /// the author's background. Measured as 1,557 pixels changing between the two appearances.
@@ -20,7 +20,7 @@ struct SocialProof: View {
     var body: some View {
         VStack(spacing: 8) {
             /*
-             #954 — the caption, above the stars.
+             The caption, above the stars.
 
              `data.text` decoded, travelled and was drawn by the `countdown` and `trial_badge`
              branches and by NOTHING in this one, so an author could write "Loved by 12,000
@@ -49,7 +49,7 @@ struct SocialProof: View {
                     }
 
                     if let count = data?.reviewCount {
-                        // #910 — the `value` element's container, beside the text style it
+                        // The `value` element's container, beside the text style it
                         // already honoured.
                         Group {
                             if let ts = valueTextStyle {
@@ -58,7 +58,7 @@ struct SocialProof: View {
                             } else {
                                 Text("(\(formatCount(count)))")
                                     .font(.caption)
-                                    // #947 — off the page, not off the phone.
+                                    // Off the page, not off the phone.
                                     .foregroundColor(
                                         PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
@@ -70,10 +70,10 @@ struct SocialProof: View {
 
             if let testimonial = data?.testimonial {
                 /*
-                 🔴 #947's defect, one line further down than #947 looked. This was
+                 🔴 The review count's defect, one line further down. This was
                  `.foregroundColor(.white.opacity(0.8))` — a colour that follows nothing, so the
-                 quote vanished on any light page, exactly as the review count did until #947 took
-                 it off the phone and put it on the page. The two `.font` modifiers were the other
+                 quote vanished on any light page, exactly as the review count did until its colour
+                 was taken off the phone and put it on the page. The two `.font` modifiers were the other
                  half: `.callout` was dead, overridden by `.subheadline.italic()` below it.
                  */
                 Text("\"\(loc?("social_proof.testimonial", testimonial) ?? testimonial)\"")
@@ -87,7 +87,7 @@ struct SocialProof: View {
                     .applyElementStyle(sectionStyle?.elements?["testimonial"]?.container)
 
                 /*
-                 #955 — the attribution, which the generator writes and this section could not
+                 The attribution, which the generator writes and this section could not
                  draw. 12 of 22 saved sections on dev carry an `author`, because the paywall prompt
                  asked for one; the field decoded as `author_name` and reached no view. The
                  `testimonial` SECTION has drawn it all along, which is what makes this a gap

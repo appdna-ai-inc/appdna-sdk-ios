@@ -4,7 +4,7 @@ import UIKit
 @testable import AppDNASDK
 
 /*
- #1105 — DOES THE RENDERER DRAW THE FAILURE BANNER WHEN THE FAILURE ARRIVES?
+ DOES THE RENDERER DRAW THE FAILURE BANNER WHEN THE FAILURE ARRIVES?
 
  The device walk on an iPhone 17 Pro simulator showed `purchase_failed` recorded and the CTA
  re-enabled — so `handlePostPurchaseFailure` ran and `.paywallPurchaseEnded` was delivered — and NO

@@ -4,7 +4,7 @@ import GoogleMaps
 /**
  Tier 2 — a REAL, pannable, zoomable map, drawn by the bundled Google Maps SDK.
 
- This is the tier #671 asked for. Before it, `map_interactive: true` on a Flutter or React Native
+ Before this tier, `map_interactive: true` on a Flutter or React Native
  host silently produced a still image, because the only interactive path went through
  `AppDNA.registerMapView` — an API neither wrapper exposes.
 
@@ -126,7 +126,7 @@ struct GoogleInteractiveMap: UIViewRepresentable {
      Split out so the interactive-tier tests can hold the REAL `GMSMapView` this renderer produces.
      `makeUIView` cannot be called outside a render pass (there is no way to fabricate a `Context`),
      and a test that rebuilt the same map itself would be a copy agreeing with a copy — which is how
-     #671 stayed invisible: everything we measured was measuring something other than the map.
+     a map defect once stayed invisible: everything we measured was measuring something other than the map.
      */
     internal func buildMapView(plan givenPlan: MapInteractivePlan? = nil) -> GMSMapView {
         let plan = givenPlan ?? self.plan

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /*
- #998 — the likert scale, on iOS.
+ The likert scale, on iOS.
 
  Android has rendered one since its first survey release; iOS had no `likert_config` field at all,
  so `SurveyRenderer`'s `default:` arm drew an `EmptyView()` and a respondent saw the question text

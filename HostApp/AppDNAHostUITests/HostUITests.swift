@@ -1,10 +1,10 @@
-// HostUITests.swift — #908
+// HostUITests.swift
 //
 // 🔴 THE SIMULATOR DOES HAVE A TAP. It has no tap verb exposed to a shell on another machine —
 // no `simctl` verb, no `idb`, `osascript` blocked — which is what every "iOS unproven" note on
 // this branch has been about. A UI test runs INSIDE the simulator and taps, swipes, types and
 // scrolls like a finger, so iOS can be operated after all (Rule 24); it just needs an application
-// target to attach to, which is what #908 builds.
+// target to attach to, which is what this host app provides.
 //
 // These tests are deliberately about the HOST, not about a surface: a surface needs a backend and
 // a key, which the public mirror must not carry. `scripts/sdk-host-ios.ts` supplies those at run

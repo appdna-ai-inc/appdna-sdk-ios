@@ -13,7 +13,7 @@ struct ThreeZoneStepLayout: View {
     var responses: [String: Any] = [:]
     var hookData: [String: Any]? = nil
     @Binding var inputValues: [String: Any]
-    /// #1013 — the presented step's id, so a `visibility_condition` naming a field on THIS step
+    /// The presented step's id, so a `visibility_condition` naming a field on THIS step
     /// evaluates against what the control holds right now (`VisibilityScope`). Empty = no merge.
     var stepId: String = ""
     var currentStepIndex: Int = 0
@@ -22,10 +22,10 @@ struct ThreeZoneStepLayout: View {
     var onInteract: (String, String, String?) -> Void = { _, _, _ in }
     /// Per-block field_config overrides pushed by the host delegate, layered at render time.
     var fieldConfigOverrides: [String: [String: Any]] = [:]
-    /// #657 — per-block replacement options from a refresh interaction, threaded to the renderer.
+    /// Per-block replacement options from a refresh interaction, threaded to the renderer.
     var fieldOptionsOverrides: [String: [InputOption]] = [:]
     /**
-     #1014 — WHAT A TAP ON CONTENT SHOULD DO, besides dismissing the keyboard.
+     WHAT A TAP ON CONTENT SHOULD DO, besides dismissing the keyboard.
 
      🔴 The tap-anywhere gesture lives on the renderer OUTSIDE this layout, and it only ever fired
      for a tap that MISSED the content — five device runs, three gesture shapes. The consumer was
@@ -62,7 +62,7 @@ struct ThreeZoneStepLayout: View {
                 // Only center content — vertically centre it WHEN IT FITS, and scroll from the top
                 // when it does not.
                 //
-                // 🔴 #598 — this branch was a bare `VStack { Spacer(); content; Spacer() }` at
+                // 🔴 This branch was a bare `VStack { Spacer(); content; Spacer() }` at
                 // `maxHeight: .infinity`, with no ScrollView. It was written for the small case the
                 // comment names (a loading spinner), and it is correct for that. But a step whose
                 // blocks all sit in the CENTER zone takes this branch too — a cross-sell screen,
@@ -82,7 +82,7 @@ struct ThreeZoneStepLayout: View {
                             Spacer(minLength: 0)
                         }
                         .frame(maxWidth: .infinity, minHeight: geo.size.height)
-                        // #1014 — a splash is only centre content, and this branch had no tap
+                        // A splash is only centre content, and this branch had no tap
                         // handler at all. The Spacers are part of the shape, so a tap above or
                         // below the image counts as a tap on the screen, which is what an author
                         // turning on "tap anywhere" means.
@@ -116,7 +116,7 @@ struct ThreeZoneStepLayout: View {
                             #selector(UIResponder.resignFirstResponder),
                             to: nil, from: nil, for: nil
                         )
-                        // #1014 — this handler is what a tap ON CONTENT reaches; the renderer's
+                        // This handler is what a tap ON CONTENT reaches; the renderer's
                         // own gesture only ever saw the taps that missed it.
                         onContentTap()
                     }
@@ -174,7 +174,7 @@ struct ThreeZoneStepLayout: View {
         )
         // Use ~8% of screen width for responsive margins across all devices
         // The ONE definition of the step's horizontal inset, shared with the full-bleed modifier
-        // that has to cancel it (#1006). A constant there and a formula here is how a background
+        // that has to cancel it. A constant there and a formula here is how a background
         // "reaching the screen edges" stopped eleven points short.
         .padding(.horizontal, CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width)))
     }

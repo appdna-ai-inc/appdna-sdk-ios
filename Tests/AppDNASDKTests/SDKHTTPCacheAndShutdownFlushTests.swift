@@ -24,7 +24,7 @@ final class LoopbackHTTPServer: @unchecked Sendable {
         var status: Int
         var headers: [String: String]
         var body: String
-        /// #857 — raw bytes instead of `body`, so a test can serve a gzip-encoded answer the way a
+        /// Raw bytes instead of `body`, so a test can serve a gzip-encoded answer the way a
         /// CDN does. `body` is still used when this is nil, so every existing caller is unchanged.
         var bodyData: Data?
 
@@ -41,7 +41,7 @@ final class LoopbackHTTPServer: @unchecked Sendable {
     private let lock = NSLock()
     private var _requests: [String] = []
     private var _bodies: [(label: String, body: Data)] = []
-    /// #857 — every request's raw header block, so a test can assert what the client advertised.
+    /// Every request's raw header block, so a test can assert what the client advertised.
     private var _heads: [String] = []
     private let respond: @Sendable (String) -> Answer
 

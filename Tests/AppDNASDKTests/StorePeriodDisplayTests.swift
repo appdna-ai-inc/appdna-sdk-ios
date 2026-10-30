@@ -1,8 +1,8 @@
-// StorePeriodDisplayTests.swift — #933 slice 2
+// StorePeriodDisplayTests.swift — the store's billing period
 //
 // The STORE's billing period reaches the screen, and an authored one still wins.
 //
-// Both stores report a subscription's period structurally and the SDKs have captured it since #923
+// Both stores report a subscription's period structurally and the SDKs have captured it since the store-price substitution
 // while rendering none of it: the period beside a price was whatever an author typed, and **0 of 81
 // production plans typed anything**. So a paywall showed the store's real price with no cadence
 // beside it.
@@ -13,7 +13,7 @@
 // behavioural change than this issue asked for.
 //
 // Every expectation here matches `StorePeriodDisplayTest.kt` exactly, because the thing most likely
-// to go wrong is not either platform alone but the two DRIFTING — which is what #959 was.
+// to go wrong is not either platform alone but the two DRIFTING — which has happened before.
 import XCTest
 @testable import AppDNASDK
 
@@ -69,7 +69,7 @@ final class StorePeriodDisplayTests: XCTestCase {
 
     func testApplyingStorePeriodsReachesTheSectionsPlansNotOnlyTheRootArray() throws {
         /*
-         🔴 THE #923 BUG, NOT REPEATED. The first version of the store-PRICE substitution mapped
+         🔴 THE STORE-PRICE BUG, NOT REPEATED. The first version of the store-PRICE substitution mapped
          only the root `plans` array, while every real paywall carries its plans in
          `layout.sections[].config.plans` — so the feature passed its fixture, passed its
          live-StoreKit test, and reached nothing on screen.
@@ -114,7 +114,7 @@ final class StorePeriodDisplayTests: XCTestCase {
         XCTAssertEqual(config.applyingStorePeriods([:]).plans?.first?.displayPeriod, "mo")
     }
 
-    // MARK: - #933 slice 3 — the STORE's free trial, and the promise rule
+    // MARK: - the STORE's free trial, and the promise rule
 
     private func trialPlan(label: String?, duration: String?, storeTrial: String?) throws -> PaywallPlan {
         var doc: [String: Any] = ["id": "p", "product_id": "app.premium.monthly", "name": "Monthly"]

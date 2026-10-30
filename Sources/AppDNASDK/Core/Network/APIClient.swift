@@ -347,7 +347,7 @@ final class APIClient {
         request.setValue(AppDNA.sdkVersion, forHTTPHeaderField: "x-sdk-version")
         request.setValue("ios", forHTTPHeaderField: "x-sdk-platform")
         /*
-         * #857 — `gzip` ONLY. We must not advertise an encoding we cannot decode.
+         * `gzip` ONLY. We must not advertise an encoding we cannot decode.
          *
          * This said `gzip, deflate`, mirroring Android, where the same line was worse than useless:
          * setting `Accept-Encoding` by hand stops OkHttp decompressing at all, so every gzip answer

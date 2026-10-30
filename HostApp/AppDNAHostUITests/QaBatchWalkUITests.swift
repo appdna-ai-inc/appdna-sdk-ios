@@ -1,9 +1,9 @@
 // QaBatchWalkUITests.swift — the overnight QA batch, walked on a device.
 //
-// #1000 a transparent button label      #1004 an authored ✕ (size, colour, background, inset)
-// #1003 Google's own mark on sign-in    #1006 a shared background reaching the screen edges
-// #1007 a border colour with no width   #1014 a tap anywhere advancing a splash
-// #997  a particle effect on a trigger that is not `on_appear`
+// - a transparent button label          - an authored ✕ (size, colour, background, inset)
+// - Google's own mark on sign-in        - a shared background reaching the screen edges
+// - a border colour with no width       - a tap anywhere advancing a splash
+// - a particle effect on a trigger that is not `on_appear`
 //
 // 🔴 EVERY SCREEN, AND THE ELEMENTS ON IT (CLAUDE.md Rules 23/24). Each of these is a render
 // change, so a screenshot of the first step proves nothing about the fourth. The walk advances
@@ -47,7 +47,7 @@ final class QaBatchWalkUITests: XCTestCase {
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
         /*
-         * 🔴 #1033 — IS THIS THE FLOW THAT WAS JUST PUBLISHED, OR A CACHED ONE?
+         * 🔴 IS THIS THE FLOW THAT WAS JUST PUBLISHED, OR A CACHED ONE?
          *
          * A heading can be right while the body is three revisions old. When the SDK's bootstrap is
          * refused — a dev key against the production API, say, which is a 401 and nothing more
@@ -68,7 +68,7 @@ final class QaBatchWalkUITests: XCTestCase {
         shot(app, "01-tap-anywhere")
 
         /*
-         * #1014 — LEAVE THE SCREEN BY TAPPING IT, and tap the CONTENT.
+         * LEAVE THE SCREEN BY TAPPING IT, and tap the CONTENT.
          *
          * 🔴 The content tap is the whole feature. A splash is a full-bleed image, so every tap an
          * author expects to work lands ON something — and for five device runs across three
@@ -84,7 +84,7 @@ final class QaBatchWalkUITests: XCTestCase {
          */
         app.staticTexts["1 · Tap anywhere to advance"].tap()
         /*
-         * 🔴 #1033 — THE TREE, IN THE FAILURE MESSAGE. The app's `print` output is invisible under
+         * 🔴 THE TREE, IN THE FAILURE MESSAGE. The app's `print` output is invisible under
          * `xcodebuild test`, so "the gesture never fired" and "the advance was refused" read
          * identically from out here, and so does "the step never rendered what the walk is looking
          * for". `debugDescription` is the one thing XCUITest can always answer with, and it says
@@ -97,7 +97,7 @@ final class QaBatchWalkUITests: XCTestCase {
         )
         shot(app, "02-button-styling")
 
-        // #1000 / #1007 — both buttons are on screen; the frame is the evidence for how they draw.
+        // Both buttons are on screen; the frame is the evidence for how they draw.
         XCTAssertTrue(app.buttons["Half-transparent label"].exists, "the faded-label button is missing")
         XCTAssertTrue(app.buttons["Border colour, no width"].exists, "the border-colour button is missing")
 
@@ -120,7 +120,7 @@ final class QaBatchWalkUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Continue with Google"].exists, "the Google button is missing")
 
         /*
-         * #1004 — the ✕ is authored 28pt from the edge instead of 8, so this asserts WHERE it is,
+         * The ✕ is authored 28pt from the edge instead of 8, so this asserts WHERE it is,
          * not just that it exists: "pushed as far as possible into the top-right corner, which
          * makes it hard to tap" was half the report.
          */
@@ -142,7 +142,7 @@ final class QaBatchWalkUITests: XCTestCase {
         shot(app, "05-banner")
 
         /*
-         * #1005 — THE BANNER AN INFO BANNER IS SUPPOSED TO BE: a title, a subtitle, a link under
+         * THE BANNER AN INFO BANNER IS SUPPOSED TO BE: a title, a subtitle, a link under
          * it, and the app's OWN mark rather than an emoji.
          */
         XCTAssertTrue(app.staticTexts["Your trial ends soon"].exists, "the banner title is missing")
@@ -161,7 +161,7 @@ final class QaBatchWalkUITests: XCTestCase {
 
         /*
          * Rule 24 — OPERATE IT. "Tapping the link text opens the URL entered for it" is half of
-         * what #1005 asked for, and a link that draws and goes nowhere is the defect this repo
+         * what the link feature asked for, and a link that draws and goes nowhere is the defect this repo
          * keeps shipping. The tap leaves the app, so Safari coming to the front IS the assertion;
          * the walk then reactivates the host and carries on with the rest of the step.
          */
@@ -211,7 +211,7 @@ final class QaBatchWalkUITests: XCTestCase {
         )
 
         /*
-         * #993 — `collapse_on_scroll`, which iOS has applied since Sprint 7. The drag is SMALL on
+         * `collapse_on_scroll`, which iOS has applied since Sprint 7. The drag is SMALL on
          * purpose: a full scroll takes everything off the screen and proves nothing, while 120pt
          * past a 40pt threshold moves the layout barely at all and takes the collapse past 1. The
          * pair of frames is the evidence; XCUITest cannot read opacity.
@@ -231,14 +231,14 @@ final class QaBatchWalkUITests: XCTestCase {
         shot(app, "08-option-set")
 
         /*
-         * #1046 — AN OPTION SET, BOUND BY ID, RENDERED FROM THE SET AND NOT FROM THE BLOCK.
+         * AN OPTION SET, BOUND BY ID, RENDERED FROM THE SET AND NOT FROM THE BLOCK.
          *
          * The block carries no `field_options` at all: every label here came from
          * `onboarding_option_sets` through `option_set_id`. Four words no other step in this flow
          * contains, so a pass cannot be against the wrong screen.
          *
          * 🔴 It is worth asserting at all because the picker that binds one was UNREACHABLE until
-         * #1044 — it loaded through a bare `fetch` with no token, 401'd for every author on every
+         * It loaded through a bare `fetch` with no token, 401'd for every author on every
          * load, and the empty list rendered as "No Option Sets yet". The decode was tested the
          * whole time; nobody had joined the two ends.
          */
@@ -256,7 +256,7 @@ final class QaBatchWalkUITests: XCTestCase {
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 1)
         shot(app, "09-option-selected")
 
-        // #997 — the particle effect fires on its authored trigger; the last tap ends the flow.
+        // The particle effect fires on its authored trigger; the last tap ends the flow.
         app.buttons["Done"].firstMatch.tap()
         _ = app.staticTexts["no-such-element"].waitForExistence(timeout: 2)
         shot(app, "10-after-finish-particles")

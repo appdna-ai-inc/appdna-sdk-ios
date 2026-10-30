@@ -1,4 +1,4 @@
-// TestPlanStoreKitCatalogueTests.swift — #934
+// TestPlanStoreKitCatalogueTests.swift
 //
 // DOES THE TEST PLAN ACTIVATE THE SIMULATOR'S STORE UNDER `xcodebuild test`?
 //
@@ -24,9 +24,9 @@
 // 🔴 THE UNCONTAMINATED MEASUREMENT, taken after deleting those files, is the only one that means
 // anything:
 //
-//     [#934] test-plan catalogue: asked for 2, store answered 0 — []
+//     [...] test-plan catalogue: asked for 2, store answered 0 — []
 //     Test skipped - the test plan's StoreKit configuration served nothing AND no other catalogue
-//     is active — neither the plan nor a session is in force (#934).
+//     is active — neither the plan nor a session is in force.
 //
 // So `storeKitConfigurationFileReference` in `HostApp.xctestplan` is inert on Xcode 26.2, and
 // Xcode's GUI cannot write one either: its StoreKit plugin ships exactly one scheme-option view
@@ -39,7 +39,7 @@
 // changes.
 //
 // This test now reports WHICH of the three states it is in rather than collapsing two of them into
-// "the plan does not work", because collapsing them is what kept #934 open on a false premise.
+// "the plan does not work", because collapsing them once led to a false conclusion.
 import XCTest
 import StoreKit
 
@@ -66,7 +66,7 @@ final class TestPlanStoreKitCatalogueTests: XCTestCase {
              real finding about Xcode — or another test's session swapped the catalogue out from
              under this one, which is a finding about this bundle and says nothing about the plan.
              Asking the other catalogue separates them, and reporting them as the same thing is what
-             kept #934 open on a false premise.
+             once led to a false conclusion.
              */
             let foreign = try await Product.products(for: [foreignCatalogueId])
             if !foreign.isEmpty {

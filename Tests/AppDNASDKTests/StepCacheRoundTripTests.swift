@@ -1,8 +1,8 @@
-// StepCacheRoundTripTests.swift — #937
+// StepCacheRoundTripTests.swift
 //
 // Does a step survive the SDK's OWN CACHE with its fields intact?
 //
-// #928 gated the shape that bit us: a `CodingKeys` case decoded and never encoded, which lost
+// A syntax gate covers the shape that bit us: a `CodingKeys` case decoded and never encoded, which lost
 // `request_store_review` on every cold start — the step rendered identically and silently stopped
 // asking for a review prompt. That gate is a SYNTAX check. It passes on a field encoded under the
 // WRONG key, on one written at the root and read from `layout`, and on one transformed on the way
@@ -71,9 +71,9 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
         XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
         XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
-        // #1014's flag joined the ladder and not the encoder — a splash authored "tap anywhere to
+        // The tap-anywhere flag once joined the ladder and not the encoder — a splash authored "tap anywhere to
         // advance" advanced on the launch that wrote the cache and had no way forward on the next
-        // cold one. The #928 round-trip gate is what found it; this is the behaviour behind it.
+        // cold one. The round-trip syntax gate is what found it; this is the behaviour behind it.
         XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "#1014's gesture flag")
         XCTAssertEqual(after.next_step_rules?.count, before.next_step_rules?.count)
         XCTAssertEqual(after.next_step_rules?.first?.target_step_id, "s_next")
@@ -84,7 +84,7 @@ final class StepCacheRoundTripTests: XCTestCase {
 
      A round trip that returns an EMPTY step would satisfy every `XCTAssertEqual(after.x, before.x)`
      if `before.x` were also nil — which is exactly the false green the accessibility-tree read gave
-     in #923. So the decoded step must differ from a default one in every field that was set.
+     an earlier store-price test. So the decoded step must differ from a default one in every field that was set.
      */
     func testTheRoundTrippedStepIsNotJustAnEmptyStep() throws {
         let data = try JSONEncoder().encode(try fullyPopulatedStep())
@@ -122,7 +122,7 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertNil(after.hide_back)
     }
 
-    // MARK: - #944: the LADDER, through the production writer
+    // MARK: - the LADDER, through the production writer
 
     /**
      🔴 WRITTEN TO `layout`, READ BACK FROM THE ROOT — the asymmetry the tests above do not touch.

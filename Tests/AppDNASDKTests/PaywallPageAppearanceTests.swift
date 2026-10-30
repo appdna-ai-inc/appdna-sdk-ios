@@ -1,4 +1,4 @@
-// PaywallPageAppearanceTests.swift — #947
+// PaywallPageAppearanceTests.swift
 //
 // A PAYWALL FOLLOWS ITS DOCUMENT, NOT THE PHONE — and is on the screen on a light page.
 //
@@ -13,7 +13,7 @@
 //   2. LIGHT-PAGE INK. A hard-coded `"#FFFFFF"` does not change with the phone, so it scores ZERO
 //      drift while being invisible on a white page. The toggle's label was exactly that, and the
 //      drift metric could not see it. Measured by counting near-achromatic pixels darker than a
-//      white page — the metric Android's sweep uses (#946).
+//      white page — the metric Android's sweep uses.
 //
 // 🔴 The first version of this file counted near-white and near-black pixels and was wrong for
 // every mid-tone: the legal section draws `#9CA3AF`, which is neither, so it reported `0` and
@@ -89,7 +89,7 @@ final class PaywallPageAppearanceTests: XCTestCase {
      so the same document must draw the same pixels whatever the phone is set to. Render it twice,
      once in each appearance, and count the pixels that differ. Zero means the section follows the
      document. Anything else means it follows the phone — which is `.primary` and `.secondary`,
-     and is #891's defect wherever it still lives.
+     and is the follows-the-phone defect wherever it still lives.
      */
     private func appearanceDrift(_ page: String, _ sectionJSON: String) throws -> Int {
         let light = try pixels(try render(try paywall(page: page, sections: sectionJSON), appearance: .light))
@@ -165,7 +165,7 @@ final class PaywallPageAppearanceTests: XCTestCase {
 
      The blanket ink test below is too coarse for it: a toggle section draws a platform switch and
      a `#9CA3AF` description, both of which clear the floor whether or not the label is there. So
-     the label is measured the way #938 measured a pager dot — by DIFFERENCE. Two documents
+     the label is measured the way a pager dot was measured — by DIFFERENCE. Two documents
      identical but for the label; the ink between them is the label and nothing else.
 
      Its default was the literal `"#FFFFFF"`, which is stable across appearances and invisible on

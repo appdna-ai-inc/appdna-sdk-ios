@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- #891 — a text colour nobody authored, resolved from the BACKGROUND rather than from the phone.
+ A text colour nobody authored, resolved from the BACKGROUND rather than from the phone.
 
  A paywall's defaults assumed a background instead of reading one. The unselected plan tile used
  `.primary` and the header title used `.primary` too — system colours, black in light appearance
@@ -37,19 +37,19 @@ enum PaywallTextDefaults {
         Color(hex: readableHex(on: background))
     }
 
-    /// #938 — the alpha a DECORATIVE control takes when nobody authored its colour.
+    /// The alpha a DECORATIVE control takes when nobody authored its colour.
     ///
     /// An unselected pager dot and a carousel's inactive indicator are meant to be present without
     /// competing. 30% is the figure `PlanCard.unselectedBorder` settled on, so the two agree.
     static let subtleAlpha: Double = 0.3
 
     /**
-     #938 — a decorative control's colour, READ OFF THE PAGE instead of assumed.
+     A decorative control's colour, READ OFF THE PAGE instead of assumed.
 
      `PaywallHelperViews`' unselected review dot was `Color.white.opacity(0.3)`, which over a WHITE
      page is nothing: a carousel on a light paywall showed one dot and no others, so the reader had
      no way to know how many reviews there were. Android carried the identical constant in three
-     places (#938), which is why the fix is the same function on both sides.
+     places, which is why the fix is the same function on both sides.
 
      🔴 ON A DARK PAGE THIS IS BYTE-IDENTICAL TO THE OLD CONSTANT. `readable(on:)` returns
      `#FFFFFF` for any page dark enough for white to pass AA, so the result is `Color.white` at the

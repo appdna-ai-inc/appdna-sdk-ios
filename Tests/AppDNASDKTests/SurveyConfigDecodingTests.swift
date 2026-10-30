@@ -342,7 +342,7 @@ final class SurveyConfigDecodingTests: XCTestCase {
         XCTAssertEqual(question.options?[0].id, "opt_1")
         XCTAssertEqual(question.options?[0].text, "Dashboard")
         XCTAssertNil(question.options?[0].icon)
-        // #999 — the option icon is an `IconReference` now, not a bare String: the object form
+        // The option icon is an `IconReference` now, not a bare String: the object form
         // `IconRefSchema` accepts used to make the whole OPTION fail to decode. A bare string
         // still decodes, and classifies itself the way every other surface does.
         XCTAssertEqual(question.options?[1].icon?.name, "chart")

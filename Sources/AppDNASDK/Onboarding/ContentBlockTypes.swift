@@ -14,7 +14,7 @@ public enum ContentBlockType: String, Codable {
     case rating, rich_text, progress_bar
     // Phase F: Container & advanced block types
     case stack, custom_view, date_wheel_picker, circular_gauge, row
-    /// #609 — several CTAs laid out N per row on one shared background.
+    /// Several CTAs laid out N per row on one shared background.
     case multi_buttons
     // Map with an optional route. Every setting rides in `field_config`.
     case map
@@ -136,7 +136,7 @@ struct BlockStyleModifier: ViewModifier {
     let style: BlockStyle?
 
     /**
-     #886 — a block's authored shadow through `StyleEngine.resolveShadow`, the ONE seam that says
+     A block's authored shadow through `StyleEngine.resolveShadow`, the ONE seam that says
      what an authored shadow means. `BlockShadowStyle` is the block spelling of the same five
      fields `ShadowStyleConfig` carries, so it converts rather than re-deciding.
      */
@@ -167,7 +167,7 @@ struct BlockStyleModifier: ViewModifier {
                             style: borderStrokeStyle(s)
                         )
                 )
-                // Shadow — #886, through `StyleEngine.resolveShadow`: the same seam the paywall
+                // Shadow — through `StyleEngine.resolveShadow`: the same seam the paywall
                 // container styling uses and the same seam the shared fixture drives, so a block
                 // and a section cannot disagree about what an authored shadow means. The values are
                 // unchanged on this side; Android was the half that dropped colour and offset.
@@ -261,7 +261,7 @@ func summaryStatFieldId(blockId: String, index: Int, stat: [String: Any]) -> Str
     return "\(blockId)_stat_\(index)"
 }
 
-/// #1013 — `stepId` + `stepInputs` are what make a condition react WHILE the step is open.
+/// `stepId` + `stepInputs` are what make a condition react WHILE the step is open.
 ///
 /// `responses` holds completed steps only, so "show this when the category above is Modern" could
 /// never be true: the category is chosen while the step is still on screen, which is the only
@@ -941,7 +941,7 @@ extension View {
 
 /// The width of the container a block is being laid out in, published by whoever lays it out.
 ///
-/// #663 — a percentage `element_width` used to resolve against `UIScreen.main.bounds` minus an
+/// A percentage `element_width` used to resolve against `UIScreen.main.bounds` minus an
 /// ASSUMED global padding. Android resolves it against the real container (`fillMaxWidth(fraction)`)
 /// and so does the console preview (CSS `width: 75%`), so iOS was the one surface disagreeing: the
 /// same authored `75%` came out a different width on iOS than the canvas the author designed on,
@@ -1048,7 +1048,7 @@ extension EnvironmentValues {
     }
 }
 
-/// #663 — what a fractional `element_width` actually resolves to.
+/// What a fractional `element_width` actually resolves to.
 ///
 /// Pure so the rule is asserted by a test rather than by eye. `container` is the measured width of
 /// whatever the block sits in; 0 means nobody measured, and the fallback is the historical
@@ -1060,7 +1060,7 @@ func relativeWidth(_ fraction: CGFloat, container: CGFloat) -> CGFloat {
     return (screen - (max(24, screen * 0.08) * 2)) * fraction
 }
 
-/// #654 / #659 — does this block need an outer full-width box to align inside?
+/// Does this block need an outer full-width box to align inside?
 ///
 /// Mirrors Android `needsOuterAlignmentBox`, and iOS needed it for the same reason Android did:
 /// `BlockPositionModifier` applies `.frame(maxWidth: .infinity, alignment:)` INSIDE the sizing
@@ -1223,7 +1223,7 @@ public struct SocialProviderConfig: Codable {
     // non-empty URL the SDK renders the remote image instead of the built-in
     // provider glyph. nil → keep the brand glyph.
     public let icon_url: String?
-    /// Per-provider label size. Requested by QA on #560 once the Style section became findable:
+    /// Per-provider label size. Requested by QA once the Style section became findable:
     /// the colours were there and the size was not, so a provider could be styled to match a brand
     /// everywhere except its type.
     public let font_size: Double?
@@ -1505,7 +1505,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let loading_text_align: String?
     // media_gallery: horizontal row of image tiles.
     public let gallery_images: [String]?
-    /// #1021 — an optional title above the strip, belonging to the element rather than to a
+    /// An optional title above the strip, belonging to the element rather than to a
     /// separate heading block an author has to keep aligned with it. Unset draws nothing.
     public let gallery_title: String?
     /// The title's colour. Unset follows the step's own text colour via the renderer default.
@@ -1890,7 +1890,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.loading_text_align = c.lenient(String.self, .loading_text_align)
         self.loading_items = try c.decodeIfPresent([LoadingItemConfig].self, forKey: .loading_items)
         self.gallery_images = try c.decodeIfPresent([String].self, forKey: .gallery_images)
-        // #1021 — the gallery's own header.
+        // The gallery's own header.
         self.gallery_title = try c.decodeIfPresent(String.self, forKey: .gallery_title)
         self.gallery_title_color = try c.decodeIfPresent(String.self, forKey: .gallery_title_color)
         self.gallery_item_width = c.lenient(Double.self, .gallery_item_width)
@@ -1943,7 +1943,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.wheel_line_color = c.lenient(String.self, .wheel_line_color)
         self.wheel_line_stroke_width = c.lenient(Double.self, .wheel_line_stroke_width)
         self.haptic_on_scroll = c.lenient(Bool.self, .haptic_on_scroll)
-        // #919 — a bad CHILD costs that child, not the row it sits in.
+        // A bad CHILD costs that child, not the row it sits in.
         self.children = try c.decodeLenientArray(ContentBlock.self, forKey: .children, in: "block.children")
         self.stack_children = try c.decodeLenientArray(ContentBlock.self, forKey: .stack_children, in: "block.stack_children")
         self.z_index = c.lenient(Double.self, .z_index)

@@ -1,10 +1,10 @@
 // FeedbackFormPresenterTests.swift
 //
-// #901 — the controller a survey's feedback form is presented on.
+// The controller a survey's feedback form is presented on.
 //
 // 🔴 The form was presented on the topmost presented controller, taken unconditionally. At the
 // moment the follow-up runs, that is the survey sheet being dismissed — and UIKit does not leak
-// the way Android did (#898). It logs
+// the way Android did. It logs
 //
 //     Attempt to present <UIAlertController> on <…> which is already presenting / being dismissed
 //
@@ -74,7 +74,7 @@ final class FeedbackFormPresenterTests: XCTestCase {
         )
     }
 
-    /// The exact shape #901 describes: the survey sheet on top, mid-dismissal, and the host
+    /// The exact shape of the reported defect: the survey sheet on top, mid-dismissal, and the host
     /// underneath it. Before the fix this returned the sheet and the form was never seen.
     func testTheSurveySheetMidDismissalYieldsTheHostBeneath() {
         let host = StubController(), surveySheet = StubController()

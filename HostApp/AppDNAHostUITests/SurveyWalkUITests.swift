@@ -1,6 +1,6 @@
 // SurveyWalkUITests.swift — a survey, presented and ANSWERED on a device.
 //
-// #1023. A survey had never been walked. The onboarding flow had this treatment and nothing
+// A survey had never been walked. The onboarding flow had this treatment and nothing
 // presented a SURVEY and answered one, so four behaviours were unproven on both platforms:
 // sentiment → follow-up routing, `trigger_winback` (which only signals), the feedback form, and
 // `show_if` questions appearing as answers change.
@@ -73,7 +73,7 @@ final class SurveyWalkUITests: XCTestCase {
         XCTAssertTrue(next.waitForExistence(timeout: 5), "no Next after answering")
         next.tap()
 
-        // #1023 — `show_if`: this question exists only because the answer was one of the two
+        // `show_if`: this question exists only because the answer was one of the two
         // unhappy faces. An emoji answer is stored as the EMOJI, not its index, so the condition is
         // written against the emoji — a `show_if` against `[0, 1]` matches nothing and the question
         // silently never appears.

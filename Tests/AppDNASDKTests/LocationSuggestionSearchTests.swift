@@ -104,7 +104,7 @@ final class LocationSuggestionSearchTests: XCTestCase {
         XCTAssertEqual(Set(body.keys), ["id", "provider", "text", "query", "type", "bias_country", "language"])
     }
 
-    /// An unauthored setting is absent from the resolve body, as it is from the listing request (#964).
+    /// An unauthored setting is absent from the resolve body, as it is from the listing request.
     func testAnUnauthoredSettingIsAbsentFromTheBody() throws {
         let rig = LocationSearchRig(settings: Self.settings([:]), autocomplete: ["Porto": [Self.portoSuggestion]])
         rig.type("Porto")

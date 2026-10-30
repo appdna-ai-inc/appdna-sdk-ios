@@ -105,7 +105,7 @@ extension SharedFixtureTests {
         )
         let delegate = TapPathPaywallDelegateSpy(harness: h)
 
-        // #1105 — what the authored `on_failure` route hands the renderer: the banner's text.
+        // What the authored `on_failure` route hands the renderer: the banner's text.
         let failureObserver = NotificationCenter.default.addObserver(
             forName: .paywallPurchaseFailure, object: nil, queue: nil
         ) { note in

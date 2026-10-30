@@ -3,7 +3,7 @@ import Foundation
 /// The four Console settings that shape a location autocomplete search, resolved once for whichever
 /// surface is asking.
 ///
-/// 🔴 EXTRACTED BECAUSE THE DUPLICATION WAS THE DEFECT (#963). The form-step Location field read all
+/// 🔴 EXTRACTED BECAUSE THE DUPLICATION WAS THE DEFECT. The form-step Location field read all
 /// four settings and the `input_location` content block read none of them, so an author who set
 /// Type = "City" on a content block got street addresses and an authored Min characters did
 /// nothing — silently, on both platforms. One resolver, used by every surface, is what makes that
@@ -60,8 +60,8 @@ struct LocationSearchSettings: Equatable {
     /// Not hypothetical: content-block `field_config` is `.passthrough()` and therefore
     /// UNVALIDATED, and the Console's content-block Location Type select offered `coordinates` —
     /// in no enum, no SDK, and refused by the proxy. Those blocks were harmless only because this
-    /// surface sent no `type` at all; the moment it honoured the authored one (#963) every one of
-    /// them would have gone silently dead. The picker is fixed too (#964), but published documents
+    /// surface sent no `type` at all; the moment it honoured the authored one every one of
+    /// them would have gone silently dead. The picker is fixed too, but published documents
     /// outlive a picker fix.
     private static let proxyTypes: Set<String> = ["city", "address", "region", "country"]
 

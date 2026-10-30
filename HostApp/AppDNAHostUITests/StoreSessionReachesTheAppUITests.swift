@@ -1,18 +1,18 @@
-// StoreSessionReachesTheAppUITests.swift — #934 / #1018
+// StoreSessionReachesTheAppUITests.swift
 //
 // DOES AN `SKTestSession` HELD BY THE UI-TEST PROCESS SERVE THE APP UNDER TEST?
 //
-// #934 is held open on the scheme attribute Xcode writes in its GUI, because every generated-scheme
+// The scheme-level StoreKit configuration depends on the scheme attribute Xcode writes in its GUI, because every generated-scheme
 // attempt has been a guess at the placement — and a measurement with the guess applied still gives
 // `store answered 0` (`TestPlanStoreKitCatalogueTests`). So the scheme route is unproven by us.
 //
 // 🔴 BUT THE SCHEME IS NOT THE ONLY WAY TO PUT A CATALOGUE IN FRONT OF AN APP. `SKTestSession`
 // configures the SIMULATOR's StoreKit environment, and creating one TERMINATES running app
 // processes to apply — which is the behaviour of something device-wide rather than process-local
-// (measured on #934: "SKTestSession kills an app process"). If that is so, a UI test can hold the
+// (measured: "SKTestSession kills an app process"). If that is so, a UI test can hold the
 // session and the app it launches afterwards should see the products.
 //
-// That is the question this test answers, and the answer decides #1018: a CTA-tap purchase walk
+// That is the question this test answers, and the answer decides whether a CTA-tap purchase walk is possible: a CTA-tap purchase walk
 // needs a catalogue in the app under test, and a UI test drives the app from OUTSIDE its process.
 //
 // It is written to SKIP rather than fail when the answer is no, because the answer is Apple's
@@ -68,7 +68,7 @@ final class StoreSessionReachesTheAppUITests: XCTestCase {
                 + "defect here, so it skips with the measurement rather than failing.",
         )
 
-        // If we get here the route WORKS, and #1018 is buildable without #934.
+        // If we get here the route WORKS, and the purchase walk needs no scheme-level StoreKit setup.
         XCTAssertTrue(probe.label.hasPrefix("store:1"), "expected one product, got \(probe.label)")
     }
 }

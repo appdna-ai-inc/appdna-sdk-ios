@@ -40,7 +40,7 @@ final class PushActionCategoryTests: XCTestCase {
     }
 
     /**
-     #987 — a button-less payload registers the DEFAULT category, not nothing.
+     A button-less payload registers the DEFAULT category, not nothing.
 
      This asserted `slot.categories.isEmpty` when a button-less push carried no category at all.
      It registers one now, with no actions, so the push can report its dismissal — and the
@@ -267,7 +267,7 @@ final class PushActionCategoryTests: XCTestCase {
         XCTAssertEqual(SFSymbolTables.lucide["check"], "checkmark")
     }
 
-    // MARK: - #968 — a dismissal is observable, and is not a tap
+    // MARK: - a dismissal is observable, and is not a tap
 
     func testCategoryOptsIntoDismissReporting() {
         /*
@@ -285,7 +285,7 @@ final class PushActionCategoryTests: XCTestCase {
     }
 
     /**
-     #987 — A PUSH WITH NO BUTTONS GETS A CATEGORY TOO, so it can report its dismissal.
+     A PUSH WITH NO BUTTONS GETS A CATEGORY TOO, so it can report its dismissal.
 
      This test used to assert the opposite — `XCTAssertNil` — as "the honest limit, pinned so it is
      not mistaken for full coverage". It was honest and it was a gap: a plain title-and-body push

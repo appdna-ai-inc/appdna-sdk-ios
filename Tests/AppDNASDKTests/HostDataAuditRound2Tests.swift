@@ -1,9 +1,9 @@
 import XCTest
 @testable import AppDNASDK
 
-/// Implementation-audit ROUND 2 regressions (iOS): M1 nested sheet blocks resolve their
-/// own `sheet_step_paths`, m1 nested host-data-scoped Selects get vanished selections cleared, m2 Segmented
-/// default-first when options arrive late, m3 resync never clobbers a non-string answer.
+/// Host-data regressions (iOS): nested sheet blocks resolve their
+/// own `sheet_step_paths`, nested host-data-scoped Selects get vanished selections cleared, Segmented
+/// default-first when options arrive late, resync never clobbers a non-string answer.
 @MainActor
 final class HostDataAuditRound2Tests: XCTestCase {
 

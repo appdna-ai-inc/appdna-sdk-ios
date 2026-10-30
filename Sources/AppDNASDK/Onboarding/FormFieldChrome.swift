@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- #985 — A FORM STEP'S FIELD COLOURS, honoured on iOS.
+ A FORM STEP'S FIELD COLOURS, honoured on iOS.
 
  `FormFieldStyle` carries `border_color`, `focus_border_color`, `background_color`, `corner_radius`
  and an opaque `error_style` map. Android's `textFieldColorsFor` has read all of them since it

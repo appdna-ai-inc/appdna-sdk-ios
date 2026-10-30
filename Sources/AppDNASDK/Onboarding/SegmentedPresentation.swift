@@ -1,13 +1,13 @@
 import Foundation
 
 /*
- #1013 — WHETHER A `Segmented` INPUT DRAWS A SEGMENTED CONTROL, as one rule both platforms call.
+ WHETHER A `Segmented` INPUT DRAWS A SEGMENTED CONTROL, as one rule both platforms call.
 
  The console has shown a six-option "Display Style" Select for `input_select` AND `input_segmented`
  since both existed (StepContentEditor.tsx:7901). Only the Select ever read it: this platform drew
  `.pickerStyle(.segmented)` unconditionally and Android drew a fixed equal-weight Row, so an author
  who chose "Bubble / Chips" on a Segmented element saw no change on either device — the defect
- #1013 reports, and the reason it reads as "the element does not react".
+ that was reported, and the reason it reads as "the element does not react".
 
  🔴 Withdrawing the control was the wrong remedy, and a measurement is what settled it: ONE
  production block carries `display_style` on a Segmented input and the value it carries is

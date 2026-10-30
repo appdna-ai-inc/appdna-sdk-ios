@@ -1,6 +1,6 @@
-// LocationSearchUITests.swift — #963 / #964
+// LocationSearchUITests.swift
 //
-// The on-device half of #963: does the `location_type` an author sets on a Location CONTENT BLOCK
+// The on-device half of the location-type check: does the `location_type` an author sets on a Location CONTENT BLOCK
 // reach the search request?
 //
 // Until 1.0.82 this surface ran `MKLocalSearchCompleter` against Apple's place index, which takes
@@ -32,7 +32,7 @@ final class LocationSearchUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
-    /// #1041 — ITS OWN flow, not the shared `flowId`. Three walks needed three different
+    /// ITS OWN flow, not the shared `flowId`. Three walks needed three different
     /// flows and read one field, so two of them presented a flow they were not written for
     /// and failed on a screen they were never looking at. Empty skips.
     private var flowId: String? { TestCredentials.locationFlowId.isEmpty ? nil : TestCredentials.locationFlowId }

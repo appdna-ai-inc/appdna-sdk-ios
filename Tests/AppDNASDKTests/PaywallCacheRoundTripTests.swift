@@ -1,16 +1,16 @@
-// PaywallCacheRoundTripTests.swift — #944
+// PaywallCacheRoundTripTests.swift
 //
-// #937 round-tripped an `OnboardingStep` through its cache and said plainly what it did not cover:
+// `StepCacheRoundTripTests` round-trips an `OnboardingStep` through its cache and said plainly what it did not cover:
 // `PaywallConfig`, and the root-then-`layout` ladder. This is that half.
 //
 // 🔴 IT DRIVES THE PRODUCTION WRITER, NOT A COPY OF IT. `RemoteConfigManager.cacheAllFetchedConfigs()`
 // is the encoder every cached paywall really goes through, and a second manager built on the same
 // `ConfigCache` runs the real `parsePaywalls` on the way back — sanitiser, decoder and all. A test
 // that built its own `JSONEncoder` would prove that encoder correct and say nothing about the one
-// that ships. (That writer was `private` until this issue, which is why the encoder behind #928's
+// that ships. (That writer was `private` until this test, which is why the encoder behind an earlier
 // production defect had no test that could reach it at all.)
 //
-// What the #928 SYNTAX gate cannot see and this does:
+// What the cache-key SYNTAX gate cannot see and this does:
 //   · a field encoded under the WRONG key — the keys still appear in the source;
 //   · a field read back through a DIFFERENT LADDER than it was written to;
 //   · a field transformed on the way out and not on the way back;
@@ -27,11 +27,11 @@ final class PaywallCacheRoundTripTests: XCTestCase {
      A paywall written the way a real one is, with every branch the renderer reads populated.
 
      🔴 PLANS LIVE IN THREE PLACES and the renderer takes whichever is present — root `plans`,
-     top-level `sections[].config.plans`, and `layout.sections[].data.plans`. #923 proved that
+     top-level `sections[].config.plans`, and `layout.sections[].data.plans`. The store-price substitution proved that
      covering one of them is the same as covering none on a document that used another, so the
      round trip has to carry all three.
 
-     Every value is distinguishable on purpose, for the reason #937 gives: `true`/`1` collide
+     Every value is distinguishable on purpose, for the reason `StepCacheRoundTripTests` gives: `true`/`1` collide
      across fields, so a swap between two of them would round-trip "correctly" and prove nothing.
 
      `__cache_marker` is a key no DTO knows. The typed encode therefore CANNOT reproduce it, which
@@ -103,7 +103,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
                         "config": ["style": "dashed", "thickness": 2, "color": "#CCCCCC"],
                     ],
                     [
-                        // 🔴 #919's shape: `config.style` written as a per-element MAP where the
+                        // 🔴 A known bad shape: `config.style` written as a per-element MAP where the
                         // DTO declares a String. `@LenientScalar` keeps the section and drops the
                         // field; what matters here is that the cache does not RESURRECT it.
                         "type": "features", "id": "sec_features",
@@ -222,7 +222,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(dividerAfter?.data?.lineStyle, dividerBefore?.data?.lineStyle, "divider style")
         XCTAssertEqual(dividerAfter?.data?.thickness, dividerBefore?.data?.thickness, "divider thickness")
 
-        // And the #919 map-shaped `style` stays dropped rather than coming back as something.
+        // And the map-shaped `style` stays dropped rather than coming back as something.
         let featuresAfter = after.layout?.sections?.first { $0.type == "features" }
         XCTAssertEqual(featuresAfter?.data?.title, "Features", "the section itself must survive")
         XCTAssertNil(featuresAfter?.data?.lineStyle, "a map-shaped style must not be resurrected as a String")
@@ -279,8 +279,8 @@ final class PaywallCacheRoundTripTests: XCTestCase {
      🔴 THE CONTROL THAT MAKES THE ONES ABOVE MEAN SOMETHING.
 
      A round trip that returned an EMPTY paywall would satisfy every `XCTAssertEqual(after.x, before.x)`
-     where `before.x` happened to be nil too — the false green the accessibility-tree read gave in
-     #923. So the decoded paywall must differ from a bare one in every field the fixture set.
+     where `before.x` happened to be nil too — the false green the accessibility-tree read once gave
+     a store-price test. So the decoded paywall must differ from a bare one in every field the fixture set.
      */
     func testTheRoundTrippedPaywallIsNotJustAnEmptyPaywall() throws {
         let (_, after, _) = try roundTrip()
@@ -319,9 +319,9 @@ final class PaywallCacheRoundTripTests: XCTestCase {
     /**
      🔴 `resolvedStorePrice` IS A RUNTIME LOOKUP AND MUST NOT BE CACHED.
 
-     It is filled in by the presenter from a live StoreKit query (#923). A cache that persisted it
-     would show YESTERDAY'S price on a cold start with no lookup at all — which is the defect #923
-     fixed, reintroduced through the cache. The guarantee is structural (the field is deliberately
+     It is filled in by the presenter from a live StoreKit query. A cache that persisted it
+     would show YESTERDAY'S price on a cold start with no lookup at all — which is the stale-price defect
+     already fixed, reintroduced through the cache. The guarantee is structural (the field is deliberately
      absent from `CodingKeys`, so the encoder cannot write it), and this is the test that says so
      out loud — and would fail the moment someone "completed" that enum.
 

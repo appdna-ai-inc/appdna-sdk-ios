@@ -83,7 +83,7 @@ final class BundledConfigShapeTests: XCTestCase {
         XCTAssertNil(flags.getValue(flag: "k_bool") as? Bool)
     }
 
-    // MARK: - #856 — a bundle the SDK cannot read must say so
+    // MARK: - a bundle the SDK cannot read must say so
 
     /*
      * Every section above is optional, so a bundle carrying none of them parsed in silence and the

@@ -247,7 +247,7 @@ final class SurveyManager {
         let sentimentName = sentiment.analyticsName
 
         /*
-         #897 — A STORE REVIEW PROMPT IS NEVER CONDITIONED ON THE ANSWER.
+         A STORE REVIEW PROMPT IS NEVER CONDITIONED ON THE ANSWER.
 
          The sentiment branch above is the right shape for every OTHER follow-up: a feedback form
          for unhappy users and a thank-you for happy ones are ordinary product decisions. A store
@@ -309,7 +309,7 @@ final class SurveyManager {
     }
 
     /**
-     #901 — the controller a feedback form can ACTUALLY be presented on.
+     The controller a feedback form can ACTUALLY be presented on.
 
      The old walk took the topmost presented controller unconditionally. At the moment this runs
      the topmost one is the survey sheet, mid-dismissal — and UIKit does not leak the way Android
@@ -338,7 +338,7 @@ final class SurveyManager {
     }
 
     /**
-     #901 — how many times to come back and look, and how long to wait between.
+     How many times to come back and look, and how long to wait between.
 
      Deferring once is not enough: `isBeingDismissed` is false again the instant the transition
      ends, but the PRESENTER is still busy until its `presentedViewController` clears, and that is
@@ -346,9 +346,9 @@ final class SurveyManager {
      and short enough that a user who tapped "bad" is still looking at the screen.
      */
     /*
-     #920 — A FORM THAT IS TAKEN AWAY IS NOT A FORM THE USER DISMISSED.
+     A FORM THAT IS TAKEN AWAY IS NOT A FORM THE USER DISMISSED.
 
-     #901 fixed the presentation: the form lands on the controller underneath, which is staying.
+     The presentation is handled: the form lands on the controller underneath, which is staying.
      The reverse was left open — a form that is UP when its presenter goes away for a reason of the
      host's own (a window torn down, a root view controller swapped, a deep link replacing the
      stack). UIKit takes the alert down with its presenter and nothing is recorded, so
@@ -446,7 +446,7 @@ final class SurveyManager {
                 ])
             })
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-                // #920 — the reason is new; `user` is what every form dismissed before this change
+                // The reason is new; `user` is what every form dismissed before this change
                 // was, so a reader of old data can treat an absent reason as this one.
                 self?.resolveFeedbackForm(reason: "user")
             })
@@ -454,7 +454,7 @@ final class SurveyManager {
             self.feedbackFormAlert = alert
             self.feedbackFormResolved = false
             /*
-             #920 — when the PRESENTER is released, the alert goes with it and the user never
+             When the PRESENTER is released, the alert goes with it and the user never
              answered. Attached to the controller rather than observed globally, so it cannot
              outlive what it is about, and holding only `[weak self]` so the SDK is not kept alive
              by a host's view controller either.

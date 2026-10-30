@@ -353,7 +353,7 @@ extension AppDNA.PushModule {
         let pushId = PushMarker.pushId(userInfo)
 
         /*
-         * #968 — A DISMISSAL IS NOT A TAP. iOS routes both through this one delegate callback, so
+         * A DISMISSAL IS NOT A TAP. iOS routes both through this one delegate callback, so
          * without this branch the `.customDismissAction` option added to the category in
          * `PushActionCategories` would make every swipe-away arrive here and be recorded as
          * `push_tapped` — inflating the one number a push campaign is judged on, and firing

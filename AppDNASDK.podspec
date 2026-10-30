@@ -32,7 +32,7 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   # GoogleMaps only up to 9.4.0, so 9.4 is the highest both channels can share.
   s.dependency 'GoogleMaps', '~> 9.4'
 
-  # #982 — the animation engines. THE PODSPEC NEEDS THESE TOO, for exactly the reason the GoogleMaps
+  # The animation engines. THE PODSPEC NEEDS THESE TOO, for exactly the reason the GoogleMaps
   # note above gives: the React Native and Flutter hosts consume AppDNASDK through CocoaPods, so an
   # `import Lottie` that is green under SwiftPM fails there with "no such module".
   #

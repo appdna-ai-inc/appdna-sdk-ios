@@ -1,4 +1,4 @@
-// TrackedEventLog.swift — #1047
+// TrackedEventLog.swift
 //
 // The host's `AppDNALifecycleDelegate`, kept for ONE reason: a UI test can only assert what is
 // drawn, and the SDK's stdout is invisible under `xcodebuild test`. So every event the SDK tracks
@@ -27,11 +27,11 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
     private init() {}
 
     /*
-     🔴 #1074 — A PAYWALL ACTION IS NOT A TRACKED EVENT, so it needs its own door into the same
+     🔴 A PAYWALL ACTION IS NOT A TRACKED EVENT, so it needs its own door into the same
      mirror. `onPaywallAction` reports what the user DID — the CTA was tapped — separately from
      what it achieved, and a tap that cannot become a purchase emits no event at all. Folding it in
      here under its raw value means one label carries both, and a walk reading `host.lastEvents`
-     can tell "the SDK never heard the tap" from "the store did not answer" (#1072).
+     can tell "the SDK never heard the tap" from "the store did not answer".
      */
     func onPaywallAction(paywallId: String, action: PaywallAction) {
         record("action:" + action.rawValue)

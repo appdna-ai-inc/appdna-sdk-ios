@@ -754,7 +754,7 @@ final class ContentBlockDecodingTests: XCTestCase {
         XCTAssertEqual(block.gap, 12)
         XCTAssertEqual(block.wrap, false)
         /*
-         * #992 — `justify` is GONE, and the JSON above deliberately still carries it. The row's
+         * `justify` is GONE, and the JSON above deliberately still carries it. The row's
          * justify-content is `row_distribution`, which the console, the preview and both renderers
          * already agreed on; `justify` was decoded by both platforms and read by neither, so
          * keeping it would have been a second name for one setting with no rule for which wins.

@@ -1,6 +1,6 @@
 import Foundation
 
-/// How a multi-plan CTA names the plan it will buy (#1100 / #1102 / #1104).
+/// How a multi-plan CTA names the plan it will buy.
 ///
 /// One rule on every surface: iOS (`CTAButton`, `PaywallRenderer`), Android `CtaPlanName`, and the
 /// console preview's `composeCtaPlanName`; the shared fixture `dto_parsing/cta_plan_name_compose` holds

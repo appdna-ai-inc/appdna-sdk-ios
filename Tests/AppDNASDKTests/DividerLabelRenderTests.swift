@@ -1,4 +1,4 @@
-// DividerLabelRenderTests.swift — #976
+// DividerLabelRenderTests.swift
 //
 // DOES THE DIVIDER'S LABEL DRAW ITS AUTHORED BACKGROUND?
 //

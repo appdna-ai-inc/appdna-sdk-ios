@@ -1,8 +1,8 @@
-// ConfigurationIssueReporterTests.swift — #935
+// ConfigurationIssueReporterTests.swift
 //
 // A DROPPED BLOCK REACHES SOMEBODY, AND SAYS WHAT WAS WRONG.
 //
-// #919 made the decode lenient and logged each drop with its coding path. Nothing left the device,
+// An earlier change made the decode lenient and logged each drop with its coding path. Nothing left the device,
 // so a customer could not report what their console was producing and neither could we — nobody
 // could answer "how often is this happening in the field".
 //
