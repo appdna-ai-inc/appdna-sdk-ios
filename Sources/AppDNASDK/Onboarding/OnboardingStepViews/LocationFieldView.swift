@@ -237,6 +237,16 @@ struct LocationFieldView: View {
             let suggestions = locationSearch.results
             if locationSearch.isDropdownOpen && !suggestions.isEmpty {
                 VStack(spacing: 0) {
+                    // Google's attribution heads the Google suggestions, inside the dropdown: the list
+                    // is Google content shown without a Google map. At the TOP, directly under the
+                    // field, which the system keeps above the keyboard, so the logo is on screen
+                    // whenever the list is; under the last row it fell behind the keyboard and the
+                    // pinned button. The dropdown's surface is the system background, so the plain
+                    // variant follows the appearance.
+                    if locationSearch.showsGoogleLogo {
+                        GoogleMapsLogoView(backdrop: .plain(hex: nil))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     ForEach(Array(suggestions.prefix(5).enumerated()), id: \.offset) { idx, listed in
                         Button(action: { selectSuggestion(listed) }) {
                             HStack {
@@ -271,13 +281,6 @@ struct LocationFieldView: View {
                         if idx < min(suggestions.count, 5) - 1 {
                             Divider().padding(.leading, 36)
                         }
-                    }
-                    // Google's attribution under Google suggestions, inside the dropdown: the list
-                    // is Google content shown without a Google map. The dropdown's surface is the
-                    // system background, so the plain variant follows the appearance.
-                    if locationSearch.showsGoogleLogo {
-                        GoogleMapsLogoView(backdrop: .plain(hex: nil))
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .background(Color(.systemBackground))

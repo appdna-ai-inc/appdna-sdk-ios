@@ -115,7 +115,8 @@ let a host observe every tracked event and every piece of published config the S
   is what that lookup returns and carries `mapbox_id` or `place_id`. A tap that cannot be resolved,
   or a step that moves on while it is resolving, stores the typed text.
 - **Google as a location-search provider**. With a Google key under Settings >
-  Location search, the dropdown shows the Google Maps logo, and a step that displays a Google
+  Location search, the dropdown shows the Google Maps logo at the top of its list, directly under
+  the field (so it stays on screen with the keyboard up), and a step that displays a Google
   answer draws a small "Google Maps" credit (an option's bottom sheet draws its own). Where an
   answer is stored or sent rather than shown (an option's value, a default value, a link or media
   URL, a header, and any template on a paywall, message, survey or push) the user's typed text is

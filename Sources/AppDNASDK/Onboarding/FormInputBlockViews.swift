@@ -2913,6 +2913,18 @@ struct FormInputLocationPlaceholderBlock: View {
                 let ddIcon: Color = ddIconHex.map { Color(hex: $0) } ?? .white
 
                 VStack(alignment: .leading, spacing: 0) {
+                    // Google's attribution heads the Google suggestions, inside the dropdown. At the
+                    // TOP, directly under the field: the system keeps a focused field above the
+                    // keyboard, so the logo is on screen whenever the user is typing. Under the last
+                    // row it fell behind the keyboard and the pinned buttons on an ordinary phone
+                    // layout. The authored dropdown colour decides the plain variant; a translucent
+                    // dropdown lets the step show through, which is a busy surface.
+                    if searchCompleter.showsGoogleLogo {
+                        GoogleMapsLogoView(backdrop: GoogleMapsAttribution.backdrop(
+                            ofDropdownFill: ddBgHex, opacity: ddOpacity, behind: attributionBackdrop, unstyled: .plain(hex: nil)
+                        ))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     let visible = Array(searchCompleter.results.prefix(5).enumerated())
                     ForEach(visible, id: \.offset) { idx, listed in
                         Button {
@@ -2966,15 +2978,6 @@ struct FormInputLocationPlaceholderBlock: View {
                         if idx < visible.count - 1 {
                             Divider()
                         }
-                    }
-                    // Google's attribution under Google suggestions, inside the dropdown. The
-                    // authored dropdown colour decides the plain variant; a translucent dropdown lets
-                    // the step show through, which is a busy surface.
-                    if searchCompleter.showsGoogleLogo {
-                        GoogleMapsLogoView(backdrop: GoogleMapsAttribution.backdrop(
-                            ofDropdownFill: ddBgHex, opacity: ddOpacity, behind: attributionBackdrop, unstyled: .plain(hex: nil)
-                        ))
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
                 .background(ddBg.opacity(ddOpacity))

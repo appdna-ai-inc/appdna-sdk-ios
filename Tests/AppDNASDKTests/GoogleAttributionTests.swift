@@ -432,8 +432,9 @@ final class GoogleAttributionRenderTests: XCTestCase {
     private let mapboxRow: [String: Any] = ["id": "dXJuOm1ieHBsYzpzeW50aGV0aWMtcG9ydG8=", "provider": "mapbox",
                                             "formatted_address": "Springfield, IL, USA"]
 
-    /// The form-step field: a Google list draws Google's logo under the rows; the same rows from
-    /// Mapbox do not. RED CONTROL: the logo removed from the dropdown → the two frames are equal.
+    /// The form-step field: a Google list draws Google's logo at its head; the same rows from Mapbox do
+    /// not. RED CONTROLS: the logo removed from the dropdown → the two frames are equal; the logo drawn
+    /// after the rows → `assertTheLogoHeadsTheList` fails.
     func testTheFormStepDropdownDrawsTheLogoForGoogleOnly() {
         let (g, gRig) = formField([googleRow])
         let (m, mRig) = formField([mapboxRow])
@@ -443,7 +444,27 @@ final class GoogleAttributionRenderTests: XCTestCase {
         XCTAssertEqual(diff(mf, mf2).count, 0, "control: the same input renders the same frame")
         let d = diff(gf, mf)
         print("[google-logo] form-step dropdown: \(d.count) px differ, rows \(d.minRow)–\(d.maxRow)")
-        XCTAssertGreaterThan(d.count, 200, "Google's logo is drawn under a Google list, and only there")
+        XCTAssertGreaterThan(d.count, 200, "Google's logo is drawn in a Google list, and only there")
+        // Where the dropdown starts: the same typed field with no suggestions draws no dropdown.
+        assertTheLogoHeadsTheList(google: gf, mapbox: mf, closed: pixels(formField([]).0), what: "form step")
+    }
+
+    /// The logo HEADS the list, directly under the field, so it is on screen whenever the field is (the
+    /// system keeps a focused field above the keyboard). Measured in rendered pixels: the first row where
+    /// the Google frame differs from the Mapbox one lies within the dropdown's head, less than a
+    /// suggestion row below the dropdown's top edge. Under the last row (the old place) the first
+    /// difference came after a whole row. RED CONTROL: the logo moved back after the rows → this fails.
+    private func assertTheLogoHeadsTheList(google gf: (w: Int, h: Int, px: [UInt8]), mapbox mf: (w: Int, h: Int, px: [UInt8]),
+                                           closed cf: (w: Int, h: Int, px: [UInt8]), what: String) {
+        let dropdownTop = diff(mf, cf).minRow
+        let firstGoogle = diff(gf, mf).minRow
+        // The logo's own clear space is 10 pt above it, so its first ink lands ~11 pt (22 px at 2x) under the
+        // dropdown's top edge; after a suggestion row (the old place) it landed 43–47 pt down. 24 pt splits them.
+        let rowPx = 48
+        print("[google-logo] \(what): dropdown top row \(dropdownTop), first Google-only row \(firstGoogle)")
+        XCTAssertGreaterThanOrEqual(firstGoogle, dropdownTop, "[\(what)] the logo is inside the dropdown")
+        XCTAssertLessThan(firstGoogle - dropdownTop, rowPx,
+                          "[\(what)] the logo heads the list: it starts \(firstGoogle - dropdownTop) px below the dropdown's top, after a row")
     }
 
     /// The `input_location` block (the onboarding block and the Screens section, which renders through
@@ -465,6 +486,7 @@ final class GoogleAttributionRenderTests: XCTestCase {
         let d = diff(gf, mf)
         print("[google-logo] block dropdown: \(d.count) px differ, rows \(d.minRow)–\(d.maxRow)")
         XCTAssertGreaterThan(d.count, 200)
+        assertTheLogoHeadsTheList(google: gf, mapbox: mf, closed: pixels(try block([]).0), what: "block")
     }
 
     /// The logo in dark appearance is a different variant (white), not the light one drawn dark.
