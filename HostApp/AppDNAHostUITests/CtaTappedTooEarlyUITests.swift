@@ -84,12 +84,12 @@ final class CtaTappedTooEarlyUITests: XCTestCase {
         let cta = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch
         for attempt in 0..<12 where !cta.exists {
             if open.isHittable { open.tap() }
-            if !cta.waitForExistence(timeout: 5) { NSLog("[#1072] paywall not up yet, attempt \(attempt + 1)") }
+            if !cta.waitForExistence(timeout: 5) { NSLog("[cta-early] paywall not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(cta.exists, "the paywall never drew its CTA")
 
         let enabledAtFirstSight = cta.isEnabled
-        NSLog("[#1072] the CTA exists; isEnabled at first sight = \(enabledAtFirstSight)")
+        NSLog("[cta-early] the CTA exists; isEnabled at first sight = \(enabledAtFirstSight)")
         cta.tap()
 
         var recorded: [SKTestTransaction] = []
@@ -99,7 +99,7 @@ final class CtaTappedTooEarlyUITests: XCTestCase {
             if !recorded.isEmpty { break }
             Thread.sleep(forTimeInterval: 1)
         }
-        NSLog("[#1072] after an immediate tap, StoreKit recorded: "
+        NSLog("[cta-early] after an immediate tap, StoreKit recorded: "
             + (recorded.map(\.productIdentifier).joined(separator: ", ").isEmpty
                ? "nothing" : recorded.map(\.productIdentifier).joined(separator: ", ")))
 
@@ -111,7 +111,7 @@ final class CtaTappedTooEarlyUITests: XCTestCase {
         XCTAssertTrue(
             enabledAtFirstSight,
             "the CTA was drawn DISABLED — a tap in this window is swallowed silently, which is "
-                + "#1072's shape. StoreKit recorded: "
+                + "the dead-CTA shape. StoreKit recorded: "
                 + (recorded.isEmpty ? "nothing" : recorded.map(\.productIdentifier).joined(separator: ", ")),
         )
         XCTAssertEqual(

@@ -183,7 +183,7 @@ final class AuthoredLayoutRenderGatesTests: XCTestCase {
         // wholesale when one key was missing from the host payload.
         let stat: [String: Any] = ["label": "Region", "value": "{{hook_data.region.name}}"]
         let out = sanitizeSummaryStat(stat)
-        XCTAssertNotNil(out, "a card with a real label must survive an unresolved value — this is #660")
+        XCTAssertNotNil(out, "a card with a real label must survive an unresolved value")
         XCTAssertEqual(out?["value"] as? String, unresolvedStatPlaceholder)
         XCTAssertEqual(out?["label"] as? String, "Region")
     }

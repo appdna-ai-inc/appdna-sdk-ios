@@ -8,7 +8,7 @@ import XCTest
  ## What was missing
 
  iOS has had `initSubsystem` wired into `configure()` for five subsystems since an earlier fix. What it did
- NOT have was a test that ran a `configure()` with a failure injected. `Spec070BNativeAdditionsTests`
+ NOT have was a test that ran a `configure()` with a failure injected. `NativeAdditionsTests`
  tests the helper IN ISOLATION — it calls `AppDNA.initSubsystem("paywall") { "built" }` and checks the
  return is nil and the error was reported. AC-31(b) rules on exactly that: *"AC-31(a) asserts only that
  the error is surfaced; that is not isolation."* Nothing on this platform had ever asserted that the

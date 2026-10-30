@@ -10,7 +10,7 @@
 // is asserted by the words the probe authored into it — `show_feedback_form` carries the message
 // "NEGATIVE BRANCH", which no other screen can produce.
 //
-// The survey comes from `scripts/spec502/probe-survey-walk.ts`: a five-emoji scale, a `show_if`
+// The survey comes from a seeding script in the AppDNA repository: a five-emoji scale, a `show_if`
 // free-text question that exists only for the two unhappy faces, and both follow-up branches.
 //
 // Skipped unless `TestCredentials` has been filled in — `packages/appdna-sdk-ios/**` is a public

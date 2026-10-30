@@ -55,9 +55,9 @@ final class TestPlanStoreKitCatalogueTests: XCTestCase {
     func testTheTestPlanServesTheHostCatalogue() async throws {
         let products = try await Product.products(for: hostCatalogueIds)
         let found = products.map(\.id).sorted()
-        print("[#934] test-plan catalogue: asked for \(hostCatalogueIds.count), store answered \(products.count) — \(found)")
+        print("[test-plan-catalogue] test-plan catalogue: asked for \(hostCatalogueIds.count), store answered \(products.count) — \(found)")
         for p in products {
-            print("[#934]   \(p.id) displayPrice=\(p.displayPrice) period=\(String(describing: p.subscription?.subscriptionPeriod))")
+            print("[test-plan-catalogue]   \(p.id) displayPrice=\(p.displayPrice) period=\(String(describing: p.subscription?.subscriptionPeriod))")
         }
 
         if products.isEmpty {
@@ -80,7 +80,7 @@ final class TestPlanStoreKitCatalogueTests: XCTestCase {
             }
             throw XCTSkip(
                 "the test plan's StoreKit configuration served nothing AND no other catalogue is "
-                    + "active — neither the plan nor a session is in force (#934).",
+                    + "active — neither the plan nor a session is in force.",
             )
         }
 

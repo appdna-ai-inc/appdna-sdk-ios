@@ -1099,11 +1099,11 @@ final class PaywallConfigDecodingTests: XCTestCase {
     }
 
     // 30. Full config with sections
-    func testDecodeFullConfigWithSpec089dSections() throws {
+    func testDecodeFullConfigWithEverySectionType() throws {
         let json = """
         {
             "id": "premium_v2",
-            "name": "Premium with 089d sections",
+            "name": "Premium with every section type",
             "layout": { "type": "stack", "spacing": 12, "padding": 16 },
             "sections": [
                 {
@@ -1179,7 +1179,7 @@ final class PaywallConfigDecodingTests: XCTestCase {
 
         let config = try JSONDecoder().decode(PaywallConfig.self, from: json)
         XCTAssertEqual(config.id, "premium_v2")
-        XCTAssertEqual(config.name, "Premium with 089d sections")
+        XCTAssertEqual(config.name, "Premium with every section type")
         XCTAssertEqual(config.sections.count, 6)
 
         // Verify each section type

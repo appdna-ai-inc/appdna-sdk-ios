@@ -187,7 +187,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(after.dismiss?.allowed, before.dismiss?.allowed, "dismiss.allowed")
         XCTAssertEqual(after.dismiss?.style, before.dismiss?.style, "dismiss.style")
         XCTAssertEqual(after.dismiss?.delaySeconds, before.dismiss?.delaySeconds, "delay_seconds")
-        XCTAssertEqual(after.dismiss?.position, "top_left", "#652's placement")
+        XCTAssertEqual(after.dismiss?.position, "top_left", "the dismiss placement")
         XCTAssertEqual(after.dismiss?.back?.enabled, before.dismiss?.back?.enabled, "the back button")
         XCTAssertEqual(after.background?.color, before.background?.color, "background.color")
         XCTAssertEqual(
@@ -242,7 +242,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(monthAfter.badge, monthBefore.badge)
         XCTAssertEqual(monthAfter.features, monthBefore.features)
         XCTAssertEqual(monthAfter.sort_order, monthBefore.sort_order)
-        XCTAssertEqual(monthAfter.price_color, monthBefore.price_color, "#588's per-plan price colour")
+        XCTAssertEqual(monthAfter.price_color, monthBefore.price_color, "the per-plan price colour")
         XCTAssertEqual(monthAfter.display_mode, monthBefore.display_mode)
         XCTAssertEqual(monthAfter.text_only_font_size, monthBefore.text_only_font_size)
 
@@ -252,7 +252,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
         // second decode must return the same thing rather than coercing again differently.
         XCTAssertEqual(yearBefore.price, "49.99", "the fixture's numeric price was coerced")
         XCTAssertEqual(yearAfter.price, yearBefore.price, "a coerced price must be stable across the cache")
-        XCTAssertEqual(yearAfter.use_store_price, false, "#923's opt-OUT must survive — nil would mean 'ask'")
+        XCTAssertEqual(yearAfter.use_store_price, false, "the store-price opt-OUT must survive — nil would mean 'ask'")
         XCTAssertEqual(yearAfter.trialLabel, yearBefore.trialLabel, "the trial label")
         XCTAssertEqual(yearAfter.isDefault, true, "is_default")
         XCTAssertEqual(yearAfter.original_price_display, yearBefore.original_price_display)
@@ -338,7 +338,7 @@ final class PaywallCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(priced.plans?.first { $0.id == "plan_month" }?.resolvedStorePrice, "PLN 39,99")
         XCTAssertEqual(
             priced.layout?.sections?.first { $0.id == "sec_plans_layout" }?.data?.plans?.first?.resolvedStorePrice,
-            "PLN 9,99", "and in layout.sections too — #923's own finding")
+            "PLN 9,99", "and in layout.sections too — where real paywalls keep their plans")
 
         let data = try JSONEncoder().encode(priced)
         XCTAssertFalse(

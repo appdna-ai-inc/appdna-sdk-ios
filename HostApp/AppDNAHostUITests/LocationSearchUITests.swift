@@ -24,7 +24,7 @@
 // It needs a backend, a key and a published flow, so it is SKIPPED unless `TestCredentials` has
 // been filled in — `packages/appdna-sdk-ios/**` is a public mirror and must carry no credentials.
 // `scripts/sdk-host-ios.ts --uitest --api-key … --onboarding …` writes them on the Mac before
-// building, and `scripts/spec502/seed-963-geocode-cache.ts` seeds the entries.
+// building, and a seeding script in the AppDNA repository fills the geocode cache.
 import XCTest
 
 final class LocationSearchUITests: XCTestCase {
@@ -64,7 +64,7 @@ final class LocationSearchUITests: XCTestCase {
 
         // ── Step 1: a content block with NO authored type ─────────────────────────────────────
         try select(app, expecting: "TYPE=all", absent: "TYPE=city", because:
-            "a block with no authored Type must send no type (#964) — the proxy applies its own "
+            "a block with no authored Type must send no type — the proxy applies its own "
             + "default for a missing key, so sending a substituted default is the defect")
         app.buttons["Next"].tap()
 
@@ -111,7 +111,7 @@ final class LocationSearchUITests: XCTestCase {
         )
         try select(app, expecting: "TYPE=all", absent: "TYPE=address", because:
             "the form-step field resolves through the same LocationSearchSettings and must send "
-            + "nothing for an unauthored Type (#964) — `address` is the default Android used to "
+            + "nothing for an unauthored Type — `address` is the default Android used to "
             + "substitute")
 
         /*

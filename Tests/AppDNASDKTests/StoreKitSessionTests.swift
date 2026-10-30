@@ -101,7 +101,7 @@ final class StoreKitSessionTests: XCTestCase {
             session.clearTransactions()
         }
         if let reason = Self.purchaseProbe ?? nil {
-            throw XCTSkip("SKTestSession purchases do not run in this hostless test target (\(reason)); fallback: the RN pod's app-hosted test_spec (SPEC-497 §3.10).")
+            throw XCTSkip("SKTestSession purchases do not run in this hostless test target (\(reason)); fallback: the React Native pod's app-hosted test_spec.")
         }
     }
 

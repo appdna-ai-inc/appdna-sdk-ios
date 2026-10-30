@@ -105,7 +105,7 @@ final class StoreTrialEligibilitySessionTests: XCTestCase {
         XCTAssertNil(
             used.trialIso,
             "the trial survived a consumed introductory offer — the paywall would promise a free "
-                + "trial the purchase sheet refuses, which is the defect #933 held itself open for",
+                + "trial the purchase sheet refuses, which is the defect this test exists for",
         )
         // And the price is still reported, so this is eligibility being read rather than the
         // whole lookup having failed.

@@ -5,7 +5,7 @@ import XCTest
 /// presentation, chips/segmented resync, the repeat.max clamp, single resolution of
 /// host / interaction options, the memo key, and `fieldConfigPatches` through the structural walker.
 @MainActor
-final class HostDataAuditFixTests: XCTestCase {
+final class HostDataStepRegressionTests: XCTestCase {
 
     // MARK: - Helpers
 
@@ -240,7 +240,7 @@ final class HostDataAuditFixTests: XCTestCase {
         let fc = try XCTUnwrap(r.blocks.first { $0.id == "sel" }?.field_config)
         XCTAssertEqual(fc["caption"]?.value as? String, "Hello Ann")
         XCTAssertNil(fc["hero_image_url"], "unresolved URL → not applied")
-        XCTAssertNil(fc["badge_image_url"], "relative URL → not applied (§A6)")
+        XCTAssertNil(fc["badge_image_url"], "relative URL → not applied")
         XCTAssertEqual(fc["icon_url"]?.value as? String, "https://cdn.example.com/i.png")
         XCTAssertNil(fc["resolve_state"])
         XCTAssertNil(fc["repeat"])

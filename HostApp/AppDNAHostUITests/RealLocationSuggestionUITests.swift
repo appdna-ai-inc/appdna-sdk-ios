@@ -54,7 +54,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         for attempt in 0..<12 where !presented {
             app.buttons["host.onboarding"].tap()
             presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
-            if !presented { NSLog("[#1086] flow not up yet, attempt \(attempt + 1)") }
+            if !presented { NSLog("[location-suggestion] flow not up yet, attempt \(attempt + 1)") }
         }
         if !presented {
             /*
@@ -75,7 +75,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         type(Self.query, into: field, in: app)
 
         let suggestion = try realSuggestion(in: app)
-        NSLog("[#1086] a real suggestion was drawn: \(suggestion.label)")
+        NSLog("[location-suggestion] a real suggestion was drawn: \(suggestion.label)")
         let beforeTap = (field.value as? String) ?? ""
         suggestion.tap()
 
@@ -95,7 +95,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.25)
             afterTap = (field.value as? String) ?? ""
         }
-        NSLog("[#1086] field before the tap: \(beforeTap) | after: \(afterTap)")
+        NSLog("[location-suggestion] field before the tap: \(beforeTap) | after: \(afterTap)")
         XCTAssertNotEqual(
             afterTap, beforeTap,
             "tapping the suggestion did not change the field, so the selection never registered — "
@@ -139,7 +139,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         )
 
         let stored = try readback(in: app)
-        NSLog("[#1086] stored answer, read through AppDNA.getLocationData: \(stored)")
+        NSLog("[location-suggestion] stored answer, read through AppDNA.getLocationData: \(stored)")
 
         // ── the stored shape ──────────────────────────────────────────────────────────────────
         XCTAssertTrue(stored.contains("city="), "no city was stored — \(stored)")
@@ -196,7 +196,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         for attempt in 0..<12 where !presented {
             app.buttons["host.onboarding"].tap()
             presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
-            if !presented { NSLog("[#1158] flow not up yet, attempt \(attempt + 1)") }
+            if !presented { NSLog("[location-city-token] flow not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
@@ -218,7 +218,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         let drawn = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Welcome from'")).firstMatch
         XCTAssertTrue(drawn.waitForExistence(timeout: 15), "step 2 drew no 'Welcome from' heading")
         let shown = drawn.label
-        NSLog("[#1158] step 2 heading reads: \(shown)")
+        NSLog("[location-city-token] step 2 heading reads: \(shown)")
         XCTAssertEqual(shown, "Welcome from Porto · Europe/Lisbon", "step 2 did not interpolate the step-1 answer")
         XCTAssertFalse(shown.contains("{{"), "a raw token reached the screen")
     }
@@ -239,7 +239,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         for attempt in 0..<12 where !presented {
             app.buttons["host.onboarding"].tap()
             presented = app.staticTexts["No authored Type"].waitForExistence(timeout: 5)
-            if !presented { NSLog("[#1091] flow not up yet, attempt \(attempt + 1)") }
+            if !presented { NSLog("[location-typed] flow not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(presented, "the flow never presented — config did not arrive")
 
@@ -263,7 +263,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.5)
             value = mirror.label
         }
-        NSLog("[#1091] TYPED-ONLY readback: \(value)")
+        NSLog("[location-typed] TYPED-ONLY readback: \(value)")
 
         /*
          Asserted, because the documented contract is that typed text IS stored — "typed text
@@ -273,7 +273,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         XCTAssertFalse(
             value.contains("UNANSWERED"),
             "typed-but-unselected text was not stored either, so the whole content-block answer "
-                + "path is losing values — not only the selection write (#1091). Readback: \(value)",
+                + "path is losing values — not only the selection write. Readback: \(value)",
         )
     }
 
@@ -298,7 +298,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
             focus(field, in: app)
             field.typeText(text)
             if (field.value as? String)?.localizedCaseInsensitiveContains(text) == true { return }
-            NSLog("[#1086] the text did not land, attempt \(attempt) — field holds "
+            NSLog("[location-suggestion] the text did not land, attempt \(attempt) — field holds "
                 + "\(String(describing: field.value))")
         }
         XCTFail("could not type \(text) into the location field after four attempts")
@@ -308,7 +308,7 @@ final class RealLocationSuggestionUITests: XCTestCase {
         for attempt in 0..<5 {
             field.tap()
             if app.keyboards.element.waitForExistence(timeout: 3) { return }
-            NSLog("[#1086] field did not take focus, attempt \(attempt + 1)")
+            NSLog("[location-suggestion] field did not take focus, attempt \(attempt + 1)")
         }
         XCTFail("the location field never took keyboard focus")
     }

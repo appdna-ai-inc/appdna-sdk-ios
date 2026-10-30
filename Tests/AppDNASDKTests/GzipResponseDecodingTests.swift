@@ -84,7 +84,7 @@ final class GzipResponseDecodingTests: XCTestCase {
 
         // If URLSession handed back the raw member, the first byte is 0x1f and this is not JSON.
         XCTAssertNotEqual(data.first, 0x1f,
-                          "the raw gzip member reached the caller — the same defect #857 found on Android")
+                          "the raw gzip member reached the caller — the same defect found on Android")
         let obj = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any],
                                 "a gzip answer must parse, not arrive as bytes")
         XCTAssertEqual(obj["orgId"] as? String, "o")

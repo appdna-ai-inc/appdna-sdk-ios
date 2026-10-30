@@ -70,7 +70,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             "the session served no products to the app (probe said \(probe.label)) — nothing about "
                 + "the CTA can be proved from here",
         )
-        NSLog("[#1018] store probe: \(probe.label)")
+        NSLog("[purchase-walk] store probe: \(probe.label)")
 
         // Open the paywall the way a user does.
         let open = app.buttons["host.paywall"]
@@ -92,10 +92,10 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             // Only while the host is still in front: once the paywall covers it, another tap here
             // would land on the paywall's own controls.
             if open.isHittable { open.tap() }
-            if !cta.waitForExistence(timeout: 5) { NSLog("[#1018] paywall not up yet, attempt \(attempt + 1)") }
+            if !cta.waitForExistence(timeout: 5) { NSLog("[purchase-walk] paywall not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(cta.exists, "the paywall never drew its CTA after 12 attempts")
-        NSLog("[#1018] tapping the CTA: \(cta.label)")
+        NSLog("[purchase-walk] tapping the CTA: \(cta.label)")
         cta.tap()
 
         /*
@@ -113,7 +113,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             if !bought.isEmpty { break }
             Thread.sleep(forTimeInterval: 1)
         }
-        NSLog("[#1018] StoreKit recorded: \(bought.map(\.productIdentifier).joined(separator: ", "))")
+        NSLog("[purchase-walk] StoreKit recorded: \(bought.map(\.productIdentifier).joined(separator: ", "))")
         XCTAssertEqual(
             bought.map(\.productIdentifier), ["premium_monthly"],
             "the CTA did not reach StoreKit — its ledger holds "
@@ -161,7 +161,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             object: events,
         )
         let outcome = XCTWaiter().wait(for: [purchased], timeout: 45)
-        NSLog("[#1018] events after the CTA tap: \(events.label)")
+        NSLog("[purchase-walk] events after the CTA tap: \(events.label)")
         XCTAssertEqual(
             outcome, .completed,
             "the CTA did not complete a purchase — events were: \(events.label)",

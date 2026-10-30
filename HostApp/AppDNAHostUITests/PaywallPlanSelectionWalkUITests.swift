@@ -32,8 +32,8 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
 
     /// The store's prices, which are deliberately unlike the fixture's authored ones so a row can
     /// be identified on screen without ambiguity (`HostApp/Products.storekit`, and the authored
-    /// `AUTHORED-11.11` / `AUTHORED-99.99` that `scripts/spec502/probe-1068-two-plan-walk.ts`
-    /// publishes).
+    /// `AUTHORED-11.11` / `AUTHORED-99.99` that the two-plan walk paywall
+    /// carries).
     private static let monthlyPrice = "4.49"
     private static let annualPrice = "34.99"
 
@@ -57,7 +57,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         // PASS 1 — the control: the CTA with nothing selected, which is the purchase walk.
         let pass1 = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: false)
         let boughtByDefault = pass1.bought
-        NSLog("[#1068] default selection bought: \(boughtByDefault ?? "nothing")")
+        NSLog("[plan-selection] default selection bought: \(boughtByDefault ?? "nothing")")
 
         session.clearTransactions()
         app.terminate()
@@ -65,7 +65,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         // PASS 2 — the same fixture, the same CTA, one variable changed.
         let pass2 = try buy(app, session, apiKey: apiKey, paywallId: paywallId, tappingAnnual: true)
         let boughtAfterTap = pass2.bought
-        NSLog("[#1068] after tapping the annual plan bought: \(boughtAfterTap ?? "nothing")")
+        NSLog("[plan-selection] after tapping the annual plan bought: \(boughtAfterTap ?? "nothing")")
 
         XCTAssertEqual(
             boughtByDefault, "premium_monthly",
@@ -96,7 +96,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
         XCTAssertEqual(
             pass2.selectionTook, true,
             "the annual row did not report itself selected after being tapped, so the plan tap was "
-                + "lost before the CTA was ever pressed (#1081)",
+                + "lost before the CTA was ever pressed",
         )
         /*
          The contrast, stated as its own assertion so a failure reads as what it is. If both passes
@@ -145,7 +145,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             "the session served fewer than both products to the app (probe said \(probe.label)) — "
                 + "nothing about which plan is bought can be proved from here",
         )
-        NSLog("[#1068] store probe: \(probe.label)")
+        NSLog("[plan-selection] store probe: \(probe.label)")
 
         let open = app.buttons["host.paywall"]
         XCTAssertTrue(open.waitForExistence(timeout: 10), "the host has no paywall button")
@@ -169,13 +169,13 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             // would land on the paywall's own controls.
             if open.isHittable { open.tap() }
             found = rowShowing(app, Self.annualPrice, timeout: 5)
-            if found == nil { NSLog("[#1068] paywall not up yet, attempt \(attempt + 1)") }
+            if found == nil { NSLog("[plan-selection] paywall not up yet, attempt \(attempt + 1)") }
         }
         let annualRow = try XCTUnwrap(
             found,
             "no plan row was drawn at the annual store price (\(Self.annualPrice)) after 12 "
                 + "attempts — either the paywall never presented, or the fixture carries one plan; "
-                + "publish it with scripts/spec502/probe-1068-two-plan-walk.ts",
+                + "publish the two-plan walk paywall to this app first",
         )
         XCTAssertNotNil(
             rowShowing(app, Self.monthlyPrice, timeout: 10),
@@ -194,12 +194,12 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
          what proves this harness can distinguish selected from unselected at all.
          */
         if let monthlyRow = rowShowing(app, Self.monthlyPrice, timeout: 10) {
-            NSLog("[#1081] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
+            NSLog("[plan-selection] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
                 + "annual selected=\(annualRow.isSelected)")
             XCTAssertTrue(
                 monthlyRow.isSelected,
                 "the fixture's DEFAULT plan row does not report itself selected, so this walk cannot "
-                    + "tell a selected row from an unselected one and its #1081 reading would be "
+                    + "tell a selected row from an unselected one and its selection reading would be "
                     + "meaningless (the `.isSelected` trait is missing from the plan rows)",
             )
             XCTAssertFalse(
@@ -210,7 +210,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
 
         var selectionTook: Bool?
         if tappingAnnual {
-            NSLog("[#1068] tapping the annual plan: \(annualRow.label)")
+            NSLog("[plan-selection] tapping the annual plan: \(annualRow.label)")
             annualRow.tap()
             /*
              🔴 READ THE SELECTION BACK, before the CTA is pressed. A run bought
@@ -235,7 +235,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.25)
             }
             selectionTook = annualRow.isSelected
-            NSLog("[#1081] the annual row reports selected=\(annualRow.isSelected) before the CTA is pressed")
+            NSLog("[plan-selection] the annual row reports selected=\(annualRow.isSelected) before the CTA is pressed")
         }
 
         let cta = app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch
@@ -263,7 +263,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             // CTA while `selectedPlanId` is nil or a purchase is in flight, and a tap on a
             // disabled SwiftUI button SUCCEEDS silently — so a run that records nothing needs this
             // value to say whether the button was ever live when it was pressed.
-            NSLog("[#1068] tapping the CTA (attempt \(attempt)): \(cta.label) "
+            NSLog("[plan-selection] tapping the CTA (attempt \(attempt)): \(cta.label) "
                 + "[enabled=\(cta.isEnabled) hittable=\(cta.isHittable)]")
             if cta.isHittable { cta.tap() }
             let deadline = Date().addingTimeInterval(25)
@@ -288,7 +288,7 @@ final class PaywallPlanSelectionWalkUITests: XCTestCase {
             if recorded.isEmpty {
                 let stillLabelled = app.buttons
                     .containing(NSPredicate(format: "label CONTAINS[c] %@", "Start")).firstMatch.exists
-                NSLog("[#1072] nothing recorded after attempt \(attempt). The CTA "
+                NSLog("[plan-selection] nothing recorded after attempt \(attempt). The CTA "
                     + (stillLabelled
                        ? "STILL SHOWS ITS LABEL → handleCTATap never ran; the tap was swallowed"
                        : "SHOWS A SPINNER → handleCTATap ran; the purchase is in flight or stuck"))

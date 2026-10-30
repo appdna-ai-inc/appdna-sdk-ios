@@ -39,7 +39,7 @@ final class PaywallFeatureTapWalkUITests: XCTestCase {
         ).firstMatch
         for attempt in 0..<12 where !anyFeature.exists {
             if open.isHittable { open.tap() }
-            if !anyFeature.waitForExistence(timeout: 5) { NSLog("[#1076] paywall not up yet, attempt \(attempt + 1)") }
+            if !anyFeature.waitForExistence(timeout: 5) { NSLog("[feature-tap] paywall not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(anyFeature.exists, "the paywall never drew its feature list")
 
@@ -56,12 +56,12 @@ final class PaywallFeatureTapWalkUITests: XCTestCase {
             "the paywall did not scroll — a tappable feature row must not consume the scroll "
                 + "gesture, which is exactly how this repo has broken a screen before",
         )
-        NSLog("[#1076] scrolled: feature row moved from \(before) to \(afterScroll)")
+        NSLog("[feature-tap] scrolled: feature row moved from \(before) to \(afterScroll)")
 
         // Back to the top so the row is comfortably hittable, then tap it.
         app.swipeDown()
         XCTAssertTrue(anyFeature.waitForExistence(timeout: 5))
-        NSLog("[#1076] tapping the feature row: \(anyFeature.label)")
+        NSLog("[feature-tap] tapping the feature row: \(anyFeature.label)")
         anyFeature.tap()
 
         /*
@@ -82,7 +82,7 @@ final class PaywallFeatureTapWalkUITests: XCTestCase {
             object: events,
         )
         let outcome = XCTWaiter().wait(for: [seen], timeout: 20)
-        NSLog("[#1076] events after the feature tap: \(events.label)")
+        NSLog("[feature-tap] events after the feature tap: \(events.label)")
         XCTAssertEqual(
             outcome, .completed,
             "the feature row reported nothing — events were: \(events.label)",

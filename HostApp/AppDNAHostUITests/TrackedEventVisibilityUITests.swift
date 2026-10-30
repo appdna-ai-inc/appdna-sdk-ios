@@ -60,7 +60,7 @@ final class TrackedEventVisibilityUITests: XCTestCase {
          control above is what made that a wrong expectation rather than a broken pipe.
          */
         let observed = log.label
-        print("[#1047] host.lastEvents = \(observed)")
+        print("[tracked-events] host.lastEvents = \(observed)")
         XCTAssertTrue(
             observed.contains("sdk_initialized") || observed.contains("session_start"),
             "expected one of the SDK's launch events in the log; got \"\(observed)\"",

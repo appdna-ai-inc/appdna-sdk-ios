@@ -118,7 +118,7 @@ final class DividerLabelRenderTests: XCTestCase {
         XCTAssertGreaterThan(
             present, 100,
             "an authored `label_bg_color` must draw behind the divider's label — iOS hard-coded "
-            + "`.background(Color.clear)` while Android drew the chip (#976)"
+            + "`.background(Color.clear)` while Android drew the chip"
         )
     }
 }

@@ -5,7 +5,7 @@ import XCTest
 /// own `sheet_step_paths`, nested host-data-scoped Selects get vanished selections cleared, Segmented
 /// default-first when options arrive late, resync never clobbers a non-string answer.
 @MainActor
-final class HostDataAuditRound2Tests: XCTestCase {
+final class HostDataNestedSheetRegressionTests: XCTestCase {
 
     private func context() -> TemplateContext {
         TemplateContext(userTraits: nil, remoteConfig: { _ in nil }, onboardingResponses: [:],
@@ -37,7 +37,7 @@ final class HostDataAuditRound2Tests: XCTestCase {
         ] } }
         """
         let stepJSON = try JSONDecoder().decode(SharedFixtureTests.AnyJSON.self, from: Data(json.utf8))
-        let run = HostDataScenarioRun(fixtureId: "round2-M1", stepJSON: stepJSON, templateContext: context(), responses: [:])
+        let run = HostDataScenarioRun(fixtureId: "nested-sheet-step-paths", stepJSON: stepJSON, templateContext: context(), responses: [:])
         await run.present([:])
         XCTAssertTrue(run.failures.isEmpty, "\(run.failures)")
         XCTAssertEqual(run.view?.resolved?.isRawResolved("ls"), true, "the Select came out of the raw pass")

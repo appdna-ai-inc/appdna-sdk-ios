@@ -40,7 +40,7 @@ extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
     @MainActor
-    func driveSpec497Maps(_ f: Fixture, _ h: Harness) async -> Bool {
+    func driveMapFixtures(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "decode_polyline":           runDecodePolyline(f, h)
         case "map_interactive_plan":      runMapInteractivePlan(f, h)

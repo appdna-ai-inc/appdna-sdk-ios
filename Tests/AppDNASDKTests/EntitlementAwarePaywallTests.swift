@@ -20,7 +20,7 @@ import XCTest
 /// bridge `didPurchase` flag, identify→refresh chain) is covered by the
 /// shared behavioural fixtures at `packages/sdk-shared-fixtures/billing/`
 /// and the Mac build bridge sample app (per AC.5B + AC.13).
-final class SPEC401PaywallTests: XCTestCase {
+final class EntitlementAwarePaywallTests: XCTestCase {
 
     override func tearDown() {
         // Reset the one-shot flag so other tests aren't affected.

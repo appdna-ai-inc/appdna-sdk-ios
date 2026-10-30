@@ -1382,7 +1382,7 @@ final class VisualSnapshotTests: XCTestCase {
     /// `testEpic11_warningBanner` above is the OTHER half of this proof: it is deliberately left
     /// untouched, so if any default drifted from the earlier render its committed
     /// reference would stop matching. New capability here, no regression there.
-    func testSpec481_warningBannerSubtitleAndChrome() throws {
+    func testWarningBannerSubtitleAndChrome() throws {
         let view = try renderMany([
             """
             {"id": "b1", "type": "warning_banner", "text": "Your trial ends soon",
@@ -1413,7 +1413,7 @@ final class VisualSnapshotTests: XCTestCase {
     ///
     /// Both frames at the same height must come out the SAME SHAPE — thin vs thick differs only by
     /// bezel padding and the two radii. A landscape result here is the bug returning.
-    func testSpec483_deviceMockupIsProportional() throws {
+    func testDeviceMockupIsProportional() throws {
         let view = try renderMany([
             """
             {"id": "m1", "type": "image", "image_url": "https://example.com/a.png",
@@ -1439,7 +1439,7 @@ final class VisualSnapshotTests: XCTestCase {
     ///
     /// This test exists because that claim is worthless unless it actually renders. If a future
     /// change breaks nesting or vertical direction, the documented recipe silently stops working.
-    func testSpec482_threeButtonGridWithBackground() throws {
+    func testThreeButtonGridWithBackground() throws {
         let view = try render("""
         {
           "id": "grp", "type": "row", "row_direction": "vertical", "spacing": 8,

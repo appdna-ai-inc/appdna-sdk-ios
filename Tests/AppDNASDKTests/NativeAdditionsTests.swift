@@ -3,7 +3,7 @@ import XCTest
 
 /// PN — the native additions, each asserted against the behavior it exists to produce.
 /// Every test here was checked to go RED with its fix reverted (no gate ships unfalsified).
-final class Spec070BNativeAdditionsTests: XCTestCase {
+final class NativeAdditionsTests: XCTestCase {
 
     override func setUp() {
         super.setUp()

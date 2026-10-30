@@ -97,7 +97,7 @@ final class TabGroupsRenderTests: XCTestCase {
         let stack = try renderPNG(try config(style: "vertical_stack", defaultPlanIndex: 0))
         XCTAssertNotEqual(
             tabs, stack,
-            "`tab_groups` rendered pixel-identically to `vertical_stack`, which is exactly what #960 "
+            "`tab_groups` rendered pixel-identically to `vertical_stack`, which is exactly what the defect "
             + "was: the value fell through the switch's default arm and the author's chosen layout "
             + "never happened"
         )
@@ -122,7 +122,7 @@ final class TabGroupsRenderTests: XCTestCase {
         XCTAssertNotEqual(
             annualSelected, monthlySelected,
             "the panel beneath the tabs did not follow the selection — a tab bar whose body never "
-            + "changes is the #893/#888 shape: a control that draws and does nothing"
+            + "changes is the familiar shape: a control that draws and does nothing"
         )
     }
 

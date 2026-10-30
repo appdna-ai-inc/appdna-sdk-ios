@@ -81,7 +81,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
 
         let cta = ctaButton(app)
         let before = try XCTUnwrap(cta, "no CTA button was found on the paywall")
-        NSLog("[#1072] before any purchase: cta '\(before.label)' frame=\(before.frame) "
+        NSLog("[error-banner] before any purchase: cta '\(before.label)' frame=\(before.frame) "
             + "enabled=\(before.isEnabled) hittable=\(before.isHittable)")
 
         /*
@@ -92,7 +92,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         */
         session.failTransactionsEnabled = true
         before.tap()
-        NSLog("[#1072] first CTA tap sent, with the store set to refuse")
+        NSLog("[error-banner] first CTA tap sent, with the store set to refuse")
 
         /*
          Give the refusal time to land and the banner time to animate in — and say how long it took.
@@ -103,7 +103,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         let tappedAt = Date()
         _ = waitUntil(timeout: 30) { self.bannerIsUp(app) }
         let bannerUp = bannerIsUp(app)
-        NSLog("[#1072] after the refusal: banner up=\(bannerUp) after \(String(format: "%.1f", Date().timeIntervalSince(tappedAt)))s")
+        NSLog("[error-banner] after the refusal: banner up=\(bannerUp) after \(String(format: "%.1f", Date().timeIntervalSince(tappedAt)))s")
 
         session.failTransactionsEnabled = false
 
@@ -113,23 +113,23 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
          way so a failure names WHY rather than only that.
         */
         let after = try XCTUnwrap(ctaButton(app), "the CTA button vanished after the failed purchase")
-        NSLog("[#1072] after the refusal: cta '\(after.label)' frame=\(after.frame) "
+        NSLog("[error-banner] after the refusal: cta '\(after.label)' frame=\(after.frame) "
             + "enabled=\(after.isEnabled) hittable=\(after.isHittable)")
         if let banner = bannerElement(app) {
-            NSLog("[#1072] the error banner's frame=\(banner.frame) — overlaps the CTA: "
+            NSLog("[error-banner] the error banner's frame=\(banner.frame) — overlaps the CTA: "
                 + "\(banner.frame.intersects(after.frame))")
         }
 
         XCTAssertTrue(
             after.isEnabled,
             "the CTA is DISABLED after a failed purchase, so the user cannot retry — `isPurchasing` "
-                + "was left set (this is the half #1072 ruled out by reading; a failure here means "
+                + "was left set (this is the half that reading the code ruled out; a failure here means "
                 + "the reading was wrong)",
         )
         XCTAssertTrue(
             after.isHittable,
             "the CTA is not hittable after a failed purchase — something is covering the pinned "
-                + "button that buys, which is #1072 reproduced: a tap there reaches no action, so it "
+                + "button that buys, which is the dead-CTA defect reproduced: a tap there reaches no action, so it "
                 + "logs nothing, emits nothing and calls no delegate, and from outside the app it is "
                 + "indistinguishable from a store that refused. Frames are in the log above.",
         )
@@ -149,19 +149,19 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         let attemptsBefore = session.allTransactions().count
         after.tap()
         let sawRetry = waitUntil(timeout: 20) { session.allTransactions().count > attemptsBefore }
-        NSLog("[#1072] after the retry tap, the ledger: \(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" })")
+        NSLog("[error-banner] after the retry tap, the ledger: \(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" })")
         XCTAssertTrue(
             sawRetry,
             "tapping the CTA after a failed purchase put no new transaction in the ledger — the tap "
-                + "reached no action. That is #1072: no transaction, and no sign of why.",
+                + "reached no action. That is the dead-CTA defect: no transaction, and no sign of why.",
         )
     }
 
     /*
      THE FAILURE BANNER, OPERATED. iOS's banner is the presentation both platforms now draw,
      so this walks the paywall the way a user whose card is declined would, against a paywall that
-     authors `on_failure: retry` with text no default could produce
-     (`scripts/spec502/probe-1105-failure-banner-walk.ts`):
+     authors `on_failure: retry` with text no default could produce (published by a seeding
+     script in the AppDNA repository):
 
        refused purchase → the authored banner, ABOVE the CTA, which stays usable
        → tap the banner → it is gone, and stays gone
@@ -193,7 +193,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         // published document rather than whatever was in memory before the fetch completed.
         let events = app.staticTexts["host.lastEvents"]
         let fetched = waitUntil(timeout: 45) { events.exists && events.label.contains("config_fetched") }
-        NSLog("[#1105] config_fetched before opening the paywall: \(fetched) — events: \(events.exists ? events.label : "(absent)")")
+        NSLog("[error-banner] config_fetched before opening the paywall: \(fetched) — events: \(events.exists ? events.label : "(absent)")")
         let open = app.buttons["host.paywall"]
         XCTAssertTrue(open.waitForExistence(timeout: 10))
         var cta: XCUIElement?
@@ -210,20 +210,20 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         button.tap()
         let start = Date()
         let up = waitUntil(timeout: 60) { self.authoredBanner(app).exists }
-        NSLog("[#1105] banner up=\(up) after \(String(format: "%.1f", Date().timeIntervalSince(start)))s; cta enabled=\(ctaButton(app)?.isEnabled ?? false)")
+        NSLog("[error-banner] banner up=\(up) after \(String(format: "%.1f", Date().timeIntervalSince(start)))s; cta enabled=\(ctaButton(app)?.isEnabled ?? false)")
         shot(app, "02-banner")
         if !up {
             // Say WHY before failing: close the paywall and read what the host app recorded.
             app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "close")).firstMatch.tap()
             let events = app.staticTexts["host.lastEvents"]
             _ = events.waitForExistence(timeout: 5)
-            NSLog("[#1105] host events after the refusal: \(events.exists ? events.label : "(absent)")")
+            NSLog("[error-banner] host events after the refusal: \(events.exists ? events.label : "(absent)")")
         }
         XCTAssertTrue(up, "no banner within 60s of a refused purchase")
         guard up else { return }
         let banner = authoredBanner(app)
         let after = try XCTUnwrap(ctaButton(app))
-        NSLog("[#1105] banner text frame=\(banner.frame) cta frame=\(after.frame)")
+        NSLog("[error-banner] banner text frame=\(banner.frame) cta frame=\(after.frame)")
         XCTAssertLessThanOrEqual(banner.frame.maxY, after.frame.minY, "the banner's text overlaps the CTA")
         XCTAssertTrue(after.isEnabled && after.isHittable, "the CTA is not usable with the banner up")
         // The retry control is a Button, so it is matched among buttons, by its authored label.
@@ -301,14 +301,14 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         let attempted = waitUntil(timeout: 20) { session.allTransactions().count > attemptsBefore }
         _ = waitUntil(timeout: 10) { !purchased().isEmpty }
         shot(app, "r2-after-retry")
-        NSLog("[#1107] after the retry tap: all=\(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }) purchased=\(purchased().map { $0.productIdentifier })")
-        XCTAssertTrue(attempted, "tapping the retry button started no purchase — it only hid the banner (#1107)")
+        NSLog("[error-banner-retry] after the retry tap: all=\(session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }) purchased=\(purchased().map { $0.productIdentifier })")
+        XCTAssertTrue(attempted, "tapping the retry button started no purchase — it only hid the banner")
     }
 
     /*
      A PAYWALL'S PURCHASE CELEBRATION REACHES THE DEVICE. The effect could not be stored
      before, so no published paywall carried one. The walk paywall is given confetti in `#34C759` (a
-     green it has nowhere else) by `scripts/spec502/probe-1109-paywall-effect-persists.ts --keep`; a
+     green it has nowhere else) by a seeding script in the AppDNA repository; a
      purchase that succeeds must then put that green on screen. The confetti is not in the
      accessibility tree, so the PIXELS are read; run against the paywall with the effect cleared, the
      same test must fail — that is its control.
@@ -361,14 +361,14 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
             usleep(150_000)
         }
         let purchased = session.allTransactions().filter { $0.state == .purchased }.map(\.productIdentifier)
-        NSLog("[#1109] green pixels before=\(before) peak after purchase=\(peak) purchased=\(purchased)")
+        NSLog("[purchase-celebration] green pixels before=\(before) peak after purchase=\(peak) purchased=\(purchased)")
         XCTAssertFalse(purchased.isEmpty, "the purchase did not complete, so there was nothing to celebrate")
-        XCTAssertGreaterThan(peak, before + 300, "no confetti in the authored green after a successful purchase (#1109)")
+        XCTAssertGreaterThan(peak, before + 300, "no confetti in the authored green after a successful purchase")
     }
 
     /*
      WHAT THE CTA SAYS, READ OFF THE DEVICE. The walk paywall is published by
-     `scripts/spec502/probe-1104-cta-plan-name-walk.ts` with a format, naming switched off, and/or a
+     a seeding script in the AppDNA repository with a format, naming switched off, and/or a
      sticky footer; this logs every CTA label (the pinned CTA and the sticky footer's) with the default
      plan and then with Monthly selected. The invariant asserted here holds for every configuration:
      a label that named the default plan names Monthly once Monthly is selected. The exact strings are
@@ -404,8 +404,8 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         sleep(1)
         let after = ctaLabels()
         shot(app, "l2-monthly-selected")
-        NSLog("[#1104] CTA labels, default plan: \(before)")
-        NSLog("[#1104] CTA labels, Monthly selected: \(after)")
+        NSLog("[cta-label] CTA labels, default plan: \(before)")
+        NSLog("[cta-label] CTA labels, Monthly selected: \(after)")
         XCTAssertFalse(before.isEmpty, "no CTA was found")
         for label in before where label.contains("Annual") {
             XCTAssertTrue(after.contains(label.replacingOccurrences(of: "Annual", with: "Monthly")),

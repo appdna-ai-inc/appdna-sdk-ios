@@ -77,11 +77,11 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
          refuses taps, which is exactly the confusion this walk exists to avoid, so the geometry is
          recorded before any conclusion is drawn from a reading.
         */
-        NSLog("[#1081] geometry: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
+        NSLog("[plan-edge-tap] geometry: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
             + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable) "
             + "| window=\(app.windows.firstMatch.frame) "
             + "| rows matching the annual price=\(app.buttons.containing(NSPredicate(format: "label CONTAINS[c] %@", Self.annualPrice)).count)")
-        NSLog("[#1081] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
+        NSLog("[plan-edge-tap] control, before any tap: monthly selected=\(monthlyRow.isSelected) "
             + "annual selected=\(annualRow.isSelected)")
         XCTAssertTrue(
             monthlyRow.isSelected,
@@ -111,7 +111,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
         */
         try scrollIntoView(app, annualRow, label: "the annual row")
         try scrollIntoView(app, monthlyRow, label: "the monthly row")
-        NSLog("[#1081] after scrolling: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
+        NSLog("[plan-edge-tap] after scrolling: monthly frame=\(monthlyRow.frame) hittable=\(monthlyRow.isHittable) "
             + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable)")
 
         var failures: [String] = []
@@ -129,7 +129,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
 
             annualRow.coordinate(withNormalizedOffset: CGVector(dx: spot.dx, dy: spot.dy)).tap()
             let took = waitUntil(timeout: 3) { annualRow.isSelected }
-            NSLog("[#1081] tapped the annual row at \(spot.name) (dx=\(spot.dx), dy=\(spot.dy)) "
+            NSLog("[plan-edge-tap] tapped the annual row at \(spot.name) (dx=\(spot.dx), dy=\(spot.dy)) "
                 + "-> selected=\(annualRow.isSelected)")
             if !took {
                 failures.append("\(spot.name) (dx=\(spot.dx), dy=\(spot.dy))")
@@ -139,7 +139,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
         XCTAssertTrue(
             failures.isEmpty,
             "a tap on the annual plan row did not take at \(failures.count) of "
-                + "\(Self.spots.count) points on the row itself — this is #1081 reproduced, and the "
+                + "\(Self.spots.count) points on the row itself — this is the missed plan tap reproduced, and the "
                 + "positions name where the row stops being hittable: \(failures.joined(separator: "; "))",
         )
 
@@ -190,7 +190,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
                     _ = waitUntil(timeout: 3) { monthlyRow.isSelected }
                 }
                 guard monthlyRow.isSelected, !annualRow.isSelected else {
-                    NSLog("[#1081] drift \(drift)pt \(axis): could not reset; skipping this reading")
+                    NSLog("[plan-edge-tap] drift \(drift)pt \(axis): could not reset; skipping this reading")
                     continue
                 }
 
@@ -198,7 +198,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
                 let end = start.withOffset(CGVector(dx: vertical ? 0 : drift, dy: vertical ? drift : 0))
                 start.press(forDuration: 0.05, thenDragTo: end)
                 let took = waitUntil(timeout: 3) { annualRow.isSelected }
-                NSLog("[#1081] drift \(Int(drift))pt \(axis) -> selected=\(took) "
+                NSLog("[plan-edge-tap] drift \(Int(drift))pt \(axis) -> selected=\(took) "
                     + "| annual frame=\(annualRow.frame) hittable=\(annualRow.isHittable)")
 
                 /*
@@ -218,11 +218,11 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
                 if !took {
                     annualRow.tap()
                     let recovered = waitUntil(timeout: 3) { annualRow.isSelected }
-                    NSLog("[#1081]   ↳ control after that failure: a plain .tap() "
+                    NSLog("[plan-edge-tap]   ↳ control after that failure: a plain .tap() "
                         + (recovered ? "STILL WORKS, so the \(Int(drift))pt drift is what lost it"
                                      : "ALSO FAILS — the view is in a stuck state, readings stop here"))
                     if !recovered {
-                        NSLog("[#1081]   ↳ stuck-state geometry: annual frame=\(annualRow.frame) "
+                        NSLog("[plan-edge-tap]   ↳ stuck-state geometry: annual frame=\(annualRow.frame) "
                             + "hittable=\(annualRow.isHittable) monthly=\(monthlyRow.frame) "
                             + "window=\(app.windows.firstMatch.frame)")
                         throw XCTSkip("the paywall stopped responding to any tap after a "
@@ -315,7 +315,7 @@ final class PaywallPlanEdgeTapUITests: XCTestCase {
         for attempt in 0..<12 where annual == nil {
             if open.isHittable { open.tap() }
             annual = row(app, Self.annualPrice, timeout: 5)
-            if annual == nil { NSLog("[#1081] paywall not up yet, attempt \(attempt + 1)") }
+            if annual == nil { NSLog("[plan-edge-tap] paywall not up yet, attempt \(attempt + 1)") }
         }
         let annualRow = try XCTUnwrap(annual, "no plan row drew at the annual price (\(Self.annualPrice))")
         let monthlyRow = try XCTUnwrap(

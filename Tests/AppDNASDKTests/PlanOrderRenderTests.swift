@@ -130,7 +130,7 @@ final class PlanOrderRenderTests: XCTestCase {
         XCTAssertNotEqual(
             ranked, asAuthored,
             "honouring `sort_order` must CHANGE the screen — if these two renders are identical "
-            + "the rank was dropped and the plans drew in serialisation order (#1097). This is "
+            + "the rank was dropped and the plans drew in serialisation order. This is "
             + "also this harness's negative control: a render that cannot show order at all makes "
             + "these equal."
         )
@@ -185,7 +185,7 @@ final class PlanOrderRenderTests: XCTestCase {
         XCTAssertNotEqual(
             planOverride, genericOnly,
             "a plan's own `cta_text` must CHANGE the root CTA — if these two renders are identical "
-                + "the per-plan label was dropped, which is what #1081's fix is about. This is also "
+                + "the per-plan label was dropped, which is what the plan-label fix is about. This is also "
                 + "the harness's negative control: a render that cannot show the label at all makes "
                 + "these equal."
         )

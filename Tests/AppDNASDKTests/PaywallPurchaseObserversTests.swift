@@ -61,7 +61,7 @@ final class PaywallPurchaseObserversTests: XCTestCase {
             successFired,
             "the celebrate signal also raised the SUCCESS overlay — then it is not a separate signal "
                 + "and a `dismiss` branch would show an overlay it never asked for, which is why "
-                + "#1103 did not simply reuse `.paywallPurchaseSuccess`",
+                + "the purchase-celebration signal did not simply reuse `.paywallPurchaseSuccess`",
         )
     }
 

@@ -59,7 +59,6 @@ final class SharedFixtureTests: XCTestCase {
         let id: String
         let category: String
         let description: String
-        let spec_refs: [String]?
         let platforms: [String]
         let setup: Setup
         let action: Action
@@ -520,9 +519,9 @@ final class SharedFixtureTests: XCTestCase {
             // The new kinds are driven from one file per area, each returning `true` for
             // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift,
             // +Style.swift.
-            if await driveSpec497Billing(fixture, harness) { return }
-            if await driveSpec497Push(fixture, harness) { return }
-            if await driveSpec497Maps(fixture, harness) { return }
+            if await driveBillingFixtures(fixture, harness) { return }
+            if await drivePushFixtures(fixture, harness) { return }
+            if await driveMapFixtures(fixture, harness) { return }
             if await driveStyle(fixture, harness) { return }
             XCTFail("""
             [\(fixture.id)] no iOS driver for action.kind='\(fixture.action.kind)'.

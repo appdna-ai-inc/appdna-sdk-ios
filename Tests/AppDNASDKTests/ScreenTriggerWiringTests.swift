@@ -37,7 +37,7 @@ final class ScreenTriggerWiringTests: XCTestCase {
     }
 
     func testTrackRunsTheScreenTriggers() throws {
-        try XCTSkipIf(true, "the track → screen-trigger hook is not wired yet (#1217, parked while Screens is deprioritised)")
+        try XCTSkipIf(true, "the track → screen-trigger hook is not wired yet")
         let id = "wired_\(UUID().uuidString.prefix(8))"
         ScreenManager.shared.updateIndex(try index(id, event: "walk_event"))
         AppDNA.track(event: "walk_event", properties: nil)

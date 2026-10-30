@@ -41,7 +41,7 @@ final class SyntheticTransactionIdTests: XCTestCase {
 
     func testTheEnvelopeOmitsASyntheticIdAndKeepsARealOne() {
         let synthetic = PurchaseSuccessEvents.properties(paywallId: "pw", result: result(SyntheticTransactionId.make(provider: "adapty")))
-        XCTAssertNil(synthetic["transaction_id"], "a synthetic id is not a §13e.5 dedupe key")
+        XCTAssertNil(synthetic["transaction_id"], "a synthetic id is not a purchase dedupe key")
         let real = PurchaseSuccessEvents.properties(paywallId: "pw", result: result("2000000812345678"))
         XCTAssertEqual(real["transaction_id"] as? String, "2000000812345678")
     }

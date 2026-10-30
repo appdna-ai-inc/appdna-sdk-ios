@@ -1,6 +1,6 @@
 // SharedFixtureDrivers+GoogleAttribution.swift
 //
-// iOS drivers for Google's attribution. Dispatched from `driveSpec497Maps`. Every value asserted is
+// iOS drivers for Google's attribution. Dispatched from `driveMapFixtures`. Every value asserted is
 // produced by REAL SDK code:
 //
 //   location_field_attribution  REAL: `LocationAnswer.carriesPlaceId`, the one rule both location

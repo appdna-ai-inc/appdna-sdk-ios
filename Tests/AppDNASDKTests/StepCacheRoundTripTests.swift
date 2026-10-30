@@ -68,13 +68,13 @@ final class StepCacheRoundTripTests: XCTestCase {
         XCTAssertEqual(after.type, before.type)
         XCTAssertEqual(after.hide_progress, before.hide_progress, "hide_progress")
         XCTAssertEqual(after.hide_back, before.hide_back, "hide_back")
-        XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
-        XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
-        XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
+        XCTAssertEqual(after.request_store_review, before.request_store_review, "the store-review field")
+        XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "the auto-advance timer")
+        XCTAssertEqual(after.wait_for_host, before.wait_for_host, "the host-driven flag")
         // The tap-anywhere flag once joined the ladder and not the encoder — a splash authored "tap anywhere to
         // advance" advanced on the launch that wrote the cache and had no way forward on the next
         // cold one. The round-trip syntax gate is what found it; this is the behaviour behind it.
-        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "#1014's gesture flag")
+        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "the tap-anywhere flag")
         XCTAssertEqual(after.next_step_rules?.count, before.next_step_rules?.count)
         XCTAssertEqual(after.next_step_rules?.first?.target_step_id, "s_next")
     }
@@ -197,10 +197,10 @@ final class StepCacheRoundTripTests: XCTestCase {
 
         XCTAssertEqual(after.hide_back, before.hide_back, "hide_back lost its layout rung")
         XCTAssertEqual(after.hide_progress, before.hide_progress, "hide_progress lost its layout rung")
-        XCTAssertEqual(after.request_store_review, before.request_store_review, "#928's own field")
-        XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "#921's timer")
-        XCTAssertEqual(after.wait_for_host, before.wait_for_host, "#921's host-driven flag")
-        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "#1014's gesture flag")
+        XCTAssertEqual(after.request_store_review, before.request_store_review, "the store-review field")
+        XCTAssertEqual(after.auto_advance_seconds, before.auto_advance_seconds, "the auto-advance timer")
+        XCTAssertEqual(after.wait_for_host, before.wait_for_host, "the host-driven flag")
+        XCTAssertEqual(after.tap_anywhere_advances, before.tap_anywhere_advances, "the tap-anywhere flag")
         XCTAssertEqual(after.config.content_blocks?.first?.text, "Only in layout",
                        "and the content that rode in the same layout object")
     }

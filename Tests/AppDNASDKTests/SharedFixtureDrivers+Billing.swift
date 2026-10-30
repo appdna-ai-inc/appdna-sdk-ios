@@ -33,7 +33,7 @@ extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
     @MainActor
-    func driveSpec497Billing(_ f: Fixture, _ h: Harness) async -> Bool {
+    func driveBillingFixtures(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "billing_ownership":           runBillingOwnership(f, h)
         case "derive_app_account_token":    runDeriveAppAccountToken(f, h)

@@ -58,13 +58,13 @@ final class StoreSessionReachesTheAppUITests: XCTestCase {
             object: probe,
         )
         let outcome = XCTWaiter().wait(for: [sawProducts], timeout: 25)
-        NSLog("[#934] UI-test SKTestSession → app probe said: \(probe.label)")
+        NSLog("[storekit-session] UI-test SKTestSession → app probe said: \(probe.label)")
 
         try XCTSkipIf(
             outcome != .completed,
             "an SKTestSession held by the UI-TEST process does NOT serve the app under test "
-                + "(probe said \(probe.label)). #1018's CTA purchase walk therefore still needs the "
-                + "scheme's StoreKit configuration, which is #934. This is Apple's behaviour, not a "
+                + "(probe said \(probe.label)). The CTA purchase walk therefore still needs the "
+                + "scheme's StoreKit configuration. This is Apple's behaviour, not a "
                 + "defect here, so it skips with the measurement rather than failing.",
         )
 

@@ -95,7 +95,7 @@ final class StorePriceUITests: XCTestCase {
         XCTAssertTrue(
             storePrice.waitForExistence(timeout: 10),
             "the monthly plan must show StoreKit's $4.49 — Products.storekit prices it there, and "
-            + "before #923 the renderer never asked the store at all",
+            + "before store prices the renderer never asked the store at all",
         )
 
         let authored = app.staticTexts.containing(

@@ -95,7 +95,7 @@ final class SocialProofRenderTests: XCTestCase {
         XCTAssertNotEqual(
             withCaption, without,
             "authoring `text` on an app_rating section must CHANGE the screen — identical renders "
-            + "mean the caption reached no view, which is #954 verbatim"
+            + "mean the caption reached no view, which is the defect this test exists for"
         )
         XCTAssertNotEqual(
             withCaption, otherCaption,
@@ -124,7 +124,7 @@ final class SocialProofRenderTests: XCTestCase {
         XCTAssertNotEqual(
             try renderPNG(try config(withAuthor)), try renderPNG(try config(quoteOnly)),
             "authoring `author_name` must CHANGE the screen — the generator has been writing an "
-            + "author all along and this section drew nothing for it (#955)"
+            + "author all along and this section drew nothing for it"
         )
     }
 
@@ -158,7 +158,7 @@ final class SocialProofRenderTests: XCTestCase {
         XCTAssertNotEqual(
             onWhite, emptyOnWhite,
             "the quote must be VISIBLE on a white page — if these match it is drawing white on "
-            + "white, which is what it did before #954"
+            + "white, which is what it did before the caption was drawn"
         )
     }
 }

@@ -54,7 +54,7 @@ final class SurveyFeedbackFormUITests: XCTestCase {
         XCTAssertTrue(
             alert.waitForExistence(timeout: 10),
             "the feedback form did not appear after a negative answer — the alert was presented on "
-            + "a controller that could not present it, which is exactly #901",
+            + "a controller that could not present it, which is exactly the defect this test exists for",
         )
         XCTAssertTrue(alert.textFields.firstMatch.exists, "the form must offer somewhere to type")
 

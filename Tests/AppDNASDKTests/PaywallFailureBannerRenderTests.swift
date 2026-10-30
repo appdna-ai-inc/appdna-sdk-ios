@@ -124,7 +124,7 @@ final class PaywallFailureBannerRenderTests: XCTestCase {
         // The frame itself, for the closing evidence (written to the Mac's /tmp from the simulator).
         try? afterImage.pngData()?.write(to: URL(fileURLWithPath: "/tmp/fb1105-after.png"))
         let after = try redRegion(afterImage)
-        NSLog("[#1105] red pixels before=\(before.count) after=\(after.count) banner=\(after.minY)...\(after.maxY)pt cta top=\(after.ctaTop.map { "\($0)" } ?? "none")pt of \(size.height)pt")
+        NSLog("[failure-banner] red pixels before=\(before.count) after=\(after.count) banner=\(after.minY)...\(after.maxY)pt cta top=\(after.ctaTop.map { "\($0)" } ?? "none")pt of \(size.height)pt")
         XCTAssertGreaterThan(after.count, 5_000, "no failure banner was drawn after `.paywallPurchaseFailure`")
         let ctaTop = try XCTUnwrap(after.ctaTop, "no CTA was found below the banner — the banner is not above it")
         let gap = ctaTop - after.maxY

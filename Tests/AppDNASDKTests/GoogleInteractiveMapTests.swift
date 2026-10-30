@@ -93,7 +93,7 @@ final class GoogleInteractiveMapTests: XCTestCase {
 
         // A finger has to reach the engine. These are the flags `map_interactive` sets, and they are
         // the difference between a map and a picture of one.
-        XCTAssertTrue(map.settings.scrollGestures, "pan is off — this is #671")
+        XCTAssertTrue(map.settings.scrollGestures, "pan is off")
         XCTAssertTrue(map.settings.zoomGestures, "pinch-zoom is off")
         XCTAssertTrue(map.settings.compassButton, "map_show_controls was not honoured")
         XCTAssertFalse(map.isMyLocationEnabled, "an onboarding map must never request a location fix")

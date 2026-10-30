@@ -9,7 +9,7 @@ import SwiftUI
 /// (The option-index remap after the hide rule is pinned by the shared fixture
 /// `template_engine/sheet_option_step_paths_after_hide`, run by the resolve_block driver.)
 @MainActor
-final class HostDataAuditRound3Tests: XCTestCase {
+final class HostDataCarouselSheetRegressionTests: XCTestCase {
 
     private func block(_ json: String) throws -> ContentBlock {
         try JSONDecoder().decode(ContentBlock.self, from: Data(json.utf8))
@@ -33,7 +33,7 @@ final class HostDataAuditRound3Tests: XCTestCase {
 
         // The nested carousel page renderer calls applySheetStepPaths again on the page it was handed.
         let twice = OnboardingStepPipeline.applySheetStepPaths(page, stepInputs: inputs)
-        XCTAssertEqual(twice.text, page.text, "§A1 no re-scan — the second application changes nothing")
+        XCTAssertEqual(twice.text, page.text, "no re-scan — the second application changes nothing")
         XCTAssertFalse((twice.text ?? "").contains("LEAK"))
 
         // The SOURCE block keeps its paths, so the next render re-applies against the live inputs.

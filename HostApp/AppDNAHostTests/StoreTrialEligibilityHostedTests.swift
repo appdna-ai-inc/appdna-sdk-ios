@@ -174,7 +174,7 @@ final class StoreTrialEligibilityHostedTests: XCTestCase {
          and printing it means the answer is in the log either way.
          */
         let stillEligible = try await waitUntilIneligible()
-        print("[#933] StoreKit isEligibleForIntroOffer AFTER buyProduct = \(stillEligible as Any)")
+        print("[trial-eligibility] StoreKit isEligibleForIntroOffer AFTER buyProduct = \(stillEligible as Any)")
 
         /*
          🔴 SKIP RATHER THAN FAIL WHEN THE STATE DID NOT TAKE. StoreKit saying the user is STILL
@@ -199,7 +199,7 @@ final class StoreTrialEligibilityHostedTests: XCTestCase {
         XCTAssertNil(
             used.trialIso,
             "the trial survived a consumed introductory offer — the paywall would promise a free "
-                + "trial the purchase sheet refuses, which is the defect #933 held itself open for",
+                + "trial the purchase sheet refuses, which is the defect this test exists for",
         )
         // And the price is still reported, so this is eligibility being read rather than the
         // whole lookup having failed.

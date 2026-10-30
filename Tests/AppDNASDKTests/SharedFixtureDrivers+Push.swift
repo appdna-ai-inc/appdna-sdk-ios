@@ -75,7 +75,7 @@ extension SharedFixtureTests {
 
     /// Returns `true` when this file owns `fixture.action.kind` (and drove it).
     @MainActor
-    func driveSpec497Push(_ f: Fixture, _ h: Harness) async -> Bool {
+    func drivePushFixtures(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "classify_push":
             runClassifyPush(f, h)

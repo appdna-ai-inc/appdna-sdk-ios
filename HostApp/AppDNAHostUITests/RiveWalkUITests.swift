@@ -12,7 +12,7 @@
 // 🔴 AND NOT THE MOTION — this runner cannot see it. `XCUIScreen.main.screenshot()` came back
 // byte-identical twice on a screen that `simctl io booted screenshot` showed moving by 170,622
 // bytes; Rive draws through Metal and the UI-test capture path misses it. The motion is proven by
-// `scripts/spec502/probe-990-rive-motion.ts`, with `autoplay: false` as its negative control.
+// a frame-diff probe in the AppDNA repository, with `autoplay: false` as its negative control.
 //
 // Skipped unless `TestCredentials` has been filled in — `packages/appdna-sdk-ios/**` is a public
 // mirror and must carry no credentials.
@@ -56,7 +56,7 @@ final class RiveWalkUITests: XCTestCase {
          * and then a step the device passes straight through (real, and nothing to do with
          * this claim). The claim here is "a `rive` block draws on a device and keeps moving", so
          * the flow is one step carrying that block and nothing else
-         * (`scripts/spec502/probe-990-rive-only-flow.ts` builds and publishes it).
+         * (a seeding script in the AppDNA repository builds and publishes it).
          */
         XCTAssertTrue(
             app.staticTexts["Rive animation"].waitForExistence(timeout: 20),
@@ -75,7 +75,7 @@ final class RiveWalkUITests: XCTestCase {
          * animate on iOS", which is exactly how it read for one run.
          *
          * What this test owns is that the step PRESENTS and the block's heading is on screen. The
-         * motion belongs to `scripts/spec502/probe-990-rive-motion.ts`, which drives the same
+         * motion belongs to a frame-diff probe in the AppDNA repository, which drives the same
          * device through `simctl` and carries its own negative control (the same flow with
          * `autoplay: false`, which must come back identical).
          */

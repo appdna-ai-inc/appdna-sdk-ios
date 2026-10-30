@@ -1,7 +1,7 @@
 // SharedFixtureDrivers+LocationResolve.swift
 //
 // iOS drivers for the location state-holder kinds. Dispatched from
-// `driveSpec497Maps`. Every value asserted is produced by REAL SDK code:
+// `driveMapFixtures`. Every value asserted is produced by REAL SDK code:
 //
 //   location_resolve_request  REAL: `LocationSuggestionSearch` — the ONE holder the form-step Location
 //                             field and the `input_location` block bind to — with `LocationSearchSettings`

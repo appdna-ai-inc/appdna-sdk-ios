@@ -73,8 +73,8 @@ final class EventPipelineFixtureTests: XCTestCase {
         EventEnvelopeBuilder.build(
             event: name,
             properties: nil,
-            identity: DeviceIdentity(anonId: "spec428-anon", userId: nil, traits: nil),
-            sessionId: "spec428-session",
+            identity: DeviceIdentity(anonId: "fixture-anon", userId: nil, traits: nil),
+            sessionId: "fixture-session",
             analyticsConsent: true
         )
     }
@@ -84,7 +84,7 @@ final class EventPipelineFixtureTests: XCTestCase {
         let cfg = f.pipeline.config
         let cap = cfg?.max_events ?? 10_000
         let maxBytes = cfg?.max_bytes ?? EventStore.maxDiskBytes
-        let fileName = "spec428_\(f.id).json"
+        let fileName = "event_pipeline_\(f.id).json"
         // compactionInterval:1 → caps enforced on every save (so a small cap evicts deterministically).
         var store = EventStore(maxEvents: cap, compactionInterval: 1, fileName: fileName, maxDiskBytes: maxBytes)
         store.clearAll()
@@ -196,7 +196,7 @@ final class EventPipelineFixtureTests: XCTestCase {
     /// is BUILT after a later post-configure event, its reserved (earlier-stamped) seq stays lower.
     func testPreInitClientSeqCarry() {
         resetCounters()
-        let id = DeviceIdentity(anonId: "spec428-anon", userId: nil, traits: nil)
+        let id = DeviceIdentity(anonId: "fixture-anon", userId: nil, traits: nil)
         // 1. Pre-init: stamp the seq NOW (before configure), in tracking order.
         let preInitSeq = ClientSeqCounter.next()
         // 2. A post-configure event mints during the drain window (BUILT before the pre-init drains).

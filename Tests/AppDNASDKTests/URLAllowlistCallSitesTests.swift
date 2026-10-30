@@ -106,7 +106,7 @@ final class URLAllowlistCallSitesTests: XCTestCase {
         XCTAssertTrue(
             offenders.isEmpty,
             "A SwiftUI `Link` hands its destination to the system with NO scheme check, and on a "
-                + "device inside an onboarding step it opens nothing at all (#1005). Use a Button "
+                + "device inside an onboarding step it opens nothing at all. Use a Button "
                 + "calling `URLSafety.open`.\n" + offenders.joined(separator: "\n"),
         )
     }

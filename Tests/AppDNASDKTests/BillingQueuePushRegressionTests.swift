@@ -1,4 +1,4 @@
-// Spec497ImplAuditFixTests.swift
+// BillingQueuePushRegressionTests.swift
 //
 // Native iOS — tests for behaviour that had no test, and the
 // regression tests for the minors fixed with them:
@@ -188,7 +188,7 @@ private func drainSDKQueue() async {
 
 // MARK: - Billing
 
-final class Spec497BillingFixTests: XCTestCase {
+final class BillingRegressionTests: XCTestCase {
 
     /// A hostless test cannot complete a StoreKit purchase (`Product.purchase` → unknown error), so once
     /// the test has proved that `configure` wired the REAL `StoreKit2Bridge`, the purchase call itself is
@@ -343,7 +343,7 @@ final class Spec497BillingFixTests: XCTestCase {
     }
 }
 
-final class Spec497QueueFixTests: XCTestCase {
+final class EventQueueRegressionTests: XCTestCase {
 
     private final class World {
         let suite = UserDefaults(suiteName: "ai.appdna.sdk.fixr1.queue.\(UUID().uuidString)")!
@@ -572,7 +572,7 @@ final class Spec497QueueFixTests: XCTestCase {
 
 // MARK: - paywall restore
 
-final class Spec497PaywallRestoreFixTests: XCTestCase {
+final class PaywallRestoreRegressionTests: XCTestCase {
 
     private final class Spy: AppDNAPaywallDelegate {
         let failed = Box<[String]>([])
@@ -745,7 +745,7 @@ final class Spec497PaywallRestoreFixTests: XCTestCase {
 
 // MARK: - Push
 
-final class Spec497PushFixTests: XCTestCase {
+final class PushRegressionTests: XCTestCase {
 
     private final class PushSpy: AppDNAPushDelegate {
         let tapped = Box<[String]>([])
@@ -894,7 +894,7 @@ final class Spec497PushFixTests: XCTestCase {
 
 // MARK: - Maps / network
 
-final class Spec497MiscFixTests: XCTestCase {
+final class MiscRegressionTests: XCTestCase {
 
     override func tearDown() {
         APIBaseURL.infoPlistReaderForTesting = nil
