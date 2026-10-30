@@ -288,9 +288,11 @@ extension SharedFixtureTests {
             guard let block = Self.findBlock(pick["block_id"]?.stringValue, in: pickBlocks) else {
                 return XCTFail("[\(f.id)] the picked block is not on the resolved step")
             }
-            // Each picked option is TAPPED through the production write (`SelectOptionTap.apply`), in order, so a
+            // Each picked option goes through the write the Select's own presentation runs, in order, so a
             // fixture can only assert a pick its own Select can make: several ids on a single Select leave the
-            // last one picked, as a user's taps would.
+            // last one picked, as a user's taps would. A dropdown-style Select picks through its menu's seam
+            // (`DropdownSelectPick.apply`, which refuses an add over `max_selections` silently, as the menu does);
+            // the tap-path styles through `SelectOptionTap.apply`.
             let ids = pick["option_ids"]?.arrayValue?.compactMap(\.stringValue)
                 ?? [pick["option_id"]?.stringValue].compactMap { $0 }
             let options = ids.compactMap { id in block.field_options?.first { ($0.id ?? $0.value) == id } }
@@ -299,7 +301,17 @@ extension SharedFixtureTests {
             }
             var values: [String] = []
             var tapInputs: [String: Any] = [:]
-            for option in options {
+            let fid = block.field_id ?? block.id
+            for option in options where Self.drawsAsDropdown(block) {
+                _ = DropdownSelectPick.apply(
+                    value: option.resolvedValue, options: block.field_options ?? [], block: block,
+                    selectedValues: values, sourcedOptions: block.field_options ?? [],
+                    inputValues: &tapInputs, store: selectedStore
+                )
+                values = SelectOptionTap.isMultiSelect(block)
+                    ? SelectionResync.multiAfterExternalChange(tapInputs[fid], drawn: values) : []
+            }
+            for option in options where !Self.drawsAsDropdown(block) {
                 guard let next = SelectOptionTap.apply(
                     option: option, block: block, selectedValues: values, sourcedOptions: block.field_options ?? [],
                     inputValues: &tapInputs, store: selectedStore
@@ -498,6 +510,15 @@ extension SharedFixtureTests {
     }
 
     /// The block with `id` among `blocks` at any depth: `children`, `stack_children` and option sheets.
+    /// Whether a picked block draws as a dropdown, as the Select view decides it: an `input_select` whose
+    /// `display_style` (default `dropdown`) is not a tap-path style, or a Segmented drawn through the Select.
+    static func drawsAsDropdown(_ block: ContentBlock) -> Bool {
+        let style = block.field_config?["display_style"]?.value as? String
+        let select = block.type == .input_select
+            || (block.type == .input_segmented && !SegmentedPresentation.drawsSegmentedControl(displayStyle: style))
+        return select && !["stacked", "grid", "image_tiles", "bubble", "bubble_scroll", "list"].contains(style ?? "dropdown")
+    }
+
     static func findBlock(_ id: String?, in blocks: [ContentBlock]) -> ContentBlock? {
         guard let id else { return nil }
         for b in blocks {
