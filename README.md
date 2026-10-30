@@ -35,20 +35,20 @@ In Xcode: **File → Add Package Dependencies…** and enter:
 https://github.com/appdna-ai-inc/appdna-sdk-ios.git
 ```
 
-Set the dependency rule to **Up to Next Major Version** starting from `1.0.83`.
+Set the dependency rule to **Up to Next Major Version** starting from `1.0.84`.
 
 Or add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.83")
+    .package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.84")
 ]
 ```
 
 ### CocoaPods
 
 ```ruby
-pod 'AppDNASDK', '~> 1.0.83'
+pod 'AppDNASDK', '~> 1.0.84'
 ```
 
 ## Quick start
