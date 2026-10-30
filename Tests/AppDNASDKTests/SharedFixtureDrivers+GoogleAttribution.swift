@@ -46,7 +46,8 @@ extension SharedFixtureTests {
     /// `action.cases[] = {name, step, block_id?}` → `[{name, backdrop, variant_light}]`: the step decoded
     /// by the SDK's own decoder, then `GoogleMapsAttribution.backdrop(ofStep:type:)` — what the step
     /// container hands down — and, for a block, `backdrop(ofBlock:behind:)` applied at every block from
-    /// the step down to it, as each block's view applies it.
+    /// the step down to it, as each block's view applies it. A case with `appearances: true` reports
+    /// `[{name, variant_light, variant_dark}]` instead: the variant in each system appearance.
     func runGoogleAttributionBackdrop(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue, !cases.isEmpty else {
             return XCTFail("[\(f.id)] google_attribution_backdrop needs action.cases")
@@ -91,14 +92,22 @@ extension SharedFixtureTests {
             case .plain(let hex): described = hex.map { "plain:\($0)" } ?? "plain"
             case .busy: described = "busy"
             }
-            let variant: String
-            switch A.variant(on: backdrop, darkAppearance: false) {
-            case .gray: variant = "gray"
-            case .white: variant = "white"
-            case .lightOutline: variant = "light_outline"
-            case .darkOutline: variant = "dark_outline"
+            func variantName(dark: Bool) -> String {
+                switch A.variant(on: backdrop, darkAppearance: dark) {
+                case .gray: return "gray"
+                case .white: return "white"
+                case .lightOutline: return "light_outline"
+                case .darkOutline: return "dark_outline"
+                }
             }
-            results.append(["name": name, "backdrop": described, "variant_light": variant])
+            if o["appearances"]?.boolValue == true {
+                // The variant in each appearance, as the step draws it there. No backdrop: an unstyled fill is the
+                // system background on this platform and a theme colour on Android, and the variant is what the
+                // two must agree on.
+                results.append(["name": name, "variant_light": variantName(dark: false), "variant_dark": variantName(dark: true)])
+                continue
+            }
+            results.append(["name": name, "backdrop": described, "variant_light": variantName(dark: false)])
         }
         h.state["results"] = results
     }
