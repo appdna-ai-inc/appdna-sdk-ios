@@ -714,11 +714,7 @@ final class HostDataScenarioRun {
             return
         }
         let fid = block.field_id ?? block.id
-        let stored = v.inputValues[fid]
-        var drawn = drawnMulti[fid] ?? ((stored as? [String]) ?? [])
-        if let seen = drawnSignature[fid], seen != selectionSignature(stored) {
-            drawn = SelectionResync.multiAfterExternalChange(stored, drawn: drawn)
-        }
+        let drawn = drawnList(fid, in: v)
         let result = SelectOptionTap.apply(option: option, block: block, selectedValues: drawn,
                                            sourcedOptions: filterOptionsLocally(options, query: v.searchQueries[blockId] ?? ""),
                                            inputValues: &v.inputValues)
@@ -730,6 +726,16 @@ final class HostDataScenarioRun {
     /// A pick from a dropdown-style Select's menu, through the dropdown view's own seam
     /// (`DropdownSelectPick`), against the options the real pipeline rendered for the block. What it
     /// returns is what the view presents through `.sheet(item:)`.
+    /// What the multi Select of field `fid` draws right now (see `drawnMulti`).
+    func drawnList(_ fid: String, in v: HostDataStepView) -> [String] {
+        let stored = v.inputValues[fid]
+        var drawn = drawnMulti[fid] ?? ((stored as? [String]) ?? [])
+        if let seen = drawnSignature[fid], seen != selectionSignature(stored) {
+            drawn = SelectionResync.multiAfterExternalChange(stored, drawn: drawn)
+        }
+        return drawn
+    }
+
     func pickDropdown(blockId: String, value: String) {
         refresh()
         guard let v = view(owning: blockId) ?? view, let block = v.findBlock(blockId) else {
@@ -740,7 +746,13 @@ final class HostDataScenarioRun {
             failures.append("pick_dropdown: block \(blockId) renders no option \(value) (renders \(options.map(\.resolvedValue)))")
             return
         }
-        let sheet = DropdownSelectPick.apply(value: value, options: options, block: block, inputValues: &v.inputValues)
+        let fid = block.field_id ?? block.id
+        let sheet = DropdownSelectPick.apply(value: value, options: options, block: block,
+                                             selectedValues: drawnList(fid, in: v), inputValues: &v.inputValues)
+        if SelectOptionTap.isMultiSelect(block) {
+            drawnMulti[fid] = SelectionResync.multiAfterExternalChange(v.inputValues[fid], drawn: [])
+            drawnSignature[fid] = selectionSignature(v.inputValues[fid])
+        }
         v.openSheet = sheet.map { (blockId, $0.resolvedValue) }
         v.presentedSheet = sheet.map { (blockId, $0.id ?? $0.resolvedValue) }
         v.sheetInputs = [:]

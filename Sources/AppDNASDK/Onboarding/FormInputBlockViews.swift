@@ -1324,6 +1324,71 @@ struct FormInputSelectBlock: View {
 
     @ViewBuilder
     private func dropdownSelectView(options: [InputOption], fieldId: String) -> some View {
+        if SelectOptionTap.isMultiSelect(block) {
+            multiDropdownSelectView(options: options, fieldId: fieldId)
+        } else {
+            singleDropdownSelectView(options: options, fieldId: fieldId)
+        }
+    }
+
+    /// A dropdown-style Select with `multi_select`: a menu whose every pick toggles that option, through
+    /// the tap path's one write (`SelectOptionTap.apply` — the list in `inputValues`, the options in
+    /// `SelectedOptionStore`, `max_selections` on the add path). The field draws the picked labels in
+    /// pick order; the menu draws a check beside each picked option. The menu closes after each pick, as
+    /// a SwiftUI `Menu` does; it opens again on the next tap.
+    @ViewBuilder
+    private func multiDropdownSelectView(options: [InputOption], fieldId: String) -> some View {
+        let label = DropdownSelectPick.multiLabel(drawn: selectedValues, options: options, placeholder: block.field_placeholder ?? "Select...")
+        Menu {
+            ForEach(options) { option in
+                Button {
+                    pickMultiFromDropdown(option.resolvedValue, options: options, fieldId: fieldId)
+                } label: {
+                    if selectedValues.contains(option.resolvedValue) {
+                        Label(option.label ?? "", systemImage: "checkmark")
+                    } else {
+                        Text(option.label ?? "")
+                    }
+                }
+            }
+        } label: {
+            HStack {
+                Text(label.text)
+                    .foregroundColor(label.isPlaceholder ? .secondary : .primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundColor(.secondary)
+            }
+        }
+        .accessibilityValue(label.isPlaceholder ? "" : label.text)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .frame(minHeight: fieldHeight(block), alignment: .center)
+        .background(Color(hex: block.field_style?.background_color ?? "transparent"))
+        .cornerRadius(CGFloat(block.field_style?.corner_radius ?? 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: CGFloat(block.field_style?.corner_radius ?? 8))
+                .stroke(Color(hex: block.field_style?.border_color ?? "#D1D5DB"), lineWidth: fieldBorderWidth(block))
+        )
+    }
+
+    /// A pick from the multi-pick dropdown's menu: toggles that option through `DropdownSelectPick`, then
+    /// draws what was stored. An option that owns a sheet opens it once the menu has closed.
+    private func pickMultiFromDropdown(_ value: String, options: [InputOption], fieldId: String) {
+        let sheet = DropdownSelectPick.apply(
+            value: value, options: options, block: block, selectedValues: selectedValues,
+            sourcedOptions: allSourcedOptions, inputValues: &inputValues
+        )
+        selectedValues = SelectionResync.multiAfterExternalChange(inputValues[fieldId], drawn: selectedValues)
+        guard let sheet else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + DropdownSelectPick.sheetDelay) {
+            sheetOption = sheet
+        }
+    }
+
+    @ViewBuilder
+    private func singleDropdownSelectView(options: [InputOption], fieldId: String) -> some View {
         // The picker writes through `pickFromDropdown`, not `onChange(of: selectedValue)`: the
         // setter runs on every pick, a re-pick of the current option included, which is what lets
         // picking the same option again re-open its sheet. A programmatic change to `selectedValue`
@@ -3420,17 +3485,40 @@ enum DropdownSelectPick {
     /// this outlasts that animation, so the sheet rises after the menu, never on top of it.
     static let sheetDelay: TimeInterval = 0.35
 
+    /// What a multi-pick dropdown's field draws: the labels of the drawn picks in pick order (a value no
+    /// rendered option carries draws as itself), or the placeholder when nothing is picked. Android's
+    /// `dropdownMultiLabel` draws the same text.
+    static func multiLabel(drawn: [String], options: [InputOption], placeholder: String) -> (text: String, isPlaceholder: Bool) {
+        if drawn.isEmpty { return (placeholder, true) }
+        return (drawn.map { v in options.first(where: { $0.resolvedValue == v })?.label ?? v }.joined(separator: ", "), false)
+    }
+
     /// Records the pick and returns the option whose sheet it opens, or nil. The choice is recorded
     /// first — the value, and the option for `{{selected.<field_id>.…}}`, as every other Select style
     /// records it — and the sheet only presents. `value` is looked up in the options the dropdown
     /// rendered, so a repeat-generated or Option Set option resolves like any other. The placeholder
     /// (`""`) clears the answer and its record and opens nothing; a resync to "nothing selected" must
     /// not write an empty answer back.
+    ///
+    /// With `multi_select` the pick TOGGLES that option in the list the dropdown draws (`selectedValues`),
+    /// through the tap path's own write (`SelectOptionTap.apply`): the list in `inputValues`, the options
+    /// in pick order in the store, and `max_selections` on the add path (a refused add records nothing
+    /// and opens nothing). Android's `dropdownOptionPick` does the same through `recordOptionPick`.
     static func apply(
         value: String, options: [InputOption], block: ContentBlock,
+        selectedValues: [String] = [], sourcedOptions: [InputOption]? = nil,
         inputValues: inout [String: Any], store: SelectedOptionStore = .shared
     ) -> InputOption? {
         let fieldId = block.field_id ?? block.id
+        if SelectOptionTap.isMultiSelect(block) {
+            guard let option = options.first(where: { $0.resolvedValue == value }),
+                  SelectOptionTap.apply(
+                      option: option, block: block, selectedValues: selectedValues,
+                      sourcedOptions: sourcedOptions ?? options, inputValues: &inputValues, store: store
+                  ) != nil
+            else { return nil }
+            return SelectOptionSheet.opened(by: option)
+        }
         guard !value.isEmpty, let option = options.first(where: { $0.resolvedValue == value }) else {
             if value.isEmpty && inputValues[fieldId] == nil { return nil }
             inputValues[fieldId] = value
