@@ -448,6 +448,12 @@ final class HostDataScenarioRun {
     var current: HostDataStepView?
     var outgoing: HostDataStepView?
     var lastLeft: HostDataStepView?
+    /// What each multi-select Select's view DRAWS, per field, and the stored value it last saw. The view
+    /// restores the stored list when it appears (`as? [String]`) and re-reads it through
+    /// `SelectionResync.multiAfterExternalChange` whenever the stored value changes from outside; a tap
+    /// toggles the drawn list. Modelled here so a fixture sees the view's state, not the stored one.
+    var drawnMulti: [String: [String]] = [:]
+    var drawnSignature: [String: String] = [:]
 
     init(fixtureId: String, stepJSON: SharedFixtureTests.AnyJSON, templateContext: TemplateContext, responses: [String: Any]) {
         self.fixtureId = fixtureId
@@ -708,10 +714,16 @@ final class HostDataScenarioRun {
             return
         }
         let fid = block.field_id ?? block.id
-        let currentValues = (v.inputValues[fid] as? [String]) ?? []
-        _ = SelectOptionTap.apply(option: option, block: block, selectedValues: currentValues,
-                                  sourcedOptions: filterOptionsLocally(options, query: v.searchQueries[blockId] ?? ""),
-                                  inputValues: &v.inputValues)
+        let stored = v.inputValues[fid]
+        var drawn = drawnMulti[fid] ?? ((stored as? [String]) ?? [])
+        if let seen = drawnSignature[fid], seen != selectionSignature(stored) {
+            drawn = SelectionResync.multiAfterExternalChange(stored, drawn: drawn)
+        }
+        let result = SelectOptionTap.apply(option: option, block: block, selectedValues: drawn,
+                                           sourcedOptions: filterOptionsLocally(options, query: v.searchQueries[blockId] ?? ""),
+                                           inputValues: &v.inputValues)
+        drawnMulti[fid] = result?.selectedValues ?? drawn
+        drawnSignature[fid] = selectionSignature(v.inputValues[fid])
         refresh()
     }
 

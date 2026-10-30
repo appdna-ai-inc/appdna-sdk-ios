@@ -1057,10 +1057,11 @@ struct FormInputSelectBlock: View {
         // mapping it to "" would fire the dropdown's write-back and clobber the host's answer.
         .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
             let v = inputValues[fieldId]
+            selectedValues = SelectionResync.multiAfterExternalChange(v, drawn: selectedValues)
             if v is [String] {
-                selectedValues = SelectionResync.multi(v) ?? selectedValues; selectedValue = ""
+                selectedValue = ""
             } else if let single = SelectionResync.single(v) {
-                selectedValue = single; selectedValues = []
+                selectedValue = single
             }
         }
         // Refresh the set AFTER the first frame has drawn. `.task` runs once the
@@ -3315,6 +3316,17 @@ func filterOptionsLocally(_ options: [InputOption], query: String) -> [InputOpti
 /// `["plan": 2]`): the caller leaves its view state alone, so no "" is written back over it. Only a
 /// cleared (absent) entry resyncs the view to "nothing selected".
 enum SelectionResync {
+    /// What a MULTI-select Select draws after its stored value changes from outside the view (a host's
+    /// `inputValuePatches`, a pruned host-data selection, a restore): the stored list when every element is
+    /// a String, and nothing otherwise. A single answer, a number, a list holding a number (`[1]`, or
+    /// `["a", 2]`) and no value at all are none of them a multi selection. `drawn` — what the view drew before
+    /// the change — never survives it: keeping it drew a pick the stored value no longer holds, and the next
+    /// tap (`SelectOptionTap.apply`, which toggles the drawn list) wrote it back. Android reads the field by
+    /// the same rule (`storedMultiSelection`). The fixture drivers call this to model the view.
+    static func multiAfterExternalChange(_ value: Any?, drawn: [String]) -> [String] {
+        (value as? [String]) ?? []
+    }
+
     static func single(_ value: Any?) -> String? {
         guard let value else { return "" }
         return value as? String
