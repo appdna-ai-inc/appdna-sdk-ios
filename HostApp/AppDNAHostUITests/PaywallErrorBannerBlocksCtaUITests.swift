@@ -356,7 +356,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
                 peak = n
                 let a = XCTAttachment(data: frame.pngRepresentation, uniformTypeIdentifier: "public.png")
                 a.name = "c2-celebration-peak"; a.lifetime = .keepAlways; add(a)
-                try? frame.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/ios-walk-1109-c2-celebration-peak.png"))
+                try? frame.pngRepresentation.write(to: URL(fileURLWithPath: "/tmp/ios-walk-celebration-peak.png"))
             }
             usleep(150_000)
         }
@@ -437,7 +437,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
 
     /// The banner's authored message on the walk paywall.
     private func authoredBanner(_ app: XCUIApplication) -> XCUIElement {
-        app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Walk 1105")).firstMatch
+        app.staticTexts.containing(NSPredicate(format: "label CONTAINS[c] %@", "Walk banner:")).firstMatch
     }
 
     /// A frame on the Mac's /tmp for the closing evidence, and attached to the result bundle.
@@ -447,7 +447,7 @@ final class PaywallErrorBannerBlocksCtaUITests: XCTestCase {
         a.name = name
         a.lifetime = .keepAlways
         add(a)
-        try? png.write(to: URL(fileURLWithPath: "/tmp/ios-walk-1105-\(name).png"))
+        try? png.write(to: URL(fileURLWithPath: "/tmp/ios-walk-error-banner-\(name).png"))
     }
 
     /// The pinned CTA. Matched by its accessibility identifier where the renderer sets one, else by

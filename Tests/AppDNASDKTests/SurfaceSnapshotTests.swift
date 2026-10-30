@@ -701,16 +701,16 @@ final class SurfaceSnapshotTests: XCTestCase {
              "price_display":"A-11.11","is_default":true}
             """
 
-        try write(render(try paywall(document(plans: withPlan))), named: "cta_1075_with_plan")
-        try write(render(try paywall(document(plans: ""))), named: "cta_1075_no_plan")
+        try write(render(try paywall(document(plans: withPlan))), named: "cta_with_plan")
+        try write(render(try paywall(document(plans: ""))), named: "cta_no_plan")
 
         XCTAssertTrue(
-            try frameContains("cta_1075_with_plan", colour: fill),
+            try frameContains("cta_with_plan", colour: fill),
             "the control failed: the authored CTA fill was not drawn even WITH a plan, so this "
                 + "harness cannot see the button and nothing below means anything",
         )
         XCTAssertFalse(
-            try frameContains("cta_1075_no_plan", colour: fill, tolerance: 8),
+            try frameContains("cta_no_plan", colour: fill, tolerance: 8),
             "with no plan to buy the CTA must be dimmed — it still drew its authored fill at full "
                 + "strength, which is a button that refuses the tap while looking available",
         )
