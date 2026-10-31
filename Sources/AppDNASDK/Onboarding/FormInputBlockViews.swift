@@ -2794,6 +2794,15 @@ struct FormInputLocationPlaceholderBlock: View {
     /// What is behind the field, for the Google logo kept beside a Google answer.
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var attributionBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
+    /// The author's search settings, handed to the holder on every edit and every composition.
+    /// Honours the author's Min characters: the Console seeds `location_min_chars: 3` on every Location
+    /// content block, and this surface once searched from the FIRST keystroke, so an authored threshold
+    /// did nothing and every block issued two throwaway searches before the one that could match.
+    /// Resolved by the same `LocationSearchSettings` the form-step sibling uses, and all four settings
+    /// reach the proxy: it carries the authored Type, Bias country and Language too.
+    private var search: LocationSearchSettings {
+        LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
+    }
 
     /// `search` is a test seam: a render test hands in a holder it drives. Production builds its own.
     init(block: ContentBlock, inputValues: Binding<[String: Any]>, search: LocationSuggestionSearch? = nil) {
@@ -2847,9 +2856,7 @@ struct FormInputLocationPlaceholderBlock: View {
                     ),
                     // An IME composition is not an edit until it commits.
                     onCompositionChange: {
-                        searchCompleter.compositionChanged(
-                            $0, settings: LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
-                        )
+                        searchCompleter.compositionChanged($0, settings: search)
                     },
                     // Google's line, replaced by the user's own text, must not come back by an undo:
                     // the history goes with every text the holder sets, and with a first edit of the
@@ -2859,14 +2866,6 @@ struct FormInputLocationPlaceholderBlock: View {
                 )
                 .frame(height: 24)
                 .onChange(of: searchCompleter.text) { newValue in
-                    // Honour the author's Min characters. The Console seeds
-                    // `location_min_chars: 3` on every Location content block
-                    // (`StepContentEditor.tsx:2845`) and this surface searched from the FIRST
-                    // keystroke, so an authored threshold did nothing and every block issued two
-                    // throwaway searches before the one that could match. Resolved by the same
-                    // `LocationSearchSettings` the form-step sibling uses, and all four settings reach
-                    // the proxy: `search` carries the authored Type, Bias country and Language.
-                    let search = LocationSearchSettings.from(blockConfig: block.field_config, defaultMinChars: 3)
                     // Every change, programmatic ones included, goes to the
                     // holder's one entry point. It skips the echo of its own set (a resolve, a restore,
                     // a clear) by value, stores what the user types, and searches.

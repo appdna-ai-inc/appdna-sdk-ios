@@ -278,16 +278,125 @@ extension EnvironmentValues {
 
 // MARK: - Keeping a resolved field's attribution on screen
 
-/// The step's "bring this id into view" action. The scrolling step layouts publish it from a
-/// `ScrollViewReader`; anything below them can ask for its own container to be scrolled into view.
-struct AppDNAScrollIntoViewKey: EnvironmentKey {
-    static let defaultValue: ((String) -> Void)? = nil
+/// Keeps one view of a scrolling step in view while the step lays itself out, and stops the moment
+/// the user moves the step.
+///
+/// A step's content does not reach its final height in one pass: a form step returned to with Back
+/// grows for a few hundred milliseconds after the answer is restored, so one scroll request made
+/// when the logo appears can settle short of the field. The coordinator therefore asks again
+/// whenever the scroll view's measured content size changes, for as long as a view is held. It
+/// never asks again once the user has moved the step (a drag, or the coast after one): a request
+/// made then would take the step away from what the user scrolled to. Appearing and
+/// turning the device are fresh requests and clear that.
+final class AppDNAStepScrollCoordinator: NSObject {
+    private var proxy: ScrollViewProxy?
+    private weak var scrollView: UIScrollView?
+    private var contentSizeObservation: NSKeyValueObservation?
+    private var contentOffsetObservation: NSKeyValueObservation?
+    /// The container id kept in view, or nil when none is held.
+    private(set) var heldId: String?
+    /// The user moved the step since the last fresh request.
+    private(set) var userScrolled = false
+
+    /// The step's `ScrollViewReader` proxy, refreshed on every render of the step.
+    func using(_ proxy: ScrollViewProxy) -> AppDNAStepScrollCoordinator {
+        self.proxy = proxy
+        return self
+    }
+
+    /// The UIKit scroll view behind the step's `ScrollView`: its drags, its offset and its content size.
+    func attach(_ scrollView: UIScrollView) {
+        guard scrollView !== self.scrollView else { return }
+        self.scrollView?.panGestureRecognizer.removeTarget(self, action: #selector(panned(_:)))
+        self.scrollView = scrollView
+        scrollView.panGestureRecognizer.addTarget(self, action: #selector(panned(_:)))
+        contentSizeObservation = scrollView.observe(\.contentSize, options: [.old, .new]) { [weak self] _, change in
+            guard change.oldValue != change.newValue else { return }
+            DispatchQueue.main.async { self?.followLayout() }
+        }
+        contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] sv, change in
+            guard let self, let old = change.oldValue, let new = change.newValue, abs(old.y - new.y) > 0.5 else { return }
+            // A move made while a finger is on the step, or while it coasts after one, is the user's.
+            if sv.isTracking || sv.isDragging || sv.isDecelerating { self.userScrolled = true }
+        }
+    }
+
+    @objc private func panned(_ pan: UIPanGestureRecognizer) {
+        if pan.state == .began || pan.state == .changed { userScrolled = true }
+    }
+
+    /// A fresh request (the view appeared, or the device turned): keep `id` in view.
+    func keepInView(_ id: String) {
+        heldId = id
+        userScrolled = false
+        // After this layout pass, so the scroll view measures the container it is asked for.
+        DispatchQueue.main.async { [weak self] in self?.followLayout() }
+    }
+
+    /// The held view went away.
+    func release(_ id: String) {
+        if heldId == id { heldId = nil }
+    }
+
+    private func followLayout() {
+        guard let id = heldId, !userScrolled, let proxy else { return }
+        proxy.scrollTo(id, anchor: nil)
+    }
+}
+
+/// Finds the UIKit scroll view a SwiftUI `ScrollView`'s content sits in, and hands it over.
+struct AppDNAEnclosingScrollViewFinder: UIViewRepresentable {
+    let found: (UIScrollView) -> Void
+
+    final class Probe: UIView {
+        var found: ((UIScrollView) -> Void)?
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            report()
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            report()
+        }
+        private func report() {
+            var v = superview
+            while let current = v, !(current is UIScrollView) { v = current.superview }
+            if let sv = v as? UIScrollView { found?(sv) }
+        }
+    }
+
+    func makeUIView(context: Context) -> Probe {
+        let p = Probe()
+        p.isUserInteractionEnabled = false
+        p.found = found
+        return p
+    }
+
+    func updateUIView(_ uiView: Probe, context: Context) { uiView.found = found }
+}
+
+extension View {
+    /// Publishes a step's scroll coordinator to its content (see `AppDNAStepScrollCoordinator`).
+    func appdnaStepScroll(_ coordinator: AppDNAStepScrollCoordinator, _ proxy: ScrollViewProxy) -> some View {
+        environment(\.appdnaStepScroll, coordinator.using(proxy))
+    }
+
+    /// Placed inside a step's `ScrollView` content: hands the UIKit scroll view to the coordinator.
+    func appdnaStepScrollContent(_ coordinator: AppDNAStepScrollCoordinator) -> some View {
+        background(AppDNAEnclosingScrollViewFinder { coordinator.attach($0) })
+    }
+}
+
+/// The step's scroll coordinator. The scrolling step layouts publish it; anything below them can ask
+/// for its own container to be kept in view.
+struct AppDNAStepScrollKey: EnvironmentKey {
+    static let defaultValue: AppDNAStepScrollCoordinator? = nil
 }
 
 extension EnvironmentValues {
-    var appdnaScrollIntoView: ((String) -> Void)? {
-        get { self[AppDNAScrollIntoViewKey.self] }
-        set { self[AppDNAScrollIntoViewKey.self] = newValue }
+    var appdnaStepScroll: AppDNAStepScrollCoordinator? {
+        get { self[AppDNAStepScrollKey.self] }
+        set { self[AppDNAStepScrollKey.self] = newValue }
     }
 }
 
@@ -297,35 +406,20 @@ extension EnvironmentValues {
 /// text) the field's Google line can sit at the bottom of the scroll area with its logo cut off below
 /// it, so Google's content shows without its attribution until the user scrolls. When this logo
 /// appears (the tap that resolves the answer, or the answer restored on returning to the step), and
-/// when the vertical size class changes (a rotation), it asks the step to scroll the field's container
-/// (field and logo together) into view. Where both already show, the scroll moves nothing.
+/// when the vertical size class changes (a rotation), it asks the step to keep the field's container
+/// (field and logo together) in view while the step lays out, until the user moves the step. Where both
+/// already show, the scroll moves nothing.
 struct GoogleMapsLogoBesideField: View {
     let backdrop: GoogleMapsAttribution.Backdrop
     /// The `.id` the field's container carries inside the step's scroll view.
     let fieldContainerId: String
-    @SwiftUI.Environment(\.appdnaScrollIntoView) private var scrollIntoView
+    @SwiftUI.Environment(\.appdnaStepScroll) private var stepScroll
     @SwiftUI.Environment(\.verticalSizeClass) private var verticalSizeClass
 
     var body: some View {
         GoogleMapsLogoView(backdrop: backdrop)
-            .onAppear { bringFieldIntoView() }
-            .onChange(of: verticalSizeClass) { _ in bringFieldIntoView() }
+            .onAppear { stepScroll?.keepInView(fieldContainerId) }
+            .onChange(of: verticalSizeClass) { _ in stepScroll?.keepInView(fieldContainerId) }
+            .onDisappear { stepScroll?.release(fieldContainerId) }
     }
-
-    /// About how long a step takes to slide in. A step returned to with Back appears with its answer
-    /// already restored, while it is still sliding in; in the flow host the request made then left the
-    /// field where it was (measured on a simulator, twice), and a request once the slide is over moves it.
-    static let stepInsertionDelay: TimeInterval = 0.45
-
-    private func bringFieldIntoView() {
-        // After this layout pass, so the scroll view measures the field with its logo; and again once
-        // the step has finished sliding in. A field already in view does not move on the second request.
-        DispatchQueue.main.async { scrollIntoView?(fieldContainerId) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.stepInsertionDelay) { scrollIntoView?(fieldContainerId) }
-    }
-}
-
-/// The scroll-into-view action for a step's `ScrollViewReader`: the least scroll that shows the view.
-func appdnaScrollIntoViewAction(_ proxy: ScrollViewProxy) -> (String) -> Void {
-    { id in proxy.scrollTo(id, anchor: nil) }
 }

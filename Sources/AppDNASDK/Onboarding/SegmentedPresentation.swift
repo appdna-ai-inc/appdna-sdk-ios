@@ -28,7 +28,7 @@ public enum SegmentedPresentation {
 
     /// `true` → draw the segmented control: the default, and what every Segmented block drew before.
     public static func drawsSegmentedControl(displayStyle: String?) -> Bool {
-        guard let raw = displayStyle?.trimmingCharacters(in: .whitespaces).lowercased(),
+        guard let raw = displayStyle?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !raw.isEmpty else { return true }
         // `segmented` names the control itself, so the console can offer a way BACK to it.
         if raw == "segmented" { return true }

@@ -46,6 +46,8 @@ struct ThreeZoneStepLayout: View {
 
     /// Scroll offset tracked for collapse_on_scroll blocks (Sprint 7).
     @State private var scrollOffset: CGFloat = 0
+    /// Keeps a Location field holding a Google answer in view with its logo (see the coordinator).
+    @State private var stepScroll = AppDNAStepScrollCoordinator()
 
     var body: some View {
         let visible = blocks.filter {
@@ -95,8 +97,9 @@ struct ThreeZoneStepLayout: View {
                             )
                             onContentTap()
                         }
+                        .appdnaStepScrollContent(stepScroll)
                     }
-                    .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
+                    .appdnaStepScroll(stepScroll, scrollProxy)
                     }
                 }
             } else {
@@ -126,8 +129,9 @@ struct ThreeZoneStepLayout: View {
                         // own gesture only ever saw the taps that missed it.
                         onContentTap()
                     }
+                    .appdnaStepScrollContent(stepScroll)
                 }
-                .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
+                .appdnaStepScroll(stepScroll, scrollProxy)
                 }
                 .coordinateSpace(name: "stepScroll")
                 // Scroll offset tracker as overlay — doesn't participate in

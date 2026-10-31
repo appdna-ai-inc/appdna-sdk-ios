@@ -19,6 +19,8 @@ struct FormStepView: View {
     @State private var locationSettlement = LocationAdvanceSettlement()
 
     private var fields: [FormField] { config.fields ?? [] }
+    /// Keeps a Location field holding a Google answer in view with its logo (see the coordinator).
+    @State private var stepScroll = AppDNAStepScrollCoordinator()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,8 +71,9 @@ struct FormStepView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 24)
+                .appdnaStepScrollContent(stepScroll)
             }
-            .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
+            .appdnaStepScroll(stepScroll, scrollProxy)
             }
             .scrollDismissesKeyboardCompat()
             // Prevent keyboard auto-scroll from repositioning siblings above
