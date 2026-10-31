@@ -312,9 +312,16 @@ struct GoogleMapsLogoBesideField: View {
             .onChange(of: verticalSizeClass) { _ in bringFieldIntoView() }
     }
 
+    /// About how long a step takes to slide in. A step returned to with Back appears with its answer
+    /// already restored, while it is still sliding in; in the flow host the request made then left the
+    /// field where it was (measured on a simulator, twice), and a request once the slide is over moves it.
+    static let stepInsertionDelay: TimeInterval = 0.45
+
     private func bringFieldIntoView() {
-        // After this layout pass, so the scroll view measures the field with its logo.
+        // After this layout pass, so the scroll view measures the field with its logo; and again once
+        // the step has finished sliding in. A field already in view does not move on the second request.
         DispatchQueue.main.async { scrollIntoView?(fieldContainerId) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.stepInsertionDelay) { scrollIntoView?(fieldContainerId) }
     }
 }
 
