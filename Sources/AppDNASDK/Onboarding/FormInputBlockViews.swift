@@ -2989,11 +2989,14 @@ struct FormInputLocationPlaceholderBlock: View {
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
             } else if LocationAnswer.carriesPlaceId(inputValues[fieldId]) {
                 // A Google answer keeps its attribution after the dropdown closes, and when it is
-                // restored on returning to the step: the field shows Google content.
-                GoogleMapsLogoView(backdrop: attributionBackdrop)
+                // restored on returning to the step: the field shows Google content. It is kept in
+                // view with the field.
+                GoogleMapsLogoBesideField(backdrop: attributionBackdrop, fieldContainerId: "appdna.location.\(fieldId)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // The container the logo beside a Google answer brings into view (label, field and logo).
+        .id("appdna.location.\(fieldId)")
         .onChange(of: isFocused) { focused in
             // Hide dropdown immediately when focus is lost (tap outside), and let no pending search
             // reopen it.

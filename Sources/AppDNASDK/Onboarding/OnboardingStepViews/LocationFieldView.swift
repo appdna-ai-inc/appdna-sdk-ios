@@ -292,10 +292,13 @@ struct LocationFieldView: View {
                 .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
             } else if LocationAnswer.carriesPlaceId(value) {
                 // A Google answer keeps its attribution after the dropdown closes, and when it is
-                // restored on returning to the step: the field shows Google content.
-                GoogleMapsLogoView(backdrop: attributionBackdrop)
+                // restored on returning to the step: the field shows Google content. It is kept in
+                // view with the field.
+                GoogleMapsLogoBesideField(backdrop: attributionBackdrop, fieldContainerId: "appdna.location.\(field.id)")
             }
         }
+        // The container the logo beside a Google answer brings into view (field and logo).
+        .id("appdna.location.\(field.id)")
         .onChange(of: isFocused) { focused in
             if !focused {
                 // Delay slightly so button taps on dropdown items register first

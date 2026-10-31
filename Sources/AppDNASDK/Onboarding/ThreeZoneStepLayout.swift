@@ -75,6 +75,7 @@ struct ThreeZoneStepLayout: View {
                 // to the viewport and the Spacers split the slack), and tall content grows past it
                 // and scrolls from the top instead of being centred into the void.
                 GeometryReader { geo in
+                    ScrollViewReader { scrollProxy in
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 0) {
                             Spacer(minLength: 0)
@@ -95,9 +96,14 @@ struct ThreeZoneStepLayout: View {
                             onContentTap()
                         }
                     }
+                    .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
+                    }
                 }
             } else {
                 // Normal: top content scrollable, center below it
+                // The reader publishes "bring this into view" to the blocks (a Location field holding a
+                // Google answer uses it to keep its logo on screen above the pinned zone).
+                ScrollViewReader { scrollProxy in
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 12) {
                         if !topBlocks.isEmpty {
@@ -120,6 +126,8 @@ struct ThreeZoneStepLayout: View {
                         // own gesture only ever saw the taps that missed it.
                         onContentTap()
                     }
+                }
+                .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
                 }
                 .coordinateSpace(name: "stepScroll")
                 // Scroll offset tracker as overlay — doesn't participate in

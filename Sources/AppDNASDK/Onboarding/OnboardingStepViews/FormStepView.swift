@@ -22,6 +22,9 @@ struct FormStepView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // The reader publishes "bring this into view" to the fields (a Location field holding a
+            // Google answer uses it to keep its logo on screen above the pinned Continue).
+            ScrollViewReader { scrollProxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     // Header
@@ -66,6 +69,8 @@ struct FormStepView: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
                 .padding(.bottom, 24)
+            }
+            .environment(\.appdnaScrollIntoView, appdnaScrollIntoViewAction(scrollProxy))
             }
             .scrollDismissesKeyboardCompat()
             // Prevent keyboard auto-scroll from repositioning siblings above

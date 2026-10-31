@@ -275,3 +275,50 @@ extension EnvironmentValues {
         set { self[GoogleAttributionBackdropKey.self] = newValue }
     }
 }
+
+// MARK: - Keeping a resolved field's attribution on screen
+
+/// The step's "bring this id into view" action. The scrolling step layouts publish it from a
+/// `ScrollViewReader`; anything below them can ask for its own container to be scrolled into view.
+struct AppDNAScrollIntoViewKey: EnvironmentKey {
+    static let defaultValue: ((String) -> Void)? = nil
+}
+
+extension EnvironmentValues {
+    var appdnaScrollIntoView: ((String) -> Void)? {
+        get { self[AppDNAScrollIntoViewKey.self] }
+        set { self[AppDNAScrollIntoViewKey.self] = newValue }
+    }
+}
+
+/// The logo kept beside a field that holds a Google answer, kept ON SCREEN with the field.
+///
+/// A step scrolls above its pinned bottom zone. On a short screen (landscape, a small phone, large
+/// text) the field's Google line can sit at the bottom of the scroll area with its logo cut off below
+/// it, so Google's content shows without its attribution until the user scrolls. When this logo
+/// appears (the tap that resolves the answer, or the answer restored on returning to the step), and
+/// when the vertical size class changes (a rotation), it asks the step to scroll the field's container
+/// (field and logo together) into view. Where both already show, the scroll moves nothing.
+struct GoogleMapsLogoBesideField: View {
+    let backdrop: GoogleMapsAttribution.Backdrop
+    /// The `.id` the field's container carries inside the step's scroll view.
+    let fieldContainerId: String
+    @SwiftUI.Environment(\.appdnaScrollIntoView) private var scrollIntoView
+    @SwiftUI.Environment(\.verticalSizeClass) private var verticalSizeClass
+
+    var body: some View {
+        GoogleMapsLogoView(backdrop: backdrop)
+            .onAppear { bringFieldIntoView() }
+            .onChange(of: verticalSizeClass) { _ in bringFieldIntoView() }
+    }
+
+    private func bringFieldIntoView() {
+        // After this layout pass, so the scroll view measures the field with its logo.
+        DispatchQueue.main.async { scrollIntoView?(fieldContainerId) }
+    }
+}
+
+/// The scroll-into-view action for a step's `ScrollViewReader`: the least scroll that shows the view.
+func appdnaScrollIntoViewAction(_ proxy: ScrollViewProxy) -> (String) -> Void {
+    { id in proxy.scrollTo(id, anchor: nil) }
+}
