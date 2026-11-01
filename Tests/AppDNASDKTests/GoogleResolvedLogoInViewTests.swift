@@ -126,12 +126,17 @@ final class GoogleResolvedLogoInViewTests: XCTestCase {
     private func template(of src: (w: Int, h: Int, px: [UInt8]), minus other: (w: Int, h: Int, px: [UInt8]), belowRow: Int = 0) -> Template {
         var pts: [(x: Int, y: Int, r: UInt8, g: UInt8, b: UInt8)] = []
         var minY = Int.max, maxY = -1
-        for i in stride(from: 0, to: src.px.count, by: 4) where
+        // One channel per statement: as one expression this is beyond the type-checker's time limit on a slower machine.
+        func isStrongInk(_ i: Int) -> Bool {
             // Strong ink only: a pixel that is background in `src` (where `other` had ink, e.g. a
             // placeholder) would match any blank area, and a faint antialiased edge would too.
-            min(src.px[i], src.px[i + 1], src.px[i + 2]) < 160
-                && (abs(Int(src.px[i]) - Int(other.px[i])) > 8 || abs(Int(src.px[i + 1]) - Int(other.px[i + 1])) > 8
-                    || abs(Int(src.px[i + 2]) - Int(other.px[i + 2])) > 8) {
+            let darkest: UInt8 = min(src.px[i], src.px[i + 1], src.px[i + 2])
+            let red: Int = abs(Int(src.px[i]) - Int(other.px[i]))
+            let green: Int = abs(Int(src.px[i + 1]) - Int(other.px[i + 1]))
+            let blue: Int = abs(Int(src.px[i + 2]) - Int(other.px[i + 2]))
+            return darkest < 160 && (red > 8 || green > 8 || blue > 8)
+        }
+        for i in stride(from: 0, to: src.px.count, by: 4) where isStrongInk(i) {
             let x = (i / 4) % src.w, y = (i / 4) / src.w
             if y < belowRow { continue }
             pts.append((x, y, src.px[i], src.px[i + 1], src.px[i + 2]))

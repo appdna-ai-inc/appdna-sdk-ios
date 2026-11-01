@@ -397,9 +397,14 @@ final class GoogleAttributionRenderTests: XCTestCase {
     private func diff(_ a: (w: Int, h: Int, px: [UInt8]), _ b: (w: Int, h: Int, px: [UInt8])) -> (count: Int, minRow: Int, maxRow: Int) {
         guard a.w == b.w, a.h == b.h, !a.px.isEmpty else { return (-1, 0, 0) }
         var count = 0, minRow = Int.max, maxRow = -1
-        for i in stride(from: 0, to: a.px.count, by: 4) where
-            abs(Int(a.px[i]) - Int(b.px[i])) > 8 || abs(Int(a.px[i + 1]) - Int(b.px[i + 1])) > 8
-                || abs(Int(a.px[i + 2]) - Int(b.px[i + 2])) > 8 {
+        // One channel per statement: as one expression this is beyond the type-checker's time limit on a slower machine.
+        func differs(_ i: Int) -> Bool {
+            let red: Int = abs(Int(a.px[i]) - Int(b.px[i]))
+            let green: Int = abs(Int(a.px[i + 1]) - Int(b.px[i + 1]))
+            let blue: Int = abs(Int(a.px[i + 2]) - Int(b.px[i + 2]))
+            return red > 8 || green > 8 || blue > 8
+        }
+        for i in stride(from: 0, to: a.px.count, by: 4) where differs(i) {
             count += 1
             // A bitmap context's first row in memory is the top of the frame.
             let row = (i / 4) / a.w
