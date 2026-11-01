@@ -1051,18 +1051,15 @@ struct FormInputSelectBlock: View {
                 inputValues[fieldId] = first
             }
         }
-        // The step cleared a selection its rendered options no longer contain:
-        // follow it, so the view's selected state and `inputValues` never disagree.
-        // A value of a type this view cannot show (a host-patched `2`) leaves the view state alone —
-        // mapping it to "" would fire the dropdown's write-back and clobber the host's answer.
+        // The stored value changed from outside the view (a pruned selection, a host's
+        // `inputValuePatches`, a restore): the view draws what the field now holds, so its selected state
+        // and `inputValues` never disagree. A value of a type this Select cannot show (a host-patched `2`)
+        // draws nothing selected and is left as stored: no Select presentation writes on a change of
+        // `selectedValue` (the dropdown writes only through `pickFromDropdown`), so "" is not written back.
         .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
             let v = inputValues[fieldId]
             selectedValues = SelectionResync.multiAfterExternalChange(v, drawn: selectedValues)
-            if v is [String] {
-                selectedValue = ""
-            } else if let single = SelectionResync.single(v) {
-                selectedValue = single
-            }
+            selectedValue = SelectionResync.singleAfterExternalChange(v)
         }
         // Refresh the set AFTER the first frame has drawn. `.task` runs once the
         // view is on screen, so the list the user sees is whatever the ladder already had; when a
@@ -2642,7 +2639,7 @@ struct FormInputChipsBlock: View {
         let fillCol = Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         // Console writes the cap as `max_chips` (Max Chips slider); `max_selections`
         // kept as a fallback for older/imported configs.
-        let maxSelections = cfgDouble(block.field_config?["max_chips"]).map { Int($0) } ?? cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
+        let maxSelections = ChipsTap.maxSelections(block)
 
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
@@ -2652,14 +2649,10 @@ struct FormInputChipsBlock: View {
                 ForEach(options) { option in
                     let isSelected = selectedValues.contains(option.resolvedValue)
                     Button {
-                        if isSelected {
-                            selectedValues.removeAll { $0 == option.resolvedValue }
-                        } else {
-                            if let max = maxSelections, selectedValues.count >= max {
-                                return // At max selections
-                            }
-                            selectedValues.append(option.resolvedValue)
+                        guard let next = ChipsTap.toggle(selectedValues, value: option.resolvedValue, maxSelections: maxSelections) else {
+                            return // At max selections
                         }
+                        selectedValues = next
                         inputValues[fieldId] = selectedValues
                     } label: {
                         Text(option.label ?? "")
@@ -2679,13 +2672,13 @@ struct FormInputChipsBlock: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear {
             let fieldId = block.field_id ?? block.id
-            if let saved = inputValues[fieldId] as? [String] { selectedValues = saved }
+            selectedValues = SelectionResync.chipsAfterExternalChange(inputValues[fieldId])
         }
-        // The step cleared (part of) a selection its rendered options no longer
-        // contain: the chips' selected state follows it, so a pruned chip is not still drawn
-        // selected — and not re-written on the next tap (`inputValues[fieldId] = selectedValues`).
+        // The stored value changed from outside the view (a pruned chip, a host's `inputValuePatches`):
+        // the chips draw what the field now holds, so a chip the field no longer holds is not still drawn
+        // selected, and not re-written on the next tap (`inputValues[fieldId] = selectedValues`).
         .onChange(of: selectionSignature(inputValues[fieldId])) { _ in
-            if let multi = SelectionResync.multi(inputValues[fieldId]) { selectedValues = multi }
+            selectedValues = SelectionResync.chipsAfterExternalChange(inputValues[fieldId])
         }
     }
 }
@@ -3397,6 +3390,25 @@ enum SelectionResync {
         (value as? [String]) ?? []
     }
 
+    /// What a SINGLE-select Select draws after its stored value changes from outside the view: the stored
+    /// String, and nothing for anything else. A number (`2`), a list and no value at all are none of them a
+    /// single selection, and the view's previous pick never survives the change, so a stale row is not drawn
+    /// checked over a stored answer it does not hold. Android draws the same (`storedSingleSelection`).
+    /// The fixture drivers call this to model the view.
+    static func singleAfterExternalChange(_ value: Any?) -> String {
+        (value as? String) ?? ""
+    }
+
+    /// What a chips field draws after its stored value changes from outside the view: the stored list when
+    /// every element is a String, a lone non-empty String as one chip, and nothing otherwise (`[1]`, a mixed
+    /// `["a", 2]`). The previous drawing never survives the change, because a chip tap toggles the DRAWN
+    /// list (`ChipsTap.toggle`). Android reads the field by the same rule (`chipSelectionOf`).
+    static func chipsAfterExternalChange(_ value: Any?) -> [String] {
+        if let list = value as? [String] { return list }
+        if let s = value as? String, !s.isEmpty { return [s] }
+        return []
+    }
+
     static func single(_ value: Any?) -> String? {
         guard let value else { return "" }
         return value as? String
@@ -3432,6 +3444,23 @@ func selectionSignature(_ value: Any?) -> String {
 
 /// One tap on a Select option — the write the view performs, extracted so the fixture runner
 /// drives the SAME code (`host_data_scenario` `select_option`).
+/// One chip tap, against what the chips DRAW: a drawn chip is removed; another is added unless the field is at
+/// its cap (removing always works). Returns nil for a refused add. Shared by the chips view and the fixture
+/// drivers. Android's `toggleChipSelection` is the same rule.
+enum ChipsTap {
+    /// The console writes the cap as `max_chips` (Max Chips slider); `max_selections` is kept as a fallback for
+    /// older or imported configs.
+    static func maxSelections(_ block: ContentBlock) -> Int? {
+        cfgDouble(block.field_config?["max_chips"]).map { Int($0) } ?? cfgDouble(block.field_config?["max_selections"]).map { Int($0) }
+    }
+
+    static func toggle(_ drawn: [String], value: String, maxSelections: Int?) -> [String]? {
+        if drawn.contains(value) { return drawn.filter { $0 != value } }
+        if let max = maxSelections, drawn.count >= max { return nil }
+        return drawn + [value]
+    }
+}
+
 enum SelectOptionTap {
     static func isMultiSelect(_ block: ContentBlock) -> Bool {
         block.multi_select == true || (block.field_config?["multi_select"]?.value as? Bool) == true

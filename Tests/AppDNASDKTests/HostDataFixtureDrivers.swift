@@ -454,6 +454,10 @@ final class HostDataScenarioRun {
     /// toggles the drawn list. Modelled here so a fixture sees the view's state, not the stored one.
     var drawnMulti: [String: [String]] = [:]
     var drawnSignature: [String: String] = [:]
+    /// What each single-select Select and each chips field DRAWS, per field, modelled the same way: restored
+    /// from the stored value, re-read through `SelectionResync` whenever the stored value changes from outside.
+    var drawnSingle: [String: String] = [:]
+    var drawnChips: [String: [String]] = [:]
 
     init(fixtureId: String, stepJSON: SharedFixtureTests.AnyJSON, templateContext: TemplateContext, responses: [String: Any]) {
         self.fixtureId = fixtureId
@@ -714,13 +718,45 @@ final class HostDataScenarioRun {
             return
         }
         let fid = block.field_id ?? block.id
+        if block.type == .input_chips {
+            // The chips view's tap (`ChipsTap.toggle`) toggles the DRAWN chips and writes them.
+            if let next = ChipsTap.toggle(drawnChipsList(fid, in: v), value: option.resolvedValue,
+                                          maxSelections: ChipsTap.maxSelections(block)) {
+                v.inputValues[fid] = next
+                drawnChips[fid] = next
+            }
+            drawnSignature[fid] = selectionSignature(v.inputValues[fid])
+            refresh()
+            return
+        }
         let drawn = drawnList(fid, in: v)
         let result = SelectOptionTap.apply(option: option, block: block, selectedValues: drawn,
                                            sourcedOptions: filterOptionsLocally(options, query: v.searchQueries[blockId] ?? ""),
                                            inputValues: &v.inputValues)
         drawnMulti[fid] = result?.selectedValues ?? drawn
+        drawnSingle[fid] = result?.selectedValue ?? drawnSingleValue(fid, in: v)
         drawnSignature[fid] = selectionSignature(v.inputValues[fid])
         refresh()
+    }
+
+    /// What the single-select Select of field `fid` draws right now (see `drawnSingle`).
+    func drawnSingleValue(_ fid: String, in v: HostDataStepView) -> String {
+        let stored = v.inputValues[fid]
+        var drawn = drawnSingle[fid] ?? ((stored as? String) ?? "")
+        if let seen = drawnSignature[fid], seen != selectionSignature(stored) {
+            drawn = SelectionResync.singleAfterExternalChange(stored)
+        }
+        return drawn
+    }
+
+    /// What the chips field `fid` draws right now (see `drawnChips`).
+    func drawnChipsList(_ fid: String, in v: HostDataStepView) -> [String] {
+        let stored = v.inputValues[fid]
+        var drawn = drawnChips[fid] ?? SelectionResync.chipsAfterExternalChange(stored)
+        if let seen = drawnSignature[fid], seen != selectionSignature(stored) {
+            drawn = SelectionResync.chipsAfterExternalChange(stored)
+        }
+        return drawn
     }
 
     /// A pick from a dropdown-style Select's menu, through the dropdown view's own seam
@@ -1001,6 +1037,14 @@ final class HostDataScenarioRun {
         let es = block.flatMap { OnboardingStepPipeline.emptyState($0, rawResolved: raw) }
         for (k, sub) in spec {
             switch k {
+            case "drawn_selection":
+                // What the view draws as selected, through the driver's model of each view.
+                guard let b = block else { out[k] = NSNull(); break }
+                let fid = b.field_id ?? b.id
+                if b.type == .input_chips { out[k] = drawnChipsList(fid, in: v) }
+                else if b.type != .input_select { out[k] = NSNull() }
+                else if SelectOptionTap.isMultiSelect(b) { out[k] = drawnList(fid, in: v) }
+                else { out[k] = drawnSingleValue(fid, in: v) }
             case "rendered_option_values": out[k] = opts.map(\.resolvedValue)
             case "rendered_option_ids": out[k] = opts.map(\.id)
             case "visible_option_values": out[k] = filterOptionsLocally(opts, query: v.searchQueries[id] ?? "").map(\.resolvedValue)

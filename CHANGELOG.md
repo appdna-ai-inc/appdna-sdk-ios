@@ -194,6 +194,11 @@ let a host observe every tracked event and every piece of published config the S
   holding one (`[1]`, `["a", 2]`) draws nothing checked, also when a host writes it mid-step, so the
   next tap starts from an empty list. A selection on a host-data-scoped Select is pruned only when it
   is such a list.
+- **A single-select field and a chips field follow the same rule when a host writes a value mid-step.**
+  A single-select Select draws no row checked when its stored value is not a String (a host-patched
+  `2`); it kept drawing the previous pick. Chips draw a list only when every element is a String, and a
+  lone String as one chip; a `[1]` or `["a", 2]` patch kept the previous chips drawn, so the next tap
+  toggled them back into the answer.
 - **`{{onboarding.<step>.<field>.city}}` resolves**. A token now walks into a structured
   answer to any depth.
 - **A circular countdown's ring sweeps**. It sat at 75% for the whole countdown.
