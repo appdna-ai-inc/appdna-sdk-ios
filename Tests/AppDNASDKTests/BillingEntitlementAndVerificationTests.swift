@@ -116,7 +116,9 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         return module
     }
 
-    private func waitUntil(_ timeout: TimeInterval = 3, _ condition: () -> Bool) async -> Bool {
+    /// Every caller asserts the condition DID happen, so the bound only matters when a test is failing; 3 s was too short
+    /// on a loaded CI runner (the sibling BillingResultNetworkIndependenceTests failed on it).
+    private func waitUntil(_ timeout: TimeInterval = 10, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if condition() { return true }
@@ -334,7 +336,7 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         let ok8 = await waitUntil { spy.changes.count >= 1 }
         XCTAssertTrue(ok8)
         XCTAssertEqual(spy.changes.first?.map(\.productId), ["weekly"])
-        let ok9 = await waitUntil(3) { spy.changes.count == 2 }
+        let ok9 = await waitUntil(10) { spy.changes.count == 2 }
         XCTAssertTrue(ok9, "the expiry re-check reports it")
         XCTAssertEqual(spy.changes.last?.count, 0)
         module.teardown()

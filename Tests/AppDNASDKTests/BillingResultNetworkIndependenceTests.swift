@@ -69,7 +69,9 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
         return module
     }
 
-    private func waitUntil(_ timeout: TimeInterval = 3, _ condition: () -> Bool) async -> Bool {
+    /// Every caller asserts the condition DID happen, so the bound only matters when a test is failing: 3 s was too short
+    /// on a loaded CI runner running 1,700 tests (a predecessor took longer to reach its held server read).
+    private func waitUntil(_ timeout: TimeInterval = 10, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if condition() { return true }
