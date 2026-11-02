@@ -319,7 +319,9 @@ final class BillingRegressionTests: XCTestCase {
 
         AppDNA.configure(apiKey: "adn_test_placeholder", environment: .sandbox)
         sdkConfigured = true
-        let viaConfigure = await poll { recorder.delivered == ["cfg1"] }
+        // 30 s, as the ready check below allows the same configure: on a cold CI simulator starting the SDK took over
+        // 10 s and this failed the iOS 1.0.84 publish with `got []`. The wait ends as soon as the delivery lands.
+        let viaConfigure = await poll(timeout: 30) { recorder.delivered == ["cfg1"] }
         XCTAssertTrue(viaConfigure, "configure's trigger (iv) did not deliver; got \(recorder.delivered)")
 
         let ready = Box(false)
@@ -338,7 +340,7 @@ final class BillingRegressionTests: XCTestCase {
         _ = await shared.drain()
         XCTAssertEqual(recorder.delivered, ["cfg1"], "not delivered to another identity")
         AppDNA.identify(userId: userId)
-        let viaIdentify = await poll { recorder.delivered == ["cfg1", "idf1"] }
+        let viaIdentify = await poll(timeout: 30) { recorder.delivered == ["cfg1", "idf1"] }
         XCTAssertTrue(viaIdentify, "identify's trigger (iii) did not deliver; got \(recorder.delivered)")
     }
 }
