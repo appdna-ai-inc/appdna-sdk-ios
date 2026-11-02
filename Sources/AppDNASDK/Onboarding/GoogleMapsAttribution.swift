@@ -286,8 +286,8 @@ extension EnvironmentValues {
 /// when the logo appears can settle short of the field. The coordinator therefore asks again
 /// whenever the scroll view's measured content size changes, for as long as a view is held. It
 /// never asks again once the user has moved the step (a drag, or the coast after one): a request
-/// made then would take the step away from what the user scrolled to. Appearing and
-/// turning the device are fresh requests and clear that.
+/// made then would take the step away from what the user scrolled to. Turning the device is a fresh
+/// request and clears that; the view appearing does not, since on a slow device it can come after a drag.
 final class AppDNAStepScrollCoordinator: NSObject {
     private var proxy: ScrollViewProxy?
     private weak var scrollView: UIScrollView?
@@ -325,10 +325,12 @@ final class AppDNAStepScrollCoordinator: NSObject {
         if pan.state == .began || pan.state == .changed { userScrolled = true }
     }
 
-    /// A fresh request (the view appeared, or the device turned): keep `id` in view.
-    func keepInView(_ id: String) {
+    /// Keep `id` in view. Only a turn of the device is a fresh request that overrides the user: the view APPEARING can
+    /// come after the user has already dragged the step (a slow device lays the step out for a while), and clearing then
+    /// took the step back from where they put it. Each step has its own coordinator, so a new step starts unscrolled.
+    func keepInView(_ id: String, deviceTurned: Bool = false) {
         heldId = id
-        userScrolled = false
+        if deviceTurned { userScrolled = false }
         // After this layout pass, so the scroll view measures the container it is asked for.
         DispatchQueue.main.async { [weak self] in self?.followLayout() }
     }
@@ -419,7 +421,7 @@ struct GoogleMapsLogoBesideField: View {
     var body: some View {
         GoogleMapsLogoView(backdrop: backdrop)
             .onAppear { stepScroll?.keepInView(fieldContainerId) }
-            .onChange(of: verticalSizeClass) { _ in stepScroll?.keepInView(fieldContainerId) }
+            .onChange(of: verticalSizeClass) { _ in stepScroll?.keepInView(fieldContainerId, deviceTurned: true) }
             .onDisappear { stepScroll?.release(fieldContainerId) }
     }
 }

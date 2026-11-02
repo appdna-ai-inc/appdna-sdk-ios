@@ -128,8 +128,30 @@ final class GoogleResolvedLogoFollowsLayoutTests: XCTestCase {
     /// A drag that takes the step to its top: the offset moves while the scroll view reports a finger
     /// on it (`isTracking`), which is how UIKit describes a drag in progress. A package test cannot put a
     /// finger on the screen, so `isTracking` answers true for this one scroll view while the offset moves.
+    /// A finger that MOVES the step, then leaves it at the top. Setting the offset to where it already is moves nothing, so
+    /// the scroll view reports no change and the SDK cannot see a drag; a real finger always moves the content (or bounces it).
     private func drag(_ sv: UIScrollView) {
-        FingerDown.on(sv) { sv.setContentOffset(.zero, animated: false) }
+        FingerDown.on(sv) {
+            sv.setContentOffset(CGPoint(x: 0, y: 24), animated: false)
+            sv.setContentOffset(.zero, animated: false)
+        }
+    }
+
+    /// The order a slow device produces, without depending on its timing: the user drags BEFORE the field appears.
+    /// The field appearing must not clear the drag; only a turn of the device may.
+    func testTheFieldAppearingAfterADragDoesNotTakeTheStepBack() {
+        let coordinator = AppDNAStepScrollCoordinator()
+        let sv = UIScrollView(frame: CGRect(x: 0, y: 0, width: 320, height: 300))
+        sv.contentSize = CGSize(width: 320, height: 1200)
+        sv.contentOffset = CGPoint(x: 0, y: 200)
+        coordinator.attach(sv)
+        XCTAssertFalse(coordinator.userScrolled, "control: a new step starts unscrolled")
+        drag(sv)
+        XCTAssertTrue(coordinator.userScrolled, "control: the drag counts as the user's")
+        coordinator.keepInView("field")
+        XCTAssertTrue(coordinator.userScrolled, "the field appearing after the drag cleared it, so the step would jump back")
+        coordinator.keepInView("field", deviceTurned: true)
+        XCTAssertFalse(coordinator.userScrolled, "a turn of the device is a fresh request")
     }
 
     func testADragWhileTheStepLaysOutIsNotUndone() throws {
