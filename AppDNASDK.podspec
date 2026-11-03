@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AppDNASDK'
-  s.version          = '1.0.84'
+  s.version          = '1.0.85'
   s.summary          = 'AppDNA iOS SDK — analytics, experiments, paywalls, onboarding, billing, push, and more.'
   s.description      = <<-DESC
 Native iOS SDK for AppDNA providing analytics, remote configuration, feature flags,
@@ -23,7 +23,8 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   s.swift_version    = '5.9'
 
   s.dependency 'KeychainAccess', '~> 4.2'
-  s.dependency 'FirebaseFirestore', '>= 11.0', '< 13.0'
+  # 12.19.3 is the first Firestore with the compromised eMudhra CAs removed from its compiled-in TLS roots.
+  s.dependency 'FirebaseFirestore', '>= 12.19.3', '< 13.0'
 
   # The bundled interactive map tier. 🔴 THE PODSPEC NEEDS THIS TOO, AND FORGETTING IT IS
   # NOT A SUBTLE FAILURE: the React Native example host consumes AppDNASDK through CocoaPods, so

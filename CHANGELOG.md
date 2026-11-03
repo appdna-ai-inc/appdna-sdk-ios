@@ -4,6 +4,18 @@ All notable changes to the AppDNA iOS SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.85] — unreleased
+
+Security update: the SDK requires Cloud Firestore 12.19.3 or later. **Rebuild and republish your app** after
+updating; an installed build keeps the certificates it was built with.
+
+### Security
+
+- Firebase reported that Cloud Firestore's Apple SDK compiles in TLS root certificates that trusted intermediate certificate authorities whose private keys were compromised (eMudhra, revoked on 17 October 2026). A network attacker holding such a certificate could impersonate the Firestore servers to an app built with an older Firestore. Firestore 12.19.3 removes them; no 11.x release has the fix.
+- CocoaPods: `FirebaseFirestore` `>= 12.19.3, < 13.0` (was `>= 11.0, < 13.0`). Swift Package Manager:
+  `firebase-ios-sdk` `12.19.3..<13.0.0` (was `from: 11.0.0`, which resolved the unpatched 11.x line). If your app
+  pins Firebase below 12.19.3, raise it; resolution fails rather than building against a vulnerable Firestore.
+
 ## [1.0.84] — unreleased
 
 Paywalls show the App Store's own price, billing period and free trial. Location fields can search

@@ -16,7 +16,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/kishikawakatsumi/KeychainAccess.git", from: "4.2.2"),
-        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", from: "11.0.0"),
+        // 12.19.3 removes the compromised eMudhra CAs from Firestore's compiled-in TLS roots; no 11.x has the fix.
+        .package(url: "https://github.com/firebase/firebase-ios-sdk.git", "12.19.3"..<"13.0.0"),
         // Visual snapshot harness (iOS leg).
         // PNG goldens live in Tests/__Snapshots__/ and are committed; reviewed during PR.
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing.git", from: "1.17.0"),
