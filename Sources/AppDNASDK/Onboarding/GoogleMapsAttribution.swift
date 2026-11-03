@@ -297,6 +297,13 @@ final class AppDNAStepScrollCoordinator: NSObject {
     private(set) var heldId: String?
     /// The user moved the step since the last fresh request.
     private(set) var userScrolled = false
+    /// When this coordinator last asked the step to scroll. SwiftUI applies a `scrollTo` on a later pass, so on a slow
+    /// device a request made just before the user's touch can land AFTER their drag.
+    private var lastRequestAt: Date?
+    /// Where the user last left the step, while a late request could still land on it.
+    private var userOffset: CGPoint?
+    private var lateRequestGuardUntil: Date?
+    static let lateRequestWindow: TimeInterval = 1.0
 
     /// The step's `ScrollViewReader` proxy, refreshed on every render of the step.
     func using(_ proxy: ScrollViewProxy) -> AppDNAStepScrollCoordinator {
@@ -317,7 +324,22 @@ final class AppDNAStepScrollCoordinator: NSObject {
         contentOffsetObservation = scrollView.observe(\.contentOffset, options: [.old, .new]) { [weak self] sv, change in
             guard let self, let old = change.oldValue, let new = change.newValue, abs(old.y - new.y) > 0.5 else { return }
             // A move made while a finger is on the step, or while it coasts after one, is the user's.
-            if sv.isTracking || sv.isDragging || sv.isDecelerating { self.userScrolled = true }
+            if sv.isTracking || sv.isDragging || sv.isDecelerating {
+                if !self.userScrolled, let at = self.lastRequestAt, Date().timeIntervalSince(at) < Self.lateRequestWindow {
+                    self.lateRequestGuardUntil = Date().addingTimeInterval(Self.lateRequestWindow)
+                }
+                self.userScrolled = true
+                self.userOffset = new
+            } else if self.userScrolled, let until = self.lateRequestGuardUntil, Date() < until,
+                      let user = self.userOffset, abs(new.y - user.y) > 0.5 {
+                // Not the user's move, after the user's move, while a request made before it could still land: that
+                // request landing. Put the step back where the user left it.
+                DispatchQueue.main.async { [weak sv] in
+                    guard let sv else { return }
+                    let maxY = max(-sv.adjustedContentInset.top, sv.contentSize.height - sv.bounds.height + sv.adjustedContentInset.bottom)
+                    sv.setContentOffset(CGPoint(x: user.x, y: min(max(user.y, -sv.adjustedContentInset.top), maxY)), animated: false)
+                }
+            }
         }
     }
 
@@ -330,10 +352,15 @@ final class AppDNAStepScrollCoordinator: NSObject {
     /// took the step back from where they put it. Each step has its own coordinator, so a new step starts unscrolled.
     func keepInView(_ id: String, deviceTurned: Bool = false) {
         heldId = id
-        if deviceTurned { userScrolled = false }
+        if deviceTurned { userScrolled = false; lateRequestGuardUntil = nil }
         // After this layout pass, so the scroll view measures the container it is asked for.
         DispatchQueue.main.async { [weak self] in self?.followLayout() }
     }
+
+    #if DEBUG
+    /// Test seam: what `followLayout` records when it issues a request, without a `ScrollViewProxy`.
+    func noteRequestIssuedForTesting() { lastRequestAt = Date() }
+    #endif
 
     /// The held view went away.
     func release(_ id: String) {
@@ -342,6 +369,7 @@ final class AppDNAStepScrollCoordinator: NSObject {
 
     private func followLayout() {
         guard let id = heldId, !userScrolled, let proxy else { return }
+        lastRequestAt = Date()
         proxy.scrollTo(id, anchor: nil)
     }
 }
