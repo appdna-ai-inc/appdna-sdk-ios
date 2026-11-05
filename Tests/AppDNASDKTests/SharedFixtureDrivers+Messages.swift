@@ -6,6 +6,9 @@
 //   decode_message_cta   REAL: `MessageConfig` decoding (the same `JSONDecoder` decode the config and
 //                        pending-message paths run) → `content.cta_action`, and `CTAAction.linkToOpen`,
 //                        the link both tap handlers (`MessageManager`, `PendingMessageListener`) open.
+//   decode_message_hero  REAL: `MessageConfig` decoding → `MessageContent.resolved(for:)` (what
+//                        `MessageRenderer` hands the views) → `image_url`, the field ModalView /
+//                        FullscreenView draw the hero from.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -20,6 +23,7 @@ extension SharedFixtureTests {
     func driveMessageFixtures(_ f: Fixture, _ h: Harness) async -> Bool {
         switch f.action.kind {
         case "decode_message_cta": runDecodeMessageCta(f, h)
+        case "decode_message_hero": runDecodeMessageHero(f, h)
         default: return false
         }
         return true
@@ -60,6 +64,34 @@ extension SharedFixtureTests {
                 "type": cta.type?.rawValue ?? "dismiss",
                 "url": SharedFixtureTests.orNull(cta.url),
                 "opens": SharedFixtureTests.orNull(cta.linkToOpen),
+            ] as [String: Any]
+        }
+    }
+
+    // MARK: decode_message_hero
+
+    private func runDecodeMessageHero(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] decode_message_hero needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let content = obj["content"]?.foundation as? [String: Any] else {
+                XCTFail("[\(f.id)] case \(name): needs content")
+                return NSNull()
+            }
+            let message: [String: Any] = ["name": name, "message_type": "modal", "content": content]
+            guard let data = try? JSONSerialization.data(withJSONObject: message),
+                  let decoded = try? JSONDecoder().decode(MessageConfig.self, from: data),
+                  let decodedContent = decoded.content else {
+                XCTFail("[\(f.id)] case \(name): the message did not decode")
+                return NSNull()
+            }
+            return [
+                "light": SharedFixtureTests.orNull(decodedContent.resolved(for: .light).image_url),
+                "dark": SharedFixtureTests.orNull(decodedContent.resolved(for: .dark).image_url),
             ] as [String: Any]
         }
     }
