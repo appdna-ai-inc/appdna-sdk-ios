@@ -8,6 +8,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Text inside a zoned section background is readable.** Unstyled text in a `section_background` takes its ink
+  from the zones behind it (one zone: its colour; several: any dark zone means light text). Before, it took the
+  step's background, so it could be dark on a dark zone.
+- **The rating block stores its answer.** A `rating` block's selection is stored at its `field_id` (else its id),
+  so it is a response, a routing input and a required-field value, as on Android; VoiceOver can also set it
+  by swiping up or down. Before, iOS kept it on screen only.
 - **Multi-buttons no longer draws a button your data hid.** A child the author set to hide when its list is
   empty is left out, as in a Row or Stack and as on Android; before, iOS drew it.
 - **Onboarding image alt text is set in the Console**, in the image block's new "Alt text" field, and read

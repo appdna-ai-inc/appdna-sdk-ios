@@ -35,6 +35,7 @@ extension SharedFixtureTests {
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
         case "resolve_onboarding_image_alt": runOnboardingImageAlt(f, h)
         case "resolve_container_children": runContainerChildren(f, h)
+        case "resolve_rating_answer": runRatingAnswer(f, h)
         default: return false
         }
         return true
