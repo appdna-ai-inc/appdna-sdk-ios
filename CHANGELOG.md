@@ -25,6 +25,13 @@ updating; an installed build keeps the certificates it was built with.
   background: colour, gradient, image, Lottie or Rive) is drawn by every step that sets no background of
   its own. Before, a step without one drew `systemBackground`, so a theme had to be repeated on every step.
 
+### Fixed (onboarding)
+
+- **Text on a pale gradient is readable.** Text nobody coloured (headings, text, input labels and typed
+  text, the back / close / Skip controls) is drawn dark on a gradient whose every stop is light. It was
+  drawn white on every gradient, so on a pale one it disappeared. A gradient with any dark stop keeps
+  white text, and Google's logo is unchanged.
+
 ### Fixed
 
 - **In-app message buttons open their link.** A CTA's link is read from `cta_action.url` and also from

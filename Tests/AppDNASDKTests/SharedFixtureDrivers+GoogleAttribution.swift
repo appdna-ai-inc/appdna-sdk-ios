@@ -91,6 +91,7 @@ extension SharedFixtureTests {
             switch backdrop {
             case .plain(let hex): described = hex.map { "plain:\($0)" } ?? "plain"
             case .busy: described = "busy"
+            case .busyLight: described = "busy_light"
             }
             func variantName(dark: Bool) -> String {
                 switch A.variant(on: backdrop, darkAppearance: dark) {
@@ -105,6 +106,12 @@ extension SharedFixtureTests {
                 // system background on this platform and a theme colour on Android, and the variant is what the
                 // two must agree on.
                 results.append(["name": name, "variant_light": variantName(dark: false), "variant_dark": variantName(dark: true)])
+                continue
+            }
+            if o["ink"]?.boolValue == true {
+                // The ink of text nobody coloured, in a light appearance, through the real rule.
+                let light = A.needsLightInk(on: backdrop, darkAppearance: false)
+                results.append(["name": name, "backdrop": described, "variant_light": variantName(dark: false), "ink": light ? "light" : "dark"])
                 continue
             }
             results.append(["name": name, "backdrop": described, "variant_light": variantName(dark: false)])

@@ -52,6 +52,10 @@ enum GoogleMapsAttribution {
         /// An image, a gradient, an animation or a translucent surface: Google asks for the outlined
         /// logo there.
         case busy
+        /// A gradient whose every stop is light. Still busy for Google's logo (it asks for the outlined
+        /// variant on any gradient), but text nobody coloured is drawn DARK on it: light ink on a pale
+        /// gradient is unreadable. A gradient with any dark stop stays `busy`, with light ink.
+        case busyLight
     }
 
     /// A step's background as a backdrop: what the step host actually draws for it
@@ -66,8 +70,16 @@ enum GoogleMapsAttribution {
             let color = background.color ?? "#FFFFFF"
             return color == "transparent" || color == "clear" ? .plain(hex: nil) : .plain(hex: color)
         case nil, "transparent", "clear", "none": return .plain(hex: nil)
+        case "gradient": return gradientIsLight(background.gradient) ? .busyLight : .busy
         default: return .busy
         }
+    }
+
+    /// Whether every stop of a gradient is light — the same luminance cut a plain colour is judged by
+    /// (`GoogleMarkChip.lightEnough`). A gradient with no readable stop is not light.
+    static func gradientIsLight(_ gradient: GradientConfig?) -> Bool {
+        let stops = (gradient?.stops ?? []).compactMap { GoogleMarkChip.luminance($0.color) }
+        return !stops.isEmpty && stops.count == (gradient?.stops?.count ?? 0) && stops.allSatisfy { $0 >= GoogleMarkChip.lightEnough }
     }
 
     /// What a content block draws behind its own content: its own fill, else what is behind it. In
@@ -157,7 +169,7 @@ enum GoogleMapsAttribution {
         case .plain(let hex):
             if let l = GoogleMarkChip.luminance(hex) { return l >= GoogleMarkChip.lightEnough ? .gray : .white }
             return darkAppearance ? .white : .gray
-        case .busy:
+        case .busy, .busyLight:
             return darkAppearance ? .darkOutline : .lightOutline
         }
     }
@@ -174,7 +186,8 @@ enum GoogleMapsAttribution {
     /// views that pick an unstyled default from what is behind them. The Kotlin twin is
     /// `GoogleMapsAttribution.needsLightInk(on, darkAppearance)`.
     static func needsLightInk(on backdrop: Backdrop, darkAppearance: Bool) -> Bool {
-        backdrop == .busy || variant(on: backdrop, darkAppearance: darkAppearance) == .white
+        if backdrop == .busyLight { return false }
+        return backdrop == .busy || variant(on: backdrop, darkAppearance: darkAppearance) == .white
     }
 
     private static var cache: [Variant: UIImage] = [:]
@@ -237,7 +250,7 @@ struct GoogleMapsTextAttribution: View {
         Group {
             // The shadow only where it is needed: white over an image or gradient. On a plain surface
             // the text carries no effect at all.
-            if backdrop == .busy {
+            if backdrop == .busy || backdrop == .busyLight {
                 text.shadow(color: Color.black.opacity(0.6), radius: 2)
             } else {
                 text
