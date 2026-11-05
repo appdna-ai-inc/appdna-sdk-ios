@@ -351,10 +351,6 @@ struct ContentBlockRendererView: View {
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
 
-    /// The colour of a text or heading block with no `style.color`, from what the block draws on.
-    private func unstyledInk(_ block: ContentBlock) -> Color {
-        UnstyledInk.text(behind: GoogleMapsAttribution.backdrop(ofBlock: block, behind: inkBackdrop), darkAppearance: inkScheme == .dark)
-    }
 
     /// Was this block produced by the raw pass (directly, or inside a raw-resolved parent)?
     private func isRawResolved(_ block: ContentBlock) -> Bool {
@@ -663,10 +659,13 @@ struct ContentBlockRendererView: View {
             size: block.style?.font_size ?? Double(fallbackSize),
             weight: block.style?.font_weight ?? 700
         )
-        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? unstyledInk(block)
-        return Text(loc?("block.\(block.id).text", text) ?? text)
+        // An authored colour, else the ink `UnstyledInkReader` reads from
+        // what is behind the block WHERE IT IS DRAWN (inside a section background, its zones).
+        let authoredColor: Color? = (block.style?.color).map { Color(hex: $0) }
+        return UnstyledInkReader { ink in
+        Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)
-            .foregroundColor(styleColor)
+            .foregroundColor(authoredColor ?? ink)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
             // SPEC — honor max_lines on heading/text (only rich_text did before);
@@ -674,6 +673,7 @@ struct ContentBlockRendererView: View {
             .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: frameAlignment)
+        }
     }
 
     // MARK: - Text
@@ -724,11 +724,12 @@ struct ContentBlockRendererView: View {
             size: block.style?.font_size ?? 16,
             weight: block.style?.font_weight ?? 400
         )
-        let styleColor: Color = (block.style?.color).map { Color(hex: $0) } ?? unstyledInk(block)
+        let authoredColor: Color? = (block.style?.color).map { Color(hex: $0) }
         let showTrailingDots = (block.field_config?["show_trailing_dots"]?.value as? Bool) ?? false
+        UnstyledInkReader { ink in
         let base = Text(loc?("block.\(block.id).text", text) ?? text)
             .font(styleFont)
-            .foregroundColor(styleColor)
+            .foregroundColor(authoredColor ?? ink)
             .applyTextStyleDecorations(block.style)
             .multilineTextAlignment(textAlignment)
             // SPEC — honor max_lines on heading/text (only rich_text did before);
@@ -738,12 +739,13 @@ struct ContentBlockRendererView: View {
         if showTrailingDots {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
                 base
-                AnimatedTrailingDots(font: styleFont, color: styleColor)
+                AnimatedTrailingDots(font: styleFont, color: authoredColor ?? ink)
             }
             .frame(maxWidth: .infinity, alignment: frameAlignment)
         } else {
             base
                 .frame(maxWidth: .infinity, alignment: frameAlignment)
+        }
         }
     }
 
@@ -4432,4 +4434,15 @@ internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFl
     // The token is `[A-Za-z0-9._-]` by construction, so it goes through unescaped — the same
     // choice the other two implementations make, and it keeps the URL readable in a log.
     return URL(string: "https://api.mapbox.com/styles/v1/\(style)/static/\(overlayPart)\(viewport)/\(w)x\(h)@2x?access_token=\(token)")
+}
+
+/// Hands its content the ink for text nobody coloured: `UnstyledInk` for what is behind it AT ITS PLACE in
+/// the tree — the step, or the fill of the container it sits in (a section's zones, a row's colour), which
+/// each block hands its content through `GoogleAttributionBlockBackdrop`. Read here, where the text is drawn,
+/// not from the renderer's own environment (which is the step's, even for a block inside a container).
+struct UnstyledInkReader<Content: View>: View {
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+    @SwiftUI.Environment(\.colorScheme) private var scheme
+    @ViewBuilder let content: (Color) -> Content
+    var body: some View { content(UnstyledInk.text(behind: behind, darkAppearance: scheme == .dark)) }
 }

@@ -8,6 +8,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Unstyled headings and text inside a container follow the container's fill.** A heading or text with no
+  colour inside a dark row or section background is drawn light, as on Android; before, iOS judged it by the
+  step behind the container.
+- **An imported loading animation draws its variant.** An `animated_loading` block that sets `variant` instead
+  of `loading_variant` now draws that variant, as on Android; before, iOS drew the checklist.
 - **Text inside a zoned section background is readable.** Unstyled text in a `section_background` takes its ink
   from the zones behind it (one zone: its colour; several: any dark zone means light text). Before, it took the
   step's background, so it could be dark on a dark zone.
