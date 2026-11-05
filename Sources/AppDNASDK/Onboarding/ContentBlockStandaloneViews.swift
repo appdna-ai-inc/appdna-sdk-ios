@@ -374,7 +374,7 @@ struct AnimatedLoadingBlockView: View {
     @State private var spinAngle: Double = 0
 
     var body: some View {
-        let variant = block.loading_variant ?? "checklist"
+        let variant = AnimatedLoadingVariant.resolve(block)
         let itemList = block.loading_items ?? []
         let progressCol = Color(hex: block.progress_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let checkCol = Color(hex: block.check_color ?? "#22C55E")
@@ -2575,5 +2575,14 @@ struct CarouselBlockView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Which `animated_loading` variant a block draws: `loading_variant` (what the console writes), else the
+/// generic `variant` (flows imported or written through the API), else `checklist`. ONE rule; Android's
+/// `AnimatedLoadingVariant` is the same, and `dto_parsing/animated_loading_variant_keys` pins both.
+enum AnimatedLoadingVariant {
+    static func resolve(_ block: ContentBlock) -> String {
+        block.loading_variant ?? block.variant ?? "checklist"
     }
 }
