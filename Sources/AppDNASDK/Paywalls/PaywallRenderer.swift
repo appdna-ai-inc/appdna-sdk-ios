@@ -1251,22 +1251,7 @@ struct PaywallRenderer: View {
 
     @ViewBuilder
     private func imageSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
-        if let urlString = data?.imageUrl, let url = URL(string: urlString) {
-            BundledAsyncPhaseImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxHeight: data?.height ?? 240)
-                        .clipShape(RoundedRectangle(cornerRadius: data?.cornerRadius ?? 12))
-                default:
-                    ProgressView().frame(height: data?.height ?? 240)
-                }
-            }
-            .modifier(PaywallImageAltModifier(label: PaywallImageAccessibility.label(data)))
-            .applyContainerStyle(style?.container)
-        }
+        PaywallImageSectionView(data: data, style: style)
     }
 
     // MARK: - Testimonial section
@@ -3256,6 +3241,32 @@ extension EnvironmentValues {
     var paywallBackgroundHex: String? {
         get { self[PaywallBackgroundHexKey.self] }
         set { self[PaywallBackgroundHexKey.self] = newValue }
+    }
+}
+
+/// A paywall image section. Its own view so the accessibility label can be read back by a test.
+struct PaywallImageSectionView: View {
+    let data: PaywallSectionData?
+    let style: SectionStyleConfig?
+
+    @ViewBuilder
+    var body: some View {
+        if let urlString = data?.imageUrl, let url = URL(string: urlString) {
+            BundledAsyncPhaseImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(maxHeight: data?.height ?? 240)
+                        .clipShape(RoundedRectangle(cornerRadius: data?.cornerRadius ?? 12))
+                default:
+                    ProgressView().frame(height: data?.height ?? 240)
+                }
+            }
+            .modifier(PaywallImageAltModifier(label: PaywallImageAccessibility.label(data)))
+            .applyContainerStyle(style?.container)
+        }
     }
 }
 
