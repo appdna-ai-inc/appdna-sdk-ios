@@ -67,4 +67,10 @@ final class MessageTypographyRenderTests: XCTestCase {
         let large = try frame(#", "body_font_size": 30"#)
         XCTAssertNotEqual(a, large, "body_font_size 30 drew the same frame as the default — the size never reached the view")
     }
+
+    func testAnAuthoredFontFamilyReachesTheView() throws {
+        let a = try frame("")
+        let serif = try frame(#", "font_family": "Georgia""#)
+        XCTAssertNotEqual(a, serif, "font_family Georgia drew the same frame as the default — the family never reached the view")
+    }
 }
