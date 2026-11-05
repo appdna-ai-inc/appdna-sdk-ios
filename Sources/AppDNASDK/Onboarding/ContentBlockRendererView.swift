@@ -552,7 +552,7 @@ struct ContentBlockRendererView: View {
         case .animated_loading: return AnyView(AnimatedLoadingBlockView(block: block, onAction: onAction))
         case .star_background: return AnyView(StarBackgroundBlockView(block: block))
         case .countdown_timer: return AnyView(CountdownTimerBlockView(block: block, onAction: onAction))
-        case .rating: return AnyView(RatingBlockView(block: block, onAction: onAction))
+        case .rating: return AnyView(RatingBlockView(block: block, onAction: onAction, inputValues: $inputValues))
         case .rich_text: return AnyView(richTextBlock(block))
         case .progress_bar: return AnyView(progressBarBlock(block))
         case .stack: return AnyView(stackBlock(block))
