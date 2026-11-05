@@ -47,6 +47,9 @@ struct MessageRenderer: View {
             haptic: config.content?.haptic,
             particle_effect: config.content?.particle_effect,
             blur_backdrop: config.content?.blur_backdrop,
+            // a field not copied here never reaches a view (the typography above was lost the same way).
+            dismiss_allowed: config.content?.dismiss_allowed,
+            dismiss_delay: config.content?.dismiss_delay,
             dark: config.content?.dark
         )
     }
@@ -66,6 +69,31 @@ struct MessageRenderer: View {
             TooltipView(content: content, onCTATap: onCTATap, onDismiss: onDismiss)
         case .unknown, .none:
             EmptyView()
+        }
+    }
+}
+
+// MARK: - Dismiss gating, shared by the four message views
+
+extension View {
+    /// A close control (the ✕, `dismiss_text`) that is drawn and tappable only while the user may
+    /// dismiss. Hidden by opacity rather than removed so a control that appears after
+    /// `dismiss_delay` does not shift the message's layout when it does.
+    func messageDismissControl(visible: Bool) -> some View {
+        self
+            .opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .accessibilityHidden(!visible)
+    }
+
+    /// Flips `unlocked` to true once the policy's delay has passed (no-op when the message is never
+    /// dismissable, or is dismissable already).
+    func messageDismissUnlock(_ policy: MessageDismissPolicy, _ unlocked: Binding<Bool>) -> some View {
+        onAppear {
+            guard let after = policy.unlockAfterSeconds else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + after) {
+                withAnimation(.easeIn(duration: 0.2)) { unlocked.wrappedValue = true }
+            }
         }
     }
 }

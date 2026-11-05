@@ -8,6 +8,20 @@ struct TooltipView: View {
 
     @State private var isVisible = false
 
+    /// whether the user may dismiss right now. Starts from the policy and flips once
+    /// `dismiss_delay` has passed; never flips when `dismiss_allowed` is false.
+    @State private var dismissUnlocked: Bool
+    private let dismissPolicy: MessageDismissPolicy
+
+    init(content: MessageContent, onCTATap: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        self.content = content
+        self.onCTATap = onCTATap
+        self.onDismiss = onDismiss
+        let policy = MessageDismissPolicy(content: content)
+        self.dismissPolicy = policy
+        self._dismissUnlocked = State(initialValue: policy.dismissableAtOpen)
+    }
+
     var body: some View {
         VStack {
             Spacer()
@@ -18,6 +32,7 @@ struct TooltipView: View {
             }
         }
         .background(Color.black.opacity(0.01))
+        .messageDismissUnlock(dismissPolicy, $dismissUnlocked)
         .onAppear {
             // Haptic on appear
             HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)
@@ -61,6 +76,7 @@ struct TooltipView: View {
                             .font(.caption2.bold())
                             .foregroundColor(.secondary)
                     }
+                    .messageDismissControl(visible: dismissUnlocked)
                 }
 
                 if let ctaText = content.cta_text {

@@ -9,6 +9,8 @@
 //   decode_message_hero  REAL: `MessageConfig` decoding → `MessageContent.resolved(for:)` (what
 //                        `MessageRenderer` hands the views) → `image_url`, the field ModalView /
 //                        FullscreenView draw the hero from.
+//   resolve_message_dismiss REAL: `MessageConfig` decoding → `MessageDismissPolicy(content:)`, the rule
+//                        all four message views gate the ✕, `dismiss_text` and the backdrop tap on
 //   decode_pending_delivery REAL: `PendingMessageListener.decodeDelivery(data:now:)`, the decode the
 //                        listener runs on every delivery document (expiry filter, message decode,
 //                        degraded fallback).
@@ -28,6 +30,7 @@ extension SharedFixtureTests {
         case "decode_message_cta": runDecodeMessageCta(f, h)
         case "decode_message_hero": runDecodeMessageHero(f, h)
         case "decode_pending_delivery": runDecodePendingDelivery(f, h)
+        case "resolve_message_dismiss": runResolveMessageDismiss(f, h)
         default: return false
         }
         return true
@@ -125,6 +128,36 @@ extension SharedFixtureTests {
                 "cta_opens": SharedFixtureTests.orNull(content?.cta_action?.linkToOpen),
                 "image_url": SharedFixtureTests.orNull(content?.image_url),
                 "background_color": SharedFixtureTests.orNull(content?.background_color),
+            ] as [String: Any]
+        }
+    }
+
+    // MARK: resolve_message_dismiss
+
+    private func runResolveMessageDismiss(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_message_dismiss needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let content = obj["content"]?.foundation as? [String: Any],
+                  let at = obj["at_seconds"]?.arrayValue?.compactMap(\.doubleValue) else {
+                XCTFail("[\(f.id)] case \(name): needs content and at_seconds")
+                return NSNull()
+            }
+            let message: [String: Any] = ["name": name, "message_type": "modal", "content": content]
+            guard let data = try? JSONSerialization.data(withJSONObject: message),
+                  let decoded = try? JSONDecoder().decode(MessageConfig.self, from: data) else {
+                // A wrong-typed field must not lose the message: that is one of the cases.
+                XCTFail("[\(f.id)] case \(name): the message did not decode")
+                return NSNull()
+            }
+            let policy = MessageDismissPolicy(content: decoded.content)
+            return [
+                "dismissable": at.map { policy.userMayDismiss(afterSeconds: $0) },
+                "unlock_after": policy.unlockAfterSeconds.map { $0 as Any } ?? NSNull(),
             ] as [String: Any]
         }
     }

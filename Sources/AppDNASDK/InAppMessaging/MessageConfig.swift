@@ -69,6 +69,12 @@ public struct MessageContent: Codable {
     public let haptic: HapticConfig?
     public let particle_effect: ParticleEffect?
     public let blur_backdrop: BlurConfig?
+    // the console's "Allow Dismiss" switch and "Dismiss Delay (seconds)". Absent → dismissable
+    // at once, which is what every message did before these were read. `@LenientScalar`: a value of the
+    // wrong type is ignored (as Android's `as? Boolean` / `as? Number` ignore it) instead of failing the
+    // whole message decode. Read through `MessageDismissPolicy`, never directly.
+    @LenientScalar public var dismiss_allowed: Bool?
+    @LenientScalar public var dismiss_delay: Double?
     // Dark-mode overrides (sparse). When rendering in dark
     // appearance any field set here wins over the matching light field
     // above; unset fields fall back to the light value. Callers should
@@ -87,7 +93,9 @@ public struct MessageContent: Codable {
         video_url: String? = nil, video_thumbnail_url: String? = nil,
         cta_icon: IconReference? = nil, secondary_cta_icon: IconReference? = nil,
         haptic: HapticConfig? = nil, particle_effect: ParticleEffect? = nil,
-        blur_backdrop: BlurConfig? = nil, dark: MessageContentDark? = nil
+        blur_backdrop: BlurConfig? = nil,
+        dismiss_allowed: Bool? = nil, dismiss_delay: Double? = nil,
+        dark: MessageContentDark? = nil
     ) {
         self.title = title; self.body = body; self.image_url = image_url
         self.cta_text = cta_text; self.cta_action = cta_action; self.dismiss_text = dismiss_text
@@ -101,6 +109,7 @@ public struct MessageContent: Codable {
         self.video_url = video_url; self.video_thumbnail_url = video_thumbnail_url
         self.cta_icon = cta_icon; self.secondary_cta_icon = secondary_cta_icon
         self.haptic = haptic; self.particle_effect = particle_effect; self.blur_backdrop = blur_backdrop
+        self.dismiss_allowed = dismiss_allowed; self.dismiss_delay = dismiss_delay
         self.dark = dark
     }
 }
@@ -184,8 +193,54 @@ extension MessageContent {
             haptic: haptic,
             particle_effect: d.particle_effect ?? particle_effect,
             blur_backdrop: d.blur_backdrop ?? blur_backdrop,
+            // Behaviour, not appearance: the same in both modes.
+            dismiss_allowed: dismiss_allowed,
+            dismiss_delay: dismiss_delay,
             dark: nil
         )
+    }
+}
+
+/// WHEN the user may dismiss an in-app message: the close control (the ✕ and `dismiss_text`),
+/// a tap on the backdrop, and every system dismissal gesture.
+///
+/// - `dismiss_allowed == false` → never. The message leaves only through an authored button (the CTA
+///   or the secondary CTA), or its `auto_dismiss_seconds` timer — what the console preview shows,
+///   where the ✕ is hidden and both CTAs stay. A message with NEITHER button stays dismissable: the
+///   switch cannot make a message the user has no way out of.
+/// - `dismiss_delay = N` → only once N seconds have passed since the message appeared; the ✕ is not
+///   drawn before then.
+/// - absent / wrong type → dismissable at once (the behaviour before these fields were read).
+///
+/// ONE rule for all four message types, read by every view. Android's `MessageDismissPolicy` is the
+/// same rule; `packages/sdk-shared-fixtures/dto_parsing/message_dismiss_policy.fixture.json` pins both.
+public struct MessageDismissPolicy: Equatable {
+    public let allowed: Bool
+    /// Seconds after appearing before the user may dismiss. Never negative.
+    public let delaySeconds: Double
+
+    public init(content: MessageContent?) {
+        // Never a trap: a message with no button at all (no CTA, no secondary CTA) stays dismissable
+        // whatever the switch says — otherwise a fullscreen message would hold the app until it is killed.
+        func present(_ s: String?) -> Bool { !(s?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }
+        let hasAuthoredExit = present(content?.cta_text) || present(content?.secondary_cta_text)
+        allowed = (content?.dismiss_allowed ?? true) || !hasAuthoredExit
+        let d = content?.dismiss_delay ?? 0
+        delaySeconds = d.isFinite ? max(0, d) : 0
+    }
+
+    /// May the user dismiss the message `elapsed` seconds after it appeared?
+    public func userMayDismiss(afterSeconds elapsed: Double) -> Bool {
+        allowed && elapsed >= delaySeconds
+    }
+
+    /// The state a view starts in: dismissable as it appears.
+    public var dismissableAtOpen: Bool { userMayDismiss(afterSeconds: 0) }
+
+    /// Seconds until the close control appears, or nil when it never will (or is already there).
+    public var unlockAfterSeconds: Double? {
+        guard allowed, delaySeconds > 0 else { return nil }
+        return delaySeconds
     }
 }
 

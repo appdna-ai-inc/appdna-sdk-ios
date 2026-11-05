@@ -8,6 +8,20 @@ struct ModalView: View {
 
     @State private var showConfetti = false
 
+    /// whether the user may dismiss right now. Starts from the policy and flips once
+    /// `dismiss_delay` has passed; never flips when `dismiss_allowed` is false.
+    @State private var dismissUnlocked: Bool
+    private let dismissPolicy: MessageDismissPolicy
+
+    init(content: MessageContent, onCTATap: @escaping () -> Void, onDismiss: @escaping () -> Void) {
+        self.content = content
+        self.onCTATap = onCTATap
+        self.onDismiss = onDismiss
+        let policy = MessageDismissPolicy(content: content)
+        self.dismissPolicy = policy
+        self._dismissUnlocked = State(initialValue: policy.dismissableAtOpen)
+    }
+
     var body: some View {
         ZStack {
             // Backdrop: blur backdrop support
@@ -16,11 +30,11 @@ struct ModalView: View {
                     .ignoresSafeArea()
                     .background(.ultraThinMaterial)
                     .blur(radius: CGFloat(blurConfig.radius ?? 0) / 3)
-                    .onTapGesture { onDismiss() }
+                    .onTapGesture { if dismissUnlocked { onDismiss() } }
             } else {
                 Color.black.opacity(0.4)
                     .ignoresSafeArea()
-                    .onTapGesture { onDismiss() }
+                    .onTapGesture { if dismissUnlocked { onDismiss() } }
             }
 
             // Modal card
@@ -36,6 +50,7 @@ struct ModalView: View {
                             .foregroundColor(.secondary)
                             .frame(width: 32, height: 32)
                     }
+                    .messageDismissControl(visible: dismissUnlocked)
                 }
                 .padding(.trailing, -4)
 
@@ -127,6 +142,7 @@ struct ModalView: View {
                     Button(dismissText, action: onDismiss)
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                        .messageDismissControl(visible: dismissUnlocked)
                 }
             }
             .padding(24)
@@ -142,6 +158,7 @@ struct ModalView: View {
                 ConfettiOverlay(effect: effect)
             }
         }
+        .messageDismissUnlock(dismissPolicy, $dismissUnlocked)
         .onAppear {
             // Haptic on appear
             HapticEngine.triggerIfEnabled(content.haptic?.triggers?.on_button_tap, config: content.haptic)

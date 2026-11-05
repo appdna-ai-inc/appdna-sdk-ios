@@ -4,6 +4,16 @@ All notable changes to the AppDNA iOS SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.86] — unreleased
+
+### Fixed
+
+- **In-app messages honour "Allow Dismiss" and "Dismiss Delay".** With dismissal off, a message draws no
+  close button or dismiss text and ignores a tap on its backdrop; with a delay of N seconds, the close
+  button appears after N seconds and the message can't be dismissed before then. The CTA and the secondary
+  button keep working, and a message with neither stays dismissable, so the user always has a way out.
+  Applies to banner, modal, fullscreen and tooltip messages. Before, the SDK always showed the close button.
+
 ## [1.0.85] — unreleased
 
 Security update: the SDK requires Cloud Firestore 12.19.3 or later. **Rebuild and republish your app** after
