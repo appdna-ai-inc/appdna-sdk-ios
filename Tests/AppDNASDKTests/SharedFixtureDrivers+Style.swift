@@ -53,6 +53,7 @@ extension SharedFixtureTests {
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         case "resolve_flow_background": runFlowBackground(f, h)
+        case "resolve_guarantee_icon": runGuaranteeIcon(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
         case "resolve_field_input_style": runFieldInputStyle(f, h)
         case "resolve_plan_order": runPlanOrder(f, h)
@@ -668,6 +669,21 @@ extension SharedFixtureTests {
                 answer: v?["answer"]?.foundation,
                 emojiScale: scale,
             ).analyticsName
+        }
+    }
+
+    // MARK: resolve_guarantee_icon
+
+    /// The paywall guarantee badge's symbol through the REAL `GuaranteeIcon`, and whether the system
+    /// draws it (`UIImage(systemName:)`), which is what `Image(systemName:)` renders.
+    private func runGuaranteeIcon(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_guarantee_icon needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let symbol = GuaranteeIcon.symbol(c.objectValue?["value"]?.objectValue?["icon"]?.stringValue)
+            return "\(symbol)|\(UIImage(systemName: symbol) != nil ? "drawn" : "?")"
         }
     }
 

@@ -31,6 +31,9 @@ updating; an installed build keeps the certificates it was built with.
   text, the back / close / Skip controls) is drawn dark on a gradient whose every stop is light. It was
   drawn white on every gradient, so on a pale one it disappeared. A gradient with any dark stop keeps
   white text, and Google's logo is unchanged.
+- **The paywall guarantee badge draws its shield.** The default symbol was `shield.checkmark.fill`, which
+  is not an SF Symbol, so the badge drew no icon at all. It is `checkmark.shield.fill` now, and the old
+  spelling is read as that symbol.
 
 ### Fixed
 

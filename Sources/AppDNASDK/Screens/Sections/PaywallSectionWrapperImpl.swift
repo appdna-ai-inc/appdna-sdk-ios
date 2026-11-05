@@ -233,7 +233,7 @@ private struct GuaranteeSectionView: View {
         let hasContent = data?.guaranteeText != nil || data?.title != nil || data?.text != nil || data?.description != nil
         VStack(spacing: 8) {
             if hasContent {
-                Image(systemName: "shield.checkmark.fill")
+                Image(systemName: GuaranteeIcon.symbol(data?.icon))
                     .font(.system(size: 28))
                     .foregroundColor(Color(hex: data?.accentColor ?? "#22C55E"))
                 if let badge = data?.guaranteeText ?? data?.text {

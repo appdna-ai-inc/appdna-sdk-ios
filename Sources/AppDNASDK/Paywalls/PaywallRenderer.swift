@@ -1157,17 +1157,10 @@ struct PaywallRenderer: View {
         let hasContent = data?.guaranteeText != nil || data?.title != nil || data?.text != nil || data?.description != nil
         if hasContent {
             VStack(spacing: 8) {
-                // Icon (SF Symbol or fallback shield)
-                if let iconName = data?.icon {
-                    let sfName = iconName.contains("_") || iconName.contains(".") ? iconName : "shield.checkmark.fill"
-                    Image(systemName: sfName)
-                        .font(.system(size: 28))
-                        .foregroundColor(Color(hex: data?.accentColor ?? "#22C55E"))
-                } else {
-                    Image(systemName: "shield.checkmark.fill")
-                        .font(.system(size: 28))
-                        .foregroundColor(Color(hex: data?.accentColor ?? "#22C55E"))
-                }
+                // Icon: an SF Symbol name, else the default shield (`GuaranteeIcon`).
+                Image(systemName: GuaranteeIcon.symbol(data?.icon))
+                    .font(.system(size: 28))
+                    .foregroundColor(Color(hex: data?.accentColor ?? "#22C55E"))
 
                 // Badge text
                 if let badge = data?.guaranteeText ?? data?.text {
