@@ -94,17 +94,6 @@ enum GoogleMapsAttribution {
             let l = hex.lowercased()
             return l == "transparent" || l == "clear" ? nil : hex
         }
-        // A section background paints its zones behind everything in it. One zone is a plain colour; several
-        // are judged like gradient stops — the worst zone wins: all light → `busyLight` (dark ink), any dark
-        // → `busy` (light ink). A zone with no colour is drawn black, so it counts as dark.
-        if block.type == .section_background, let zones = cfg?["background_zones"]?.value as? [Any], !zones.isEmpty {
-            let colors = zones.compactMap { ($0 as? [String: Any]).map { ($0["color"] as? String) ?? "#000000" } }
-            if colors.count == 1 { return .plain(hex: colors[0]) }
-            if !colors.isEmpty {
-                let lums = colors.compactMap { GoogleMarkChip.luminance($0) }
-                return lums.count == colors.count && lums.allSatisfy { $0 >= GoogleMarkChip.lightEnough } ? .busyLight : .busy
-            }
-        }
         if block.type == .row, let bg = visible(cfg?["bg_color"]?.value as? String) {
             return (double("background_opacity") ?? 1) < 1 ? .busy : .plain(hex: bg)
         }

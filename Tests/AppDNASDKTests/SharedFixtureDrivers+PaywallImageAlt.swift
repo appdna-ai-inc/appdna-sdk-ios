@@ -120,41 +120,4 @@ extension SharedFixtureTests {
             return OnboardingStepPipeline.visibleChildren(of: marked, isRawResolved: { ids.contains($0.id) }).map(\.id)
         }
     }
-
-    // resolve_rating_answer REAL: the lenient `[ContentBlock]` decode → `RatingAnswer` (key, initial, afterTap),
-    // the calls `RatingBlockView` makes on each tap.
-    func runRatingAnswer(_ f: Fixture, _ h: Harness) {
-        guard let cases = f.action.raw["cases"]?.arrayValue else {
-            XCTFail("[\(f.id)] resolve_rating_answer needs action.cases")
-            return
-        }
-        struct Holder: Decodable {
-            let content_blocks: [ContentBlock]?
-            enum CodingKeys: String, CodingKey { case content_blocks }
-            init(from decoder: Decoder) throws {
-                let c = try decoder.container(keyedBy: CodingKeys.self)
-                content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "fixture")
-            }
-        }
-        h.state["results"] = cases.map { c -> Any in
-            let obj = c.objectValue ?? [:]
-            let name = obj["name"]?.stringValue ?? "?"
-            guard let raw = obj["block"]?.foundation as? [String: Any],
-                  let data = try? JSONSerialization.data(withJSONObject: ["content_blocks": [raw]]),
-                  let block = (try? JSONDecoder().decode(Holder.self, from: data))?.content_blocks?.first else {
-                XCTFail("[\(f.id)] case \(name): the block did not decode")
-                return NSNull()
-            }
-            let key = RatingAnswer.key(block)
-            var values: [String: Any] = [:]
-            if let s = obj["stored"]?.doubleValue { values[key] = s }
-            var current = RatingAnswer.initial(block, stored: values[key])
-            var written: Any = NSNull()
-            for t in (obj["taps"]?.arrayValue ?? []).compactMap(\.doubleValue) {
-                current = RatingAnswer.afterTap(current: current, tapped: Int(t), allowHalf: block.allow_half ?? false)
-                written = current
-            }
-            return ["key": key, "stored": written] as [String: Any]
-        }
-    }
 }

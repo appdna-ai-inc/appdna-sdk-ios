@@ -3,42 +3,12 @@ import MapKit
 import PhotosUI
 // MARK: - Rating Block View
 
-/// What a `rating` block stores, and where. ONE rule; Android's `RatingBlock` is the same, and
-/// `packages/sdk-shared-fixtures/dto_parsing/rating_block_stores_answer.fixture.json` pins both.
-enum RatingAnswer {
-    /// The answer is stored at the block's `field_id`, else its id (as `input_rating` does).
-    static func key(_ block: ContentBlock) -> String { block.field_id ?? block.id }
-
-    /// The value shown before any tap: `default_rating`, else `default_value`, else what is already stored.
-    static func initial(_ block: ContentBlock, stored: Any?) -> Double {
-        if let d = block.default_rating ?? block.default_value { return d }
-        if let n = stored as? Double { return n }
-        if let n = stored as? Int { return Double(n) }
-        return 0
-    }
-
-    /// A tap on star `tapped`: that star, or — with `allow_half`, on a re-tap of the star already filled —
-    /// its half (Android's toggle).
-    static func afterTap(current: Double, tapped: Int, allowHalf: Bool) -> Double {
-        let t = Double(tapped)
-        let diff = current - t
-        return allowHalf && current >= t && diff >= 0 && diff < 0.5 ? t - 0.5 : t
-    }
-}
-
-/// Stateful star rating input rendered as an independent SwiftUI view. Stores the selected value at
-/// `RatingAnswer.key` in the step's `inputValues`, so it is a response, a routing input and a gate value.
+/// Stateful star rating input rendered as an independent SwiftUI view.
 struct RatingBlockView: View {
     let block: ContentBlock
     let onAction: (_ action: String, _ actionValue: String?) -> Void
-    @Binding var inputValues: [String: Any]
 
     @State private var selectedRating: Double = 0
-
-    private func select(_ value: Double) {
-        selectedRating = value
-        inputValues[RatingAnswer.key(block)] = value
-    }
 
     var body: some View {
         let maxStars = max(1, block.max_stars ?? 5)  // clamp ≥1 — ForEach(1...maxStars) traps on 0/negative (mirrors FormInputRatingBlock)
@@ -59,7 +29,7 @@ struct RatingBlockView: View {
                     starImage(for: Double(index), filled: filledCol, empty: emptyCol, halfEnabled: halfEnabled)
                         .font(.system(size: starSz))
                         .onTapGesture {
-                            select(RatingAnswer.afterTap(current: selectedRating, tapped: index, allowHalf: halfEnabled))
+                            selectedRating = Double(index)
                         }
                         .gesture(
                             halfEnabled ?
@@ -67,9 +37,9 @@ struct RatingBlockView: View {
                                 .onEnded { value in
                                     let halfThreshold = starSz / 2
                                     if value.location.x < halfThreshold {
-                                        select(Double(index) - 0.5)
+                                        selectedRating = Double(index) - 0.5
                                     } else {
-                                        select(Double(index))
+                                        selectedRating = Double(index)
                                     }
                                 }
                             : nil
@@ -79,7 +49,7 @@ struct RatingBlockView: View {
             }
         }
         .onAppear {
-            selectedRating = RatingAnswer.initial(block, stored: inputValues[RatingAnswer.key(block)])
+            selectedRating = block.default_rating ?? 0
         }
         .accessibilityElement(children: .combine)
         // Announce the half value when allow_half is on (matches Android TalkBack); was
@@ -87,15 +57,6 @@ struct RatingBlockView: View {
         .accessibilityValue(halfEnabled
             ? "\(String(format: "%.1f", selectedRating)) of \(maxStars) stars"
             : "\(Int(selectedRating)) of \(maxStars) stars")
-        // The stars are one combined element, so VoiceOver sets the rating by swiping up / down.
-        .accessibilityAdjustableAction { direction in
-            let current = Int(selectedRating.rounded(.down))
-            switch direction {
-            case .increment: select(Double(min(maxStars, current + 1)))
-            case .decrement: select(Double(max(1, current - 1)))
-            @unknown default: break
-            }
-        }
     }
 
     @ViewBuilder
