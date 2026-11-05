@@ -160,6 +160,7 @@ struct ContentView: View {
             // The paywall delegate is a SEPARATE registration, and the action it carries
             // is the only report of a CTA tap that could not become a purchase.
             AppDNA.paywall.setDelegate(TrackedEventLog.shared)
+            AppDNA.deepLinks.setDelegate(TrackedEventLog.shared)
             Launch.autoPresentIfAsked()
             refreshLocationReadback()
             probeStoreIfAsked()

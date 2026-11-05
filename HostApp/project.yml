@@ -38,6 +38,12 @@ targets:
         # `scripts/sdk-host-ios.ts`, never committed with a real value — this directory is mirrored
         # to the public SDK repo.
         AppDNABaseURLOverride: "$(APPDNA_BASE_URL_OVERRIDE)"
+        # A synthetic sample scheme (the Android sample's `appdnasample`), so a custom-scheme in-app CTA
+        # or push deep link is an allowed deep link back into this host (`URLSafety.hostSchemes`) and
+        # reaches `AppDNA.deepLinks.handleURL` through `onOpenURL`.
+        CFBundleURLTypes:
+          - CFBundleURLName: ai.appdna.sample
+            CFBundleURLSchemes: [appdnasample]
     settings:
       base:
         # The Firebase project already has an iOS app registered for exactly this purpose

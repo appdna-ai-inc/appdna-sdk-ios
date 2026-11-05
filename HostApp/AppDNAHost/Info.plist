@@ -10,5 +10,16 @@
 	<dict/>
 	<key>AppDNABaseURLOverride</key>
 	<string>$(APPDNA_BASE_URL_OVERRIDE)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>ai.appdna.sample</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>appdnasample</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

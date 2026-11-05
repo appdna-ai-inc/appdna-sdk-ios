@@ -30,7 +30,12 @@ import AppDNASDK
 struct AppDNAHostApp: App {
     init() { Launch.configureSDK() }
     var body: some Scene {
-        WindowGroup { ContentView() }
+        WindowGroup {
+            ContentView()
+                // `appdnasample://…` (declared in Info.plist) — a custom-scheme CTA or push deep link
+                // opened by the OS comes back here, and the SDK hands it to the deep-link delegate.
+                .onOpenURL { url in AppDNA.deepLinks.handleURL(url) }
+        }
     }
 }
 

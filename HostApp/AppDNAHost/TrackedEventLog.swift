@@ -11,7 +11,7 @@
 import Foundation
 import AppDNASDK
 
-final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPaywallDelegate {
+final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPaywallDelegate, AppDNADeepLinkDelegate {
     static let shared = TrackedEventLog()
 
     /// Newest first, capped — a test asserts on an event from several steps ago without racing
@@ -35,6 +35,11 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
      */
     func onPaywallAction(paywallId: String, action: PaywallAction) {
         record("action:" + action.rawValue)
+    }
+
+    /// A deep link the SDK delivered (`AppDNA.deepLinks.handleURL`), mirrored so a walk can read it.
+    func onDeepLinkReceived(url: URL, params: [String: String]) {
+        record("deeplink:" + url.absoluteString)
     }
 
     func onEventTracked(name: String, properties: [String: Any]) {
