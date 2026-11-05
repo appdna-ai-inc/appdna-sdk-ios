@@ -67,28 +67,10 @@ final class PendingMessageListener {
     private func handleIncoming(doc: QueryDocumentSnapshot, now: Date) {
         let data = doc.data()
 
-        // Server-side expiry filter (TTL): Firestore lacks compound
-        // `expires_at > now AND consumed == false` without a composite
-        // index, so we filter locally.
-        if let expiresMs = data["expires_at_ms"] as? Double {
-            let expiresAt = Date(timeIntervalSince1970: expiresMs / 1000.0)
-            if expiresAt < now {
-                Log.debug("PendingMessageListener: skipping expired \(doc.documentID)")
-                return
-            }
-        }
-
-        guard let content = data["content"] as? [String: Any] else {
-            Log.debug("PendingMessageListener: \(doc.documentID) missing content — skipping")
+        guard let config = Self.decodeDelivery(data: data, now: now) else {
+            Log.debug("PendingMessageListener: skipping \(doc.documentID) (expired or missing content)")
             return
         }
-
-        // Decode the delivered Firestore content into the same Codable
-        // `MessageConfig` shape used by the remote-config pipeline so we
-        // can route through the existing `MessageRenderer` views (modal,
-        // fullscreen, banner, tooltip) with full styling + rich-media
-        // support — instead of falling back to a plain UIAlertController.
-        let config = decodeMessageConfig(content: content, root: data)
 
         eventTracker?.track(event: "in_app_message_received", properties: [
             "delivery_id": doc.documentID,
@@ -112,12 +94,32 @@ final class PendingMessageListener {
         }
     }
 
+    /// The delivery document as the listener receives it → the `MessageConfig` it presents, or nil
+    /// when the delivery is expired or carries no `content`. The one decode `handleIncoming` runs;
+    /// static so a test can drive it with a document read back from Firestore.
+    static func decodeDelivery(data: [String: Any], now: Date) -> MessageConfig? {
+        // Server-side expiry filter (TTL): Firestore lacks compound
+        // `expires_at > now AND consumed == false` without a composite
+        // index, so we filter locally.
+        if let expiresMs = (data["expires_at_ms"] as? NSNumber)?.doubleValue {
+            let expiresAt = Date(timeIntervalSince1970: expiresMs / 1000.0)
+            if expiresAt < now { return nil }
+        }
+        guard let content = data["content"] as? [String: Any] else { return nil }
+        // Decode the delivered Firestore content into the same Codable
+        // `MessageConfig` shape used by the remote-config pipeline so we
+        // can route through the existing `MessageRenderer` views (modal,
+        // fullscreen, banner, tooltip) with full styling + rich-media
+        // support — instead of falling back to a plain UIAlertController.
+        return decodeMessageConfig(content: content, root: data)
+    }
+
     /// Best-effort decode of the delivered content into `MessageConfig`.
     /// Server payload mirrors the InAppMessageTrigger schema, so a
     /// JSONSerialization roundtrip + JSONDecoder works cleanly. On
     /// failure (corrupt or malformed payload) we synthesize a minimal
     /// modal config with whatever string fields we can salvage.
-    private func decodeMessageConfig(content: [String: Any], root: [String: Any]) -> MessageConfig {
+    static func decodeMessageConfig(content: [String: Any], root: [String: Any]) -> MessageConfig {
         // Build a config-shaped dict so MessageConfig (which expects
         // top-level message_type + content + etc) can decode it.
         var configDict: [String: Any] = [:]

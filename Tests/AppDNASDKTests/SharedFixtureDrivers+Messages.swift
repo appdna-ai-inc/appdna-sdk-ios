@@ -9,6 +9,9 @@
 //   decode_message_hero  REAL: `MessageConfig` decoding → `MessageContent.resolved(for:)` (what
 //                        `MessageRenderer` hands the views) → `image_url`, the field ModalView /
 //                        FullscreenView draw the hero from.
+//   decode_pending_delivery REAL: `PendingMessageListener.decodeDelivery(data:now:)`, the decode the
+//                        listener runs on every delivery document (expiry filter, message decode,
+//                        degraded fallback).
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -24,6 +27,7 @@ extension SharedFixtureTests {
         switch f.action.kind {
         case "decode_message_cta": runDecodeMessageCta(f, h)
         case "decode_message_hero": runDecodeMessageHero(f, h)
+        case "decode_pending_delivery": runDecodePendingDelivery(f, h)
         default: return false
         }
         return true
@@ -92,6 +96,35 @@ extension SharedFixtureTests {
             return [
                 "light": SharedFixtureTests.orNull(decodedContent.resolved(for: .light).image_url),
                 "dark": SharedFixtureTests.orNull(decodedContent.resolved(for: .dark).image_url),
+            ] as [String: Any]
+        }
+    }
+
+    // MARK: decode_pending_delivery
+
+    private func runDecodePendingDelivery(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] decode_pending_delivery needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            guard let doc = obj["document"]?.foundation as? [String: Any],
+                  let nowMs = obj["now_ms"]?.doubleValue else {
+                XCTFail("[\(f.id)] case needs document and now_ms")
+                return NSNull()
+            }
+            guard let config = PendingMessageListener.decodeDelivery(
+                data: doc, now: Date(timeIntervalSince1970: nowMs / 1000.0)
+            ) else { return NSNull() }
+            let content = config.content
+            return [
+                "message_type": SharedFixtureTests.orNull(config.message_type?.rawValue),
+                "title": SharedFixtureTests.orNull(content?.title),
+                "cta_type": SharedFixtureTests.orNull(content?.cta_action?.type?.rawValue),
+                "cta_opens": SharedFixtureTests.orNull(content?.cta_action?.linkToOpen),
+                "image_url": SharedFixtureTests.orNull(content?.image_url),
+                "background_color": SharedFixtureTests.orNull(content?.background_color),
             ] as [String: Any]
         }
     }
