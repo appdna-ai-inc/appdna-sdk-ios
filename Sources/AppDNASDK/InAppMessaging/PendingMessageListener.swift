@@ -227,17 +227,11 @@ final class PendingMessageListener {
     }
 
     private func handleCTAAction(_ action: CTAAction?) {
-        guard let action, let actionType = action.type else { return }
-        switch actionType {
-        case .dismiss, .unknown:
-            break // dismiss handled by caller
-        case .deep_link, .open_url:
-            // Config-driven URL — scheme-checked before it reaches the OS.
-            if let urlString = action.url, let url = URLSafety.sanitized(urlString) {
-                DispatchQueue.main.async {
-                    UIApplication.shared.open(url)
-                }
-            }
+        // dismiss / unknown / a link type with no link: nothing extra (the caller dismisses).
+        // Config-driven URL — scheme-checked before it reaches the OS.
+        guard let urlString = action?.linkToOpen, let url = URLSafety.sanitized(urlString) else { return }
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url)
         }
     }
 }

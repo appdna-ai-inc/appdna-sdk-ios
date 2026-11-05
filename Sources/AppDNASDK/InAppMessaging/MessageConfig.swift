@@ -189,6 +189,12 @@ extension MessageContent {
     }
 }
 
+/// A message CTA's action. The published shape is `{ "type": "deep_link" | "open_url" | "dismiss", "url": "…" }`.
+/// Also read, for configs written before the server published that shape:
+/// - `value` in place of `url` (`url` wins when both are set);
+/// - type `url`, which is `open_url`;
+/// - a bare string: a type, or a link to open as a deep link when it carries `://`.
+/// Android's `MessageConfigParser.parseCTAAction` follows the same rule.
 public struct CTAAction: Codable {
     public let type: CTAActionType?
     public let url: String?
@@ -202,8 +208,56 @@ public struct CTAAction: Codable {
         public init(from decoder: Decoder) throws {
             let container = try decoder.singleValueContainer()
             let rawValue = try container.decode(String.self)
-            self = CTAActionType(rawValue: rawValue) ?? .unknown
+            self = CTAActionType(parsing: rawValue)
         }
+
+        init(parsing raw: String) {
+            let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            self = s == "url" ? .open_url : (CTAActionType(rawValue: s) ?? .unknown)
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, url, value
+    }
+
+    public init(type: CTAActionType?, url: String?) {
+        self.type = type
+        self.url = url
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let raw = try? single.decode(String.self) {
+            let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if s.contains("://") {
+                self.init(type: .deep_link, url: s)
+            } else {
+                self.init(type: CTAActionType(parsing: s), url: nil)
+            }
+            return
+        }
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try? c.decodeIfPresent(CTAActionType.self, forKey: .type)
+        func link(_ key: CodingKeys) -> String? {
+            guard let v = try? c.decodeIfPresent(String.self, forKey: key) else { return nil }
+            let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+            return t.isEmpty ? nil : t
+        }
+        self.init(type: type ?? nil, url: link(.url) ?? link(.value))
+    }
+
+    /// The link a tap opens: a `deep_link` / `open_url` with a link, else nil (the tap only dismisses).
+    public var linkToOpen: String? {
+        switch type {
+        case .deep_link?, .open_url?: return url
+        default: return nil
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(type, forKey: .type)
+        try c.encodeIfPresent(url, forKey: .url)
     }
 }
 

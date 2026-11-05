@@ -523,6 +523,7 @@ final class SharedFixtureTests: XCTestCase {
             if await drivePushFixtures(fixture, harness) { return }
             if await driveMapFixtures(fixture, harness) { return }
             if await driveStyle(fixture, harness) { return }
+            if await driveMessageFixtures(fixture, harness) { return }
             XCTFail("""
             [\(fixture.id)] no iOS driver for action.kind='\(fixture.action.kind)'.
             Add a driver that calls REAL SDK code for this kind, or remove 'ios' from the fixture's
