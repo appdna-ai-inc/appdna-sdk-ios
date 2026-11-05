@@ -366,9 +366,7 @@ struct ContentBlockRendererView: View {
     /// their children with `renderBlock(child)` directly, which skipped the filter, so a nested
     /// `hide_when_empty` Select still drew.
     private func containerChildren(_ block: ContentBlock) -> [ContentBlock] {
-        (block.children ?? block.stack_children ?? []).filter {
-            !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: isRawResolved(block) || isRawResolved($0))
-        }
+        OnboardingStepPipeline.visibleChildren(of: block, isRawResolved: isRawResolved)
     }
 
     var body: some View {
@@ -2781,7 +2779,8 @@ struct ContentBlockRendererView: View {
     /// is the layout that was asked for; `last_row: "stretch"` makes it fill instead.
     @ViewBuilder
     private func multiButtonsBlock(_ block: ContentBlock) -> some View {
-        let children = block.children ?? block.stack_children ?? []
+        // A child the host-data raw pass hid is not drawn, as in every other container (and on Android).
+        let children = containerChildren(block)
         let perRow = max(1, min(3, Int(cfgDouble(block.field_config?["buttons_per_row"]) ?? 2)))
         let gap = CGFloat(block.spacing ?? block.gap ?? 12)
         let stretchLastRow = (block.field_config?["last_row"]?.value as? String) == "stretch"

@@ -459,6 +459,16 @@ enum OnboardingStepPipeline {
         emptyState(block, rawResolved: rawResolved)?.mode == "hidden"
     }
 
+    /// A container's children (row, stack, carousel, multi-buttons, zoned background) minus any the raw pass
+    /// hid (`empty_state.mode == hidden`). ONE rule for every container; Android's
+    /// `visibleUnderHostData(ids)` is the same, and
+    /// `packages/sdk-shared-fixtures/dto_parsing/container_children_hidden_by_host_data.fixture.json` pins both.
+    static func visibleChildren(of block: ContentBlock, isRawResolved: (ContentBlock) -> Bool) -> [ContentBlock] {
+        (block.children ?? block.stack_children ?? []).filter {
+            !isHiddenByEmptyState($0, rawResolved: isRawResolved(block) || isRawResolved($0))
+        }
+    }
+
     // MARK: - selection clearing
 
     /// When a host-data-scoped Select's rendered options no longer contain a selected value, that value is

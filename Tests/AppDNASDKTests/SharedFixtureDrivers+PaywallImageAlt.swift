@@ -76,4 +76,48 @@ extension SharedFixtureTests {
             return decoded.imageAccessibilityLabel
         }
     }
+
+    // resolve_container_children REAL: the lenient `[ContentBlock]` decode → `OnboardingStepPipeline.visibleChildren`,
+    // the filter `containerChildren` (multi-buttons, row, stack, carousel) applies.
+    func runContainerChildren(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_container_children needs action.cases")
+            return
+        }
+        struct Holder: Decodable {
+            let content_blocks: [ContentBlock]?
+            enum CodingKeys: String, CodingKey { case content_blocks }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "fixture")
+            }
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            let ids = Set((obj["raw_resolved_ids"]?.arrayValue ?? []).compactMap(\.stringValue))
+            guard let container = obj["container"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: ["content_blocks": [container]]),
+                  let block = (try? JSONDecoder().decode(Holder.self, from: data))?.content_blocks?.first else {
+                XCTFail("[\(f.id)] case \(name): the container did not decode")
+                return NSNull()
+            }
+            // The raw pass writes the marker after decoding; do the same.
+            let markers = obj["empty_state_markers"]?.objectValue ?? [:]
+            var marked = block
+            func mark(_ list: [ContentBlock]?) -> [ContentBlock]? {
+                list?.map { child in
+                    guard let es = markers[child.id]?.foundation else { return child }
+                    var c = child
+                    var fc = c.field_config ?? [:]
+                    fc["empty_state"] = AnyCodable(es)
+                    c.field_config = fc
+                    return c
+                }
+            }
+            marked.children = mark(block.children)
+            marked.stack_children = mark(block.stack_children)
+            return OnboardingStepPipeline.visibleChildren(of: marked, isRawResolved: { ids.contains($0.id) }).map(\.id)
+        }
+    }
 }

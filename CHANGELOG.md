@@ -8,6 +8,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Multi-buttons no longer draws a button your data hid.** A child the author set to hide when its list is
+  empty is left out, as in a Row or Stack and as on Android; before, iOS drew it.
 - **Onboarding image alt text is set in the Console**, in the image block's new "Alt text" field, and read
   out as the image's accessibility label. A blank value is now announced as "Image", as an unset one is
   (it was announced as nothing).
