@@ -52,6 +52,7 @@ extension SharedFixtureTests {
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
+        case "resolve_flow_background": runFlowBackground(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
         case "resolve_field_input_style": runFieldInputStyle(f, h)
         case "resolve_plan_order": runPlanOrder(f, h)
@@ -667,6 +668,40 @@ extension SharedFixtureTests {
                 answer: v?["answer"]?.foundation,
                 emojiScale: scale,
             ).analyticsName
+        }
+    }
+
+    // MARK: resolve_flow_background
+
+    /**
+     Which background each step draws, through the REAL `OnboardingFlowConfig` decoder, which
+     is where the flow background is inherited. Decoding a whole flow (not calling the helper) is the
+     point: a driver that called `inheritingFlowBackground` directly would pass even if the decoder
+     forgot to.
+     */
+    private func runFlowBackground(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_flow_background needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let dict = c.objectValue?["flow"]?.foundation as? [String: Any],
+                  JSONSerialization.isValidJSONObject(dict),
+                  let data = try? JSONSerialization.data(withJSONObject: dict) else {
+                XCTFail("[\(f.id)] a flow is not JSON")
+                return NSNull()
+            }
+            do {
+                let flow = try JSONDecoder().decode(OnboardingFlowConfig.self, from: data)
+                return flow.steps.map { step -> String in
+                    guard let bg = step.config.background else { return "none" }
+                    let colour = bg.type == "gradient" ? bg.gradient?.stops?.first?.color : bg.color
+                    return "\(bg.type ?? "?"):\(colour ?? "?")"
+                } as [Any]
+            } catch {
+                XCTFail("[\(f.id)] a flow did not decode: \(error)")
+                return NSNull()
+            }
         }
     }
 

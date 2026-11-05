@@ -9,6 +9,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 Security update: the SDK requires Cloud Firestore 12.19.3 or later. **Rebuild and republish your app** after
 updating; an installed build keeps the certificates it was built with.
 
+### Added
+
+- **A flow-wide background.** `settings.background` on an onboarding flow (the same shape as a step
+  background: colour, gradient, image, Lottie or Rive) is drawn by every step that sets no background of
+  its own. Before, a step without one drew `systemBackground`, so a theme had to be repeated on every step.
+
 ### Security
 
 - Firebase reported that Cloud Firestore's Apple SDK compiles in TLS root certificates that trusted intermediate certificate authorities whose private keys were compromised (eMudhra, revoked on 17 October 2026). A network attacker holding such a certificate could impersonate the Firestore servers to an app built with an older Firestore. Firestore 12.19.3 removes them; no 11.x release has the fix.

@@ -37,12 +37,29 @@ public struct OnboardingFlowConfig: Codable {
         self.id = c.lenient(String.self, .id) ?? UUID().uuidString
         self.name = c.lenient(String.self, .name)
         self.version = c.lenient(Int.self, .version)
+        let settings = try c.decodeIfPresent(OnboardingSettings.self, forKey: ._settings)
         self._steps = try c.decodeIfPresent([OnboardingStep].self, forKey: ._steps)
-        self._settings = try c.decodeIfPresent(OnboardingSettings.self, forKey: ._settings)
+            .map { Self.inheritingFlowBackground($0, settings?.background) }
+        self._settings = settings
         self.status = c.lenient(String.self, .status)
         self.graph_layout = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_layout)
         self.graph_nodes = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_nodes)
         self.audience_rules = try c.decodeIfPresent(AnyCodable.self, forKey: .audience_rules)
+    }
+
+    /**
+     Every step that authors no background draws the flow's. The one place the rule lives on
+     iOS (Android: `OnboardingConfigParser.parseFlowConfig`; the console preview applies the same rule).
+     Shared fixture: `dto_parsing/flow_background_inheritance`.
+     */
+    static func inheritingFlowBackground(_ steps: [OnboardingStep], _ flowBackground: BackgroundStyleConfig?) -> [OnboardingStep] {
+        guard let flowBackground else { return steps }
+        return steps.map { step in
+            guard step.config.background == nil else { return step }
+            var inherited = step
+            inherited.config.background = flowBackground
+            return inherited
+        }
     }
 
     /// Convenience memberwise init for tests and manual construction.
@@ -50,7 +67,7 @@ public struct OnboardingFlowConfig: Codable {
         self.id = id
         self.name = name
         self.version = version
-        self._steps = steps
+        self._steps = Self.inheritingFlowBackground(steps, settings.background)
         self._settings = settings
         self.status = nil
         self.graph_layout = nil
@@ -159,6 +176,15 @@ public struct OnboardingSettings: Codable {
      duration — a change to every flow's completion timing, which needs its own proof.
      */
     public let particle_effect: ParticleEffect?
+    /**
+     The flow's background. A step whose own `background` decodes to nil draws this one instead of
+     `systemBackground` — substituted once, at decode, by `OnboardingFlowConfig.inheritingFlowBackground`,
+     so the full-screen backdrop, the chrome tone and unstyled ink all see the same thing.
+
+     Before this, a theme had to be repeated on every step, and a flow that set it on one step drew
+     the rest on white. Order: step `background` → this → `systemBackground`.
+     */
+    public let background: BackgroundStyleConfig?
 
     public init(show_progress: Bool = true, allow_back: Bool = true, skip_to_step: String? = nil,
                 progress_style: String? = nil, progress_color: String? = nil, progress_track_color: String? = nil,
@@ -167,7 +193,7 @@ public struct OnboardingSettings: Codable {
                 back_button_style: BackButtonStyle? = nil, dismiss_allowed: Bool? = nil,
                 dismiss_button_style: DismissButtonStyle? = nil,
                 content_padding: CGFloat? = nil, block_spacing: CGFloat? = nil, haptic: HapticConfig? = nil,
-                particle_effect: ParticleEffect? = nil) {
+                particle_effect: ParticleEffect? = nil, background: BackgroundStyleConfig? = nil) {
         self.show_progress = show_progress
         self.allow_back = allow_back
         self.skip_to_step = skip_to_step
@@ -185,6 +211,7 @@ public struct OnboardingSettings: Codable {
         self.block_spacing = block_spacing
         self.haptic = haptic
         self.particle_effect = particle_effect
+        self.background = background
     }
 
     public init(from decoder: Decoder) throws {
@@ -206,12 +233,15 @@ public struct OnboardingSettings: Codable {
         self.block_spacing = c.lenient(CGFloat.self, .block_spacing)
         self.haptic = try c.decodeIfPresent(HapticConfig.self, forKey: .haptic)
         self.particle_effect = try? c.decodeIfPresent(ParticleEffect.self, forKey: .particle_effect)
+        // Lenient: a malformed flow background must not drop the whole flow — it falls back to the
+        // per-step backgrounds and the platform default, which is what shipped before it existed.
+        self.background = try? c.decodeIfPresent(BackgroundStyleConfig.self, forKey: .background)
     }
 
     enum CodingKeys: String, CodingKey {
         case show_progress, allow_back, skip_to_step, progress_style
         case progress_color, progress_track_color, progress_height, progress_gradient_colors, progress_skip_label, progress_flash_color, back_button_style, dismiss_allowed, dismiss_button_style
-        case content_padding, block_spacing, haptic, particle_effect
+        case content_padding, block_spacing, haptic, particle_effect, background
     }
 }
 
@@ -235,7 +265,8 @@ public struct OnboardingStep: Codable, Identifiable {
     /// resolved to nil as a result.
     public let name: String?
     public let type: StepType
-    public let config: StepConfig
+    /// `var` only so the flow decoder can fill in an inherited flow background.
+    public internal(set) var config: StepConfig
     public let hook: StepHookConfig?
     public let next_step_rules: [NextStepRule]?
     /// When true, the progress indicator is hidden on this step but the step still counts toward total progress.
