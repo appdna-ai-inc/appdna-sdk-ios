@@ -33,6 +33,7 @@ extension SharedFixtureTests {
         case "resolve_message_dismiss": runResolveMessageDismiss(f, h)
         // Paywall image alt text (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
+        case "resolve_onboarding_image_alt": runOnboardingImageAlt(f, h)
         default: return false
         }
         return true
