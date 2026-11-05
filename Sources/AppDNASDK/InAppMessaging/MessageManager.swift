@@ -255,14 +255,7 @@ final class MessageManager {
             }
         )
 
-        let hostingVC = UIHostingController(rootView: messageView)
-        hostingVC.modalPresentationStyle = config.message_type == .fullscreen ? .fullScreen : .overCurrentContext
-        hostingVC.modalTransitionStyle = .crossDissolve
-        hostingVC.view.backgroundColor = .clear
-        // a message that may not be dismissed refuses any system dismissal of its controller too
-        // (the views already hide the ✕ and ignore a backdrop tap). Neither style used here is swipeable
-        // today; this keeps it true if one ever is.
-        hostingVC.isModalInPresentation = !MessageDismissPolicy(content: config.content).allowed
+        let hostingVC = MessageHosting.makeHost(rootView: messageView, config: config)
         topVC.present(hostingVC, animated: true)
     }
 

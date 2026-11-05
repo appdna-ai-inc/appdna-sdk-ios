@@ -97,3 +97,21 @@ extension View {
         }
     }
 }
+
+// MARK: - The controller a message is presented in
+
+/// ONE construction, used by both hosts (`MessageManager`, `PendingMessageListener`), so how a message
+/// may leave the screen cannot differ between a triggered message and a per-user delivery.
+enum MessageHosting {
+    static func makeHost<V: View>(rootView: V, config: MessageConfig) -> UIHostingController<V> {
+        let host = UIHostingController(rootView: rootView)
+        host.modalPresentationStyle = config.message_type == .fullscreen ? .fullScreen : .overCurrentContext
+        host.modalTransitionStyle = .crossDissolve
+        host.view.backgroundColor = .clear
+        // A message that may not be dismissed refuses any system dismissal of its controller too (the
+        // views already hide the close control and ignore a backdrop tap). Neither style used here is
+        // swipeable today; this keeps it true if one ever is.
+        host.isModalInPresentation = !MessageDismissPolicy(content: config.content).allowed
+        return host
+    }
+}
