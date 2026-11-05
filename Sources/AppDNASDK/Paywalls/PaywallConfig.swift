@@ -305,6 +305,9 @@ struct PaywallSectionData: Codable {
     /// sections of one ACTIVE paywall threw here and iOS dropped the whole paywall; Android read
     /// null and rendered. Lenient now: an object yields nil and the divider takes its default.
     @LenientScalar var lineStyle: String?         // solid | dashed | dotted
+    /// An image section's alt text (the console's "Alt Text"): the image's accessibility label.
+    /// Read through `PaywallImageAccessibility.label(_:)`. Lenient: a non-string is ignored.
+    @LenientScalar var alt: String?
     let marginTop: CGFloat?
     let marginBottom: CGFloat?
     let marginHorizontal: CGFloat?
@@ -536,6 +539,7 @@ struct PaywallSectionData: Codable {
         case fontSize = "font_size"
         case alignment, color, links, thickness
         case lineStyle = "style"
+        case alt
         case marginTop = "margin_top"
         case marginBottom = "margin_bottom"
         case marginHorizontal = "margin_horizontal"
@@ -1347,4 +1351,14 @@ public struct PostPurchaseFailureConfig: Codable {
     public let message: String?
     public let retry_text: String?
     public let allow_dismiss: Bool?
+}
+
+/// What a screen reader says for a paywall image section: the authored alt text, trimmed, or nil when there
+/// is none (the image is then announced as SwiftUI's default). ONE rule; Android's `PaywallImageAccessibility`
+/// is the same, and `packages/sdk-shared-fixtures/dto_parsing/paywall_image_alt.fixture.json` pins both.
+enum PaywallImageAccessibility {
+    static func label(_ data: PaywallSectionData?) -> String? {
+        guard let t = data?.alt?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+        return t
+    }
 }

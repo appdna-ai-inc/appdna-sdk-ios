@@ -1264,6 +1264,7 @@ struct PaywallRenderer: View {
                     ProgressView().frame(height: data?.height ?? 240)
                 }
             }
+            .modifier(PaywallImageAltModifier(label: PaywallImageAccessibility.label(data)))
             .applyContainerStyle(style?.container)
         }
     }
@@ -3255,5 +3256,20 @@ extension EnvironmentValues {
     var paywallBackgroundHex: String? {
         get { self[PaywallBackgroundHexKey.self] }
         set { self[PaywallBackgroundHexKey.self] = newValue }
+    }
+}
+
+/// The authored alt text as the image's accessibility label (one element, an image). No alt → unchanged.
+private struct PaywallImageAltModifier: ViewModifier {
+    let label: String?
+    func body(content: Content) -> some View {
+        if let label {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Text(label))
+                .accessibilityAddTraits(.isImage)
+        } else {
+            content
+        }
     }
 }

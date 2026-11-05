@@ -31,6 +31,8 @@ extension SharedFixtureTests {
         case "decode_message_hero": runDecodeMessageHero(f, h)
         case "decode_pending_delivery": runDecodePendingDelivery(f, h)
         case "resolve_message_dismiss": runResolveMessageDismiss(f, h)
+        // Paywall image alt text (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
+        case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
         default: return false
         }
         return true

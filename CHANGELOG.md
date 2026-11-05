@@ -8,6 +8,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Paywall images use their Alt Text as the accessibility label.** The Console's "Alt Text" on an image
+  section (`alt`) is now read out by VoiceOver; before, it was saved and ignored.
 - **In-app messages honour "Allow Dismiss" and "Dismiss Delay".** With dismissal off, a message draws no
   close button or dismiss text and ignores a tap on its backdrop; with a delay of N seconds, the close
   button appears after N seconds and the message can't be dismissed before then. The CTA and the secondary
