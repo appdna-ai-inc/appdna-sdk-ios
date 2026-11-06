@@ -1515,6 +1515,9 @@ final class VisualSnapshotTests: XCTestCase {
         let view = try render("""
         {"id": "sum", "type": "summary_screen", "text": "Lesson complete!", "field_config": {"summary_stats": [{"value": "5:32", "label": "Time", "color": "#6366F1"}, {"value": "92%", "label": "Accuracy", "color": "#10B981"}, {"value": "+120", "label": "XP earned", "color": "#F59E0B"}, {"value": "7", "label": "Day streak", "color": "#EF4444"}]}}
         """)
+        // The harness paints #0F1117; a step that does tells its blocks so, and an unauthored headline takes
+        // its ink from that backdrop. Without it the headline is drawn for an unknown (light) surface.
+        .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
