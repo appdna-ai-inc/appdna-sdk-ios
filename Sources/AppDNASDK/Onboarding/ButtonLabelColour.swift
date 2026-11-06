@@ -33,6 +33,17 @@ public enum ButtonLabelColour {
         if let styleColor, !styleColor.isEmpty { return styleColor }
         return nil
     }
+
+    /// The colour the label actually draws in: `text_color ?? style.color ?? the variant's default` —
+    /// the fill colour for `outline` and `text` buttons, white for a filled one.
+    ///
+    /// A Typography `style` WITHOUT a colour is not a colour. iOS let `applyTextStyle` bake `.primary`
+    /// into the label in that case, which beat the variant default — near-black text on a dark fill in a
+    /// light appearance, while Android drew white. Both renderers draw the label in THIS.
+    static func label(textColor: String?, styleColor: String?, variant: String, fillHex: String) -> String {
+        if let authored = resolve(textColor: textColor, styleColor: styleColor) { return authored }
+        return variant == "outline" || variant == "text" ? fillHex : "#FFFFFF"
+    }
 }
 
 

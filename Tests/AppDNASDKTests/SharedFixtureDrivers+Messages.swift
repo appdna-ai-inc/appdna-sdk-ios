@@ -39,6 +39,7 @@ extension SharedFixtureTests {
         case "resolve_loading_variant": runLoadingVariant(f, h)
         case "resolve_custom_view_fallback": runCustomViewFallback(f, h)
         case "resolve_warning_banner_ink": runWarningBannerInk(f, h)
+        case "resolve_button_label_ink": runButtonLabelInk(f, h)
         default: return false
         }
         return true

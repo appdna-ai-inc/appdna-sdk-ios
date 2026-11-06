@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A styled button's label keeps its colour.** A button with a Typography `style` drew its label in the
+  system text colour (near-black in a light appearance) whatever its variant or `text_color` said, so on a
+  dark button it was unreadable. The label is now `text_color`, else `style.color`, else the variant's own
+  colour (white on a filled button, the button colour on `outline` and `text`), as on Android.
 - **An unstyled warning banner is readable on a light step.** A `warning_banner` with no `text_color` drew
   its message and subtitle white on its translucent tint, which on a light step measured about 1.1:1. They
   now take their ink from what is behind the banner (dark `#111827` on a light step, white on a dark one), or

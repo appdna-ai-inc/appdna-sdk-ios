@@ -1107,15 +1107,16 @@ struct ContentBlockRendererView: View {
         // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
         // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
         // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
-        let bgColor: Color = {
+        let fillHex: String = {
             let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
-            guard enabledHex != nil || disabledHex != nil else { return Color(hex: fallback) }
+            guard enabledHex != nil || disabledHex != nil else { return fallback }
             // The step's ONE layered list (every zone), markers honoured.
             let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
-            return Color(hex: satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback))
+            return satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback)
         }()
+        let bgColor = Color(hex: fillHex)
         let txtColor = Color(hex: block.text_color ?? "#FFFFFF")
         // Authored width/colour win; the outline default is the fallback, not the rule.
         let borderColourHex = authoredButtonBorderColorHex(block.border_color)
@@ -1130,14 +1131,13 @@ struct ContentBlockRendererView: View {
         let isRefresh = onTapOverride == nil && (block.action ?? "next") == "refresh_step"
         let channel: StepInteraction? = isRefresh ? stepInteraction : nil
         let isLoading = channel?.loadingBlockId == block.id
-        // The spinner takes the colour the LABEL actually draws in: an authored `text_color`
-        // wins, else a Typography style's colour (`applyTextStyle` bakes `.primary` when the
-        // style sets none), else the variant's foreground.
-        let labelColor: Color = {
-            if let hex = block.text_color, !hex.isEmpty { return Color(hex: hex) }
-            if let style = block.style { return style.color.map { Color(hex: $0) } ?? .primary }
-            return fgColor
-        }()
+        // The colour the label draws in, and the spinner with it: `text_color ?? style.color ?? the
+        // variant's default`, shared with Android through `ButtonLabelColour.label`. A Typography style
+        // that sets no colour used to bake `.primary` here (`applyTextStyle`), so a styled button on a
+        // dark fill drew near-black text in a light appearance while Android drew white.
+        let labelHex = ButtonLabelColour.label(
+            textColor: block.text_color, styleColor: block.style?.color, variant: btnVariant, fillHex: fillHex)
+        let labelColor = Color(hex: labelHex)
 
         return Button {
             if let onTapOverride {
@@ -1197,24 +1197,18 @@ struct ContentBlockRendererView: View {
                 // `applyTextStyle` BAKES a colour into the Text when the style sets one, so a later
                 // `.foregroundColor` on the wrapping stack is a no-op — the override has to be
                 // applied to the Text itself, after the style.
-                // 🔴 Applied CONDITIONALLY. `.foregroundColor(nil)` does not mean "inherit" in
-                // SwiftUI — it RESETS to the default foreground, which would override the
-                // `fgColor` the enclosing stack sets for every button that never authored a
-                // `text_color`. A nil-passing version of this shipped briefly and changed three
-                // goldens on CI while rendering identically on a Mac, because the default it reset
-                // to follows the system appearance.
-                if let hex = ButtonLabelColour.resolve(textColor: block.text_color, styleColor: block.style?.color) {
-                    Text(labelText)
-                        .font(.body.weight(.semibold))
-                        .applyTextStyle(block.style)
-                        .applyButtonFontSize(block.font_size)
-                        .foregroundColor(Color(hex: hex))
-                } else {
-                    Text(labelText)
-                        .font(.body.weight(.semibold))
-                        .applyTextStyle(block.style)
-                        .applyButtonFontSize(block.font_size)
-                }
+                // 🔴 With a style, the colour must go IN the style. `applyTextStyle` returns an
+                // `AnyView`, so a `.foregroundColor` after it only sets the environment, and the Text's
+                // own baked colour (`style.color ?? .primary`) wins — every styled button drew its label
+                // in `.primary`, whatever `text_color` or variant said (see `TextStyleConfig.color`).
+                // Without a style the Text bakes nothing, and the concrete `labelColor` reaches it.
+                // Never `.foregroundColor(nil)`: it RESETS rather than inherits.
+                let labelStyle: TextStyleConfig? = block.style.map { var s = $0; s.color = labelHex; return s }
+                Text(labelText)
+                    .font(.body.weight(.semibold))
+                    .applyTextStyle(labelStyle)
+                    .applyButtonFontSize(block.font_size)
+                    .foregroundColor(labelColor)
             }
             .foregroundColor(fgColor)
             // The tapped refresh button, while its call is in flight: label and
