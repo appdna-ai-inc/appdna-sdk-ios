@@ -703,6 +703,8 @@ public final class AppDNA: @unchecked Sendable {
 
             shared.identityManager?.identify(userId: userId, traits: traits)
             Log.info("Identified user: \(userId)")
+            // The push token's server row now names this user.
+            shared.pushTokenManager?.reregister()
 
             // Fire identify event for backend alias/merge
             let identifyProps = identifyEventProperties(
@@ -774,6 +776,8 @@ public final class AppDNA: @unchecked Sendable {
     public static func reset() {
         shared.queue.async {
             shared.identityManager?.reset()
+            // The push token's server row no longer names the signed-out user.
+            shared.pushTokenManager?.reregister()
             shared.experimentManager?.resetExposures()
             shared.messageManager?.resetSession()
             shared.surveyManager?.resetSession()
@@ -1812,7 +1816,12 @@ public final class AppDNA: @unchecked Sendable {
         }
 
         // 5. Initialize push token manager (v0.2 + v0.4: backend registration)
-        self.pushTokenManager = PushTokenManager(keychainStore: keychainStore, eventTracker: tracker, apiClient: client)
+        self.pushTokenManager = PushTokenManager(
+            keychainStore: keychainStore, eventTracker: tracker, apiClient: client,
+            identity: { [weak self] in
+                let id = self?.identityManager?.currentIdentity
+                return (id?.anonId, id?.userId)
+            })
         AppDNA.pushModule.manager = self.pushTokenManager
         // The push CONFIGURED POINT: from here the SDK can track, so buffered
         // launch taps / deliveries (from the notification proxy and from host forwarding) drain now, on

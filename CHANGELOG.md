@@ -14,6 +14,9 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Push tokens name their user.** The token registration now sends the device's anonymous ID and, once
+  `identify` ran, the user ID, and registers again after `identify` and `reset`. The server stored every SDK
+  token without a user, so a push to a user, a list or a segment reached no SDK device.
 - **A gallery title is readable on a light step.** A `media_gallery` title with no `gallery_title_color` was
   white everywhere; it now follows what is behind the gallery (dark on a light step, white on a dark one).
 - **A multi-pick dropdown is readable on a dark step.** Its placeholder, picked labels and chevron were the

@@ -10,6 +10,8 @@ final class PushTokenManager {
     private weak var apiClient: APIClient?
 
     private static let keychainKey = "push_token"
+    private let lastTokenLock = NSLock()
+    private var lastToken: String?
 
     private static let osVersionString: String = {
         let v = ProcessInfo.processInfo.operatingSystemVersion
@@ -21,10 +23,38 @@ final class PushTokenManager {
         keychainStore.getString(key: Self.keychainKey)
     }
 
-    init(keychainStore: KeychainStore, eventTracker: EventTracker?, apiClient: APIClient? = nil) {
+    /// Who the token belongs to, read at send time: the device's anonymous id and, once `identify` ran,
+    /// the host's user id. Without them the server stored every token as user `anonymous`, so a push to
+    /// a user, a list or a segment found no token for an SDK device.
+    private let identity: () -> (anonId: String?, userId: String?)
+    /// Sends one registration body. The API client by default; a test passes a recorder.
+    private let send: ([String: Any]) async throws -> Void
+
+    init(keychainStore: KeychainStore, eventTracker: EventTracker?, apiClient: APIClient? = nil,
+         identity: @escaping () -> (anonId: String?, userId: String?) = { (nil, nil) },
+         send: (([String: Any]) async throws -> Void)? = nil) {
         self.keychainStore = keychainStore
         self.eventTracker = eventTracker
         self.apiClient = apiClient
+        self.identity = identity
+        if let send {
+            self.send = send
+        } else {
+            self.send = { [weak apiClient] body in
+                let _: EmptyResponse = try await apiClient?.request(.registerPushToken(body: body)) ?? EmptyResponse()
+            }
+        }
+    }
+
+    /// Registers the stored token again, with the identity as it is NOW. `identify` and `reset` call
+    /// this, so the server's row follows the user who is signed in. No stored token, nothing sent.
+    func reregister() {
+        // The token this process registered, else the stored one: the Keychain can refuse a write (a
+        // host without the entitlement, a locked device), and a token the SDK already holds must not be
+        // lost to that.
+        lastTokenLock.lock(); let held = lastToken; lastTokenLock.unlock()
+        guard let token = held ?? currentTokenString, !token.isEmpty else { return }
+        registerTokenWithBackend(token)
     }
 
     /// Store the push token, send a registration event, and register with backend.
@@ -33,6 +63,7 @@ final class PushTokenManager {
         let tokenString = token.map { String(format: "%02x", $0) }.joined()
         let previousToken = keychainStore.getString(key: Self.keychainKey)
 
+        lastTokenLock.lock(); lastToken = tokenString; lastTokenLock.unlock()
         // Store in Keychain (not UserDefaults — sensitive data)
         keychainStore.setString(key: Self.keychainKey, value: tokenString)
 
@@ -159,15 +190,13 @@ final class PushTokenManager {
         Task {
             do {
                 let deviceId = await MainActor.run { UIDevice.current.identifierForVendor?.uuidString ?? "" }
-                let body: [String: Any] = [
-                    "token": tokenString,
-                    "platform": "ios",
-                    "device_id": deviceId,
-                    "app_version": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
-                    "sdk_version": AppDNA.sdkVersion,
-                    "os_version": Self.osVersionString,
-                ]
-                let _: EmptyResponse = try await apiClient?.request(.registerPushToken(body: body)) ?? EmptyResponse()
+                let who = identity()
+                let body = PushTokenRegistration.body(
+                    token: tokenString, platform: "ios", deviceId: deviceId,
+                    appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "",
+                    sdkVersion: AppDNA.sdkVersion, osVersion: Self.osVersionString,
+                    anonId: who.anonId, userId: who.userId)
+                try await send(body)
                 Log.info("Push token registered with backend")
             } catch {
                 Log.warning("Failed to register push token with backend: \(error)")
@@ -182,6 +211,26 @@ final class PushTokenManager {
             _ = CC_SHA256(bytes.baseAddress, CC_LONG(data.count), &hash)
         }
         return hash.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// The body of `POST /api/v1/push/token`. Shared with Android and driven by the
+/// `push_token_registration_body` fixture: `anon_id` and `user_id` ride along when known (an empty
+/// string is not an id), so the server stores who the token belongs to.
+enum PushTokenRegistration {
+    static func body(token: String, platform: String, deviceId: String, appVersion: String,
+                     sdkVersion: String, osVersion: String, anonId: String?, userId: String?) -> [String: Any] {
+        var body: [String: Any] = [
+            "token": token,
+            "platform": platform,
+            "device_id": deviceId,
+            "app_version": appVersion,
+            "sdk_version": sdkVersion,
+            "os_version": osVersion,
+        ]
+        if let anonId, !anonId.isEmpty { body["anon_id"] = anonId }
+        if let userId, !userId.isEmpty { body["user_id"] = userId }
+        return body
     }
 }
 
