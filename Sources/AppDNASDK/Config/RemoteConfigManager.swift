@@ -417,47 +417,12 @@ final class RemoteConfigManager {
         // getDocument closures below set it true the moment any of them returns without a network error.
         self.queue.sync { self.configFetchReachedServer = false }
 
-        // Paywalls: index → per-item docs (subcollection), fallback → mega-doc
-        group.enter()
-        self.fetchViaIndex(
-            db: db, basePath: basePath,
-            indexPath: "paywall_index", indexKey: "paywalls",
-            itemCollection: "paywall_index/paywalls",
-            megaDocPath: "paywalls",
-            parseItem: { [weak self] id, data in self?.parseSinglePaywall(id: id, data: data) },
-            parseMegaDoc: { [weak self] data in self?.parsePaywalls(data) },
-            onComplete: { group.leave() }
-        )
-
-        // Onboarding: index → per-item docs (subcollection), fallback → mega-doc
-        group.enter()
-        self.fetchViaIndex(
-            db: db, basePath: basePath,
-            indexPath: "onboarding_index", indexKey: "flows",
-            itemCollection: "onboarding_index/flows",
-            megaDocPath: "onboarding",
-            parseItem: { [weak self] id, data in self?.parseSingleOnboardingFlow(id: id, data: data) },
-            parseMegaDoc: { [weak self] data in self?.parseOnboarding(data) },
-            extraIndexParse: { [weak self] indexData in
-                // Extract active_flow_id from the index
-                if let activeId = indexData["active_flow_id"] as? String {
-                    self?.queue.async { self?.activeOnboardingFlowId = activeId }
-                }
-            },
-            onComplete: { group.leave() }
-        )
-
-        // Surveys: index → per-item docs (subcollection), fallback → mega-doc
-        group.enter()
-        self.fetchViaIndex(
-            db: db, basePath: basePath,
-            indexPath: "survey_index", indexKey: "surveys",
-            itemCollection: "survey_index/surveys",
-            megaDocPath: "surveys",
-            parseItem: { [weak self] id, data in self?.parseSingleSurvey(id: id, data: data) },
-            parseMegaDoc: { [weak self] data in self?.parseSurveys(data) },
-            onComplete: { group.leave() }
-        )
+        // Paywalls, onboarding flows, surveys: index → per-item docs (subcollection), fallback → mega-doc
+        // (see `indexedSection(_:)`).
+        for indexPath in ["paywall_index", "onboarding_index", "survey_index"] {
+            group.enter()
+            self.fetchViaIndex(db: db, basePath: basePath, section: indexedSection(indexPath), onComplete: { group.leave() })
+        }
 
         // Experiments — lightweight, keep mega-doc pattern. After parsing, prefetch any
         // per-item variant docs the experiments reference via `variant_doc` so synchronous
@@ -477,16 +442,7 @@ final class RemoteConfigManager {
 
         // Flags: index → per-item docs (config/flag_index/flags/{key}), fallback → mega-doc.
         group.enter()
-        self.fetchViaIndex(
-            db: db, basePath: basePath,
-            indexPath: "flag_index", indexKey: "flags",
-            itemCollection: "flag_index/flags",
-            megaDocPath: "flags",
-            parseItem: { [weak self] key, data in self?.parseSingleFlag(key: key, data: data) },
-            parseMegaDoc: { [weak self] data in self?.parseFlags(data) },
-            pruneToKeys: { [weak self] keys in self?.queue.async { self?.flags = self?.flags.filter { keys.contains($0.key) } ?? [:] } },
-            onComplete: { group.leave() }
-        )
+        self.fetchViaIndex(db: db, basePath: basePath, section: indexedSection("flag_index"), onComplete: { group.leave() })
 
         // Flows (legacy zero-code) — lightweight, keep mega-doc
         group.enter()
@@ -503,19 +459,9 @@ final class RemoteConfigManager {
             }
         }
 
-        // In-app messages: index → per-item docs (config/message_index/messages/{id}),
-        // fallback → mega-doc.
+        // In-app messages: index → per-item docs (config/message_index/messages/{id}), fallback → mega-doc.
         group.enter()
-        self.fetchViaIndex(
-            db: db, basePath: basePath,
-            indexPath: "message_index", indexKey: "messages",
-            itemCollection: "message_index/messages",
-            megaDocPath: "messages",
-            parseItem: { [weak self] id, data in self?.parseSingleMessage(id: id, data: data) },
-            parseMegaDoc: { [weak self] data in self?.parseMessages(data) },
-            pruneToKeys: { [weak self] keys in self?.queue.async { self?.messages = self?.messages.filter { keys.contains($0.key) } ?? [:] } },
-            onComplete: { group.leave() }
-        )
+        self.fetchViaIndex(db: db, basePath: basePath, section: indexedSection("message_index"), onComplete: { group.leave() })
 
         // Screen index for server-driven UI
         group.enter()
@@ -838,8 +784,12 @@ final class RemoteConfigManager {
         queue.async {
             let encoder = JSONEncoder()
 
+            // Paywalls, onboarding flows and surveys are written UNCONDITIONALLY, as flags and messages are
+            // below: an index read prunes each to what it lists — to empty when it lists none — and the disk
+            // cache must follow, or a cold start serves the removed items again.
+
             // Paywalls → { "paywalls": { id: config, ... } }
-            if !self.paywalls.isEmpty {
+            do {
                 var dict: [String: Any] = [:]
                 for (id, config) in self.paywalls {
                     if let data = try? encoder.encode(config),
@@ -853,7 +803,7 @@ final class RemoteConfigManager {
             }
 
             // Onboarding → { "active_flow_id": ..., "flows": { id: config, ... } }
-            if !self.onboardingFlows.isEmpty {
+            do {
                 var dict: [String: Any] = [:]
                 for (id, config) in self.onboardingFlows {
                     if let data = try? encoder.encode(config),
@@ -869,7 +819,7 @@ final class RemoteConfigManager {
             }
 
             // Surveys → { "surveys": { id: config, ... } }
-            if !self.surveys.isEmpty {
+            do {
                 var dict: [String: Any] = [:]
                 for (id, config) in self.surveys {
                     if let data = try? encoder.encode(config),
@@ -912,49 +862,123 @@ final class RemoteConfigManager {
 
     // MARK: - Per-item fetch via index (enterprise-grade)
 
-    /// Generic helper: try to load items via a lightweight index document.
-    /// If the index exists, fan out to individual per-item documents.
-    /// If no index, fall back to the legacy mega-document.
+    /// One config type served through an index document: `config/<indexPath>` holds
+    /// `{<indexKey>: {id: {...}}}` and each item lives at `config/<itemCollection>/<id>`. An older server
+    /// writes only the mega-doc `config/<megaDocPath>`.
     ///
-    /// This avoids the 1MB Firestore limit for config types with many items
-    /// (paywalls, onboarding flows, surveys) while staying backward-compatible
-    /// with older backends that only write the mega-doc.
-    private func fetchViaIndex(
-        db: Firestore,
-        basePath: String,
-        indexPath: String,
-        indexKey: String,
-        itemCollection: String,
-        megaDocPath: String,
-        parseItem: @escaping (String, [String: Any]) -> Void,
-        parseMegaDoc: @escaping ([String: Any]) -> Void,
-        extraIndexParse: (([String: Any]) -> Void)? = nil,
-        // When provided, the index is AUTHORITATIVE: in-memory entries whose key is not in
-        // the current index are pruned (so a removed item stops serving), and an EMPTY index takes the
-        // index branch (prune-to-empty) instead of falling back to the mega-doc. Surfaces that previously
-        // full-replaced via the mega-doc (flags, messages) pass this so per-item serving keeps the same
-        // removal semantics. Surfaces without it keep the legacy additive behavior.
-        pruneToKeys: ((Set<String>) -> Void)? = nil,
-        onComplete: @escaping () -> Void
-    ) {
+    /// This avoids the 1MB Firestore limit for config types with many items while staying
+    /// backward-compatible with older backends that only write the mega-doc.
+    private struct IndexedSection {
+        let indexPath: String
+        let indexKey: String
+        let itemCollection: String
+        let megaDocPath: String
+        let parseItem: (String, [String: Any]) -> Void
+        let parseMegaDoc: ([String: Any]) -> Void
+        /// Drops every held item whose id is not in the set. The disk cache follows at the fetch completion
+        /// (`cacheAllFetchedConfigs`).
+        let pruneToKeys: (Set<String>) -> Void
+        var extraIndexParse: (([String: Any]) -> Void)? = nil
+    }
+
+    /// Every index-served config type, by index document.
+    private func indexedSection(_ indexPath: String) -> IndexedSection {
+        switch indexPath {
+        case "paywall_index":
+            return IndexedSection(
+                indexPath: indexPath, indexKey: "paywalls", itemCollection: "paywall_index/paywalls", megaDocPath: "paywalls",
+                parseItem: { [weak self] id, data in self?.parseSinglePaywall(id: id, data: data) },
+                parseMegaDoc: { [weak self] data in self?.parsePaywalls(data) },
+                pruneToKeys: { [weak self] keys in self?.queue.async { self?.paywalls = self?.paywalls.filter { keys.contains($0.key) } ?? [:] } })
+        case "onboarding_index":
+            return IndexedSection(
+                indexPath: indexPath, indexKey: "flows", itemCollection: "onboarding_index/flows", megaDocPath: "onboarding",
+                parseItem: { [weak self] id, data in self?.parseSingleOnboardingFlow(id: id, data: data) },
+                parseMegaDoc: { [weak self] data in self?.parseOnboarding(data) },
+                pruneToKeys: { [weak self] keys in
+                    self?.queue.async { self?.onboardingFlows = self?.onboardingFlows.filter { keys.contains($0.key) } ?? [:] }
+                },
+                extraIndexParse: { [weak self] indexData in
+                    // Extract active_flow_id from the index
+                    if let activeId = indexData["active_flow_id"] as? String {
+                        self?.queue.async { self?.activeOnboardingFlowId = activeId }
+                    }
+                })
+        case "survey_index":
+            return IndexedSection(
+                indexPath: indexPath, indexKey: "surveys", itemCollection: "survey_index/surveys", megaDocPath: "surveys",
+                parseItem: { [weak self] id, data in self?.parseSingleSurvey(id: id, data: data) },
+                parseMegaDoc: { [weak self] data in self?.parseSurveys(data) },
+                pruneToKeys: { [weak self] keys in
+                    self?.queue.async {
+                        guard let self else { return }
+                        let before = self.surveys.count
+                        self.surveys = self.surveys.filter { keys.contains($0.key) }
+                        if self.surveys.count != before { self.surveyUpdateHandler?(self.surveys) }
+                    }
+                })
+        case "flag_index":
+            return IndexedSection(
+                indexPath: indexPath, indexKey: "flags", itemCollection: "flag_index/flags", megaDocPath: "flags",
+                parseItem: { [weak self] key, data in self?.parseSingleFlag(key: key, data: data) },
+                parseMegaDoc: { [weak self] data in self?.parseFlags(data) },
+                pruneToKeys: { [weak self] keys in self?.queue.async { self?.flags = self?.flags.filter { keys.contains($0.key) } ?? [:] } })
+        case "message_index":
+            return IndexedSection(
+                indexPath: indexPath, indexKey: "messages", itemCollection: "message_index/messages", megaDocPath: "messages",
+                parseItem: { [weak self] id, data in self?.parseSingleMessage(id: id, data: data) },
+                parseMegaDoc: { [weak self] data in self?.parseMessages(data) },
+                pruneToKeys: { [weak self] keys in self?.queue.async { self?.messages = self?.messages.filter { keys.contains($0.key) } ?? [:] } })
+        default:
+            preconditionFailure("no indexed config section \(indexPath)")
+        }
+    }
+
+    /// The ids an index document lists, or nil when there is no index to read: `indexData` is nil (the
+    /// document does not exist) or has no `indexKey` map. A present but EMPTY map is an empty set, not nil:
+    /// the index was read and lists nothing, so nothing is live.
+    static func indexedIds(_ indexData: [String: Any]?, indexKey: String) -> Set<String>? {
+        guard let items = indexData?[indexKey] as? [String: Any] else { return nil }
+        return Set(items.keys)
+    }
+
+    /// What one read of an index document means, applied. Returns the ids to fetch as per-item documents,
+    /// or nil when the mega-doc is to be read instead.
+    ///
+    /// - **The index was read and carries its item map** — even an EMPTY one: the map is the whole list of
+    ///   what is live. Every held item it does not list is pruned (the disk cache follows at the fetch
+    ///   completion), and the listed ids are returned. An empty map therefore means "none are live"; it is
+    ///   never a reason to read the mega-doc, which a server that writes an index no longer keeps current.
+    /// - **No index** — the document does not exist, or exists without the item map (an older server that
+    ///   writes only the mega-doc): nothing is pruned, and nil sends the caller to the mega-doc.
+    /// - **The read FAILED** (offline, an error): nothing is pruned and the cache is kept; nil sends the
+    ///   caller to the mega-doc, as before.
+    private func applyIndexRead(_ section: IndexedSection, indexData: [String: Any]?, failed: Bool) -> Set<String>? {
+        if failed { return nil }
+        guard let indexData, let ids = Self.indexedIds(indexData, indexKey: section.indexKey) else { return nil }
+        section.extraIndexParse?(indexData)
+        section.pruneToKeys(ids)
+        return ids
+    }
+
+    /// Try to load items via a lightweight index document (`applyIndexRead` decides what a read means). If
+    /// the index lists items, fan out to the individual per-item documents; with no index, read the legacy
+    /// mega-document.
+    private func fetchViaIndex(db: Firestore, basePath: String, section: IndexedSection, onComplete: @escaping () -> Void) {
+        let indexPath = section.indexPath
         db.document("\(basePath)/\(indexPath)").getDocument { [weak self] snapshot, error in
             guard let self else { onComplete(); return }
 
-            if let indexData = snapshot?.data(),
-               let itemsMap = indexData[indexKey] as? [String: Any],
-               (!itemsMap.isEmpty || pruneToKeys != nil) {
-                // Index exists — fetch individual docs in parallel. Prune stale in-memory entries first.
-                Log.debug("[\(indexPath)] Found index with \(itemsMap.count) items, fetching individually")
-                extraIndexParse?(indexData)
-                pruneToKeys?(Set(itemsMap.keys))
-
+            if let ids = self.applyIndexRead(section, indexData: snapshot?.data(), failed: error != nil) {
+                // Index exists — fetch individual docs in parallel (stale entries were pruned above).
+                Log.debug("[\(indexPath)] Found index with \(ids.count) items, fetching individually")
                 let itemGroup = DispatchGroup()
-                for itemId in itemsMap.keys {
+                for itemId in ids {
                     itemGroup.enter()
-                    db.document("\(basePath)/\(itemCollection)/\(itemId)").getDocument { itemSnapshot, itemError in
+                    db.document("\(basePath)/\(section.itemCollection)/\(itemId)").getDocument { itemSnapshot, itemError in
                         defer { itemGroup.leave() }
                         if let itemData = itemSnapshot?.data() {
-                            parseItem(itemId, itemData)
+                            section.parseItem(itemId, itemData)
                         } else if let itemError {
                             Log.warning("[\(indexPath)] Failed to fetch item \(itemId): \(itemError.localizedDescription)")
                         }
@@ -964,18 +988,35 @@ final class RemoteConfigManager {
                     onComplete()
                 }
             } else {
-                // No index — fall back to legacy mega-doc
-                Log.debug("[\(indexPath)] No index found, falling back to mega-doc \(megaDocPath)")
-                db.document("\(basePath)/\(megaDocPath)").getDocument { megaSnapshot, megaError in
+                // No index, or the read failed — fall back to the legacy mega-doc
+                Log.debug("[\(indexPath)] No index read, falling back to mega-doc \(section.megaDocPath)")
+                db.document("\(basePath)/\(section.megaDocPath)").getDocument { megaSnapshot, megaError in
                     defer { onComplete() }
                     if let data = megaSnapshot?.data() {
-                        parseMegaDoc(data)
+                        section.parseMegaDoc(data)
                     } else if let megaError {
-                        Log.error("Failed to fetch \(megaDocPath) config: \(megaError.localizedDescription)")
+                        Log.error("Failed to fetch \(section.megaDocPath) config: \(megaError.localizedDescription)")
                     }
                 }
             }
         }
+    }
+
+    /// Test-only — one read of `indexPath`'s index document through `applyIndexRead`, then block until applied.
+    func _applyIndexReadForTesting(indexPath: String, indexData: [String: Any]?, failed: Bool) -> Set<String>? {
+        let ids = applyIndexRead(indexedSection(indexPath), indexData: indexData, failed: failed)
+        queue.sync {}
+        return ids
+    }
+
+    /// Test-only — one per-item document of `indexPath` through the section's own parser.
+    func _applyIndexedItemForTesting(indexPath: String, id: String, data: [String: Any]) {
+        indexedSection(indexPath).parseItem(id, data); queue.sync {}
+    }
+
+    /// Test-only — `indexPath`'s mega-doc through the section's own parser.
+    func _applyMegaDocForTesting(indexPath: String, data: [String: Any]) {
+        indexedSection(indexPath).parseMegaDoc(data); queue.sync {}
     }
 
     // MARK: - Per-item parsers (for index-based fetching)

@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An archived, unpublished or deleted flow, paywall or survey stops showing.** After a config fetch, every
+  onboarding flow, paywall and survey the server no longer lists is dropped from memory and from the cached
+  config, so it does not come back after a restart. An empty list means none are live. A failed fetch
+  (offline, an error) removes nothing. Before, a device kept serving every one it had ever fetched.
 - **A nested block draws its container style.** `container_bg_color`, `blur_background` and the other
   `container_*` keys of a block inside a row, stack, multi-buttons or section background were not drawn on iOS
   (only top-level blocks got them); Android drew them. Both now resolve them through one shared rule.
