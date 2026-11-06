@@ -14,6 +14,9 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A nested block draws its container style.** `container_bg_color`, `blur_background` and the other
+  `container_*` keys of a block inside a row, stack, multi-buttons or section background were not drawn on iOS
+  (only top-level blocks got them); Android drew them. Both now resolve them through one shared rule.
 - **Push tokens name their user.** The token registration now sends the device's anonymous ID and, once
   `identify` ran, the user ID, and registers again after `identify` and `reset`. The server stored every SDK
   token without a user, so a push to a user, a list or a segment reached no SDK device.

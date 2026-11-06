@@ -1156,39 +1156,26 @@ extension View {
     /// (input, select, row, image, text, etc.) can be made transparent/blurred.
     @ViewBuilder
     func applyBlockContainerStyle(_ block: ContentBlock) -> some View {
-        let cfg = block.field_config
-        // Completely opt-in: only apply when blur is on OR container_bg_color
-        // is explicitly set to a visible value. Prevents phantom backgrounds
-        // from stale/default color picker values.
-        let useBlur = (cfg?["blur_background"]?.value as? Bool) == true
-        let containerBg = cfg?["container_bg_color"]?.value as? String
-        let hasBg = containerBg != nil && containerBg != "" && containerBg != "#ffffff" && containerBg != "#FFFFFF" && containerBg != "transparent"
-        let containerBorderW = (cfgDouble(cfg?["container_border_width"])).flatMap { $0 > 0 ? CGFloat($0) : nil }
-        let hasBorder = containerBorderW != nil && (cfg?["container_border_color"]?.value as? String) != nil
-        // `container_opacity` (whole wrapper) takes priority; falls back to
-        // `background_opacity` for backward compat where that key was the only
-        // opacity control exposed.
-        let bgOpacity = CGFloat((cfgDouble(cfg?["container_opacity"])) ?? (cfgDouble(cfg?["background_opacity"])) ?? 1.0)
-        let containerCornerR = CGFloat((cfgDouble(cfg?["container_corner_radius"])) ?? 0)
-
-        if useBlur || hasBg || hasBorder {
+        // The decision is `BlockContainerStyle.resolve`, shared with Android and the fixture; this only draws it.
+        if let st = BlockContainerStyle.resolve(block.field_config) {
+            let r = CGFloat(st.cornerRadius)
             self
                 .background {
                     ZStack {
-                        if useBlur {
-                            RoundedRectangle(cornerRadius: containerCornerR).fill(.ultraThinMaterial)
+                        if st.blur {
+                            RoundedRectangle(cornerRadius: r).fill(.ultraThinMaterial)
                         }
-                        if hasBg, let bg = containerBg {
-                            RoundedRectangle(cornerRadius: containerCornerR)
-                                .fill(Color(hex: bg).opacity(bgOpacity))
+                        if let bg = st.fillHex {
+                            RoundedRectangle(cornerRadius: r)
+                                .fill(Color(hex: bg).opacity(st.opacity))
                         }
-                        if let bw = containerBorderW, let bc = cfg?["container_border_color"]?.value as? String, !bc.isEmpty {
-                            RoundedRectangle(cornerRadius: containerCornerR)
-                                .strokeBorder(Color(hex: bc), lineWidth: bw)
+                        if let bw = st.borderWidth, let bc = st.borderHex {
+                            RoundedRectangle(cornerRadius: r)
+                                .strokeBorder(Color(hex: bc), lineWidth: CGFloat(bw))
                         }
                     }
                 }
-                .cornerRadius(containerCornerR)
+                .cornerRadius(r)
         } else {
             self
         }

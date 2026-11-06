@@ -424,6 +424,9 @@ struct ContentBlockRendererView: View {
                 let effectiveHeight = isInputBlock ? nil : resolvedBlock.element_height
                 let isExpandableBlock = resolvedBlock.type == .input_select
 
+                // A nested block gets its container style where its container draws it
+                // (`renderBlock(child).applyBlockContainerStyle(child)`), as on Android, where every block,
+                // nested or not, goes through the one wrapper. A top-level block gets it here.
                 renderBlock(resolvedBlock, animate: shouldAnimate)
                     .environment(\.appdnaRawResolved, isRaw)
                     .applyRelativeSizing(width: resolvedBlock.element_width, height: effectiveHeight, useMinHeight: isExpandableBlock)
@@ -788,7 +791,7 @@ struct ContentBlockRendererView: View {
                 if arrangement == "center" || arrangement == "bottom" { Spacer() }
                 ForEach(Array(children.enumerated()), id: \.offset) { idx, child in
                     if arrangement == "space_between" && idx > 0 { Spacer() }
-                    renderBlock(child)
+                    renderBlock(child).applyBlockContainerStyle(child)
                 }
                 if arrangement == "center" || arrangement == "top" { Spacer() }
             }
@@ -2779,7 +2782,7 @@ struct ContentBlockRendererView: View {
 
         ZStack(alignment: align) {
             ForEach(childBlocks) { child in
-                renderBlock(child)
+                renderBlock(child).applyBlockContainerStyle(child)
             }
         }
         // Apply authored `height` to the stack container
@@ -2827,7 +2830,7 @@ struct ContentBlockRendererView: View {
          */
         let bleeds = BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
         MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
-            renderBlock(child)
+            renderBlock(child).applyBlockContainerStyle(child)
         }
         .padding(
             .horizontal,
@@ -2873,7 +2876,7 @@ struct ContentBlockRendererView: View {
                         rowLeadingIconView(icon: icon, size: leadingIconSize, color: leadingIconColor, bgColor: leadingIconBgColor, bgSize: leadingIconBgSize)
                     }
                     ForEach(childBlocks) { child in
-                        renderBlock(child)
+                        renderBlock(child).applyBlockContainerStyle(child)
                             .applyRelativeSizing(width: child.element_width, height: child.element_height)
                             .zIndex(child.overflow == "visible" ? 1 : 0)
                     }
@@ -2987,7 +2990,7 @@ struct ContentBlockRendererView: View {
                         if useSpacers { Spacer(minLength: 0); if doubleBetweenSpacer { Spacer(minLength: 0) } }
                     }
                     ForEach(Array(childBlocks.enumerated()), id: \.element.id) { idx, child in
-                        renderBlock(child)
+                        renderBlock(child).applyBlockContainerStyle(child)
                             .applyRelativeSizing(width: child.element_width, height: child.element_height)
                             .frame(maxWidth: childFill ? .infinity : nil)
                             .zIndex(child.overflow == "visible" ? 1 : 0)
@@ -3012,7 +3015,7 @@ struct ContentBlockRendererView: View {
                     }
                     ProportionalHStack(ratios: ratios, spacing: rowGap, alignment: vAlign) {
                         ForEach(childBlocks) { child in
-                            renderBlock(child)
+                            renderBlock(child).applyBlockContainerStyle(child)
                                 .applyRelativeSizing(width: child.element_width, height: child.element_height)
                                 .zIndex(child.overflow == "visible" ? 1 : 0)
                         }
@@ -3030,7 +3033,7 @@ struct ContentBlockRendererView: View {
                         if useSpacers { Spacer(minLength: 0); if doubleBetweenSpacer { Spacer(minLength: 0) } }
                     }
                     ForEach(Array(childBlocks.enumerated()), id: \.element.id) { idx, child in
-                        renderBlock(child)
+                        renderBlock(child).applyBlockContainerStyle(child)
                             .applyRelativeSizing(width: child.element_width, height: child.element_height)
                             .frame(maxWidth: childFill ? .infinity : nil)
                             .zIndex(child.overflow == "visible" ? 1 : 0)

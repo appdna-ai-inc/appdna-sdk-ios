@@ -44,6 +44,7 @@ extension SharedFixtureTests {
         case "resolve_dropdown_field_ink": runDropdownFieldInk(f, h)
         case "resolve_gallery_title_ink": runGalleryTitleInk(f, h)
         case "build_push_token_body": runPushTokenBody(f, h)
+        case "resolve_block_container_style": runBlockContainerStyle(f, h)
         default: return false
         }
         return true
