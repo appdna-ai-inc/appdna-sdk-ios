@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Specific colours win over a Typography style.** A selected plan's `selected_text_color` and a plan's own
+  `price_color` did nothing when the plans section also styled the name, price, trial or feature text, and a
+  survey's `question_text_style` without a colour drew questions in the system text colour instead of the
+  theme's `text_color` (dark on a dark survey). The specific colour now reaches the text, as on Android.
 - **A styled button's label keeps its colour.** A button with a Typography `style` drew its label in the
   system text colour (near-black in a light appearance) whatever its variant or `text_color` said, so on a
   dark button it was unreadable. The label is now `text_color`, else `style.color`, else the variant's own

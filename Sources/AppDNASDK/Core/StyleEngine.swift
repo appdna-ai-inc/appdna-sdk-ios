@@ -235,12 +235,20 @@ extension View {
     }
 
     /// Apply TextStyleConfig to a Text-like view.
-    func applyTextStyle(_ style: TextStyleConfig?) -> some View {
-        guard let s = style else { return AnyView(self) }
+    ///
+    /// - Parameter colorOverride: a colour MORE specific than the style (a selected plan's text
+    ///   colour, a plan's own price colour, a theme's text colour for a style that sets none). It
+    ///   has to be applied HERE: the style's colour (`.primary` when it sets none) is applied
+    ///   closest to the text, so a `.foregroundColor` chained after this call never reaches it.
+    func applyTextStyle(_ style: TextStyleConfig?, colorOverride: Color? = nil) -> some View {
+        guard let s = style else {
+            if let colorOverride { return AnyView(self.foregroundColor(colorOverride)) }
+            return AnyView(self)
+        }
         let font = FontResolver.font(family: s.font_family, size: s.font_size, weight: s.font_weight)
         let base = self
             .font(font)
-            .foregroundColor(s.color.map { Color(hex: $0) } ?? .primary)
+            .foregroundColor(colorOverride ?? s.color.map { Color(hex: $0) } ?? .primary)
             .multilineTextAlignment(textAlignment(s.alignment))
             .lineSpacing(lineSpacing(s.line_height, s.font_size))
             .opacity(s.opacity ?? 1.0)

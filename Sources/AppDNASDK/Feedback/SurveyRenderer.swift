@@ -200,7 +200,12 @@ struct SurveyContainerView: View {
                     // Honor theme.text_align.
                     if currentQuestionIndex < visibleQuestions.count {
                         questionView(for: visibleQuestions[currentQuestionIndex])
-                            .applyTextStyle(config.appearance?.question_text_style)
+                            // The theme's text colour reaches the question unless the style authors
+                            // its own: chained after the style, it lost to the `.primary` a colourless
+                            // style applies closest to the text.
+                            .applyTextStyle(
+                                config.appearance?.question_text_style,
+                                colorOverride: config.appearance?.question_text_style?.color == nil ? textColor : nil)
                             .font(themeFont)
                             .foregroundColor(textColor)
                             .multilineTextAlignment(themeTextAlignment)

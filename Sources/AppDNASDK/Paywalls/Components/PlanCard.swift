@@ -197,8 +197,7 @@ struct PlanCard: View {
                             Group {
                                 if let ts = planNameTextStyle {
                                     Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
-                                        .applyTextStyle(ts)
-                                        .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                        .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
                                 } else {
                                     Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
                                         .font(.headline)
@@ -229,8 +228,7 @@ struct PlanCard: View {
                             Group {
                                 if let ts = trialTextStyle {
                                     Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
-                                        .applyTextStyle(ts)
-                                        .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                        .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
                                 } else {
                                     Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
                                         .font(.caption)
@@ -278,8 +276,7 @@ struct PlanCard: View {
                                         Group {
                                             if let ts = featureTextStyle {
                                                 Text(feat)
-                                                    .applyTextStyle(ts)
-                                                    .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : nil)
+                                                    .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : nil)
                                             } else {
                                                 Text(feat)
                                                     .font(.caption2)
@@ -451,8 +448,8 @@ struct PlanCard: View {
         Group {
             if let ts = priceTextStyle {
                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
-                    .applyTextStyle(ts)
-                    .foregroundColor(planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
+                    // The override goes INTO the style call: chained after it, it never reached the text.
+                    .applyTextStyle(ts, colorOverride: planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
             } else {
                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                     .font(.subheadline.bold())
