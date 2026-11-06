@@ -2847,11 +2847,12 @@ struct ContentBlockRendererView: View {
     private func wrappedRowBlock(_ block: ContentBlock) -> some View {
         let childBlocks = containerChildren(block)
         let rowGap = CGFloat(block.spacing ?? block.gap ?? 8)
-        let rowBgOpacity = CGFloat((cfgDouble(block.field_config?["background_opacity"])) ?? 1.0)
+        let rowFill = RowFill.resolve(block.field_config)
+        let rowBgOpacity = CGFloat(rowFill?.opacity ?? 1)
         let rowUseBlur = (block.field_config?["blur_background"]?.value as? Bool) == true
         let rowBorderW = CGFloat((cfgDouble(block.field_config?["border_width"])) ?? 0)
         let rowBorderCol = (block.field_config?["border_color"]?.value as? String).map { Color(hex: $0) }
-        let rowBgCol = (block.field_config?["bg_color"]?.value as? String).map { Color(hex: $0) }
+        let rowBgCol = rowFill.map { Color(hex: $0.hex) }
         let rowCornerR = CGFloat((cfgDouble(block.field_config?["corner_radius"])) ?? 0)
         // Leading icon slot — must render inside the wrap too (parity with
         // standardRowBlock + Android FlowRow's LeadingIconSlot()).
@@ -2906,11 +2907,12 @@ struct ContentBlockRendererView: View {
         let ratios: [CGFloat] = parseColumnRatios(ratioStr)
 
         // Row background: opacity + blur (same as select options)
-        let rowBgOpacity = CGFloat((cfgDouble(block.field_config?["background_opacity"])) ?? 1.0)
+        let rowFill = RowFill.resolve(block.field_config)
+        let rowBgOpacity = CGFloat(rowFill?.opacity ?? 1)
         let rowUseBlur = (block.field_config?["blur_background"]?.value as? Bool) == true
         let rowBorderW = CGFloat((cfgDouble(block.field_config?["border_width"])) ?? 0)
         let rowBorderCol = (block.field_config?["border_color"]?.value as? String).map { Color(hex: $0) }
-        let rowBgCol = (block.field_config?["bg_color"]?.value as? String).map { Color(hex: $0) }
+        let rowBgCol = rowFill.map { Color(hex: $0.hex) }
         let rowCornerR = CGFloat((cfgDouble(block.field_config?["corner_radius"])) ?? 0)
 
         // Leading icon slot (for info-card pattern: icon + children layout)
