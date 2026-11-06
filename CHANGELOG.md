@@ -6,8 +6,25 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.0.86] — unreleased
 
+### Added
+
+- **A flow-wide background.** `settings.background` on an onboarding flow (the same shape as a step
+  background: colour, gradient, image, Lottie or Rive) is drawn by every step that sets no background of
+  its own. Before, a step without one drew `systemBackground`, so a theme had to be repeated on every step.
+
 ### Fixed
 
+- **Text on a pale gradient is readable.** Text nobody coloured (headings, text, input labels and typed
+  text, the back / close / Skip controls) is drawn dark on a gradient whose every stop is light. It was
+  drawn white on every gradient, so on a pale one it disappeared. A gradient with any dark stop keeps
+  white text, and Google's logo is unchanged.
+- **The paywall guarantee badge draws its shield.** The default symbol was `shield.checkmark.fill`, which
+  is not an SF Symbol, so the badge drew no icon at all. It is `checkmark.shield.fill` now, and the old
+  spelling is read as that symbol.
+- **In-app message buttons open their link.** A CTA's link is read from `cta_action.url` and also from
+  `cta_action.value`; the action type `url` reads as `open_url`; and a `cta_action` written as a bare string
+  no longer stops the whole message from decoding. Before, a CTA saved as `{type, value}` (the shape the
+  console writes) only dismissed the message.
 - **Unstyled headings and text inside a container follow the container's fill.** A heading or text with no
   colour inside a dark row or section background is drawn light, as on Android; before, iOS judged it by the
   step behind the container.
@@ -32,33 +49,10 @@ the project uses [Semantic Versioning](https://semver.org/).
   button keep working, and a message with neither stays dismissable, so the user always has a way out.
   Applies to banner, modal, fullscreen and tooltip messages. Before, the SDK always showed the close button.
 
-## [1.0.85] — unreleased
+## [1.0.85]
 
 Security update: the SDK requires Cloud Firestore 12.19.3 or later. **Rebuild and republish your app** after
 updating; an installed build keeps the certificates it was built with.
-
-### Added
-
-- **A flow-wide background.** `settings.background` on an onboarding flow (the same shape as a step
-  background: colour, gradient, image, Lottie or Rive) is drawn by every step that sets no background of
-  its own. Before, a step without one drew `systemBackground`, so a theme had to be repeated on every step.
-
-### Fixed (onboarding)
-
-- **Text on a pale gradient is readable.** Text nobody coloured (headings, text, input labels and typed
-  text, the back / close / Skip controls) is drawn dark on a gradient whose every stop is light. It was
-  drawn white on every gradient, so on a pale one it disappeared. A gradient with any dark stop keeps
-  white text, and Google's logo is unchanged.
-- **The paywall guarantee badge draws its shield.** The default symbol was `shield.checkmark.fill`, which
-  is not an SF Symbol, so the badge drew no icon at all. It is `checkmark.shield.fill` now, and the old
-  spelling is read as that symbol.
-
-### Fixed
-
-- **In-app message buttons open their link.** A CTA's link is read from `cta_action.url` and also from
-  `cta_action.value`; the action type `url` reads as `open_url`; and a `cta_action` written as a bare string
-  no longer stops the whole message from decoding. Before, a CTA saved as `{type, value}` (the shape the
-  console writes) only dismissed the message.
 
 ### Security
 
