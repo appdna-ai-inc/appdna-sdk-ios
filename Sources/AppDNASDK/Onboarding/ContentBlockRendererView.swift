@@ -1353,7 +1353,8 @@ struct ContentBlockRendererView: View {
         // Device QA (2026-08-04): bg_color/text_color were uneditable. When set they override the
         // accent-tinted background / white message text; unset keeps the variant defaults (parity w/ Android).
         let bgOverride = block.bg_color.map { Color(hex: $0) }
-        let textColor = Color(hex: block.text_color ?? "#FFFFFF")
+        // Unset `text_color` no longer means white: `WarningBannerInk` picks it from the banner's own fill
+        // or from what is behind it (read at the draw site, below), so a light step gets dark ink.
         // Subtitle + alignment, own border/radius, per-role font size, font family.
         // EVERY default below reproduces the earlier render (14/medium, radius 12, 1pt accent@0.45,
         // leading), so an already-published banner is pixel-identical until an author changes something.
@@ -1396,8 +1397,8 @@ struct ContentBlockRendererView: View {
         )
         let iconSize = CGFloat(BannerIconResolution.size(cfgDouble(fc?["banner_icon_size"])))
         let rowAlign: VerticalAlignment = iconAlign == "top" ? .top : (iconAlign == "bottom" ? .bottom : .center)
-        let titleColor = (fc?["banner_title_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
-        let subtitleColor = (fc?["banner_subtitle_color"]?.value as? String).map { Color(hex: $0) } ?? textColor
+        let authoredTitleColor = (fc?["banner_title_color"]?.value as? String).map { Color(hex: $0) }
+        let authoredSubtitleColor = (fc?["banner_subtitle_color"]?.value as? String).map { Color(hex: $0) }
         let rawLink = (fc?["banner_link_text"]?.value as? String) ?? ""
         let linkText = rawLink.isEmpty
             ? ""
@@ -1425,6 +1426,11 @@ struct ContentBlockRendererView: View {
             case .glyph(let text):
                 Text(text).font(.system(size: iconSize))
             }
+            BackdropReader { behind, dark in
+            let textColor = Color(hex: WarningBannerInk.resolve(
+                textColor: block.text_color, bgColor: block.bg_color, behind: behind, darkAppearance: dark))
+            let titleColor = authoredTitleColor ?? textColor
+            let subtitleColor = authoredSubtitleColor ?? textColor
             VStack(alignment: hAlign, spacing: 2) {
                 Text(text).font(titleFont).foregroundColor(titleColor).multilineTextAlignment(tAlign)
                 if !subtitle.isEmpty {
@@ -1463,6 +1469,7 @@ struct ContentBlockRendererView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: fAlign)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
@@ -4459,6 +4466,14 @@ internal func mapboxStaticURL(_ block: ContentBlock, token: String?, width: CGFl
 /// the tree — the step, or the fill of the container it sits in (a section's zones, a row's colour), which
 /// each block hands its content through `GoogleAttributionBlockBackdrop`. Read here, where the text is drawn,
 /// not from the renderer's own environment (which is the step's, even for a block inside a container).
+/// What is behind this place in the tree, and the appearance — for a view that picks its own ink from them.
+struct BackdropReader<Content: View>: View {
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+    @SwiftUI.Environment(\.colorScheme) private var scheme
+    @ViewBuilder let content: (GoogleMapsAttribution.Backdrop, Bool) -> Content
+    var body: some View { content(behind, scheme == .dark) }
+}
+
 struct UnstyledInkReader<Content: View>: View {
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
     @SwiftUI.Environment(\.colorScheme) private var scheme

@@ -1370,6 +1370,8 @@ final class VisualSnapshotTests: XCTestCase {
             {"id": "s", "type": "warning_banner", "text": "Email verified successfully", "field_config": {"banner_variant": "success"}}
             """,
         ])
+        // The harness paints #0F1117: say so, as a step does, so an unauthored banner picks its ink for it.
+        .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }
@@ -1400,6 +1402,8 @@ final class VisualSnapshotTests: XCTestCase {
                               "banner_border_width": 0}}
             """,
         ])
+        // The harness paints #0F1117: say so, as a step does, so an unauthored banner picks its ink for it.
+        .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
             assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
         }

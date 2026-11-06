@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An unstyled warning banner is readable on a light step.** A `warning_banner` with no `text_color` drew
+  its message and subtitle white on its translucent tint, which on a light step measured about 1.1:1. They
+  now take their ink from what is behind the banner (dark `#111827` on a light step, white on a dark one), or
+  from the banner's own `bg_color` when it sets one.
 - **Option labels and summary headlines are readable on any step.** An unstyled option label in a Select
   (options without their own fill) and a `summary_screen` headline with no `text_color` take their ink from
   what is behind them; before, labels were dark on a dark step and the headline white on a light one.
