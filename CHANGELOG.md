@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An unregistered custom view no longer shows its debug key to users.** A `custom_view` block whose
+  `view_key` the app has not registered drew the literal `[view_key]` whenever it had no `placeholder_text`.
+  A release build now draws the authored placeholder image or text, and nothing when neither is set (the
+  missing key is logged); a DEBUG build still shows `[view_key]`.
 - **Text on a pale gradient is readable.** Text nobody coloured (headings, text, input labels and typed
   text, the back / close / Skip controls) is drawn dark on a gradient whose every stop is light. It was
   drawn white on every gradient, so on a pale one it disappeared. A gradient with any dark stop keeps
@@ -49,7 +53,7 @@ the project uses [Semantic Versioning](https://semver.org/).
   button keep working, and a message with neither stays dismissable, so the user always has a way out.
   Applies to banner, modal, fullscreen and tooltip messages. Before, the SDK always showed the close button.
 
-## [1.0.85]
+## [1.0.85] — 2026-11-03
 
 Security update: the SDK requires Cloud Firestore 12.19.3 or later. **Rebuild and republish your app** after
 updating; an installed build keeps the certificates it was built with.
@@ -61,7 +65,7 @@ updating; an installed build keeps the certificates it was built with.
   `firebase-ios-sdk` `12.19.3..<13.0.0` (was `from: 11.0.0`, which resolved the unpatched 11.x line). If your app
   pins Firebase below 12.19.3, raise it; resolution fails rather than building against a vulnerable Firestore.
 
-## [1.0.84] — unreleased
+## [1.0.84] — 2026-11-03
 
 Paywalls show the App Store's own price, billing period and free trial. Location fields can search
 with Google as well as Mapbox. Lottie and Rive animations render for real. Two new delegate methods
