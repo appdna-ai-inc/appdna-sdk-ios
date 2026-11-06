@@ -1636,7 +1636,10 @@ struct ContentBlockRendererView: View {
         // a developer's Mac, purely because the two simulators were in different appearance modes,
         // which is how it was caught.
         let textColor = Color(hex: block.text_color ?? "#FFFFFF")
-        let headlineColor = textColor
+        // The headline sits on the step, not on a card: unauthored, it takes its ink from what is behind it
+        // (`UnstyledInkReader`), as text does — white on cream was invisible. The card labels keep #FFFFFF on
+        // their own dark card fill.
+        let authoredHeadline: Color? = block.text_color.map { Color(hex: $0) }
         let alignStr = (block.field_config?["summary_align"]?.value as? String) ?? "center"
         let headlineAlign: Alignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
         let headlineTextAlign: TextAlignment = alignStr == "left" ? .leading : (alignStr == "right" ? .trailing : .center)
@@ -1651,9 +1654,11 @@ struct ContentBlockRendererView: View {
         }
         return VStack(spacing: 12) {
             if !headline.isEmpty {
-                Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(headlineColor)
-                    .multilineTextAlignment(headlineTextAlign)
-                    .frame(maxWidth: .infinity, alignment: headlineAlign)
+                UnstyledInkReader { ink in
+                    Text(headline).font(.system(size: 22, weight: .bold)).foregroundColor(authoredHeadline ?? ink)
+                        .multilineTextAlignment(headlineTextAlign)
+                        .frame(maxWidth: .infinity, alignment: headlineAlign)
+                }
             }
             ForEach(Array(rows.enumerated()), id: \.offset) { _, rowStats in
                 HStack(spacing: 12) {

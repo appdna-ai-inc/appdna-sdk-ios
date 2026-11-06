@@ -710,6 +710,9 @@ struct FormInputSelectBlock: View {
     @State private var localQuery: String = ""
     /// This block came out of the raw host-data pass (markers honoured, sheets not re-scanned).
     @SwiftUI.Environment(\.appdnaRawResolved) private var rawResolved: Bool
+    /// What is behind the options here, for the ink of option labels nobody coloured.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var optionInkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var optionInkScheme
 
     /// `empty_state` (text in place of the options) on a raw-pass block.
     private var emptyStateText: String? {
@@ -1457,11 +1460,14 @@ struct FormInputSelectBlock: View {
         let optionBg: Color = cfgOptBg
             ?? block.field_style?.background_color.map { Color(hex: $0) }
             ?? Color.clear
+        // An option label nobody coloured, on an option with no fill of its own, takes its ink from what is
+        // behind the field (light on a dark step), as text does. An authored option fill keeps the old default.
+        let optionFillAuthored = cfgOptBg != nil || block.field_style?.background_color != nil
         let textCol: Color = cfgOptText
             ?? block.field_style?.text_color.map { Color(hex: $0) }
             ?? block.text_color.map { Color(hex: $0) }
             ?? block.style?.color.map { Color(hex: $0) }
-            ?? .primary
+            ?? (optionFillAuthored ? .primary : UnstyledInk.text(behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark))
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
@@ -1852,11 +1858,14 @@ struct FormInputSelectBlock: View {
         let optionBg: Color = cfgOptBg
             ?? block.field_style?.background_color.map { Color(hex: $0) }
             ?? Color.clear
+        // An option label nobody coloured, on an option with no fill of its own, takes its ink from what is
+        // behind the field (light on a dark step), as text does. An authored option fill keeps the old default.
+        let optionFillAuthored = cfgOptBg != nil || block.field_style?.background_color != nil
         let textCol: Color = cfgOptText
             ?? block.field_style?.text_color.map { Color(hex: $0) }
             ?? block.text_color.map { Color(hex: $0) }
             ?? block.style?.color.map { Color(hex: $0) }
-            ?? .primary
+            ?? (optionFillAuthored ? .primary : UnstyledInk.text(behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark))
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
