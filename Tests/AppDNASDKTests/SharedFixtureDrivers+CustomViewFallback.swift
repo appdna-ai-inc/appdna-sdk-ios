@@ -2,7 +2,7 @@ import XCTest
 @testable import AppDNASDK
 
 extension SharedFixtureTests {
-    // #1501 resolve_custom_view_fallback REAL: the lenient `[ContentBlock]` decode → `CustomViewFallback.resolve`.
+    // resolve_custom_view_fallback REAL: the lenient `[ContentBlock]` decode → `CustomViewFallback.resolve`.
     func runCustomViewFallback(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_custom_view_fallback needs action.cases")

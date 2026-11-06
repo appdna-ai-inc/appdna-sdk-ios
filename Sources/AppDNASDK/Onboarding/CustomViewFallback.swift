@@ -1,6 +1,6 @@
 import Foundation
 
-/// #1501 — what a `custom_view` block draws when the host app has NOT registered its `view_key`.
+/// What a `custom_view` block draws when the host app has NOT registered its `view_key`.
 ///
 /// It used to draw the literal `[view_key]` (a developer's debug label) to end users whenever the block carried no
 /// `placeholder_text`. Now, in order: the host's view; else the authored placeholder image; else the authored

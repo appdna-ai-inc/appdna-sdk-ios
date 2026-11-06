@@ -1,6 +1,6 @@
 // CustomViewFallbackRenderTests.swift
 //
-// #1501 — an UNREGISTERED custom_view never draws its debug key to an end user.
+// An UNREGISTERED custom_view never draws its debug key to an end user.
 //
 // It drew the literal `[view_key]` whenever the block carried no `placeholder_text`. Rendered through the real
 // `ContentBlockRendererView` on a white step and the non-white pixels counted:
