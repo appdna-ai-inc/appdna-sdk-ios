@@ -14,6 +14,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Unstyled rich text and lists are readable on dark screens.** A `rich_text` or `list` block with no colour
+  takes its ink from what is behind it, as text does; before, it was dark on a dark step or fill.
 - **An unregistered custom view no longer shows its debug key to users.** A `custom_view` block whose
   `view_key` the app has not registered drew the literal `[view_key]` whenever it had no `placeholder_text`.
   A release build now draws the authored placeholder image or text, and nothing when neither is set (the

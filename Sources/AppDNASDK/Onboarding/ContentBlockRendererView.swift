@@ -1803,8 +1803,10 @@ struct ContentBlockRendererView: View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array((block.items ?? []).enumerated()), id: \.offset) { index, item in
                 HStack(spacing: 10) {
-                    listMarker(style: block.list_style ?? "bullet", index: index, checkColor: block.check_color)
+                    listMarker(style: block.list_style ?? "bullet", index: index, checkColor: block.check_color, ink: ink)
                     // Localize each list item using block id + index key
+        // Unstyled items and markers take their ink from what is behind the list, as text does.
+        UnstyledInkReader { ink in
                     Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
                         .applyTextStyle(block.style)
                 }
@@ -1812,12 +1814,12 @@ struct ContentBlockRendererView: View {
         }
     }
 
-    private func listMarker(style: String, index: Int, checkColor: String? = nil) -> AnyView {
+    private func listMarker(style: String, index: Int, checkColor: String? = nil, ink: Color = .primary) -> AnyView {
         switch style {
         case "numbered":
             return AnyView(Text("\(index + 1).")
                 .font(.subheadline.weight(.semibold))
-                .foregroundColor(.secondary))
+                .foregroundColor(ink.opacity(0.6)))
         case "check":
             // Honor authored check_color (editor default green #22C55E); was hardcoded brandAccent.
             return AnyView(Image(systemName: "checkmark.circle.fill")
@@ -1825,7 +1827,7 @@ struct ContentBlockRendererView: View {
                 .foregroundColor(Color(hex: checkColor ?? "#22C55E")))
         default:
             return AnyView(Circle()
-                .fill(Color.primary.opacity(0.5))
+                .fill(ink.opacity(0.5))
                 .frame(width: 6, height: 6))
         }
     }
@@ -2569,11 +2571,14 @@ struct ContentBlockRendererView: View {
                 let attributed = MarkdownText.attributed(content, linkColor: linkCol, textColor: textCol, underlineMarkers: true)
                 Text(attributed)
                     .font(styleFont)
-                    .foregroundColor(isLegal ? .secondary : .primary)
+                    .foregroundColor(textColForFallback(rtStyle) ?? (isLegal ? .secondary : .primary))
                     .applyTextStyleDecorations(rtStyle)
                     // Honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
                     // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
+                // Unstyled runs take their ink from what is behind the block (light on a dark step or
+                // fill), as text does; an authored colour is on the runs themselves and wins.
+                UnstyledInkReader { ink in
                     // would otherwise override ours when base_style.alignment is unset.
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
@@ -2581,7 +2586,7 @@ struct ContentBlockRendererView: View {
                 // Fallback: render as plain text, stripping markdown tokens
                 Text(stripMarkdown(content))
                     .font(styleFont)
-                    .foregroundColor(isLegal ? .secondary : .primary)
+                    .foregroundColor(isLegal ? ink.opacity(0.6) : ink)
                     .applyTextStyleDecorations(rtStyle)
                     .lineLimit(block.max_lines)
                     .multilineTextAlignment(textAlign)
@@ -2598,6 +2603,8 @@ struct ContentBlockRendererView: View {
         result = result.replacingOccurrences(of: "__(.+?)__", with: "$1", options: .regularExpression)
         // Italic: *text* or _text_
         result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
+    private func textColForFallback(_ style: TextStyleConfig?) -> Color? { style?.color.map { Color(hex: $0) } }
+
         result = result.replacingOccurrences(of: "_(.+?)_", with: "$1", options: .regularExpression)
         // Links: [text](url)
         result = result.replacingOccurrences(of: "\\[(.+?)\\]\\(.+?\\)", with: "$1", options: .regularExpression)
