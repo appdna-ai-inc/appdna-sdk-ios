@@ -1800,17 +1800,19 @@ struct ContentBlockRendererView: View {
     // MARK: - List
 
     private func listBlock(_ block: ContentBlock) -> some View {
+        // Unstyled items and markers take their ink from what is behind the list, as text does.
+        UnstyledInkReader { ink in
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array((block.items ?? []).enumerated()), id: \.offset) { index, item in
                 HStack(spacing: 10) {
                     listMarker(style: block.list_style ?? "bullet", index: index, checkColor: block.check_color, ink: ink)
                     // Localize each list item using block id + index key
-        // Unstyled items and markers take their ink from what is behind the list, as text does.
-        UnstyledInkReader { ink in
                     Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
+                        .foregroundColor(block.style?.color.map { Color(hex: $0) } ?? ink)
                         .applyTextStyle(block.style)
                 }
             }
+        }
         }
     }
 
@@ -2569,24 +2571,25 @@ struct ContentBlockRendererView: View {
             if #available(iOS 15.0, *) {
                 let textCol: Color? = rtStyle?.color.map { Color(hex: $0) }
                 let attributed = MarkdownText.attributed(content, linkColor: linkCol, textColor: textCol, underlineMarkers: true)
+                // Unstyled runs take their ink from what is behind the block (light on a dark step or
+                // fill), as text does; an authored colour is on the runs themselves and wins.
+                UnstyledInkReader { ink in
                 Text(attributed)
                     .font(styleFont)
-                    .foregroundColor(textColForFallback(rtStyle) ?? (isLegal ? .secondary : .primary))
+                    .foregroundColor(isLegal ? ink.opacity(0.6) : ink)
                     .applyTextStyleDecorations(rtStyle)
                     // Honor max_lines like Android (ClickableText maxLines)
                     .lineLimit(block.max_lines)
                     // Apply AFTER applyTextStyleDecorations — its internal multilineTextAlignment
-                // Unstyled runs take their ink from what is behind the block (light on a dark step or
-                // fill), as text does; an authored colour is on the runs themselves and wins.
-                UnstyledInkReader { ink in
                     // would otherwise override ours when base_style.alignment is unset.
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
+                }
             } else {
                 // Fallback: render as plain text, stripping markdown tokens
                 Text(stripMarkdown(content))
                     .font(styleFont)
-                    .foregroundColor(isLegal ? ink.opacity(0.6) : ink)
+                    .foregroundColor(textColForFallback(rtStyle) ?? (isLegal ? .secondary : .primary))
                     .applyTextStyleDecorations(rtStyle)
                     .lineLimit(block.max_lines)
                     .multilineTextAlignment(textAlign)
@@ -2594,6 +2597,8 @@ struct ContentBlockRendererView: View {
             }
         }
     }
+
+    private func textColForFallback(_ style: TextStyleConfig?) -> Color? { style?.color.map { Color(hex: $0) } }
 
     /// Strip markdown tokens for pre-iOS 15 fallback.
     private func stripMarkdown(_ text: String) -> String {
@@ -2603,8 +2608,6 @@ struct ContentBlockRendererView: View {
         result = result.replacingOccurrences(of: "__(.+?)__", with: "$1", options: .regularExpression)
         // Italic: *text* or _text_
         result = result.replacingOccurrences(of: "\\*(.+?)\\*", with: "$1", options: .regularExpression)
-    private func textColForFallback(_ style: TextStyleConfig?) -> Color? { style?.color.map { Color(hex: $0) } }
-
         result = result.replacingOccurrences(of: "_(.+?)_", with: "$1", options: .regularExpression)
         // Links: [text](url)
         result = result.replacingOccurrences(of: "\\[(.+?)\\]\\(.+?\\)", with: "$1", options: .regularExpression)
