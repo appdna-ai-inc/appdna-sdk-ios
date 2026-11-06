@@ -3331,14 +3331,18 @@ struct ContentBlockRendererView: View {
                 case .success(let image):
                     image.resizable().aspectRatio(contentMode: .fit)
                 case .failure:
-                    placeholderTextView(block.placeholder_text ?? "[\(key)]")
+                    // #1501 — the authored text, else the debug key in a DEBUG build only, else nothing.
+                    if let text = CustomViewFallback.text(viewKey: key, placeholderText: block.placeholder_text) {
+                        placeholderTextView(text)
+                    }
                 default:
                     ProgressView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: block.height.map { CGFloat($0) })
-        } else {
-            placeholderTextView(block.placeholder_text ?? "[\(key)]")
+        } else if let text = CustomViewFallback.text(viewKey: key, placeholderText: block.placeholder_text) {
+            // #1501 — `[view_key]` reached end users; a release build now draws nothing when nothing was authored.
+            placeholderTextView(text)
         }
     }
 

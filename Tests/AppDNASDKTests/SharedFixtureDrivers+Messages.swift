@@ -37,6 +37,7 @@ extension SharedFixtureTests {
         case "resolve_container_children": runContainerChildren(f, h)
         case "resolve_rating_answer": runRatingAnswer(f, h)
         case "resolve_loading_variant": runLoadingVariant(f, h)
+        case "resolve_custom_view_fallback": runCustomViewFallback(f, h)
         default: return false
         }
         return true
