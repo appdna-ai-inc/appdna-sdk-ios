@@ -832,10 +832,15 @@ struct ContentBlockRendererView: View {
             EmptyView()
         } else if let title = block.gallery_title, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             VStack(alignment: galleryTitleAlignment(block), spacing: 8) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(Color(hex: block.gallery_title_color ?? "#FFFFFF"))
-                    .frame(maxWidth: .infinity, alignment: Alignment(horizontal: galleryTitleAlignment(block), vertical: .center))
+                // Unset, the title takes the unstyled ink for what is behind it (`GalleryTitleInk`); it was
+                // white everywhere, so on a light step a default title was invisible.
+                BackdropReader { behind, dark in
+                    let ink = GalleryTitleInk.resolve(authored: block.gallery_title_color, behind: behind, darkAppearance: dark)
+                    Text(title)
+                        .font(.headline)
+                        .foregroundColor(ink == "light" ? .white : (ink == "dark" ? .black : Color(hex: ink)))
+                        .frame(maxWidth: .infinity, alignment: Alignment(horizontal: galleryTitleAlignment(block), vertical: .center))
+                }
                 mediaGalleryStrip(block, images: images, itemW: itemW, itemH: itemH, cr: cr, spacing: spacing, fill: fill, autoscroll: autoscroll, cycle: cycle, previewOnSelect: previewOnSelect, galleryAlignment: galleryAlignment)
             }
         } else {
