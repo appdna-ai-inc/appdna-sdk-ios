@@ -1339,6 +1339,10 @@ struct FormInputSelectBlock: View {
     @ViewBuilder
     private func multiDropdownSelectView(options: [InputOption], fieldId: String) -> some View {
         let label = DropdownSelectPick.multiLabel(drawn: selectedValues, options: options, placeholder: block.field_placeholder ?? "Select...")
+        // The field's ink follows what it sits on: its own authored fill, else what is behind the block. It
+        // was `.primary` / `.secondary` always, so on a dark step in a light appearance the field read as blank.
+        let lightInk = DropdownFieldInk.light(fieldBackground: block.field_style?.background_color,
+                                              behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark)
         Menu {
             ForEach(options) { option in
                 Button {
@@ -1354,11 +1358,14 @@ struct FormInputSelectBlock: View {
         } label: {
             HStack {
                 Text(label.text)
-                    .foregroundColor(label.isPlaceholder ? .secondary : .primary)
+                    .foregroundColor(label.isPlaceholder
+                        ? (lightInk ? Color.white.opacity(0.6) : .secondary)
+                        : (lightInk ? Color.white : .primary))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundColor(.secondary)
+                Image(systemName: "chevron.up.chevron.down").font(.caption)
+                    .foregroundColor(lightInk ? Color.white.opacity(0.6) : .secondary)
             }
         }
         .accessibilityValue(label.isPlaceholder ? "" : label.text)
@@ -3572,5 +3579,17 @@ enum DropdownSelectPick {
         inputValues[fieldId] = option.resolvedValue
         store.record(fieldId: fieldId, option: option)
         return SelectOptionSheet.opened(by: option)
+    }
+}
+
+/// Whether a dropdown Select's field draws light ink: judged by its own `field_style.background_color` when
+/// one is authored (and visible), else by what is behind the block. Shared with Android
+/// (`DropdownFieldInk`) and driven by the `dropdown_field_ink` fixture.
+enum DropdownFieldInk {
+    static func light(fieldBackground: String?, behind: GoogleMapsAttribution.Backdrop, darkAppearance: Bool) -> Bool {
+        let bg = fieldBackground?.trimmingCharacters(in: .whitespaces) ?? ""
+        let surface: GoogleMapsAttribution.Backdrop =
+            bg.isEmpty || ["transparent", "clear"].contains(bg.lowercased()) ? behind : .plain(hex: bg)
+        return GoogleMapsAttribution.needsLightInk(on: surface, darkAppearance: darkAppearance)
     }
 }

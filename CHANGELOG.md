@@ -14,6 +14,9 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A multi-pick dropdown is readable on a dark step.** Its placeholder, picked labels and chevron were the
+  system text colours, near-black on a dark step in a light appearance; they now follow the field's own fill,
+  else what is behind it.
 - **A row's fill is read through one shared rule.** `field_config.bg_color` at `background_opacity` (clamped to
   0–1, multiplying the colour's own alpha) is resolved the same way on both platforms; no visual change on iOS.
 - **Specific colours win over a Typography style.** A selected plan's `selected_text_color` and a plan's own
