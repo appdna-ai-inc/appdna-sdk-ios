@@ -38,6 +38,12 @@ targets:
         # `scripts/sdk-host-ios.ts`, never committed with a real value — this directory is mirrored
         # to the public SDK repo.
         AppDNABaseURLOverride: "$(APPDNA_BASE_URL_OVERRIDE)"
+        # A DEVICE-WALK build's key and menu (`WalkMenu.swift`), so a tester who opens the app from the
+        # home screen — or a push that cold-launches it — gets the walk's key and surfaces without a
+        # launch argument. Both empty here (a stock build is unchanged); supplied at build time only,
+        # never committed — this directory is mirrored to the public SDK repo.
+        AppDNAHostApiKey: "$(APPDNA_HOST_API_KEY)"
+        AppDNAWalkMenu: "$(APPDNA_WALK_MENU)"
         # A synthetic sample scheme (the Android sample's `appdnasample`), so a custom-scheme in-app CTA
         # or push deep link is an allowed deep link back into this host (`URLSafety.hostSchemes`) and
         # reaches `AppDNA.deepLinks.handleURL` through `onOpenURL`.

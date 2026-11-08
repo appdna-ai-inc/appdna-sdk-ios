@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Push for a DEVICE-WALK build only: passed as CODE_SIGN_ENTITLEMENTS on that xcodebuild, so the stock
+  host (simulator UI tests, CI) is signed exactly as before. `development` = the APNs sandbox, which is
+  what a development-signed build installed from a Mac receives.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

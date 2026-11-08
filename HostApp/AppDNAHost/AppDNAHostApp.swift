@@ -28,10 +28,13 @@ import AppDNASDK
 
 @main
 struct AppDNAHostApp: App {
+    // Forwards the APNs token to the SDK (a walk build asks for notification permission from its menu).
+    @UIApplicationDelegateAdaptor(WalkAppDelegate.self) private var appDelegate
     init() { Launch.configureSDK() }
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            // A walk build (`APPDNA_WALK_MENU` set) opens on its menu; every other build is unchanged.
+            Group { if WalkMenu.isActive { WalkMenuView() } else { ContentView() } }
                 // `appdnasample://…` (declared in Info.plist) — a custom-scheme CTA or push deep link
                 // opened by the OS comes back here, and the SDK hands it to the deep-link delegate.
                 .onOpenURL { url in AppDNA.deepLinks.handleURL(url) }
@@ -63,7 +66,7 @@ enum Launch {
     static func configureSDK() {
         // An absent key still configures: the SDK then fails its bootstrap loudly, which is a
         // better state to debug than an app that quietly did nothing at launch.
-        let key = arg("appdnaApiKey") ?? "appdna_sandbox_demo_key"
+        let key = arg("appdnaApiKey") ?? WalkMenu.bundledApiKey ?? "appdna_sandbox_demo_key"
         AppDNA.configure(apiKey: key, environment: .sandbox)
         /*
          `-appdnaLogLevel info` (or debug). The SDK defaults to `.warning`, so every `Log.info` is

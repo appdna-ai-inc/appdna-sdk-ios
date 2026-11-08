@@ -20,6 +20,27 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
 
     @Published private(set) var names: [String] = []
 
+    /// The walk menu's visible log (`WalkMenuView`): newest first, with the detail a person needs to
+    /// judge a row — the presentation result, the deep link, a completed flow's responses.
+    @Published private(set) var detail: [String] = []
+
+    /// The last deep link the SDK handed the host; the walk menu shows it on its own screen.
+    @Published var deepLink: WalkDeepLink?
+
+    func note(_ line: String) {
+        let stamp = Self.clock.string(from: Date())
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.detail = Array(([stamp + " " + line] + self.detail).prefix(40))
+        }
+    }
+
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        return f
+    }()
+
     /// One string, because an accessibility value is one string. The separator is a space so a
     /// test can use `contains("survey_followup_winback")` without worrying about neighbours.
     var joined: String { names.joined(separator: " ") }
@@ -35,15 +56,19 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
      */
     func onPaywallAction(paywallId: String, action: PaywallAction) {
         record("action:" + action.rawValue)
+        note("paywall action: " + action.rawValue)
     }
 
     /// A deep link the SDK delivered (`AppDNA.deepLinks.handleURL`), mirrored so a walk can read it.
     func onDeepLinkReceived(url: URL, params: [String: String]) {
         record("deeplink:" + url.absoluteString)
+        note("deep link received: \(url.absoluteString)")
+        DispatchQueue.main.async { [weak self] in self?.deepLink = WalkDeepLink(url: url) }
     }
 
     func onEventTracked(name: String, properties: [String: Any]) {
         record(name)
+        note(name + Self.summary(properties))
     }
 
     private func record(_ name: String) {
@@ -61,3 +86,25 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
         }
     }
 }
+
+extension TrackedEventLog {
+    /// The properties a walk reads, compactly: ids, products, errors and a completed flow's responses.
+    static func summary(_ properties: [String: Any]) -> String {
+        let keys = ["flow_id", "paywall_id", "survey_id", "product_id", "placement", "step_id", "error", "reason", "url", "responses"]
+        let parts = keys.compactMap { k -> String? in
+            guard let v = properties[k] else { return nil }
+            if JSONSerialization.isValidJSONObject(v),
+               let d = try? JSONSerialization.data(withJSONObject: v, options: [.sortedKeys]),
+               let s = String(data: d, encoding: .utf8) { return "\(k)=\(s)" }
+            return "\(k)=\(v)"
+        }
+        return parts.isEmpty ? "" : " " + parts.joined(separator: " ")
+    }
+}
+
+/// A received deep link, identifiable so a sheet can present it.
+struct WalkDeepLink: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
