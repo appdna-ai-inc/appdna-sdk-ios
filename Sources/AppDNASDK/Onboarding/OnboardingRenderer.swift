@@ -1869,6 +1869,9 @@ struct OnboardingStepRouter: View {
             }
         }
         .environment(\.googleAttributionBackdrop, googleAttributionBackdrop)
+        // Legacy step views use `.primary` / `.secondary` and system controls: they resolve against the step's surface.
+        .environment(\.colorScheme, GoogleMapsAttribution.surfaceScheme(on: googleAttributionBackdrop, darkAppearance: routerScheme == .dark))
+        .environment(\.appdnaDeviceColorScheme, routerScheme)
         .environment(\.googleCreditSheetContext, googleCreditSheetContext)
         // The step's container credits Google, so its blocks draw a Google answer's content.
         .environment(\.appdnaTemplateSurface, .onboarding)

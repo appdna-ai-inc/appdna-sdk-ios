@@ -70,7 +70,7 @@ struct QuestionStepView: View {
     /// Text color for option labels (uses element_style text_style if set).
     private var optionTextColor: Color {
         if let hex = config.element_style?.textStyle?.color { return Color(hex: hex) }
-        return .primary
+        return UnstyledInk.onFill(config.element_style?.background?.overlay) ?? .primary
     }
 
     var body: some View {
