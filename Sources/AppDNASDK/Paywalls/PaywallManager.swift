@@ -441,7 +441,7 @@ final class PaywallManager {
                     productId: plan.productId
                 )
                 self?.handlePostPurchaseFailure(
-                    config: config.post_purchase?.on_failure,
+                    config: PostPurchaseFailureConfig.effective(authored: config.post_purchase?.on_failure, errorType: errorType),
                     paywallId: paywallId,
                     viewController: viewController
                 )
@@ -552,7 +552,7 @@ final class PaywallManager {
                     )
                     // Post-purchase failure action
                     self?.handlePostPurchaseFailure(
-                        config: config.post_purchase?.on_failure,
+                        config: PostPurchaseFailureConfig.effective(authored: config.post_purchase?.on_failure, errorType: errorType),
                         paywallId: paywallId,
                         viewController: viewController
                     )

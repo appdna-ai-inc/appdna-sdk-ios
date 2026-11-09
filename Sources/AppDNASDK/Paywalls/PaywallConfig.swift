@@ -1351,6 +1351,14 @@ public struct PostPurchaseFailureConfig: Codable {
     public let message: String?
     public let retry_text: String?
     public let allow_dismiss: Bool?
+
+    /// What a failed purchase does: the authored action, else the error banner, so a failure is never silent.
+    /// A cancel and a pending purchase are not failures, and stay as authored. Android `PostPurchaseFailureConfig.effective`.
+    static func effective(authored: PostPurchaseFailureConfig?, errorType: String) -> PostPurchaseFailureConfig? {
+        if let authored { return authored }
+        if errorType == "userCancelled" || errorType == "pending" { return nil }
+        return PostPurchaseFailureConfig(action: "show_error", message: nil, retry_text: nil, allow_dismiss: nil)
+    }
 }
 
 /// What a screen reader says for a paywall image section: the authored alt text, trimmed, or nil when there
