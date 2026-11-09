@@ -110,7 +110,7 @@ extension SharedFixtureTests {
             }
             if o["ink"]?.boolValue == true {
                 // The ink of text nobody coloured, in a light appearance, through the real rule.
-                let light = A.needsLightInk(on: backdrop, darkAppearance: false)
+                let light = A.needsLightInk(on: backdrop, darkAppearance: o["dark_appearance"]?.boolValue == true)
                 results.append(["name": name, "backdrop": described, "variant_light": variantName(dark: false), "ink": light ? "light" : "dark"])
                 continue
             }

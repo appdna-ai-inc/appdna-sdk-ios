@@ -541,7 +541,7 @@ struct OnboardingFlowHost: View {
                     interactionStore.setCurrentPresentation(-1)
                     onFlowDismissed(step.id, currentIndex)
                 } label: {
-                    DismissGlyph(style: dismissStyle, fallbackColor: chromeOnDark ? UnstyledInk.darkChrome : nil)
+                    DismissGlyph(style: dismissStyle, fallbackColor: chromeOnDark ? UnstyledInk.darkChrome : UnstyledInk.lightChrome)
                 }
                 .disabled(isProcessing)
             }
@@ -2122,7 +2122,7 @@ struct OnboardingStepRouter: View {
                 Button("Skip") { onSkip() }
                     .font(.subheadline)
                     .foregroundColor(GoogleMapsAttribution.needsLightInk(on: googleAttributionBackdrop, darkAppearance: routerScheme == .dark)
-                        ? UnstyledInk.darkChrome : .secondary)
+                        ? UnstyledInk.darkChrome : UnstyledInk.lightChrome)
                     .padding(.bottom, 16)
             }
         }

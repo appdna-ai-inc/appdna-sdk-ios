@@ -126,6 +126,14 @@ final class UnstyledInkTests: XCTestCase {
         }
     }
 
+    func testTheLightStepChromeDoesNotFollowTheSystemAppearance() {
+        var white: CGFloat = 1, alpha: CGFloat = 0
+        UIColor(UnstyledInk.lightChrome)
+            .resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+            .getWhite(&white, alpha: &alpha)
+        XCTAssertLessThan(white, 0.5, "the close glyph and Skip on a light step stay dark in a dark appearance")
+    }
+
     func testOnADarkStepTheInkIsLight() throws {
         for (name, c) in try render(flow(background: Self.navy, authored: false), appearance: .light) {
             XCTAssertGreaterThan(c.light, ink, "\(name): light ink on navy (\(c.light) light pixels)")
