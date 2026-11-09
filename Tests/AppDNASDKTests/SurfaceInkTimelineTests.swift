@@ -12,11 +12,11 @@ final class SurfaceInkTimelineTests: SurfaceInkTestCase {
 
     func testATimelineOnAWhiteStepInADarkAppearanceIsDark() throws {
         let counts = try render(flow(background: Self.white, blocksJSON: block), elements: labels, appearance: .dark)
-        for (name, c) in counts { XCTAssertGreaterThan(c.dark, ink, "\(name) on white in dark mode: \(c)") }
+        for (name, c) in counts { XCTAssertGreaterThan(c.inkOnWhite, ink, "\(name) on white in dark mode: \(c)") }
     }
 
     func testATimelineOnADarkStepInALightAppearanceIsLight() throws {
         let counts = try render(flow(background: Self.navy, blocksJSON: block), elements: labels, appearance: .light)
-        for (name, c) in counts { XCTAssertGreaterThan(c.light, ink, "\(name) on navy in light mode: \(c)") }
+        for (name, c) in counts { XCTAssertGreaterThan(c.inkOnDark, ink, "\(name) on navy in light mode: \(c)") }
     }
 }

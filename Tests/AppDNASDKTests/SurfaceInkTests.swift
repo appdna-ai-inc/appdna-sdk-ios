@@ -10,17 +10,21 @@ import SwiftUI
 
 @MainActor
 class SurfaceInkTestCase: XCTestCase {
-    struct Counts { var light = 0, dark = 0, red = 0 }
+    struct Counts { var light = 0, dark = 0, red = 0, inkOnWhite = 0, inkOnDark = 0 }
 
     /// Each element's frame from the most recent `render`.
     var lastFrames: [String: CGRect] = [:]
+    /// The window of the most recent `render`, kept to read a control's traits.
+    var lastWindow: UIWindow?
 
     static let white = ##"{"type":"color","color":"#FFFFFF"}"##
     static let navy = ##"{"type":"color","color":"#0F172A"}"##
 
     func flow(background: String, blocksJSON: String) throws -> OnboardingFlowConfig {
+        // The bottom zone, as `UnstyledInkTests` does: the middle zone is a scroll view this render path does not draw.
+        let bottomZone = blocksJSON.replacingOccurrences(of: #"{"id":"b_"#, with: #"{"zone":"bottom","id":"b_"#)
         let json = #"{"id":"ink_probe","name":"Ink probe","version":1,"steps":[{"id":"s_ink","type":"custom","config":{"background":"#
-            + background + #","content_blocks":["# + blocksJSON
+            + background + #","content_blocks":["# + bottomZone
             + #"]}},{"id":"s_end","type":"welcome","config":{"title":"End"}}]}"#
         return try JSONDecoder().decode(OnboardingFlowConfig.self, from: Data(json.utf8))
     }
@@ -39,7 +43,7 @@ class SurfaceInkTestCase: XCTestCase {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
         host.view.layoutIfNeeded()
-        RunLoop.current.run(until: Date().addingTimeInterval(1.0))
+        RunLoop.current.run(until: Date().addingTimeInterval(settle))
 
         var frames: [String: CGRect] = [:]
         func walk(_ o: NSObject, _ depth: Int) {
@@ -53,6 +57,7 @@ class SurfaceInkTestCase: XCTestCase {
         walk(host.view, 0)
         XCTAssertEqual(Set(frames.keys), Set(elements), "control: the harness finds every element's frame")
         lastFrames = frames
+        lastWindow = window
 
         let image = UIGraphicsImageRenderer(size: size).image { ctx in host.view.layer.render(in: ctx.cgContext) }
         let cg = try XCTUnwrap(image.cgImage)
@@ -77,6 +82,8 @@ class SurfaceInkTestCase: XCTestCase {
                         let i = row + x * 4
                         let r = Double(buffer[i]), g = Double(buffer[i + 1]), b = Double(buffer[i + 2])
                         let lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+                        if lum < 0.7 { c.inkOnWhite += 1 }
+                        if lum > 0.35 { c.inkOnDark += 1 }
                         if lum > 0.75 { c.light += 1 }
                         if lum < 0.45 { c.dark += 1 }
                         if r > 200, g < 80, b < 80 { c.red += 1 }
@@ -89,6 +96,8 @@ class SurfaceInkTestCase: XCTestCase {
     }
 
     let ink = 40
+    /// How long the step gets to finish appearing before its frame is read.
+    var settle: TimeInterval = 1.0
 }
 
 final class SurfaceInkOptionsTests: SurfaceInkTestCase {
