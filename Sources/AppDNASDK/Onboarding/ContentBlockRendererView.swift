@@ -1432,7 +1432,7 @@ struct ContentBlockRendererView: View {
             }
             BackdropReader { behind, dark in
             let textColor = Color(hex: WarningBannerInk.resolve(
-                textColor: block.text_color, bgColor: block.bg_color ?? (chrome.cardFill == .none ? block.block_style?.background_color : nil), behind: behind, darkAppearance: dark))
+                textColor: block.text_color, bgColor: block.bg_color ?? chrome.wrapper?.background_color, behind: behind, darkAppearance: dark))
             let titleColor = authoredTitleColor ?? textColor
             let subtitleColor = authoredSubtitleColor ?? textColor
             VStack(alignment: hAlign, spacing: 2) {
