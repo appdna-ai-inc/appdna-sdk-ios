@@ -218,14 +218,9 @@ struct FormStepView: View {
     // MARK: - Label
 
     private func fieldLabel(_ field: FormField) -> some View {
-        HStack(spacing: 2) {
-            Text((field.label ?? "").interpolated())
-                .font(.subheadline.weight(.medium))
-            if field.required {
-                Text("*")
-                    .foregroundColor(.red)
-            }
-        }
+        // One Text, so the asterisk trails the last word when the label wraps.
+        let label = Text((field.label ?? "").interpolated()).font(.subheadline.weight(.medium))
+        return field.required ? label + Text(" *").font(.subheadline.weight(.medium)).foregroundColor(.red) : label
     }
 
     // MARK: - Field control dispatcher

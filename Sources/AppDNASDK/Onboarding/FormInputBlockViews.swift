@@ -47,17 +47,13 @@ struct FormFieldLabelView: View {
                 default: return .leading
                 }
             }()
+            // One Text, so the asterisk trails the last word when the label wraps.
+            let labelText = Text(label)
+                .font(baseFont)
+                .foregroundColor(block.field_style?.label_color.map { Color(hex: $0) }
+                    ?? UnstyledInk.label(behind: backdrop, darkAppearance: colorScheme == .dark))
             VStack(alignment: alignment, spacing: 0) {
-                HStack(spacing: 2) {
-                    Text(label)
-                        .font(baseFont)
-                        .foregroundColor(block.field_style?.label_color.map { Color(hex: $0) }
-                            ?? UnstyledInk.label(behind: backdrop, darkAppearance: colorScheme == .dark))
-                    if required {
-                        Text("*")
-                            .foregroundColor(.red)
-                    }
-                }
+                required ? labelText + Text(" *").font(baseFont).foregroundColor(.red) : labelText
             }
             .frame(maxWidth: .infinity, alignment: frameAlignment)
         }
