@@ -2701,6 +2701,8 @@ struct FormInputChipsBlock: View {
                         }
                         selectedValues = next
                         inputValues[fieldId] = selectedValues
+                        // The picked options, so `{{responses.<step>.<field>}}` draws their labels.
+                        SelectedOptionStore.shared.record(fieldId: fieldId, options: next.compactMap { v in options.first { $0.resolvedValue == v } })
                     } label: {
                         Text(option.label ?? "")
                             .font(.subheadline)

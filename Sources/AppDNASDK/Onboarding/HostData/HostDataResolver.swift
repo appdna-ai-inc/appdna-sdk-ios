@@ -496,6 +496,24 @@ enum HostDataResolver {
 
     static func stringify(_ h: HostJSON?) -> String? { h.flatMap { stringify(HDVal($0)) } }
 
+    /// A multi-select answer as text: its picked options' labels (or the stored value when no label is known), comma-joined.
+    /// Nil for anything else, and for an empty pick, so the token takes its fallback. Only an answer's own roots: an array
+    /// from host data is structure, not an answer. Android `multiSelectText`.
+    static func multiSelectText(_ path: String, _ scope: Scope) -> String? {
+        guard path.hasPrefix("responses.") || path.hasPrefix("step."),
+              let items = resolveScopePath(path, scope)?.arr, !items.isEmpty else { return nil }
+        let field = path.components(separatedBy: ".").last ?? ""
+        let records = scope.roots["selected"]?.obj?.d[field]?.arr ?? []
+        let texts: [String] = items.compactMap { item in
+            guard let value = stringify(item) else { return nil }
+            for record in records {
+                if let o = record.obj, let v = o.d["value"], stringify(v) == value, let label = o.d["label"], let text = stringify(label) { return text }
+            }
+            return value
+        }
+        return texts.count == items.count ? texts.joined(separator: ", ") : nil
+    }
+
     static func formatNumber(_ n: Double) -> String? {
         guard n.isFinite else { return nil }
         if n == 0 { return "0" }
@@ -668,7 +686,7 @@ enum HostDataResolver {
                 out += url && !whole ? percentEncode(v, query: firstQuery >= 0 && firstQuery < t.index) : v
                 continue
             }
-            if let s = stringify(resolveScopePath(t.path, scope, typedText: typed)) {
+            if let s = stringify(resolveScopePath(t.path, scope, typedText: typed)) ?? multiSelectText(t.path, scope) {
                 if !typed && readsGoogleAnswer(t.path, scope) { res.readGoogle = true }
                 let encode = url && !whole
                 out += encode ? percentEncode(s, query: firstQuery >= 0 && firstQuery < t.index) : s
