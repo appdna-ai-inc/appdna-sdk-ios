@@ -1054,7 +1054,7 @@ struct FormInputSelectBlock: View {
              * stand.
              */
             if displayStyle == "bubble_scroll", !isMultiSelect, selectedValue.isEmpty,
-               let first = SegmentedDefault.pick(current: inputValues[fieldId], options: block.field_options ?? []) {
+               let first = SegmentedDefault.pick(current: inputValues[fieldId], options: block.field_options ?? [], required: block.field_required == true) {
                 selectedValue = first
                 inputValues[fieldId] = first
             }
@@ -2438,7 +2438,7 @@ struct FormInputSegmentedBlock: View {
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? String, !saved.isEmpty { selectedValue = saved }
-            else if selectedValue.isEmpty, let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options) {
+            else if selectedValue.isEmpty, let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options, required: block.field_required == true) {
                 selectedValue = first
                 inputValues[fieldId] = first
             }
@@ -2447,7 +2447,7 @@ struct FormInputSegmentedBlock: View {
         // default-first rule `.onAppear` applied, when nothing is selected yet.
         .onChange(of: options.isEmpty) { isEmpty in
             guard !isEmpty, selectedValue.isEmpty,
-                  let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options) else { return }
+                  let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options, required: block.field_required == true) else { return }
             selectedValue = first
             inputValues[fieldId] = first
         }
@@ -3468,7 +3468,9 @@ enum SelectionResync {
 /// The Segmented default-first rule: with nothing answered (absent, or "") and options present, the
 /// first option is selected AND written. A host-set value of another type is an answer — left alone.
 enum SegmentedDefault {
-    static func pick(current: Any?, options: [InputOption]) -> String? {
+    /// A required question starts empty, so the user has to answer it: only an optional one takes the first option.
+    static func pick(current: Any?, options: [InputOption], required: Bool = false) -> String? {
+        if required { return nil }
         if let current {
             guard let s = current as? String, s.isEmpty else { return nil }
         }

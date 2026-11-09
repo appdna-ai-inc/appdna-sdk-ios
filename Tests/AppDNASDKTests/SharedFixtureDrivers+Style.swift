@@ -65,6 +65,7 @@ extension SharedFixtureTests {
         case "resolve_countdown_variant": runCountdownVariant(f, h)
         case "resolve_named_icon_library": runNamedIconLibrary(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
+        case "resolve_segmented_default": runSegmentedDefault(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
         default:
@@ -835,6 +836,18 @@ extension SharedFixtureTests {
      Whether a Segmented input draws a segmented control, through the REAL
      `SegmentedPresentation` the renderer calls.
      */
+    private func runSegmentedDefault(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue,
+              let options = try? JSONDecoder().decode([InputOption].self, from: Data(#"[{"id":"first","value":"first","label":"first"},{"id":"second","value":"second","label":"second"}]"#.utf8)) else {
+            return XCTFail("[\(f.id)] segmented_default needs action.cases")
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue
+            let current: Any? = o?["current"]?.stringValue
+            return SegmentedDefault.pick(current: current, options: options, required: o?["required"]?.boolValue == true) ?? ""
+        }
+    }
+
     private func runSegmentedPresentation(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] segmented_presentation needs action.cases")
