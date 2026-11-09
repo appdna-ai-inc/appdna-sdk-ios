@@ -144,6 +144,12 @@ struct SurveyContainerView: View {
     }
 
     var body: some View {
+        // A survey's default colours follow its own background, which an author may set against the phone's appearance.
+        surveyBody.resolvesAppearance(onFill: theme?.background_color, darkAppearance: colorScheme == .dark)
+    }
+
+    @ViewBuilder
+    private var surveyBody: some View {
         ZStack {
             VStack(spacing: 16) {
                 // Intro Lottie animation

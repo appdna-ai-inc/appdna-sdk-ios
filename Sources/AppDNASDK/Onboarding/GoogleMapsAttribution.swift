@@ -307,6 +307,13 @@ private struct AppDNADeviceColorSchemeKey: EnvironmentKey {
     static let defaultValue: ColorScheme? = nil
 }
 
+extension View {
+    /// Default colours and system controls resolve against this view's authored background, not the phone's appearance.
+    func resolvesAppearance(onFill hex: String?, darkAppearance: Bool) -> some View {
+        environment(\.colorScheme, GoogleMapsAttribution.surfaceScheme(on: .plain(hex: hex), darkAppearance: darkAppearance))
+    }
+}
+
 extension EnvironmentValues {
     /// The phone's own appearance, captured where a step begins, before any surface overrides `colorScheme`. A sheet
     /// is filled by the system, so it reads this rather than the appearance of the surface that opened it.

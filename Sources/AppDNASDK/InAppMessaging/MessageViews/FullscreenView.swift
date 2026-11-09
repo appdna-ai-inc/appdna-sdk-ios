@@ -23,6 +23,12 @@ struct FullscreenView: View {
     }
 
     var body: some View {
+        // An unstyled message is drawn on its own fill (white unless authored), whatever the phone's appearance.
+        messageBody.resolvesAppearance(onFill: content.background_color ?? "#FFFFFF", darkAppearance: false)
+    }
+
+    @ViewBuilder
+    private var messageBody: some View {
         ZStack(alignment: .topTrailing) {
             Color(hex: content.background_color ?? "#FFFFFF")
                 .ignoresSafeArea()

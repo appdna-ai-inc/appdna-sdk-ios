@@ -23,6 +23,12 @@ struct ModalView: View {
     }
 
     var body: some View {
+        // An unstyled message is drawn on its own fill (white unless authored), whatever the phone's appearance.
+        messageBody.resolvesAppearance(onFill: content.background_color ?? "#FFFFFF", darkAppearance: false)
+    }
+
+    @ViewBuilder
+    private var messageBody: some View {
         ZStack {
             // Backdrop: blur backdrop support
             if let blurConfig = content.blur_backdrop {

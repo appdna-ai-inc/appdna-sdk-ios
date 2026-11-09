@@ -27,6 +27,12 @@ struct BannerView: View {
     }
 
     var body: some View {
+        // An unstyled message is drawn on its own fill (white unless authored), whatever the phone's appearance.
+        messageBody.resolvesAppearance(onFill: content.background_color ?? "#FFFFFF", darkAppearance: false)
+    }
+
+    @ViewBuilder
+    private var messageBody: some View {
         VStack {
             if !isTop { Spacer() }
 
