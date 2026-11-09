@@ -469,7 +469,7 @@ struct ContentBlockRendererView: View {
         let content = renderBlockContent(block)
             // What the block draws behind its own content, for a Google logo inside it.
             .modifier(GoogleAttributionBlockBackdrop(block: block))
-            .applyBlockStyle(block.block_style)
+            .applyBlockStyle(block.type == .warning_banner ? WarningBannerChrome.resolve(block: block).wrapper : block.block_style)
             // AFTER the background, so the background is what widens. Negative horizontal
             // padding is SwiftUI's "extend outward"; Compose has to measure for it instead
             // (`Modifier.fullBleedHorizontal`), which is why the inset lives in one shared place.
@@ -1371,8 +1371,10 @@ struct ContentBlockRendererView: View {
         let hAlign: HorizontalAlignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
         let tAlign: TextAlignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
         let fAlign: Alignment = align == "center" ? .center : (align == "trailing" ? .trailing : .leading)
-        let radius = CGFloat(cfgDouble(fc?["banner_corner_radius"]) ?? 12)
-        let borderWidth = CGFloat(cfgDouble(fc?["banner_border_width"]) ?? 1)
+        // One background: `block_style` styles this card rather than drawing a second one around it.
+        let chrome = WarningBannerChrome.resolve(block: block)
+        let radius = CGFloat(chrome.radius)
+        let borderWidth = chrome.cardBorder ? CGFloat(cfgDouble(fc?["banner_border_width"]) ?? 1) : 0
         let borderColor = (fc?["banner_border_color"]?.value as? String).map { Color(hex: $0) }
             ?? accent.opacity(0.45)
         let family = fc?["banner_font_family"]?.value as? String
@@ -1430,7 +1432,7 @@ struct ContentBlockRendererView: View {
             }
             BackdropReader { behind, dark in
             let textColor = Color(hex: WarningBannerInk.resolve(
-                textColor: block.text_color, bgColor: block.bg_color, behind: behind, darkAppearance: dark))
+                textColor: block.text_color, bgColor: block.bg_color ?? (chrome.cardFill == .none ? block.block_style?.background_color : nil), behind: behind, darkAppearance: dark))
             let titleColor = authoredTitleColor ?? textColor
             let subtitleColor = authoredSubtitleColor ?? textColor
             VStack(alignment: hAlign, spacing: 2) {
@@ -1476,7 +1478,7 @@ struct ContentBlockRendererView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(bgOverride ?? accent.opacity(0.14))
+        .background(chrome.cardFill == .none ? Color.clear : (bgOverride ?? accent.opacity(0.14)))
         .clipShape(RoundedRectangle(cornerRadius: radius))
         .overlay(RoundedRectangle(cornerRadius: radius).stroke(borderColor, lineWidth: borderWidth))
     }
@@ -1895,18 +1897,25 @@ struct ContentBlockRendererView: View {
     // MARK: - Toggle
 
     private func toggleBlock(_ block: ContentBlock) -> some View {
+        let settings = ToggleSettings(fc: block.field_config)
         let binding = Binding<Bool>(
             get: { toggleValues[block.id] ?? (block.toggle_default ?? false) },
-            set: { toggleValues[block.id] = $0 }
+            set: { value in
+                toggleValues[block.id] = value
+                if let action = settings.action { onInteract(block.id, action, String(value)) }
+            }
         )
 
         return VStack(alignment: .leading, spacing: 4) {
-            Toggle(loc?("block.\(block.id).label", block.toggle_label ?? "") ?? block.toggle_label ?? "", isOn: binding)
-                .tint(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+            Toggle(isOn: binding) {
+                Text(loc?("block.\(block.id).label", block.toggle_label ?? "") ?? block.toggle_label ?? "")
+                    .foregroundColor(settings.labelColor.map { Color(hex: $0) })
+            }
+                .tint(Color(hex: settings.onColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
             if let desc = block.toggle_description {
                 Text(loc?("block.\(block.id).description", desc) ?? desc)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(settings.descriptionColor.map { Color(hex: $0) } ?? .secondary)
             }
         }
     }

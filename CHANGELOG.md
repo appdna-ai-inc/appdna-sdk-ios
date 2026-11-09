@@ -8,11 +8,18 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A toggle's settings.** A standalone `toggle` reads `field_config.toggle_on_color`, `toggle_label_color` and
+  `toggle_description_color`, and `toggle_action` names the element interaction your app receives, with `"true"` or
+  `"false"`, when the user switches it.
+
 - **A flow-wide background.** `settings.background` on an onboarding flow (the same shape as a step
   background: colour, gradient, image, Lottie or Rive) is drawn by every step that sets no background of
   its own. Before, a step without one drew `systemBackground`, so a theme had to be repeated on every step.
 
 ### Fixed
+
+- **A warning banner draws one background.** `block_style` (the console's Design panel) now styles the banner's card:
+  its background, border and corner radius replace the banner's defaults instead of drawing a second layer behind it.
 
 - **An archived, unpublished or deleted flow, paywall or survey stops showing.** After a config fetch, every
   onboarding flow, paywall and survey the server no longer lists is dropped from memory and from the cached

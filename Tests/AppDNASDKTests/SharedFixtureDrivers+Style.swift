@@ -54,6 +54,8 @@ extension SharedFixtureTests {
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         case "resolve_flow_background": runFlowBackground(f, h)
         case "resolve_guarantee_icon": runGuaranteeIcon(f, h)
+        case "resolve_warning_banner_chrome": runWarningBannerChrome(f, h)
+        case "resolve_toggle_settings": runToggleSettings(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
         case "resolve_field_input_style": runFieldInputStyle(f, h)
         case "resolve_plan_order": runPlanOrder(f, h)
@@ -684,6 +686,49 @@ extension SharedFixtureTests {
         h.state["results"] = cases.map { c -> Any in
             let symbol = GuaranteeIcon.symbol(c.objectValue?["value"]?.objectValue?["icon"]?.stringValue)
             return "\(symbol)|\(UIImage(systemName: symbol) != nil ? "drawn" : "?")"
+        }
+    }
+
+    // MARK: resolve_warning_banner_chrome
+
+    /// A warning banner's single background, through the REAL `WarningBannerChrome` over a decoded `BlockStyle`.
+    private func runWarningBannerChrome(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_warning_banner_chrome needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue ?? [:]
+            let fc = v["field_config"]?.objectValue
+            var style: BlockStyle?
+            if let raw = v["block_style"]?.foundation as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: raw) {
+                style = try? JSONDecoder().decode(BlockStyle.self, from: data)
+            }
+            let r = WarningBannerChrome.resolve(
+                blockStyle: style,
+                bgColor: v["bg_color"]?.stringValue,
+                cornerRadius: fc?["banner_corner_radius"]?.doubleValue,
+                borderWidth: fc?["banner_border_width"]?.doubleValue
+            )
+            return "\(Int(r.radius))|\(r.cardFill.rawValue)|\(r.cardBorder ? 1 : 0)|\(r.wrapperFill ? 1 : 0)|\(r.wrapperBorder ? 1 : 0)"
+        }
+    }
+
+    // MARK: resolve_toggle_settings
+
+    /// A toggle's authored settings, through the REAL `ToggleSettings`.
+    private func runToggleSettings(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_toggle_settings needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            var fieldConfig: [String: AnyCodable]?
+            if let raw = c.objectValue?["value"]?.objectValue?["field_config"]?.foundation as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: raw) {
+                fieldConfig = try? JSONDecoder().decode([String: AnyCodable].self, from: data)
+            }
+            let s = ToggleSettings(fc: fieldConfig)
+            return [s.onColor, s.labelColor, s.descriptionColor, s.action].map { $0 ?? "" }.joined(separator: "|")
         }
     }
 
