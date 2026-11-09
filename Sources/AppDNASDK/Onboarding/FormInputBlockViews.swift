@@ -2692,8 +2692,7 @@ struct FormInputChipsBlock: View {
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
 
-            // FlowLayout approximation using wrapping HStack
-            FlowLayoutView(spacing: 8) {
+            ChipFlowLayout(spacing: 8) {
                 ForEach(options) { option in
                     let isSelected = selectedValues.contains(option.resolvedValue)
                     Button {
@@ -2705,6 +2704,8 @@ struct FormInputChipsBlock: View {
                     } label: {
                         Text(option.label ?? "")
                             .font(.subheadline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
                             .background(isSelected ? fillCol : Color.gray.opacity(0.1))
@@ -3262,11 +3263,18 @@ struct FormInputSignatureBlock: View {
 struct ChipFlowLayout: Layout {
     var spacing: CGFloat = 8
 
+    /// A chip's natural size, narrowed only when it is wider than the whole row.
+    private func chipSize(_ sv: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let natural = sv.sizeThatFits(.unspecified)
+        guard natural.width > maxWidth else { return natural }
+        return sv.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+    }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let maxW = proposal.width ?? .infinity
         var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0
         for sv in subviews {
-            let sz = sv.sizeThatFits(.unspecified)
+            let sz = chipSize(sv, maxWidth: maxW)
             if x + sz.width > maxW, x > 0 { x = 0; y += rowH + spacing; rowH = 0 }
             x += sz.width + spacing
             rowH = max(rowH, sz.height)
@@ -3277,27 +3285,12 @@ struct ChipFlowLayout: Layout {
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         var x = bounds.minX, y = bounds.minY, rowH: CGFloat = 0
         for sv in subviews {
-            let sz = sv.sizeThatFits(.unspecified)
+            let sz = chipSize(sv, maxWidth: bounds.width)
             if x + sz.width > bounds.maxX, x > bounds.minX { x = bounds.minX; y += rowH + spacing; rowH = 0 }
             // Place each chip at its natural content-hugging size (mirrors Android FlowRow).
-            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: .unspecified)
+            sv.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(sz))
             x += sz.width + spacing
             rowH = max(rowH, sz.height)
-        }
-    }
-}
-
-/// Simple flow layout approximation using LazyVGrid with adaptive columns.
-/// Wraps children to next line when they exceed available width.
-struct FlowLayoutView<Content: View>: View {
-    let spacing: CGFloat
-    @ViewBuilder let content: () -> Content
-
-    var body: some View {
-        // Use adaptive grid items as a flow-layout approximation
-        let columns = [GridItem(.adaptive(minimum: 60, maximum: .infinity), spacing: spacing)]
-        LazyVGrid(columns: columns, alignment: .leading, spacing: spacing) {
-            content()
         }
     }
 }
