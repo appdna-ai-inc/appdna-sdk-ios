@@ -631,7 +631,9 @@ struct AnimatedLoadingBlockView: View {
                                         .foregroundColor(checkCol)
                                         .transition(.scale.combined(with: .opacity))
                                 } else if index == completedCount {
+                                    // Authored progress or accent colour, else the ink of the surface behind it.
                                     ProgressView()
+                                        .tint((block.progress_color ?? block.accent_color).map { Color(hex: $0) })
                                         .scaleEffect(0.8)
                                         .transition(.opacity)
                                 } else {
