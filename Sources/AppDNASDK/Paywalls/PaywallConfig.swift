@@ -979,6 +979,8 @@ struct PaywallCTA: Codable {
 
     /// Resolved bg_color — from style object, direct field, or default
     var resolvedBgColor: String { styleObj?.bg_color ?? bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1") }
+    /// The authored background only: the paywall's own accent, for the elements with no colour field of their own.
+    var authoredBgColor: String? { styleObj?.bg_color ?? bg_color }
     /// Resolved text_color — from style object, direct field, or default
     var resolvedTextColor: String { styleObj?.text_color ?? text_color ?? "#FFFFFF" }
     /// Resolved corner_radius — from style object, direct field, or default

@@ -57,6 +57,7 @@ struct PlanCard: View {
 
     private var cornerRadius: CGFloat { cardStyle.cardCornerRadius ?? 12 }
     private var cardPadding: CGFloat { cardStyle.cardPadding ?? 16 }
+    @SwiftUI.Environment(\.paywallAccentHex) private var paywallAccentHex: String?
     private var selectedBorder: Color { Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) }
     private var selectedBg: Color? {
         cardStyle.selectedBgColor.map { Color(hex: $0) }
@@ -232,7 +233,7 @@ struct PlanCard: View {
                                 } else {
                                     Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
                                         .font(.caption)
-                                        .foregroundColor(isSelected ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+                                        .foregroundColor(isSelected ? effectiveTextColor : Color(hex: paywallAccentHex ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                                 }
                             }
                             // The trial label's authored container.
@@ -266,7 +267,7 @@ struct PlanCard: View {
                                     HStack(spacing: 4) {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 9, weight: .bold))
-                                            .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+                                            .foregroundColor(isSelected && selectedTextColor != nil ? effectiveTextColor : Color(hex: paywallAccentHex ?? (AppDNA.brandAccentHex ?? "#6366F1")))
                                         // `featureTextStyle` was RESOLVED and never
                                         // applied: the console's Style tab offers a per-plan
                                         // feature text style, the DTO decoded it, and the view

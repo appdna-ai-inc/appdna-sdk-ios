@@ -263,6 +263,9 @@ struct PaywallRenderer: View {
     @State private var promoCode: String = ""
     @State private var promoState: PromoState = .idle
 
+    /// The paywall's own accent: its CTA's colour when authored, else the brand accent.
+    private var paywallAccentHex: String { config.cta?.authoredBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1") }
+
     var body: some View {
         // The page's background travels down the hierarchy, so every default text colour is
         // chosen against the surface it is drawn on. Through the ENVIRONMENT rather than a
@@ -270,6 +273,7 @@ struct PaywallRenderer: View {
         // the screens surface once lost its styling.
         content
             .environment(\.paywallBackgroundHex, pageBackgroundHex)
+            .environment(\.paywallAccentHex, config.cta?.authoredBgColor)
             // The viewport the pinned-zone cap is measured against.
             .background(GeometryReader { geo in
                 Color.clear.onAppear { paywallViewportHeight = geo.size.height }
@@ -1231,15 +1235,15 @@ struct PaywallRenderer: View {
                     .applyTextStyle(ts)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")).opacity(0.15))
+                    .background(Color(hex: paywallAccentHex).opacity(0.15))
                     .clipShape(Capsule()))
             } else {
                 return AnyView(Text(loc("social_proof.trial_badge", data?.text ?? "Free Trial"))
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")).opacity(0.15))
-                    .foregroundColor(Color(hex: (AppDNA.brandAccentHex ?? "#6366F1")))
+                    .background(Color(hex: paywallAccentHex).opacity(0.15))
+                    .foregroundColor(Color(hex: paywallAccentHex))
                     .clipShape(Capsule()))
             }
         default: // app_rating
@@ -3233,6 +3237,18 @@ enum PaywallHeaderInset {
 }
 
 /// The paywall's own background colour, for any view choosing a default text colour.
+private struct PaywallAccentHexKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+    /// The paywall's own accent: its CTA's authored colour, for elements with no colour field of their own.
+    var paywallAccentHex: String? {
+        get { self[PaywallAccentHexKey.self] }
+        set { self[PaywallAccentHexKey.self] = newValue }
+    }
+}
+
 private struct PaywallBackgroundHexKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }
