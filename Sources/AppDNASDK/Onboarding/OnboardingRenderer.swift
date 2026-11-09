@@ -1091,7 +1091,8 @@ struct OnboardingFlowHost: View {
             currentIndex: currentIndex,
             responses: responses,
             configOverrides: configOverrides,
-            previousStepId: previousStepId
+            previousStepId: previousStepId,
+            pressedButtonId: OnboardingPressedButton.shared.take()
         ))
     }
 
@@ -1253,7 +1254,8 @@ struct OnboardingFlowHost: View {
             currentIndex: currentIndex,
             responses: responses,
             configOverrides: configOverrides,
-            previousStepId: previousStepId
+            previousStepId: previousStepId,
+            pressedButtonId: OnboardingPressedButton.shared.take()
         ))
     }
 
@@ -2202,6 +2204,8 @@ struct OnboardingStepRouter: View {
         // Idempotent, and never touches a pending / Option-Set / out-of-scope block.
         clearVanishedSelections()
         guard canAdvance else {
+            // The press did not advance, so a later advance must not route on it.
+            OnboardingPressedButton.shared.clear()
             withAnimation { showValidationToast = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 withAnimation { showValidationToast = false }

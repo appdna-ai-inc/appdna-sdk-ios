@@ -1164,6 +1164,7 @@ struct ContentBlockRendererView: View {
                     onInteract(block.id, "refresh", block.action_value)
                 }
             } else {
+                OnboardingPressedButton.shared.record(block.id, action: block.action ?? "next")
                 onAction(block.action ?? "next", block.action_value)
             }
         } label: {

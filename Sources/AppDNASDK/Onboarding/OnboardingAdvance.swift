@@ -134,7 +134,8 @@ enum OnboardingAdvance {
         currentIndex: Int,
         responses: [String: Any],
         configOverrides: [String: StepConfigOverride] = [:],
-        previousStepId: String? = nil
+        previousStepId: String? = nil,
+        pressedButtonId: String? = nil
     ) -> Outcome {
         let stepId = step(flow, currentIndex)?.id ?? ""
 
@@ -142,14 +143,14 @@ enum OnboardingAdvance {
         case .proceed:
             return advance(
                 flow: flow, currentIndex: currentIndex, responses: responses,
-                configOverrides: configOverrides, previousStepId: previousStepId
+                configOverrides: configOverrides, previousStepId: previousStepId, pressedButtonId: pressedButtonId
             )
 
         case .proceedWithData(let extraData):
             let merged = mergeData(responses, extraData, forStepId: stepId)
             var out = advance(
                 flow: flow, currentIndex: currentIndex, responses: merged,
-                configOverrides: configOverrides, previousStepId: previousStepId
+                configOverrides: configOverrides, previousStepId: previousStepId, pressedButtonId: pressedButtonId
             )
             out.responsesChanged = true
             out.computedData = extraData
@@ -224,7 +225,8 @@ enum OnboardingAdvance {
         currentIndex: Int,
         responses: [String: Any],
         configOverrides: [String: StepConfigOverride] = [:],
-        previousStepId: String? = nil
+        previousStepId: String? = nil,
+        pressedButtonId: String? = nil
     ) -> Outcome {
         var events: [TrackedEvent] = []
         func outcome(_ nav: Navigation) -> Outcome {
@@ -268,10 +270,12 @@ enum OnboardingAdvance {
         }
 
         if !rules.isEmpty {
+            // The button pressed is visible to the rules only, never to the responses handed on.
+            let ruleResponses = OnboardingPressedButton.forRules(responses, stepId: currentStep.id, pressed: pressedButtonId)
             for rule in rules {
                 guard evaluateRule(
                     rule, flow: flow, stepId: currentStep.id,
-                    responses: responses, previousStepId: previousStepId
+                    responses: ruleResponses, previousStepId: previousStepId
                 ) else { continue }
 
                 let target = rule.target_step_id

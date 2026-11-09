@@ -65,6 +65,7 @@ final class OnboardingFlowManager {
         // this the SDK would open it when the NEXT flow completed, and the app would navigate
         // somewhere the user never asked to go.
         PendingCompletionRoute.shared.clear()
+        OnboardingPressedButton.shared.clear()
 
         // Track flow started
         eventTracker.track(event: "onboarding_flow_started", properties: [

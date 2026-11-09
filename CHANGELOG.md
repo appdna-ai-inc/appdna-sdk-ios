@@ -8,6 +8,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A navigation rule can route by the button pressed.** A rule that compares the reserved answer key `__button_pressed` to
+  a button's id matches the press that left the step. The press is seen only while the rules are evaluated, and never reaches
+  the responses, the hook or a webhook.
+
 - **A Select can move the user on when picked.** `auto_advance: true` on an `input_select` advances the step on the pick
   (a multi-select: on the pick that reaches `field_config.max_selections`), through the step's own `next`, so a screen with
   only a Select has a way forward.

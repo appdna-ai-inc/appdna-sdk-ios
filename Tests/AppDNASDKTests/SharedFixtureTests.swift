@@ -759,7 +759,8 @@ final class SharedFixtureTests: XCTestCase {
         currentIndex: Int,
         responses: [String: Any],
         result: StepAdvanceResult,
-        hookRan: Bool
+        hookRan: Bool,
+        pressedButtonId: String? = nil
     ) {
         let currentStep = (currentIndex >= 0 && currentIndex < flow.steps.count) ? flow.steps[currentIndex] : nil
 
@@ -778,7 +779,8 @@ final class SharedFixtureTests: XCTestCase {
             result: result,
             flow: flow,
             currentIndex: currentIndex,
-            responses: responses
+            responses: responses,
+            pressedButtonId: pressedButtonId
         )
 
         // The events the machine says the SDK must emit (e.g. `step_skipped`), through the real tracker.
@@ -1025,7 +1027,8 @@ final class SharedFixtureTests: XCTestCase {
         var responses = sessionResponses(f)
         if !data.isEmpty, !stepId.isEmpty { responses[stepId] = data }
         applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
-                     responses: responses, result: result, hookRan: true)
+                     responses: responses, result: result, hookRan: true,
+                     pressedButtonId: action["pressed_button_id"]?.stringValue)
     }
 
     // MARK: - Driver: fire_hook
