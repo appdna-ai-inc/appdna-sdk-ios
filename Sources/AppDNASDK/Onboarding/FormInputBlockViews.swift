@@ -2411,16 +2411,29 @@ struct FormInputSegmentedBlock: View {
         VStack(alignment: .leading, spacing: 6) {
             formFieldLabel(block)
 
-            Picker("", selection: $selectedValue) {
+            // Drawn here rather than with a segmented `Picker`, whose selected segment ignores `.tint` and stays the
+            // system grey. The selected segment fills with field_style.fill_color ?? active_color ?? brand, as on Android.
+            let fillHex = block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            HStack(spacing: 0) {
                 ForEach(options) { option in
-                    Text(option.label ?? "").tag(option.resolvedValue)
+                    let isSelected = selectedValue == option.resolvedValue
+                    Button { selectedValue = option.resolvedValue } label: {
+                        Text(option.label ?? "")
+                            .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
+                            .foregroundColor(isSelected ? (UnstyledInk.onFill(fillHex) ?? .white) : Color.primary.opacity(0.7))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(isSelected ? Color(hex: fillHex) : Color.clear)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
-            .pickerStyle(.segmented)
-            // Tint the selected segment with the brand/fill accent so the segmented control
-            // isn't the system gray/white pill — parity with Android (fills the selected segment
-            // with field_style.fill_color ?? active_color ?? brand) and the console preview.
-            .tint(Color(hex: block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.3), lineWidth: 1))
             .onChange(of: selectedValue) { newValue in
                 // A resync to "nothing selected" (below) must not write an empty answer back.
                 if newValue.isEmpty && inputValues[fieldId] == nil { return }
