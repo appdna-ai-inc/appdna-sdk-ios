@@ -170,7 +170,7 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         let spy = await tap(provider: BillingProvider.none, withPostPurchase: false)
         await settle()
         XCTAssertEqual(spy.failed.count, 1)
-        XCTAssertEqual(failureRoutes, [], "no on_failure config, no failure overlay")
+        XCTAssertEqual(failureRoutes, ["show_error"], "with no on_failure config, a failure still shows the error banner")
         XCTAssertEqual(purchaseEnded, 1, "the CTA is re-enabled")
     }
 
