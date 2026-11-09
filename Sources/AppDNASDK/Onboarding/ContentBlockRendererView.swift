@@ -572,7 +572,7 @@ struct ContentBlockRendererView: View {
         case .input_date: return AnyView(FormInputDateBlock(block: block, inputValues: $inputValues, components: .date))
         case .input_time: return AnyView(FormInputDateBlock(block: block, inputValues: $inputValues, components: .hourAndMinute))
         case .input_datetime: return AnyView(FormInputDateBlock(block: block, inputValues: $inputValues, components: [.date, .hourAndMinute]))
-        case .input_select: return AnyView(FormInputSelectBlock(block: block, inputValues: $inputValues))
+        case .input_select: return AnyView(FormInputSelectBlock(block: block, inputValues: $inputValues, onAdvance: { onAction("next", nil) }))
         case .input_slider: return AnyView(FormInputSliderBlock(block: block, inputValues: $inputValues))
         case .input_toggle: return AnyView(FormInputToggleBlock(block: block, inputValues: $inputValues))
         case .input_stepper: return AnyView(FormInputStepperBlock(block: block, inputValues: $inputValues))

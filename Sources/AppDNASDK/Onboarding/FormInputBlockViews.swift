@@ -681,6 +681,10 @@ struct FormInputDateBlock: View {
 struct FormInputSelectBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
+    /// Advances the step. Set by the step's block renderer; a form field's Select has none.
+    var onAdvance: (() -> Void)? = nil
+    /// The pending advance after a pick. Leaving the view (Back, a host advance) cancels it.
+    @State private var advanceTimer = StepAutoAdvanceTimer()
 
     @State private var selectedValue: String = ""
     // An ordered [String] (append-on-select, acting as an ordered set) so the
@@ -1383,11 +1387,13 @@ struct FormInputSelectBlock: View {
     /// A pick from the multi-pick dropdown's menu: toggles that option through `DropdownSelectPick`, then
     /// draws what was stored. An option that owns a sheet opens it once the menu has closed.
     private func pickMultiFromDropdown(_ value: String, options: [InputOption], fieldId: String) {
+        let before = selectedValues
         let sheet = DropdownSelectPick.apply(
             value: value, options: options, block: block, selectedValues: selectedValues,
             sourcedOptions: allSourcedOptions, inputValues: &inputValues
         )
         selectedValues = SelectionResync.multiAfterExternalChange(inputValues[fieldId], drawn: selectedValues)
+        advanceAfterPick(before: before, after: selectedValues, opensSheet: sheet != nil, delay: DropdownSelectPick.sheetDelay)
         guard let sheet else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + DropdownSelectPick.sheetDelay) {
             sheetOption = sheet
@@ -1426,9 +1432,12 @@ struct FormInputSelectBlock: View {
     /// presenter as every other style.
     private func pickFromDropdown(_ value: String, options: [InputOption]) {
         selectedValue = value
-        guard let sheet = DropdownSelectPick.apply(
+        let picked = DropdownSelectPick.apply(
             value: value, options: options, block: block, inputValues: &inputValues
-        ) else { return }
+        )
+        // The menu is still closing, so the advance waits for it as the sheet does.
+        advanceAfterPick(before: [], after: [value], opensSheet: picked != nil, delay: DropdownSelectPick.sheetDelay)
+        guard let sheet = picked else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + DropdownSelectPick.sheetDelay) {
             sheetOption = sheet
         }
@@ -1820,6 +1829,7 @@ struct FormInputSelectBlock: View {
     // MARK: - Selection toggle helper
 
     private func toggleSelection(option: InputOption, fieldId: String) {
+        let before = selectedValues
         guard let next = SelectOptionTap.apply(
             option: option, block: block, selectedValues: selectedValues,
             sourcedOptions: allSourcedOptions, inputValues: &inputValues
@@ -1828,9 +1838,18 @@ struct FormInputSelectBlock: View {
         selectedValue = next.selectedValue
         // Picking an option that owns a sheet opens it. The choice is
         // already recorded above; the sheet only presents, so nothing else is reported.
-        if let sheet = SelectOptionSheet.opened(by: option) {
+        let sheet = SelectOptionSheet.opened(by: option)
+        if let sheet {
             sheetOption = sheet
         }
+        advanceAfterPick(before: before, after: SelectOptionTap.isMultiSelect(block) ? next.selectedValues : [next.selectedValue], opensSheet: sheet != nil)
+    }
+
+    /// A pick that the block's `auto_advance` says moves the step on, after a beat so the pick is seen.
+    /// A later pick replaces the pending advance, so a double tap advances once.
+    private func advanceAfterPick(before: [String], after: [String], opensSheet: Bool, delay: Double = SelectAdvanceOnPick.delaySeconds) {
+        guard let onAdvance, SelectAdvanceOnPick.shouldAdvance(block: block, before: before, after: after, opensSheet: opensSheet) else { return }
+        advanceTimer.schedule(after: delay, onAdvance)
     }
 
     private func fontWeight(_ raw: String?) -> Font.Weight {

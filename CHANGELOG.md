@@ -8,6 +8,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Select can move the user on when picked.** `auto_advance: true` on an `input_select` advances the step on the pick
+  (a multi-select: on the pick that reaches `field_config.max_selections`), through the step's own `next`, so a screen with
+  only a Select has a way forward.
+
 - **A toggle's settings.** A standalone `toggle` reads `field_config.toggle_on_color`, `toggle_label_color` and
   `toggle_description_color`, and `toggle_action` names the element interaction your app receives, with `"true"` or
   `"false"`, when the user switches it.
