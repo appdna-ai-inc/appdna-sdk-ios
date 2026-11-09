@@ -201,6 +201,12 @@ enum GoogleMapsAttribution {
         return backdrop == .busy || variant(on: backdrop, darkAppearance: darkAppearance) == .white
     }
 
+    /// The appearance a surface's default colours and system controls resolve against: the same light-or-dark call
+    /// as `needsLightInk`, so ink and controls cannot disagree with each other.
+    static func surfaceScheme(on backdrop: Backdrop, darkAppearance: Bool) -> ColorScheme {
+        needsLightInk(on: backdrop, darkAppearance: darkAppearance) ? .dark : .light
+    }
+
     private static var cache: [Variant: UIImage] = [:]
     private static let cacheLock = NSLock()
 
@@ -284,13 +290,31 @@ private struct GoogleAttributionBackdropKey: EnvironmentKey {
 struct GoogleAttributionBlockBackdrop: ViewModifier {
     let block: ContentBlock
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+    @SwiftUI.Environment(\.colorScheme) private var scheme
 
     func body(content: Content) -> some View {
-        content.environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(ofBlock: block, behind: behind))
+        let backdrop = GoogleMapsAttribution.backdrop(ofBlock: block, behind: behind)
+        // Default colours and system controls resolve against the surface they are drawn on, so `.primary`,
+        // `.secondary`, a segmented control or a date picker stay readable when the phone's appearance differs
+        // from the authored background. Authored colours are explicit and do not read this.
+        content
+            .environment(\.googleAttributionBackdrop, backdrop)
+            .environment(\.colorScheme, GoogleMapsAttribution.surfaceScheme(on: backdrop, darkAppearance: scheme == .dark))
     }
 }
 
+private struct AppDNADeviceColorSchemeKey: EnvironmentKey {
+    static let defaultValue: ColorScheme? = nil
+}
+
 extension EnvironmentValues {
+    /// The phone's own appearance, captured where a step begins, before any surface overrides `colorScheme`. A sheet
+    /// is filled by the system, so it reads this rather than the appearance of the surface that opened it.
+    var appdnaDeviceColorScheme: ColorScheme? {
+        get { self[AppDNADeviceColorSchemeKey.self] }
+        set { self[AppDNADeviceColorSchemeKey.self] = newValue }
+    }
+
     /// What is behind a location field on this surface — the onboarding step's background, an option
     /// sheet's own background, a filled container. A field that keeps the Google logo beside it after
     /// a tap draws the variant for it.

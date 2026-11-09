@@ -718,6 +718,11 @@ struct FormInputSelectBlock: View {
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var optionInkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var optionInkScheme
 
+    /// An option label nobody coloured: from the option's own fill when it has one, else from what is behind the field.
+    private func unstyledOptionInk(fill: String?) -> Color {
+        UnstyledInk.onFill(fill) ?? UnstyledInk.text(behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark)
+    }
+
     /// `empty_state` (text in place of the options) on a raw-pass block.
     private var emptyStateText: String? {
         guard let es = OnboardingStepPipeline.emptyState(block, rawResolved: rawResolved), es.mode == "text" else { return nil }
@@ -1103,7 +1108,8 @@ struct FormInputSelectBlock: View {
         // separator_thickness (console Slider 0–4, default 1) drives the
         // divider height; thickness was previously hardcoded to 1pt.
         let separatorThickness = CGFloat((cfgDouble(cfg?["separator_thickness"])) ?? 1)
-        let textCol: Color = (cfg?["text_color"]?.value as? String).map { Color(hex: $0) } ?? block.field_style?.text_color.map { Color(hex: $0) } ?? .primary
+        let authoredTextCol: Color? = (cfg?["text_color"]?.value as? String).map { Color(hex: $0) } ?? block.field_style?.text_color.map { Color(hex: $0) }
+        let textCol: Color = authoredTextCol ?? unstyledOptionInk(fill: nil)
         let selectedTextCol: Color = (cfg?["selected_text_color"]?.value as? String).map { Color(hex: $0) } ?? textCol
         let selectedBgCol = (cfg?["selected_bg_color"]?.value as? String).map { Color(hex: $0) } ?? fillCol.opacity(0.15)
         VStack(spacing: 0) {
@@ -1115,12 +1121,13 @@ struct FormInputSelectBlock: View {
                 // unselected state (selected still uses the block-level selectedTextCol).
                 let optTitleSize = CGFloat(option.title_font_size ?? 16)
                 let optSubtitleSize = CGFloat(option.subtitle_font_size ?? 13)
+                let rowInk = authoredTextCol ?? unstyledOptionInk(fill: option.bg_color)
                 let optTitleCol = isSelected
                     ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
-                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                    : (option.title_color.map { Color(hex: $0) } ?? rowInk)
                 let optSubtitleCol = isSelected
                     ? (option.selected_text_color.map { Color(hex: $0) } ?? selectedTextCol)
-                    : (option.title_color.map { Color(hex: $0) } ?? textCol)
+                    : (option.title_color.map { Color(hex: $0) } ?? rowInk)
                 let optRowBg = isSelected
                     ? (option.selected_bg_color.map { Color(hex: $0) } ?? selectedBgCol)
                     : (option.bg_color.map { Color(hex: $0) } ?? Color.clear)
@@ -1162,7 +1169,8 @@ struct FormInputSelectBlock: View {
         let fillCol = Color(hex: accentHex)
         let cfgOptBorder = (cfg?["border_color"]?.value as? String).map { Color(hex: $0) }
         let unselectedBorderCol: Color = cfgOptBorder ?? block.field_style?.border_color.map { Color(hex: $0) } ?? Color(hex: "#D1D5DB")
-        let textCol: Color = (cfg?["text_color"]?.value as? String).map { Color(hex: $0) } ?? block.field_style?.text_color.map { Color(hex: $0) } ?? .primary
+        let textCol: Color = (cfg?["text_color"]?.value as? String).map { Color(hex: $0) } ?? block.field_style?.text_color.map { Color(hex: $0) }
+            ?? unstyledOptionInk(fill: (cfg?["bg_color"]?.value as? String) ?? block.field_style?.background_color)
         let selectedTextCol: Color = (cfg?["selected_text_color"]?.value as? String).map { Color(hex: $0) } ?? textCol
         let selectedBorderW = CGFloat((cfgDouble(cfg?["selected_border_width"])) ?? 2)
         let unselectedBorderW = CGFloat((cfgDouble(cfg?["unselected_border_width"])) ?? 1)
@@ -1363,13 +1371,13 @@ struct FormInputSelectBlock: View {
             HStack {
                 Text(label.text)
                     .foregroundColor(label.isPlaceholder
-                        ? (lightInk ? Color.white.opacity(0.6) : .secondary)
-                        : (lightInk ? Color.white : .primary))
+                        ? (lightInk ? Color.white.opacity(0.6) : UnstyledInk.lightChrome)
+                        : (lightInk ? Color.white : Color.black))
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.up.chevron.down").font(.caption)
-                    .foregroundColor(lightInk ? Color.white.opacity(0.6) : .secondary)
+                    .foregroundColor(lightInk ? Color.white.opacity(0.6) : UnstyledInk.lightChrome)
             }
         }
         .accessibilityValue(label.isPlaceholder ? "" : label.text)
@@ -1476,14 +1484,12 @@ struct FormInputSelectBlock: View {
         let optionBg: Color = cfgOptBg
             ?? block.field_style?.background_color.map { Color(hex: $0) }
             ?? Color.clear
-        // An option label nobody coloured, on an option with no fill of its own, takes its ink from what is
-        // behind the field (light on a dark step), as text does. An authored option fill keeps the old default.
-        let optionFillAuthored = cfgOptBg != nil || block.field_style?.background_color != nil
+        // An option label nobody coloured takes its ink from the option's own fill, else from what is behind the field.
         let textCol: Color = cfgOptText
             ?? block.field_style?.text_color.map { Color(hex: $0) }
             ?? block.text_color.map { Color(hex: $0) }
             ?? block.style?.color.map { Color(hex: $0) }
-            ?? (optionFillAuthored ? .primary : UnstyledInk.text(behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark))
+            ?? unstyledOptionInk(fill: (cfg?["bg_color"]?.value as? String) ?? block.field_style?.background_color)
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
@@ -1884,14 +1890,12 @@ struct FormInputSelectBlock: View {
         let optionBg: Color = cfgOptBg
             ?? block.field_style?.background_color.map { Color(hex: $0) }
             ?? Color.clear
-        // An option label nobody coloured, on an option with no fill of its own, takes its ink from what is
-        // behind the field (light on a dark step), as text does. An authored option fill keeps the old default.
-        let optionFillAuthored = cfgOptBg != nil || block.field_style?.background_color != nil
+        // An option label nobody coloured takes its ink from the option's own fill, else from what is behind the field.
         let textCol: Color = cfgOptText
             ?? block.field_style?.text_color.map { Color(hex: $0) }
             ?? block.text_color.map { Color(hex: $0) }
             ?? block.style?.color.map { Color(hex: $0) }
-            ?? (optionFillAuthored ? .primary : UnstyledInk.text(behind: optionInkBackdrop, darkAppearance: optionInkScheme == .dark))
+            ?? unstyledOptionInk(fill: (cfg?["bg_color"]?.value as? String) ?? block.field_style?.background_color)
         let selectedTextCol: Color = cfgSelectedText ?? textCol
         let unselectedBorderCol: Color = cfgOptBorder
             ?? block.field_style?.border_color.map { Color(hex: $0) }
@@ -2935,8 +2939,8 @@ struct FormInputLocationPlaceholderBlock: View {
                 let ddIconSize = cfgDouble(cfg?["dropdown_icon_size"]) ?? 24
 
                 let ddBg: Color = ddBgHex.map { Color(hex: $0) } ?? Color(.systemBackground)
-                let ddText: Color = ddTextHex.map { Color(hex: $0) } ?? .primary
-                let ddSubtext: Color = ddSubtextHex.map { Color(hex: $0) } ?? .secondary
+                let ddText: Color = ddTextHex.map { Color(hex: $0) } ?? UnstyledInk.onFill(ddBgHex) ?? .primary
+                let ddSubtext: Color = ddSubtextHex.map { Color(hex: $0) } ?? UnstyledInk.onFill(ddBgHex)?.opacity(0.6) ?? .secondary
                 let ddIcon: Color = ddIconHex.map { Color(hex: $0) } ?? .white
 
                 VStack(alignment: .leading, spacing: 0) {
@@ -3332,6 +3336,8 @@ struct OptionBottomSheetView: View {
 
     /// What the sheet draws behind its content: the system sheet background (no fill of its own).
     static let backdrop: GoogleMapsAttribution.Backdrop = .plain(hex: nil)
+    @SwiftUI.Environment(\.appdnaDeviceColorScheme) private var deviceScheme
+    @SwiftUI.Environment(\.colorScheme) private var currentScheme
 
     /// `inputs`: the sheet's own inputs when it opens — empty in production; a render test seeds a
     /// field's answer.
@@ -3381,6 +3387,7 @@ struct OptionBottomSheetView: View {
                 // The sheet is filled with the system background, whatever the step underneath
                 // draws: a Google logo inside the sheet picks its variant from the sheet.
                 .environment(\.googleAttributionBackdrop, Self.backdrop)
+                .environment(\.colorScheme, deviceScheme ?? currentScheme)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 24)
             }

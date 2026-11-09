@@ -298,6 +298,14 @@ enum UnstyledInk {
     /// The step chrome on a light step, in any system appearance: a fixed colour, the one `.secondary` resolves to in a
     /// light appearance. `.secondary` itself follows the device, so in dark mode it drew a pale grey on an authored white.
     static let lightChrome = Color(red: 60.0 / 255, green: 60.0 / 255, blue: 67.0 / 255).opacity(0.6)
+
+    /// The ink for an element's own authored fill: light on a dark fill, dark on a light one. Nil when the element has
+    /// no opaque fill of its own, so the caller takes the surface behind it.
+    static func onFill(_ hex: String?) -> Color? {
+        let bg = hex?.trimmingCharacters(in: .whitespaces) ?? ""
+        guard !bg.isEmpty, !["transparent", "clear"].contains(bg.lowercased()) else { return nil }
+        return GoogleMapsAttribution.needsLightInk(on: .plain(hex: bg), darkAppearance: false) ? .white : .black
+    }
 }
 
 struct ContentBlockRendererView: View {

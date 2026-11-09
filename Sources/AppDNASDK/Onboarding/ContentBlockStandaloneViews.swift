@@ -1489,7 +1489,7 @@ struct DateWheelPickerBlockView: View {
         let hasAuthoredBorderColor = triggerBorderHex != nil
         let triggerBorderWidth: CGFloat = bsBorderW ?? fsBorderW ?? (hasAuthoredBorderColor ? 1 : 0)
         let triggerTextHex = block.text_color ?? block.field_style?.text_color
-        let triggerTextColor: Color = triggerTextHex.map { Color(hex: $0) } ?? .primary
+        let triggerTextColor: Color = triggerTextHex.map { Color(hex: $0) } ?? UnstyledInk.onFill(sharedBg) ?? .primary
 
         VStack(spacing: 8) {
             // Block-level label (parity with preview/Android, which now render it).
