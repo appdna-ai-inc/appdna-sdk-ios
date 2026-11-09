@@ -152,20 +152,20 @@ struct FormStepView: View {
                 return "\(val)" == ""
             case "equals":
                 guard let expected = dep.value?.value else { return false }
-                return "\(depValue ?? "")" == "\(expected)"
+                return ConditionEvaluator.valuesEqual(depValue ?? "", expected)
             case "not_equals":
                 guard let expected = dep.value?.value else { return true }
-                return "\(depValue ?? "")" != "\(expected)"
+                return !ConditionEvaluator.valuesEqual(depValue ?? "", expected)
             case "contains":
                 guard let expected = dep.value?.value else { return false }
                 return "\(depValue ?? "")".contains("\(expected)")
             case "gt":
-                guard let expected = dep.value?.value as? Double,
-                      let actual = depValue as? Double else { return false }
+                guard let expected = ConditionEvaluator.toDouble(dep.value?.value),
+                      let actual = ConditionEvaluator.toDouble(depValue) else { return false }
                 return actual > expected
             case "lt":
-                guard let expected = dep.value?.value as? Double,
-                      let actual = depValue as? Double else { return false }
+                guard let expected = ConditionEvaluator.toDouble(dep.value?.value),
+                      let actual = ConditionEvaluator.toDouble(depValue) else { return false }
                 return actual < expected
             default:
                 return true

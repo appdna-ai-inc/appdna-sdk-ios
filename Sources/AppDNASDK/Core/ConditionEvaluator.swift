@@ -78,7 +78,7 @@ internal enum ConditionEvaluator {
     /// used to compare as 1 / 0 here and as no number on Android).
     static func toDouble(_ value: Any?) -> Double? {
         guard let v = value else { return nil }
-        if let s = v as? String { return Double(s) }
+        if let s = v as? String { return isDecimal(s) ? Double(s) : nil }
         if strictBool(v) != nil { return nil }
         switch v {
         case let n as Double: return n
@@ -92,10 +92,27 @@ internal enum ConditionEvaluator {
         case let n as UInt32: return Double(n)
         case let n as UInt16: return Double(n)
         case let n as UInt8: return Double(n)
-        case let n as Float: return Double(n)
+        case let n as Float: return Double("\(n)") ?? Double(n)
         case let n as NSNumber: return n.doubleValue
         default: return nil
         }
+    }
+
+    /// Whether `s` spells a plain decimal number, in the one grammar both platforms share. `Double(_:)` alone also
+    /// reads hex and "nan" / "inf", and Kotlin's parser reads "4d" and " 4 ", so a typed answer could equal a number on one
+    /// platform only.
+    private static func isDecimal(_ s: String) -> Bool {
+        s.range(of: #"^[+-]?([0-9]+(\.[0-9]*)?|\.[0-9]+)([eE][+-]?[0-9]+)?$"#, options: .regularExpression) != nil
+    }
+
+    /// An answer or a rule value as text, for a substring comparison: a string as it is, a number in its shortest form
+    /// (4.0 reads "4"), and nil for anything else (a Bool, a list). Android `ConditionEvaluator.text`.
+    static func text(_ value: Any?) -> String? {
+        guard let v = value else { return nil }
+        if let s = v as? String { return s }
+        guard strictBool(v) == nil, let d = toDouble(v) else { return nil }
+        if d == d.rounded(), abs(d) < 1e15 { return String(Int64(d)) }
+        return "\(d)"
     }
 
     /// The value as a Bool only when it IS one: a Swift `Bool` or a CoreFoundation boolean `NSNumber` — not a number

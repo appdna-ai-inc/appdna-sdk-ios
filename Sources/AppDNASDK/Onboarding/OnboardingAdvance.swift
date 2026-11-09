@@ -530,14 +530,16 @@ enum OnboardingAdvance {
                 for item in actualArray where aliasedEquals(expected: expectedStr, actual: item) { return true }
                 return false
             }
+            if let items = actual as? [Any], !(expected is [Any]) { return items.contains { isEqual($0, expected) } }
             if isEqual(actual, expected) { return true }
             if let expectedStr = expected as? String, let actualStr = actual as? String {
                 return aliasedEquals(expected: expectedStr, actual: actualStr)
             }
             return false
         case "answer_contains":
-            let expected = cond["value"] as? String ?? ""
-            let actual = responses[field] as? String ?? ""
+            // A rating or a slider stores a number and a rule may carry one; read as text they compare as a typed answer does.
+            let expected = ConditionEvaluator.text(cond["value"]) ?? ""
+            let actual = ConditionEvaluator.text(responses[field]) ?? ""
             if actual.contains(expected) { return true }
             let (idToVal, _) = aliasesForField()
             if let mapped = idToVal[expected], !mapped.isEmpty {
@@ -550,6 +552,7 @@ enum OnboardingAdvance {
             if let actualArray = actual as? [String], let expectedStr = expected as? String {
                 return !actualArray.contains(expectedStr)
             }
+            if let items = actual as? [Any], !(expected is [Any]) { return !items.contains { isEqual($0, expected) } }
             return !isEqual(actual, expected)
         case "not_empty":
             let actual = responses[field]
@@ -607,13 +610,10 @@ enum OnboardingAdvance {
         return (idToVal, valToId)
     }
 
+    /// By value across number types and numeric strings: a rating is stored as a `Double`, a published rule carries an
+    /// `Int`, and the console writes the text "4". Two strings still compare exactly, so option values stay distinct.
     static func isEqual(_ a: Any?, _ b: Any?) -> Bool {
-        if a == nil && b == nil { return true }
-        if let aStr = a as? String, let bStr = b as? String { return aStr == bStr }
-        if let aNum = a as? Double, let bNum = b as? Double { return aNum == bNum }
-        if let aInt = a as? Int, let bInt = b as? Int { return aInt == bInt }
-        if let aBool = a as? Bool, let bBool = b as? Bool { return aBool == bBool }
-        return String(describing: a) == String(describing: b)
+        ConditionEvaluator.valuesEqual(a, b)
     }
 
     // MARK: - Helpers

@@ -370,11 +370,9 @@ func resolveDotPath(
     return typedText ? TemplateEngine.typedTextForGoogleAnswers(in: current) : current
 }
 
-/// Compares two values as strings for equality.
+/// Compares two values for equality, by value across number types and numeric strings.
 func valuesEqual(_ a: Any?, _ b: Any?) -> Bool {
-    if a == nil && b == nil { return true }
-    guard let a = a, let b = b else { return false }
-    return "\(a)" == "\(b)"
+    ConditionEvaluator.valuesEqual(a, b)
 }
 
 /// Compares two values numerically.

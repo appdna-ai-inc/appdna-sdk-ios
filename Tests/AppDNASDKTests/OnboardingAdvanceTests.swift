@@ -377,4 +377,60 @@ final class OnboardingAdvanceTests: XCTestCase {
         }
         XCTAssertEqual(index, 2, "opt_1 ↔ by_learning must alias, or every rule misses")
     }
+
+    // A rating block stores a Swift `Double`, and `AnyCodable` decodes a published rule value of 4 to a Swift `Int`.
+    // A fixture's JSON numbers cannot reproduce that pair, so it is built by hand.
+    func testNumericAnswersCompareByValueAcrossTypes() {
+        func equals(_ answer: Any, _ value: Any) -> Bool {
+            OnboardingAdvance.evaluateCondition(
+                ["type": "answer_equals", "answer_key": "score", "value": value],
+                responses: ["score": answer], step: nil, previousStepId: nil
+            )
+        }
+        func notEquals(_ answer: Any, _ value: Any) -> Bool {
+            OnboardingAdvance.evaluateCondition(
+                ["type": "answer_not_equals", "answer_key": "score", "value": value],
+                responses: ["score": answer], step: nil, previousStepId: nil
+            )
+        }
+        XCTAssertTrue(equals(Double(4), Int(4)), "a rating's Double must equal a published Int")
+        XCTAssertTrue(equals(Double(4), "4"))
+        XCTAssertTrue(equals(Int(4), "4"))
+        XCTAssertTrue(equals(Int(4), Double(4)))
+        XCTAssertTrue(equals("4", Int(4)))
+        XCTAssertTrue(equals(NSNumber(value: 4), "4"))
+        XCTAssertFalse(notEquals(Double(4), Int(4)))
+        XCTAssertFalse(notEquals(Int(4), "4"))
+        XCTAssertTrue(notEquals(Double(3), "4"))
+
+        XCTAssertFalse(equals("abc", Int(4)))
+        XCTAssertFalse(equals("", Int(0)))
+        XCTAssertFalse(equals(" ", Int(0)))
+        XCTAssertFalse(equals("4d", Int(4)))
+        XCTAssertFalse(equals("0x4", Int(4)))
+        XCTAssertFalse(equals(true, Int(1)))
+        XCTAssertFalse(equals(true, "1"))
+        XCTAssertFalse(equals(false, Int(0)))
+        XCTAssertFalse(equals(NSNumber(value: true), Int(1)))
+        XCTAssertFalse(equals("4.0", "4"), "two strings still compare exactly, so option values stay distinct")
+    }
+
+    func testAnswerContainsReadsANumberAsText() {
+        func contains(_ answer: Any, _ value: Any) -> Bool {
+            OnboardingAdvance.evaluateCondition(
+                ["type": "answer_contains", "answer_key": "score", "value": value],
+                responses: ["score": answer], step: nil, previousStepId: nil
+            )
+        }
+        XCTAssertTrue(contains(Double(45), "4"))
+        XCTAssertTrue(contains(Double(4), "4"), "4.0 reads as 4")
+        XCTAssertTrue(contains("24", Int(4)))
+        XCTAssertFalse(contains(Double(5), "4"))
+    }
+
+    func testAMultiSelectAnswerComparesEachItemByValue() {
+        let cond: [String: Any] = ["type": "answer_equals", "answer_key": "picks", "value": Int(2)]
+        XCTAssertTrue(OnboardingAdvance.evaluateCondition(cond, responses: ["picks": ["1", "2"]], step: nil, previousStepId: nil))
+        XCTAssertFalse(OnboardingAdvance.evaluateCondition(cond, responses: ["picks": ["1", "3"]], step: nil, previousStepId: nil))
+    }
 }

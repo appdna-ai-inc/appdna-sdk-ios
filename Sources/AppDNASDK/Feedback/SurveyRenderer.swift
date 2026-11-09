@@ -449,7 +449,7 @@ struct SurveyContainerView: View {
     }
 
     private func matches(_ answer: Any, _ condValue: Any) -> Bool {
-        "\(answer)" == "\(condValue)"
+        ConditionEvaluator.valuesEqual(answer, condValue)
     }
 
     private func answerBinding(for question: SurveyQuestion) -> Binding<SurveyAnswer?> {

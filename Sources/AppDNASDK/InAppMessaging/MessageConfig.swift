@@ -398,8 +398,8 @@ public struct TriggerCondition: Codable {
                 return (p, c)
             }
             switch self {
-            case .eq: return "\(propValue)" == "\(condValue)"
-            case .neq: return "\(propValue)" != "\(condValue)"
+            case .eq: return ConditionEvaluator.valuesEqual(propValue, condValue)
+            case .neq: return !ConditionEvaluator.valuesEqual(propValue, condValue)
             case .gte: return numbers().map { $0 >= $1 } ?? false
             case .lte: return numbers().map { $0 <= $1 } ?? false
             case .gt: return numbers().map { $0 > $1 } ?? false
@@ -411,17 +411,17 @@ public struct TriggerCondition: Codable {
              a one-element list is what the author meant and the alternative is a condition that
              silently never matches.
              */
-            case .in: return Self.members(condValue).contains("\(propValue)")
-            case .not_in: return !Self.members(condValue).contains("\(propValue)")
+            case .in: return Self.members(condValue).contains { ConditionEvaluator.valuesEqual(propValue, $0) }
+            case .not_in: return !Self.members(condValue).contains { ConditionEvaluator.valuesEqual(propValue, $0) }
             case .unknown: return false
             }
         }
 
-        /// The condition value as a set of string members, for `in` / `not_in`.
-        private static func members(_ condValue: Any) -> [String] {
-            if let array = condValue as? [Any] { return array.map { "\($0)" } }
-            if let codables = condValue as? [AnyCodable] { return codables.map { "\($0.value)" } }
-            return ["\(condValue)"]
+        /// The condition value as a set of members, for `in` / `not_in`.
+        private static func members(_ condValue: Any) -> [Any] {
+            if let codables = condValue as? [AnyCodable] { return codables.map { $0.value } }
+            if let array = condValue as? [Any] { return array }
+            return [condValue]
         }
 
         private static func toDouble(_ value: Any) -> Double? {
