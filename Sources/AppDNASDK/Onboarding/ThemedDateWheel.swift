@@ -161,14 +161,18 @@ struct ThemedDateWheel: View {
         return f.shortStandaloneMonthSymbols ?? []
     }
 
+    /// The date in the band: the bound nearest an out-of-range date, so the band never shows a day the wheel cannot store.
+    /// A wheel with no default and no answer holds today, which can sit outside the authored bounds.
+    private var shown: Date { min(max(date, range.lowerBound), range.upperBound) }
+
     private func set(_ edit: (inout (year: Int, month: Int, day: Int, hour: Int, minute: Int)) -> Void) {
-        var p = model.parts(of: date)
+        var p = model.parts(of: shown)
         edit(&p)
         date = model.clamped(year: p.year, month: p.month, day: p.day, hour: p.hour, minute: p.minute)
     }
 
     private func items(for column: DateWheelModel.Column) -> (items: [WheelItem], selected: Int, name: String, pick: (Int) -> Void) {
-        let p = model.parts(of: date)
+        let p = model.parts(of: shown)
         switch column {
         case .year:
             return (model.years.map { WheelItem(value: $0, label: number($0)) }, p.year, "Year", { v in set { $0.year = v } })

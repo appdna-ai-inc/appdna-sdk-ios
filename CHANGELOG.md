@@ -36,6 +36,9 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The date wheel opens inside its bounds.** With no default and no answer, and today outside `min_date`/`max_date`,
+  the band shows the nearest allowed day instead of today's month and day against the first year.
+
 - **The date wheel's other rows read on a dark step.** With no wheel colour authored, the rows above and below the band
   take their ink from the surface behind the block. They drew near-black on a dark step.
 
