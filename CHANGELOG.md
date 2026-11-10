@@ -8,6 +8,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A placement can be a name of your own.** A paywall's `placement` may be any name you set in the console, and the app asks for that exact string. When several live paywalls answer one placement they are now tried in a fixed order, the same on every launch: highest priority, then a paywall with audience conditions before one without, then lowest paywall id. Before, a tie went to whichever came first in memory.
+
 - **A navigation rule can route by the button pressed.** A rule that compares the reserved answer key `__button_pressed` to
   a button's id matches the press that left the step. The press is seen only while the rules are evaluated, and never reaches
   the responses, the hook or a webhook.

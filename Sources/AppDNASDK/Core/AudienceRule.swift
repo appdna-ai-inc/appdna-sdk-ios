@@ -111,6 +111,15 @@ internal enum AudienceRuleEvaluator {
         ((anyCodable?.value as? [String: Any])?["priority"] as? Int) ?? 0
     }
 
+    /// Does a rule payload narrow the audience at all? Either shape; empty conditions match everyone.
+    static func hasConditions(rules anyCodable: AnyCodable?) -> Bool {
+        switch anyCodable?.value {
+        case let dict as [String: Any]: return !((dict["conditions"] as? [Any])?.isEmpty ?? true)
+        case let array as [Any]: return !array.isEmpty
+        default: return false
+        }
+    }
+
     static func evaluate(ruleArray: [AudienceRule]?, userTraits: [String: Any]) -> Bool {
         guard let rules = ruleArray, !rules.isEmpty else { return true }
         return rules.allSatisfy { evaluateRule($0, userTraits: userTraits) }

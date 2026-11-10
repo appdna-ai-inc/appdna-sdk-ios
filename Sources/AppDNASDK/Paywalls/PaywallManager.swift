@@ -803,14 +803,23 @@ enum PaywallPlacementResolver {
     ) -> PaywallConfig? {
         paywalls
             .filter { $0.placement == placement }
-            .sorted {
-                AudienceRuleEvaluator.priority(rules: $0.audience_rules)
-                    > AudienceRuleEvaluator.priority(rules: $1.audience_rules)
-            }
+            .sorted(by: isTriedBefore)
             .first { pw in
                 guard pw.audience_rules != nil else { return true } // No rules = matches all
                 return AudienceRuleEvaluator.evaluate(rules: pw.audience_rules, traits: traits)
             }
+    }
+
+    /// Several paywalls may answer one placement. They are tried in a fixed order, the same on every
+    /// launch and on both platforms: higher priority, then a paywall with audience conditions before
+    /// a catch-all, then lowest `id`. `getAllPaywalls()` is a dictionary, so without the last two the
+    /// winner of a tie could change between launches.
+    private static func isTriedBefore(_ a: PaywallConfig, _ b: PaywallConfig) -> Bool {
+        let (pa, pb) = (AudienceRuleEvaluator.priority(rules: a.audience_rules), AudienceRuleEvaluator.priority(rules: b.audience_rules))
+        if pa != pb { return pa > pb }
+        let (ca, cb) = (AudienceRuleEvaluator.hasConditions(rules: a.audience_rules), AudienceRuleEvaluator.hasConditions(rules: b.audience_rules))
+        if ca != cb { return ca }
+        return (a.id ?? "") < (b.id ?? "")
     }
 }
 
