@@ -1142,7 +1142,7 @@ public final class AppDNA: @unchecked Sendable {
             Log.warning("No onboarding flow found for placement: \(placement)")
             return false
         }
-        return presentOnboarding(flowId: flowId, from: viewController, delegate: delegate)
+        return presentOnboarding(flowId: flowId, from: viewController, delegate: delegate ?? AppDNA.onboarding.delegate)
     }
 
     // MARK: - Public API: Server-Driven Screens
