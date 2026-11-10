@@ -2,6 +2,7 @@ import SwiftUI
 
 /// Schema-driven SwiftUI view that renders a PaywallConfig.
 struct PaywallRenderer: View {
+    @SwiftUI.Environment(\.colorScheme) private var colorScheme
     let config: PaywallConfig
     let onPlanSelected: (PaywallPlan, _ metadata: [String: Any]) -> Void
     let onRestore: () -> Void
@@ -1008,9 +1009,17 @@ struct PaywallRenderer: View {
      is what this surface has always assumed for those.
      */
     private var pageBackgroundHex: String? {
-        let bg = config.layout?.background
-        guard (bg?.type ?? "color") == "color" else { return nil }
-        return bg?.value ?? bg?.color
+        let bg = config.background ?? config.layout?.background
+        switch bg?.type {
+        case "color":
+            // `{"type":"color"}` with no value paints white, so the ink reads white too (#1681).
+            return bg?.color.flatMap { $0.isEmpty ? nil : $0 } ?? bg?.value.flatMap { $0.isEmpty ? nil : $0 } ?? "#FFFFFF"
+        case "gradient", "image", "video", "transparent", "clear", "none":
+            return nil
+        default:
+            // No authored background: the page is the system's, so its ink follows the system's (#1681).
+            return colorScheme == .dark ? "#000000" : "#FFFFFF"
+        }
     }
 
     private func sectionContent(for section: PaywallSection) -> AnyView {
