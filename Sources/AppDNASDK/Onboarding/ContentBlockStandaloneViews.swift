@@ -1347,9 +1347,6 @@ struct DateWheelPickerBlockView: View {
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
     @SwiftUI.Environment(\.calendar) private var environmentCalendar
     @SwiftUI.Environment(\.locale) private var environmentLocale
-    // Pre-warm state: a zero-sized hidden DatePicker forces UIKit to init
-    // its UIPickerView subsystem eagerly so the first user drag isn't laggy.
-    @State private var prewarmDate = Date()
 
     /// Parse relative date strings like "today", "-18y", "-100y", "+1y", "-30d", or ISO date "2000-01-01"
     // Internal (was private) so FormInputDateBlock can reuse the identical min_date/max_date
@@ -1507,26 +1504,6 @@ struct DateWheelPickerBlockView: View {
                     .foregroundColor(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // Pre-warm: hidden wheel DatePicker mounted behind a zero-size
-            // anchor so UIKit instantiates UIPickerView eagerly (cuts the
-            // first-drag lag) without claiming any layout space inside the
-            // VStack. Earlier .frame(200,150).offset(-10000,-10000) was a
-            // bug — `.offset` moves visually but the 150pt frame still ate
-            // VStack space, which combined with `vertical_offset: -40`
-            // caused the whole picker block to visually overlay siblings
-            // below it (customer-reported on Form 9a).
-            Color.clear
-                .frame(width: 0, height: 0)
-                .background(
-                    DatePicker("", selection: $prewarmDate, displayedComponents: components)
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .frame(width: 200, height: 150)
-                        .opacity(0.01)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                )
-
             if isFieldMode {
                 // Field mode: tap to open
                 Button {
@@ -1602,7 +1579,11 @@ struct DateWheelPickerBlockView: View {
             }
             persistDate()
         }
-        .onAppear { restoreDate() }
+        .onAppear {
+            // A field, or a calendar the themed wheel does not number, still opens UIKit's wheel.
+            DatePickerPrewarmer.prewarmOnce()
+            restoreDate()
+        }
         .overlay(alignment: .bottom) {
             if showDateToast {
                 Text(block.date_validation_message ?? defaultValidationMessage)
@@ -1617,6 +1598,22 @@ struct DateWheelPickerBlockView: View {
             }
         }
     }
+
+    private var defaultValidationMessage: String {
+        if block.allow_future == false { return "Please select a date in the past" }
+        if block.allow_past == false { return "Please select a future date" }
+        return "Please select a valid date"
+    }
+
+    private func showDateValidationToast() {
+        withAnimation { showDateToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { showDateToast = false }
+        }
+    }
+
+    private var isYearMode: Bool { block.picker_mode == "year" }
+
     /// The shape the answer takes, `year`, `date`, `time` or `datetime`: the columns the body draws.
     private var answerMode: String {
         switch block.picker_mode {
@@ -1638,22 +1635,6 @@ struct DateWheelPickerBlockView: View {
         calendar.timeZone = environmentCalendar.timeZone
         return calendar
     }
-
-
-    private var defaultValidationMessage: String {
-        if block.allow_future == false { return "Please select a date in the past" }
-        if block.allow_past == false { return "Please select a future date" }
-        return "Please select a valid date"
-    }
-
-    private func showDateValidationToast() {
-        withAnimation { showDateToast = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            withAnimation { showDateToast = false }
-        }
-    }
-
-    private var isYearMode: Bool { block.picker_mode == "year" }
 
     private func persistDate() {
         let fieldId = block.field_id ?? block.id

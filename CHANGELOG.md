@@ -36,6 +36,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **No faint copy of today's date near a date field.** The hidden picker that warmed UIKit up drew its selected row.
+
 - **Tapping a row of the date wheel selects it.** Only a drag moved the wheel before.
 
 - **The date wheel opens inside its bounds.** With no default and no answer, and today outside `min_date`/`max_date`,

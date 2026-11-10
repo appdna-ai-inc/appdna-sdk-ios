@@ -400,9 +400,6 @@ struct FormInputDateBlock: View {
     /// What the field is drawn on and the phone's own appearance: the ink of an unstyled field.
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
-    // Pre-warm state: an offscreen hidden wheel forces UIKit's UIPickerView
-    // subsystem to init eagerly so the first tap → sheet open isn't laggy.
-    @State private var prewarmDate = Date()
     // allow_future/allow_past validation message for the form-input date variant.
     @State private var dateError: String?
 
@@ -501,22 +498,6 @@ struct FormInputDateBlock: View {
         let pickerPadding = CGFloat((cfgDouble(block.field_config?["picker_padding"])) ?? 0)
 
         VStack(alignment: .leading, spacing: 6) {
-            // Pre-warm the iOS wheel subsystem behind a zero-size anchor.
-            // Earlier .frame(200,150).offset(-10000,-10000) was wrong — the
-            // 150pt frame still ate VStack space, breaking layout for any
-            // sibling block stacked below.
-            Color.clear
-                .frame(width: 0, height: 0)
-                .background(
-                    DatePicker("", selection: $prewarmDate, displayedComponents: components)
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .frame(width: 200, height: 150)
-                        .opacity(0.01)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
-                )
-
             formFieldLabel(block)
 
             Group {
@@ -688,6 +669,8 @@ struct FormInputDateBlock: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // The compact field opens UIKit's wheel in a sheet; warm it so the first drag does not stall.
+        .onAppear { DatePickerPrewarmer.prewarmOnce() }
     }
 }
 
