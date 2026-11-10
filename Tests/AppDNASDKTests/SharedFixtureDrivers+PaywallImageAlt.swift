@@ -50,6 +50,40 @@ extension SharedFixtureTests {
         }
     }
 
+    func runDateWheel(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_date_wheel needs action.cases")
+            return
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        func date(_ s: String) -> Date {
+            let p = s.split(separator: "-").compactMap { Int($0) }
+            return calendar.date(from: DateComponents(year: p[0], month: p[1], day: p[2], hour: 12))!
+        }
+        let wide = date("1800-01-01")...date("2200-12-31")
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            switch o["op"]?.stringValue {
+            case "columns":
+                return DateWheelModel.dateColumns(locale: Locale(identifier: o["locale"]?.stringValue ?? "en-US")).map { $0.rawValue }
+            case "days":
+                let m = DateWheelModel(calendar: calendar, minimum: wide.lowerBound, maximum: wide.upperBound)
+                return m.days(inYear: (o["year"]?.foundation as? Int) ?? 0, month: (o["month"]?.foundation as? Int) ?? 1).count
+            case "clamp":
+                let minimum = o["min"]?.stringValue.map(date) ?? wide.lowerBound
+                let maximum = o["max"]?.stringValue.map(date) ?? wide.upperBound
+                let m = DateWheelModel(calendar: calendar, minimum: minimum, maximum: maximum)
+                let r = m.clamped(year: (o["year"]?.foundation as? Int) ?? 0, month: (o["month"]?.foundation as? Int) ?? 1, day: (o["day"]?.foundation as? Int) ?? 1)
+                let p = m.parts(of: r)
+                return String(format: "%04d-%02d-%02d", p.year, p.month, p.day)
+            default:
+                XCTFail("[\(f.id)] unknown op")
+                return NSNull()
+            }
+        }
+    }
+
     func runOptionLabelMarkdown(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_option_label_markdown needs action.cases")

@@ -1342,6 +1342,8 @@ struct DateWheelPickerBlockView: View {
     }()
     @State private var showPicker = false
     @State private var showDateToast = false
+    @SwiftUI.Environment(\.calendar) private var environmentCalendar
+    @SwiftUI.Environment(\.locale) private var environmentLocale
     // Pre-warm state: a zero-sized hidden DatePicker forces UIKit to init
     // its UIPickerView subsystem eagerly so the first user drag isn't laggy.
     @State private var prewarmDate = Date()
@@ -1424,7 +1426,8 @@ struct DateWheelPickerBlockView: View {
         let explicitVariant = (block.field_config?["picker_variant"]?.value as? String)
             ?? (block.field_config?["date_picker_variant"]?.value as? String)
         let isDatetimeMode = components.contains(.date) && components.contains(.hourAndMinute)
-        let variant = explicitVariant ?? (isDatetimeMode ? "wheel" : "graphical")
+        // A single-year answer is only ever a wheel.
+        let variant = isYearMode ? "wheel" : (explicitVariant ?? (isDatetimeMode ? "wheel" : "graphical"))
         // The console writes bg/border to the shared `block_style` struct on
         // `date_wheel_picker` (not `field_style` like text inputs). Also the
         // wheel/calendar bg are top-level props, not nested in field_config.
@@ -1625,8 +1628,15 @@ struct DateWheelPickerBlockView: View {
         }
     }
 
+    private var isYearMode: Bool { block.picker_mode == "year" }
+
     private func persistDate() {
         let fieldId = block.field_id ?? block.id
+        if isYearMode {
+            // A year answer is four digits, as on Android, in the Gregorian numbering every other answer uses.
+            inputValues[fieldId] = String(format: "%04d", Calendar(identifier: .gregorian).component(.year, from: selectedDate))
+            return
+        }
         let formatter = ISO8601DateFormatter()
         inputValues[fieldId] = formatter.string(from: selectedDate)
         // Also expose a computed age (whole years) under `<field_id>_age`
@@ -1644,6 +1654,11 @@ struct DateWheelPickerBlockView: View {
     private func restoreDate() {
         let fieldId = block.field_id ?? block.id
         if let saved = inputValues[fieldId] as? String {
+            if isYearMode, let year = Int(saved),
+               let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: 6, day: 15, hour: 12)) {
+                selectedDate = date
+                return
+            }
             let formatter = ISO8601DateFormatter()
             if let date = formatter.date(from: saved) {
                 selectedDate = date
@@ -1792,6 +1807,22 @@ struct DateWheelPickerBlockView: View {
             return Locale(identifier: tf == "24h" ? "en_GB" : "en_US")
         }()
         let picker: AnyView = {
+            // The themed wheel, so the band takes `highlight_color`. Calendars it cannot number keep the native wheel.
+            if useWheel || isTime, DateWheelModel.supports(environmentCalendar) {
+                let columns: [DateWheelModel.Column] = isTime ? [.hour, .minute, .meridiem]
+                    : isYearMode ? [.year] : DateWheelModel.dateColumns(locale: environmentLocale)
+                let ink: Color = wheelTextColorHex.map { Color(hex: $0) } ?? (resolvedScheme == .dark ? .white : .black)
+                let line = pickerBorderColor.map { Color(hex: $0) }
+                let is24: Bool? = block.time_format.map { $0.lowercased() == "24h" }
+                return AnyView(
+                    ThemedDateWheel(
+                        date: $selectedDate, range: dateRange, columns: columns, highlight: highlightCol, text: ink,
+                        fontSize: CGFloat(block.font_size ?? 18), authoredHeight: block.wheel_height.map { CGFloat($0) },
+                        lineColor: line, lineWidth: pickerBorderWidth, use24Hour: is24, hapticOnScroll: block.haptic_on_scroll == true
+                    )
+                    .environment(\.colorScheme, resolvedScheme)
+                )
+            }
             if useWheel || isTime {
                 let base = DatePicker("", selection: $selectedDate, in: dateRange, displayedComponents: components)
                     .datePickerStyle(.wheel)
