@@ -86,7 +86,7 @@ final class SelectedOptionStore: @unchecked Sendable {
         return text
     }
 
-    /// A drawn answer as what the user picked (#1677): a select stores the option's id, and the screen
+    /// A drawn answer as what the user picked: a select stores the option's id, and the screen
     /// must show its label. `field` is the answer's field id, `answer` the stored value (a single pick,
     /// or a multi pick's list, whose labels are comma-joined). Nil when nothing here applies, and the
     /// caller draws the stored value: no record, or a record for a different value (a default, or an

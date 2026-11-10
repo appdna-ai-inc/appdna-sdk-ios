@@ -706,7 +706,7 @@ func resolveTemplateStringReadingGoogle(
         if wholeLocationAnswer, let line = LocationAnswer.fieldText(forStored: resolved), !(resolved is String) {
             resolved = line
         }
-        // What the user picked, where the token is drawn (#1677). `allTyped` is about Google credit, not
+        // What the user picked, where the token is drawn. `allTyped` is about Google credit, not
         // about what is drawn, so the position alone decides. A stored value or a link's target keeps the id.
         let placeRule = allTyped ? HostDataResolver.typedTextRule(text, key: key, isOption: isOption) : rule
         if !placeRule.covers(match.range.location),

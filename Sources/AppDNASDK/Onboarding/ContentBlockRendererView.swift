@@ -1734,7 +1734,7 @@ struct ContentBlockRendererView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: statAlign)
                         .padding(16)
-                        // Tiles in a row share a height (#1680): the row is as tall as its tallest tile, and each fills it.
+                        // Tiles in a row share a height: the row is as tall as its tallest tile, and each fills it.
                         .frame(maxHeight: .infinity, alignment: .top)
                         .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))

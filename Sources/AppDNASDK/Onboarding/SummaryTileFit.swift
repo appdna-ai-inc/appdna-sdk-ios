@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// How much a two-column summary tile's value shrinks so its longest word fits the tile (#1680).
+/// How much a two-column summary tile's value shrinks so its longest word fits the tile.
 ///
 /// A value wraps on word boundaries on its own; only a word wider than the tile broke mid-word. Shrinking the
 /// whole value until that word fits keeps it whole, and the floor stops a long id reaching an unreadable

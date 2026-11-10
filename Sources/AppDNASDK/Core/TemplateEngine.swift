@@ -214,7 +214,7 @@ final class TemplateEngine {
     /// An onboarding answer as template text. Off onboarding, a Google answer (one carrying
     /// `place_id`) is its `raw_query`, and a step or list holding one has it replaced the same way
     /// before it is stringified — so the whole-answer token never prints Google content either. A select
-    /// answer drawn here shows what the user picked (#1677); `field` is the answer's field id.
+    /// answer drawn here shows what the user picked; `field` is the answer's field id.
     private func answerText(_ value: Any, _ context: TemplateContext, field: String) -> String? {
         if let picked = SelectedOptionStore.drawnAnswer(field: field, answer: value, selected: context.selected) { return picked }
         guard context.surface == .other else { return Self.stringify(value) }

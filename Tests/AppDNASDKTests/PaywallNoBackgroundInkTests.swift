@@ -1,7 +1,7 @@
 // PaywallNoBackgroundInkTests.swift
 //
 // A paywall with no authored background paints the system's page; its default ink reads that page, not an
-// assumed one (#1681). Before, the ink read a page colour of nil, which answers white, on a white page.
+// assumed one. Before, the ink read a page colour of nil, which answers white, on a white page.
 
 import XCTest
 import SwiftUI

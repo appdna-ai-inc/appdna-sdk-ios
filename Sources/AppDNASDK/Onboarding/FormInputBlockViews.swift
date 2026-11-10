@@ -642,7 +642,7 @@ struct FormInputDateBlock: View {
                 RoundedRectangle(cornerRadius: pickerCornerRadius)
                     .strokeBorder(Color(hex: pickerBorderColorHex ?? "#00000000"), lineWidth: pickerBorderWidth)
             )
-            // An unstyled picker takes its scheme from what is behind it (#1678): `.light` here drew a black value on a
+            // An unstyled picker takes its scheme from what is behind it: `.light` here drew a black value on a
             // dark step on a phone in Light.
             .environment(\.colorScheme, resolvedScheme ?? pickerSurfaceScheme(variant: variant, fieldBgHex: fieldBgHex, wheelBgHex: wheelBgHex, calendarBgHex: calendarBgHex))
             .onChange(of: selectedDate) { newValue in

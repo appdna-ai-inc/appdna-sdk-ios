@@ -1,6 +1,6 @@
 // DateFieldInkTests.swift
 //
-// An unstyled date or time value takes its ink from the surface behind it (#1678). The field forced a light
+// An unstyled date or time value takes its ink from the surface behind it. The field forced a light
 // colour scheme, so its value was black on a dark step when the phone was in Light.
 
 import XCTest

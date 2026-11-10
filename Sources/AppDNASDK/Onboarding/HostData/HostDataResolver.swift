@@ -521,7 +521,7 @@ enum HostDataResolver {
         return text
     }
 
-    /// A drawn single-select answer as its option's label (#1677); nil for anything else. Android `pickedLabel`.
+    /// A drawn single-select answer as its option's label; nil for anything else. Android `pickedLabel`.
     static func pickedLabel(_ path: String, _ value: HDVal?, _ scope: Scope) -> String? {
         guard path.hasPrefix("responses.") || path.hasPrefix("step."), let value, let stored = stringify(value) else { return nil }
         let field = path.components(separatedBy: ".").last ?? ""

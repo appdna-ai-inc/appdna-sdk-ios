@@ -1012,12 +1012,12 @@ struct PaywallRenderer: View {
         let bg = config.background ?? config.layout?.background
         switch bg?.type {
         case "color":
-            // `{"type":"color"}` with no value paints white, so the ink reads white too (#1681).
+            // `{"type":"color"}` with no value paints white, so the ink reads white too.
             return bg?.color.flatMap { $0.isEmpty ? nil : $0 } ?? bg?.value.flatMap { $0.isEmpty ? nil : $0 } ?? "#FFFFFF"
         case "gradient", "image", "video", "transparent", "clear", "none":
             return nil
         default:
-            // No authored background: the page is the system's, so its ink follows the system's (#1681).
+            // No authored background: the page is the system's, so its ink follows the system's.
             return colorScheme == .dark ? "#000000" : "#FFFFFF"
         }
     }

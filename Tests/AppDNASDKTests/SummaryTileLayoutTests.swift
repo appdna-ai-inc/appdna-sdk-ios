@@ -1,6 +1,6 @@
 // SummaryTileLayoutTests.swift
 //
-// A two-column summary tile's value breaks only on word boundaries, and the tiles in one row share a height (#1680).
+// A two-column summary tile's value breaks only on word boundaries, and the tiles in one row share a height.
 
 import XCTest
 import SwiftUI
