@@ -36,6 +36,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A date-only `date_wheel_picker` answer is the date on the wheel.** It is stored as `yyyy-MM-dd`, as on Android, in
+  every time zone. It was an ISO 8601 instant of local midnight, which east of UTC carried the previous day's date into
+  templates, your app and webhooks. An answer saved that way is still read back as the day it was picked.
+
 - **A warning banner draws one background.** `block_style` (the console's Design panel) now styles the banner's card:
   its background, border and corner radius replace the banner's defaults instead of drawing a second layer behind it.
 

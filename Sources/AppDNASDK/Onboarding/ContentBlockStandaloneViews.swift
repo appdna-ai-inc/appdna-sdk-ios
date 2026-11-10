@@ -1614,6 +1614,28 @@ struct DateWheelPickerBlockView: View {
             }
         }
     }
+    /// The shape the answer takes, `year`, `date`, `time` or `datetime`: the columns the body draws.
+    private var answerMode: String {
+        switch block.picker_mode {
+        case "year": return "year"
+        case "datetime", "date_time": return "datetime"
+        case "time": return "time"
+        default:
+            switch block.type {
+            case .input_time: return "time"
+            case .input_datetime: return "datetime"
+            default: return "date"
+            }
+        }
+    }
+
+    /// The days the user sees: the Gregorian numbering every answer uses, in the time zone the wheel draws in.
+    private var answerCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = environmentCalendar.timeZone
+        return calendar
+    }
+
 
     private var defaultValidationMessage: String {
         if block.allow_future == false { return "Please select a date in the past" }
@@ -1632,13 +1654,8 @@ struct DateWheelPickerBlockView: View {
 
     private func persistDate() {
         let fieldId = block.field_id ?? block.id
-        if isYearMode {
-            // A year answer is four digits, as on Android, in the Gregorian numbering every other answer uses.
-            inputValues[fieldId] = String(format: "%04d", Calendar(identifier: .gregorian).component(.year, from: selectedDate))
-            return
-        }
-        let formatter = ISO8601DateFormatter()
-        inputValues[fieldId] = formatter.string(from: selectedDate)
+        inputValues[fieldId] = DateWheelAnswer.string(for: selectedDate, mode: answerMode, calendar: answerCalendar)
+        if isYearMode { return }
         // Also expose a computed age (whole years) under `<field_id>_age`
         // when the picker is in date-only mode (the common birth_date use
         // case). Saves customers from re-parsing the ISO string client-side.
@@ -1653,17 +1670,10 @@ struct DateWheelPickerBlockView: View {
 
     private func restoreDate() {
         let fieldId = block.field_id ?? block.id
-        if let saved = inputValues[fieldId] as? String {
-            if isYearMode, let year = Int(saved),
-               let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: year, month: 6, day: 15, hour: 12)) {
-                selectedDate = date
-                return
-            }
-            let formatter = ISO8601DateFormatter()
-            if let date = formatter.date(from: saved) {
-                selectedDate = date
-                return
-            }
+        if let saved = inputValues[fieldId] as? String, let date = DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
+            let range = dateRange
+            selectedDate = min(max(date, range.lowerBound), range.upperBound)
+            return
         }
         // No prior answer — seed the wheel from the authored `default_date_value`
         // (relative like "-18y" or ISO "2000-01-01") instead of always landing

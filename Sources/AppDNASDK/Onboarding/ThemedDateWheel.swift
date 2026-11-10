@@ -73,6 +73,49 @@ struct DateWheelModel {
     }
 }
 
+/// What the date wheel stores for a pick, and the date a stored answer is read back as. `calendar` is Gregorian, in the
+/// time zone the wheel draws in.
+///
+/// A date-only answer is the calendar date the user saw, `yyyy-MM-dd`, as Android stores it. It is not a moment: written as
+/// a UTC instant, local midnight east of UTC is the previous day, and every reader of the text got the wrong date.
+enum DateWheelAnswer {
+    static func string(for date: Date, mode: String, calendar: Calendar) -> String {
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        switch mode {
+        case "year":
+            return String(format: "%04d", c.year ?? 0)
+        case "date":
+            return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 1, c.day ?? 1)
+        default:
+            // A time keeps the moment it has always been.
+            return ISO8601DateFormatter().string(from: date)
+        }
+    }
+
+    /// The date a stored answer is shown as: four digits, `yyyy-MM-dd`, or an ISO instant (a time, or a date stored by an
+    /// earlier release, which is shown as the local date it was picked on). Nil for anything else.
+    static func date(from saved: String, calendar: Calendar) -> Date? {
+        let text = saved.trimmingCharacters(in: .whitespaces)
+        let digits = text.split(separator: "-", omittingEmptySubsequences: false)
+        if digits.allSatisfy({ !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }) {
+            let parts = digits.compactMap { Int($0) }
+            if parts.count == 1, digits[0].count == 4 {
+                return calendar.date(from: DateComponents(year: parts[0], month: 6, day: 15, hour: 12))
+            }
+            if parts.count == 3, digits[0].count == 4, digits[1].count == 2, digits[2].count == 2 {
+                let wanted = DateComponents(year: parts[0], month: parts[1], day: parts[2], hour: 12)
+                // A month or day out of range is refused, not rolled over into a real but different date.
+                guard let date = calendar.date(from: wanted) else { return nil }
+                let got = calendar.dateComponents([.year, .month, .day], from: date)
+                guard got.year == parts[0], got.month == parts[1], got.day == parts[2] else { return nil }
+                return date
+            }
+            return nil
+        }
+        return ISO8601.date(from: text)
+    }
+}
+
 /// The selection band takes the flow's highlight colour, on every surface.
 enum DateWheelBand {
     static let opacity = 0.1
