@@ -77,7 +77,7 @@ extension SharedFixtureTests {
                 let r = m.clamped(year: (o["year"]?.foundation as? Int) ?? 0, month: (o["month"]?.foundation as? Int) ?? 1, day: (o["day"]?.foundation as? Int) ?? 1)
                 let p = m.parts(of: r)
                 return String(format: "%04d-%02d-%02d", p.year, p.month, p.day)
-            case "store", "read", "read_time", "display":
+            case "store", "read", "read_time", "display", "form_read":
                 // The wheel's own calendar in the case's zone: what a phone set to that zone draws and stores.
                 var zoned = Calendar(identifier: .gregorian)
                 zoned.timeZone = TimeZone(identifier: o["zone"]?.stringValue ?? "UTC")!
@@ -90,6 +90,16 @@ extension SharedFixtureTests {
                 if o["op"]?.stringValue == "display" {
                     let now = ISO8601.date(from: o["now"]?.stringValue ?? "") ?? Date()
                     return AnswerTime.display(o["text"]?.stringValue ?? "", in: zoned.timeZone, now: now).map { $0 as Any } ?? NSNull()
+                }
+                if o["op"]?.stringValue == "form_read" {
+                    // What `FormInputDateBlock` seeds and shows on return, through the same reader.
+                    guard let read = DateWheelAnswer.date(from: o["saved"]?.stringValue ?? "", calendar: zoned) else { return NSNull() }
+                    let p = zoned.dateComponents([.year, .month, .day, .hour, .minute], from: read)
+                    switch o["mode"]?.stringValue {
+                    case "date": return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+                    case "time": return String(format: "%02d:%02d", p.hour ?? 0, p.minute ?? 0)
+                    default: return String(format: "%04d-%02d-%02d %02d:%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0)
+                    }
                 }
                 if o["op"]?.stringValue == "read_time" {
                     guard let read = DateWheelAnswer.date(from: o["saved"]?.stringValue ?? "", calendar: zoned) else { return NSNull() }

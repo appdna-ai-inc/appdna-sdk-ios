@@ -403,6 +403,18 @@ struct FormInputDateBlock: View {
     // allow_future/allow_past validation message for the form-input date variant.
     @State private var dateError: String?
 
+    /// What this field stores, the shapes the date wheel stores: `date` is a calendar date; a `time` or
+    /// `datetime` is the wall time picked in the app's zone (`AnswerTime.zone`, UTC unless set), with its offset.
+    private var answerMode: String {
+        components == .date ? "date" : components == .hourAndMinute ? "time" : "datetime"
+    }
+    private var answerZone: TimeZone { answerMode == "date" ? .current : AnswerTime.zone }
+    private var answerCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = answerZone
+        return calendar
+    }
+
     /// The colour scheme of the surface an unstyled picker draws on: its own authored fill when it has one, else
     /// what is behind the block (`DropdownFieldInk`, the rule the dropdown field's ink follows).
     private func pickerSurfaceScheme(variant: String, fieldBgHex: String?, wheelBgHex: String?, calendarBgHex: String?) -> ColorScheme {
@@ -560,6 +572,7 @@ struct FormInputDateBlock: View {
                         if components == .date { f.dateStyle = .medium; f.timeStyle = .none }
                         else if components == .hourAndMinute { f.dateStyle = .none; f.timeStyle = .short }
                         else { f.dateStyle = .medium; f.timeStyle = .short }
+                        f.timeZone = answerZone
                         // Force 12h/24h display per time_format when a time is shown.
                         if let loc = timeLocale { f.locale = loc }
                         return f
@@ -602,6 +615,7 @@ struct FormInputDateBlock: View {
                                 .tint(accentColor)
                                 .environment(\.locale, timeLocale ?? Locale.current)
                                 .environment(\.colorScheme, resolvedScheme ?? .light)
+                                .environment(\.timeZone, answerZone)
                             Button("Done") { showCompactPopover = false }
                                 .buttonStyle(.borderedProminent)
                                 .tint(accentColor)
@@ -626,6 +640,8 @@ struct FormInputDateBlock: View {
             // An unstyled picker takes its scheme from what is behind it: `.light` here drew a black value on a
             // dark step on a phone in Light.
             .environment(\.colorScheme, resolvedScheme ?? pickerSurfaceScheme(variant: variant, fieldBgHex: fieldBgHex, wheelBgHex: wheelBgHex, calendarBgHex: calendarBgHex))
+            // A time is picked in the app's zone, a date on the phone's calendar.
+            .environment(\.timeZone, answerZone)
             .onChange(of: selectedDate) { newValue in
                 // Enforce allow_future / allow_past on the form-input date variant,
                 // matching Android's FormInputDateBlock and iOS's own DateWheelPickerBlockView. Before
@@ -657,8 +673,7 @@ struct FormInputDateBlock: View {
                     return
                 }
                 dateError = nil
-                let formatter = ISO8601DateFormatter()
-                inputValues[fieldId] = formatter.string(from: newValue)
+                inputValues[fieldId] = DateWheelAnswer.string(for: newValue, mode: answerMode, calendar: answerCalendar)
             }
             if let dateError {
                 Text(dateError)
@@ -670,7 +685,14 @@ struct FormInputDateBlock: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // The compact field opens UIKit's wheel in a sheet; warm it so the first drag does not stall.
-        .onAppear { DatePickerPrewarmer.prewarmOnce() }
+        .onAppear {
+            DatePickerPrewarmer.prewarmOnce()
+            // The saved answer, shown again on return, in any shape this SDK has stored.
+            if let saved = inputValues[block.field_id ?? block.id] as? String,
+               let date = DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
+                selectedDate = date
+            }
+        }
     }
 }
 
