@@ -397,11 +397,27 @@ struct FormInputDateBlock: View {
 
     @State private var selectedDate = Date()
     @State private var showCompactPopover = false
+    /// What the field is drawn on and the phone's own appearance: the ink of an unstyled field.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
     // Pre-warm state: an offscreen hidden wheel forces UIKit's UIPickerView
     // subsystem to init eagerly so the first tap → sheet open isn't laggy.
     @State private var prewarmDate = Date()
     // allow_future/allow_past validation message for the form-input date variant.
     @State private var dateError: String?
+
+    /// The colour scheme of the surface an unstyled picker draws on: its own authored fill when it has one, else
+    /// what is behind the block (`DropdownFieldInk`, the rule the dropdown field's ink follows).
+    private func pickerSurfaceScheme(variant: String, fieldBgHex: String?, wheelBgHex: String?, calendarBgHex: String?) -> ColorScheme {
+        let fill: String? = {
+            switch variant {
+            case "wheel": return wheelBgHex ?? fieldBgHex
+            case "graphical": return calendarBgHex ?? fieldBgHex
+            default: return fieldBgHex
+            }
+        }()
+        return DropdownFieldInk.light(fieldBackground: fill, behind: inkBackdrop, darkAppearance: inkScheme == .dark) ? .dark : .light
+    }
 
     var body: some View {
         let fieldId = block.field_id ?? block.id
@@ -626,7 +642,9 @@ struct FormInputDateBlock: View {
                 RoundedRectangle(cornerRadius: pickerCornerRadius)
                     .strokeBorder(Color(hex: pickerBorderColorHex ?? "#00000000"), lineWidth: pickerBorderWidth)
             )
-            .environment(\.colorScheme, resolvedScheme ?? .light)
+            // An unstyled picker takes its scheme from what is behind it (#1678): `.light` here drew a black value on a
+            // dark step on a phone in Light.
+            .environment(\.colorScheme, resolvedScheme ?? pickerSurfaceScheme(variant: variant, fieldBgHex: fieldBgHex, wheelBgHex: wheelBgHex, calendarBgHex: calendarBgHex))
             .onChange(of: selectedDate) { newValue in
                 // Enforce allow_future / allow_past on the form-input date variant,
                 // matching Android's FormInputDateBlock and iOS's own DateWheelPickerBlockView. Before
