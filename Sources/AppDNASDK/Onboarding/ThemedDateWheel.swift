@@ -265,6 +265,7 @@ final class WheelScrollView: UIScrollView, UIScrollViewDelegate {
     private var selected = 0
     private var lastCentred = -1
     private let feedback = UISelectionFeedbackGenerator()
+    private let tapDelegate = SimultaneousTap()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -274,7 +275,10 @@ final class WheelScrollView: UIScrollView, UIScrollViewDelegate {
         decelerationRate = .fast
         isAccessibilityElement = true
         accessibilityTraits = .adjustable
-        addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+        let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
+        // The onboarding root dismisses the keyboard on a tap; that tap must not cost the row its own.
+        tap.delegate = tapDelegate
+        addGestureRecognizer(tap)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -379,11 +383,31 @@ final class WheelScrollView: UIScrollView, UIScrollViewDelegate {
     }
 
     @objc private func tapped(_ gesture: UITapGestureRecognizer) {
-        let y = gesture.location(in: self).y
+        tapRow(atY: gesture.location(in: self).y)
+    }
+
+    /// A tap at `y`, in the column's content coordinates: the row there is recorded at once and glides into the band.
+    ///
+    /// The offset is set outright and only its drawing is animated. A scroll view's own animated scroll moved the offset a
+    /// frame at a time, and the layout pass on the first frame put the column back on the old value, so a tap did nothing.
+    func tapRow(atY y: CGFloat) {
         let index = Int(y / rowHeight)
-        guard items.indices.contains(index) else { return }
-        setContentOffset(CGPoint(x: 0, y: offset(forIndex: index)), animated: !UIAccessibility.isReduceMotionEnabled)
-        if UIAccessibility.isReduceMotionEnabled { commit() }
+        guard items.indices.contains(index), !isDragging, !isDecelerating else { return }
+        let value = items[index].value
+        if value != selected {
+            if haptic { feedback.selectionChanged() }
+            selected = value
+            onSelect(value)
+        }
+        let target = CGPoint(x: 0, y: offset(forIndex: index))
+        if UIAccessibility.isReduceMotionEnabled {
+            contentOffset = target
+        } else {
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut, .beginFromCurrentState, .allowUserInteraction]) {
+                self.contentOffset = target
+            }
+        }
+        styleRows()
     }
 
     override func accessibilityIncrement() { step(1) }
@@ -395,6 +419,13 @@ final class WheelScrollView: UIScrollView, UIScrollViewDelegate {
         selected = value
         onSelect(value)
         UIAccessibility.post(notification: .announcement, argument: items[index + delta].label)
+    }
+}
+
+/// Lets the row's tap recognise alongside a tap on a view behind the wheel.
+private final class SimultaneousTap: NSObject, UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        !(other.view is UIScrollView)
     }
 }
 
