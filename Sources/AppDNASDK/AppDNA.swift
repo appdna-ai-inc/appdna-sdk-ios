@@ -30,6 +30,10 @@ public final class AppDNA: @unchecked Sendable {
     /// nil until the brand config loads (then defaults fall back to #6366F1).
     public internal(set) static var brandAccentHex: String?
 
+    /// The app's time zone, set in the console's app settings: time and date-and-time answers are picked, stored and
+    /// drawn in it. Nil until the brand config loads and for an app that has none: UTC is used then.
+    static var appTimeZone: TimeZone?
+
     /// Notification posted when remote config is refreshed.
     public static let configUpdated = Notification.Name("AppDNA.configUpdated")
 

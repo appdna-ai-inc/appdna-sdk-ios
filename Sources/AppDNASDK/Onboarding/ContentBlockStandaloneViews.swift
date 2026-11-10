@@ -1351,7 +1351,9 @@ struct DateWheelPickerBlockView: View {
     /// Parse relative date strings like "today", "-18y", "-100y", "+1y", "-30d", or ISO date "2000-01-01"
     // Internal (was private) so FormInputDateBlock can reuse the identical min_date/max_date
     // parsing (relative "-18y"/"+30d", "today"/"now", absolute ISO) for its own bounds gate.
-    static func parseDate(_ str: String?) -> Date? {
+    /// `zone`: where an absolute date's midnight falls. The phone's, except for a time or date-and-time wheel, which works
+    /// in the app's zone (as Android reads the same default's wall time there).
+    static func parseDate(_ str: String?, zone: TimeZone = .current) -> Date? {
         guard let str, !str.isEmpty else { return nil }
         let trimmed = str.trimmingCharacters(in: .whitespaces).lowercased()
         if trimmed == "today" || trimmed == "now" { return Date() }
@@ -1371,6 +1373,7 @@ struct DateWheelPickerBlockView: View {
         }
         // Absolute ISO date
         let f = DateFormatter()
+        f.timeZone = zone
         f.dateFormat = "yyyy-MM-dd"
         return f.date(from: str)
     }
@@ -1629,10 +1632,23 @@ struct DateWheelPickerBlockView: View {
         }
     }
 
+    /// The zone the wheel draws in: the app's for a time or date-and-time (the user picks the wall time the app works
+    /// in, and that is the time a later step shows), the phone's for a date or a year.
+    private var wheelZone: TimeZone {
+        answerMode == "time" || answerMode == "datetime" ? AnswerTime.zone : environmentCalendar.timeZone
+    }
+
     /// The days the user sees: the Gregorian numbering every answer uses, in the time zone the wheel draws in.
     private var answerCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = environmentCalendar.timeZone
+        calendar.timeZone = wheelZone
+        return calendar
+    }
+
+    /// The environment calendar, moved to the wheel's zone.
+    private var wheelCalendar: Calendar {
+        var calendar = environmentCalendar
+        calendar.timeZone = wheelZone
         return calendar
     }
 
@@ -1663,7 +1679,7 @@ struct DateWheelPickerBlockView: View {
         // (relative like "-18y" or ISO "2000-01-01") instead of always landing
         // on today. Clamp into the valid range so a default outside min/max
         // can't open on an invalid day. Parity with Android's default handling.
-        if let seeded = Self.parseDate(block.default_date_value) {
+        if let seeded = Self.parseDate(block.default_date_value, zone: wheelZone) {
             let range = dateRange
             selectedDate = min(max(seeded, range.lowerBound), range.upperBound)
         }
@@ -1671,6 +1687,7 @@ struct DateWheelPickerBlockView: View {
 
     private func formatDate(_ date: Date, components: DatePickerComponents) -> String {
         let f = DateFormatter()
+        f.timeZone = wheelZone
         if components.contains(.date) && components.contains(.hourAndMinute) {
             f.dateStyle = .medium; f.timeStyle = .short
         } else if components.contains(.hourAndMinute) {
@@ -1813,6 +1830,7 @@ struct DateWheelPickerBlockView: View {
                         lineColor: line, lineWidth: pickerBorderWidth, use24Hour: is24, hapticOnScroll: block.haptic_on_scroll == true
                     )
                     .environment(\.colorScheme, resolvedScheme)
+                    .environment(\.calendar, wheelCalendar)
                 )
             }
             if useWheel || isTime {
@@ -1849,6 +1867,8 @@ struct DateWheelPickerBlockView: View {
         }()
 
         picker
+            // A UIKit wheel (a calendar the themed wheel does not number) draws in the same zone.
+            .environment(\.timeZone, wheelZone)
             .padding(pickerPadding)
             // Single-path fill + strokeBorder on the same RoundedRectangle so
             // the corner and edge antialiasing match — same pattern as the

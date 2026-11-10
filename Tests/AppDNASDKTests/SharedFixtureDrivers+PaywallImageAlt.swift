@@ -77,14 +77,24 @@ extension SharedFixtureTests {
                 let r = m.clamped(year: (o["year"]?.foundation as? Int) ?? 0, month: (o["month"]?.foundation as? Int) ?? 1, day: (o["day"]?.foundation as? Int) ?? 1)
                 let p = m.parts(of: r)
                 return String(format: "%04d-%02d-%02d", p.year, p.month, p.day)
-            case "store", "read":
+            case "store", "read", "read_time", "display":
                 // The wheel's own calendar in the case's zone: what a phone set to that zone draws and stores.
                 var zoned = Calendar(identifier: .gregorian)
                 zoned.timeZone = TimeZone(identifier: o["zone"]?.stringValue ?? "UTC")!
                 if o["op"]?.stringValue == "store" {
                     let picked = zoned.date(from: DateComponents(year: (o["year"]?.foundation as? Int) ?? 0, month: (o["month"]?.foundation as? Int) ?? 1,
-                                                                 day: (o["day"]?.foundation as? Int) ?? 1, hour: (o["hour"]?.foundation as? Int) ?? 0))!
+                                                                 day: (o["day"]?.foundation as? Int) ?? 1, hour: (o["hour"]?.foundation as? Int) ?? 0,
+                                                                 minute: (o["minute"]?.foundation as? Int) ?? 0))!
                     return DateWheelAnswer.string(for: picked, mode: o["mode"]?.stringValue ?? "date", calendar: zoned)
+                }
+                if o["op"]?.stringValue == "display" {
+                    let now = ISO8601.date(from: o["now"]?.stringValue ?? "") ?? Date()
+                    return AnswerTime.display(o["text"]?.stringValue ?? "", in: zoned.timeZone, now: now).map { $0 as Any } ?? NSNull()
+                }
+                if o["op"]?.stringValue == "read_time" {
+                    guard let read = DateWheelAnswer.date(from: o["saved"]?.stringValue ?? "", calendar: zoned) else { return NSNull() }
+                    let p = zoned.dateComponents([.year, .month, .day, .hour, .minute], from: read)
+                    return String(format: "%04d-%02d-%02d %02d:%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0)
                 }
                 guard let read = DateWheelAnswer.date(from: o["saved"]?.stringValue ?? "", calendar: zoned) else { return NSNull() }
                 let p = zoned.dateComponents([.year, .month, .day], from: read)

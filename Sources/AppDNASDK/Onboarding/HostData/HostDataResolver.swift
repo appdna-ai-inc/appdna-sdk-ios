@@ -535,6 +535,13 @@ enum HostDataResolver {
         return nil
     }
 
+    /// A drawn time or date-and-time answer in the app's zone (`AnswerTime.display`); nil for anything else. A stored
+    /// value or a URL keeps the answer as stored. Android `answerTimeText`.
+    static func answerTimeText(_ path: String, _ value: HDVal?) -> String? {
+        guard path.hasPrefix("responses.") || path.hasPrefix("step."), let s = value?.str else { return nil }
+        return AnswerTime.display(s, in: AnswerTime.zone)
+    }
+
     /// The flow's own options for a field, which label an answer no pick was recorded for.
     private static func flowOptionRecords(_ field: String, _ scope: Scope) -> [HDVal] {
         scope.roots["flow_options"]?.obj?.d[field]?.arr ?? []
@@ -715,7 +722,7 @@ enum HostDataResolver {
             }
             let value = resolveScopePath(t.path, scope, typedText: typed)
             // What the user picked, where the token is drawn. A stored value or a URL keeps the option's id.
-            if let s = (typed || url ? nil : pickedLabel(t.path, value, scope)) ?? stringify(value) ?? multiSelectText(t.path, scope) {
+            if let s = (typed || url ? nil : pickedLabel(t.path, value, scope) ?? answerTimeText(t.path, value)) ?? stringify(value) ?? multiSelectText(t.path, scope) {
                 if !typed && readsGoogleAnswer(t.path, scope) { res.readGoogle = true }
                 let encode = url && !whole
                 out += encode ? percentEncode(s, query: firstQuery >= 0 && firstQuery < t.index) : s

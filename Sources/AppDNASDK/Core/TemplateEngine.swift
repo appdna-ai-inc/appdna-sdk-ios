@@ -217,6 +217,8 @@ final class TemplateEngine {
     /// answer drawn here shows what the user picked; `field` is the answer's field id.
     private func answerText(_ value: Any, _ context: TemplateContext, field: String) -> String? {
         if let picked = SelectedOptionStore.drawnAnswer(field: field, answer: value, selected: context.selected) { return picked }
+        // A drawn time or date-and-time answer, in the app's zone; sent or stored, it stays as stored.
+        if context.surface == .onboarding, let s = value as? String, let shown = AnswerTime.display(s, in: AnswerTime.zone) { return shown }
         guard context.surface == .other else { return Self.stringify(value) }
         if LocationAnswer.carriesPlaceId(value) { return Self.typedText(of: value) }
         return Self.stringify(Self.typedTextForGoogleAnswers(in: value))

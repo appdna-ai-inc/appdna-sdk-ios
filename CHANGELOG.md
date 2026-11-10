@@ -36,6 +36,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Time and date-and-time answers work in the app's time zone.** Set in the console under Settings → Apps (UTC
+  unless changed), it is the zone a `time` or `datetime` wheel shows and takes, and answers are stored with its offset:
+  `2026-11-10T15:03:00+01:00`, `15:03:00+01:00`. A drawn `{{responses…}}` shows them as `2026-11-10 15:03` / `15:03`.
+  They were UTC instants in the phone's zone; those, and Android's older `HH:mm` shapes, are still read.
+
 - **No faint copy of today's date near a date field.** The hidden picker that warmed UIKit up drew its selected row.
 
 - **Tapping a row of the date wheel selects it.** Only a drag moved the wheel before.

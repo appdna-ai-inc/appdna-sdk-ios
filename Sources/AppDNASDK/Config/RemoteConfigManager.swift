@@ -313,6 +313,9 @@ final class RemoteConfigManager {
     /// defaults can use it instead of the hardcoded #6366F1. Doc/bundle shape:
     /// `{ palette: { accent, primary, ... } }`.
     private func parseBrand(_ data: [String: Any]) {
+        // The app's time zone rides in the same doc. Read before the palette: an app with no brand saved has no palette.
+        let zone = (data["timezone"] as? String).flatMap(TimeZone.init(identifier:))
+        DispatchQueue.main.async { AppDNA.appTimeZone = zone }
         guard let palette = data["palette"] as? [String: Any] else { return }
         if let accent = palette["accent"] as? String, !accent.isEmpty {
             // Write on main — brandAccentHex is read on the main thread from every SwiftUI body; parseBrand

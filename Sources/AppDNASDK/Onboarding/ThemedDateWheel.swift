@@ -74,7 +74,7 @@ struct DateWheelModel {
 }
 
 /// What the date wheel stores for a pick, and the date a stored answer is read back as. `calendar` is Gregorian, in the
-/// time zone the wheel draws in.
+/// time zone the wheel draws in: the phone's for a date, the app's (`AnswerTime.zone`) for a time or date-and-time.
 ///
 /// A date-only answer is the calendar date the user saw, `yyyy-MM-dd`, as Android stores it. It is not a moment: written as
 /// a UTC instant, local midnight east of UTC is the previous day, and every reader of the text got the wrong date.
@@ -86,9 +86,10 @@ enum DateWheelAnswer {
             return String(format: "%04d", c.year ?? 0)
         case "date":
             return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 1, c.day ?? 1)
+        case "time":
+            return AnswerTime.timeString(date, in: calendar.timeZone)
         default:
-            // A time keeps the moment it has always been.
-            return ISO8601DateFormatter().string(from: date)
+            return AnswerTime.dateTimeString(date, in: calendar.timeZone)
         }
     }
 
@@ -112,7 +113,7 @@ enum DateWheelAnswer {
             }
             return nil
         }
-        return ISO8601.date(from: text)
+        return AnswerTime.date(from: text, in: calendar.timeZone) ?? ISO8601.date(from: text)
     }
 }
 

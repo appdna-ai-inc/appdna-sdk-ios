@@ -130,6 +130,10 @@ extension SharedFixtureTests {
         let tctx = fixtureTemplateContext(f)
         ctx.legacyResolve = { path, fb in TemplateEngine.shared.resolveToken(path, fallback: fb, context: tctx) }
 
+        // The app's time zone (the console's app setting, published in the brand doc), restored after.
+        let savedZone = AppDNA.appTimeZone
+        AppDNA.appTimeZone = sd["app_time_zone"]?.stringValue.flatMap(TimeZone.init(identifier:))
+        defer { AppDNA.appTimeZone = savedZone }
         let result = HostDataResolver.resolveRawBlock(config.host, ctx)
 
         let state = f.expect.state_after?.objectValue ?? [:]
