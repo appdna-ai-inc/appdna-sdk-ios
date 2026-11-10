@@ -34,6 +34,7 @@ extension SharedFixtureTests {
         // Paywall image alt text (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
         case "resolve_onboarding_image_alt": runOnboardingImageAlt(f, h)
+        case "resolve_option_label_markdown": runOptionLabelMarkdown(f, h)
         case "resolve_container_children": runContainerChildren(f, h)
         case "resolve_rating_answer": runRatingAnswer(f, h)
         case "resolve_loading_variant": runLoadingVariant(f, h)

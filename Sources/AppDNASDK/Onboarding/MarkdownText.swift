@@ -22,7 +22,11 @@ enum MarkdownText {
             if index > 0 { result.append(AttributedString("\n")) }
             if var parsed = MarkdownLinks.parseLine(line) {
                 for run in parsed.runs {
-                    if run.link != nil {
+                    if let link = run.link, let hex = colorRunHex(link.absoluteString) {
+                        // `[word](color:EE6885)` colours a run; it is not a link.
+                        parsed[run.range].link = nil
+                        parsed[run.range].foregroundColor = UIColor(Color(hex: "#" + hex))
+                    } else if run.link != nil {
                         parsed[run.range].foregroundColor = UIColor(linkColor)
                         parsed[run.range].underlineStyle = .single  // match Android's underlined links
                     } else if let textColor {
@@ -36,6 +40,14 @@ enum MarkdownText {
         }
         if underlineMarkers { applyUnderlineMarkers(&result) }
         return result
+    }
+
+    /// The hex of a `color:` run target, or nil when the target is an ordinary link.
+    static func colorRunHex(_ target: String) -> String? {
+        guard target.lowercased().hasPrefix("color:") else { return nil }
+        let hex = String(target.dropFirst(6))
+        let valid = (hex.count == 6 || hex.count == 8) && hex.allSatisfy(\.isHexDigit)
+        return valid ? hex : nil
     }
 
     /// `++text++` in the drawn text: `.underlineStyle = .single` on the inner range and the `++` markers

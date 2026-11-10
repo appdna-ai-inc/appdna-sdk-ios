@@ -515,6 +515,8 @@ public struct InputOption: Codable, Identifiable {
     public let cell_alignment: String?  // "leading" | "center" | "trailing"
     // Per-option additions
     public let text_alignment: String?  // "leading" | "center" | "trailing" (stacked rows)
+    /// Inline-markdown title for a stacked option; `label` stays the plain answer text.
+    public let label_markdown: String?
     public let leading_text: String?    // small label at the START of the row
     public let trailing_text: String?   // small label at the END of the row (e.g. "Casual")
     public let badge: OptionBadge?      // e.g. a RECOMMENDED chip on the option
@@ -561,6 +563,7 @@ public struct InputOption: Codable, Identifiable {
         self.selected_text_color = container.lenient(String.self, .selected_text_color)
         self.cell_alignment = container.lenient(String.self, .cell_alignment)
         self.text_alignment = container.lenient(String.self, .text_alignment)
+        self.label_markdown = container.lenient(String.self, .label_markdown)
         self.leading_text = container.lenient(String.self, .leading_text)
         self.trailing_text = container.lenient(String.self, .trailing_text)
         self.badge = try container.decodeIfPresent(OptionBadge.self, forKey: .badge)
@@ -589,7 +592,7 @@ public struct InputOption: Codable, Identifiable {
         case border_color, selected_border_color
         case bg_color, selected_bg_color, selected_text_color
         case cell_alignment
-        case text_alignment, leading_text, trailing_text, badge
+        case text_alignment, label_markdown, leading_text, trailing_text, badge
     }
 
     /// Resolve which image URL to show for the given selection state.

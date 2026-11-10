@@ -382,6 +382,7 @@ enum BlockKeyTypes {
             "image_shape": "string",
             "image_url": "string",
             "label": "string",
+            "label_markdown": "string",
             "leading_text": "string",
             "selected_bg_color": "string",
             "selected_border_color": "string",

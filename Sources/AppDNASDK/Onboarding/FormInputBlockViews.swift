@@ -1588,7 +1588,7 @@ struct FormInputSelectBlock: View {
                 let optBorderCol = (option.selected_border_color ?? globalSelectedBorderHex).map { Color(hex: $0) } ?? fillCol
                 let optUnselBorderCol = option.border_color.map { Color(hex: $0) } ?? unselectedBorderCol
 
-                Button {
+                OptionTapTarget(hasLinks: MarkdownLinks.hasRealLinks(option.label_markdown)) {
                     toggleSelection(option: option, fieldId: fieldId)
                 } label: {
                     HStack(spacing: 12) {
@@ -1616,7 +1616,7 @@ struct FormInputSelectBlock: View {
                         // Title + subtitle — option_text_wrap true → full multi-line wrap;
                         // false (default) → single-line truncate (parity with the console preview).
                         VStack(alignment: ((option.text_alignment ?? globalTextAlignment) == "center" ? .center : .leading), spacing: 2) {
-                            Text(option.label ?? "")
+                            optionTitle(option, linkColor: Color(hex: (cfg?["option_link_color"]?.value as? String) ?? "#6366F1"), titleColor: optTitleColor)
                                 .font(optFont(optTitleSize, optTitleWeight))
                                 .foregroundColor(optTitleColor)
                                 .lineLimit(optionTextWrap ? nil : 1)
@@ -1757,6 +1757,14 @@ struct FormInputSelectBlock: View {
     }
 
     // MARK: - Radio indicator helper
+
+    /// An option's title: its inline markdown when authored, else the plain label.
+    private func optionTitle(_ option: InputOption, linkColor: Color, titleColor: Color) -> Text {
+        if let markdown = option.label_markdown, !markdown.isEmpty, #available(iOS 15.0, *) {
+            return Text(MarkdownText.attributed(markdown, linkColor: linkColor, textColor: titleColor, underlineMarkers: false))
+        }
+        return Text(option.label ?? "")
+    }
 
     @ViewBuilder
     private func radioIndicator(isSelected: Bool, fillCol: Color, radioFill: String) -> some View {
@@ -3623,5 +3631,22 @@ enum DropdownFieldInk {
         let surface: GoogleMapsAttribution.Backdrop =
             bg.isEmpty || ["transparent", "clear"].contains(bg.lowercased()) ? behind : .plain(hex: bg)
         return GoogleMapsAttribution.needsLightInk(on: surface, darkAppearance: darkAppearance)
+    }
+}
+
+
+/// The whole option is the tap target. An option whose title carries a link cannot be a `Button`, which would take the
+/// link's tap, so the link stays tappable and the rest of the row still selects.
+struct OptionTapTarget<Label: View>: View {
+    let hasLinks: Bool
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        if hasLinks {
+            label().contentShape(Rectangle()).onTapGesture(perform: action).accessibilityAddTraits(.isButton)
+        } else {
+            Button(action: action, label: label)
+        }
     }
 }

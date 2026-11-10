@@ -18,6 +18,12 @@ import Foundation
 /// generous — a token covered there resolves to what the user typed, which is never Google's content.
 /// The Kotlin twin is `MarkdownLinks.destinationsInTemplate`.
 enum MarkdownLinks {
+    /// Does this markdown draw a link a user can follow? `color:` targets colour a run and are not links.
+    static func hasRealLinks(_ markdown: String?) -> Bool {
+        guard let markdown, !markdown.isEmpty else { return false }
+        return markdown.range(of: #"\]\((?!color:)"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
 
     /// One line of rich text as `rich_text` and an agreement's copy parse it: Foundation's markdown,
     /// inline syntax only, whitespace kept. The links a tap opens are the runs carrying `.link`.

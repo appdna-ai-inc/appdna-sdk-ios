@@ -50,6 +50,35 @@ extension SharedFixtureTests {
         }
     }
 
+    func runOptionLabelMarkdown(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_option_label_markdown needs action.cases")
+            return
+        }
+        struct Holder: Decodable {
+            let content_blocks: [ContentBlock]?
+            enum CodingKeys: String, CodingKey { case content_blocks }
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                content_blocks = try c.decodeLenientArray(ContentBlock.self, forKey: .content_blocks, in: "fixture")
+            }
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let block = obj["block"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: ["content_blocks": [block]]),
+                  let holder = try? JSONDecoder().decode(Holder.self, from: data),
+                  let option = holder.content_blocks?.first?.field_options?.first else {
+                XCTFail("[\(f.id)] case \(name): the option did not decode")
+                return NSNull()
+            }
+            let markdown = option.label_markdown ?? ""
+            let target = markdown.components(separatedBy: "](").last?.components(separatedBy: ")").first ?? ""
+            return ["label": option.label ?? "", "label_markdown": markdown, "color_hex": MarkdownText.colorRunHex(target) ?? ""] as [String: Any]
+        }
+    }
+
     func runOnboardingImageAlt(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_onboarding_image_alt needs action.cases")
