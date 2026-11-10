@@ -31,4 +31,20 @@ extension SharedFixtureTests {
                 darkAppearance: (obj["dark_appearance"]?.foundation as? Bool) ?? false)
         }
     }
+
+    /// How much a summary tile's value shrinks, through the REAL `SummaryTileFit`.
+    func runSummaryTileFit(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_summary_tile_fit needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            let scale = SummaryTileFit.scale(
+                longestWordWidth: CGFloat((o["longest_word_width"]?.foundation as? NSNumber)?.doubleValue ?? 0),
+                availableWidth: CGFloat((o["available_width"]?.foundation as? NSNumber)?.doubleValue ?? 0)
+            )
+            return (Double(scale) * 10_000).rounded() / 10_000
+        }
+    }
 }

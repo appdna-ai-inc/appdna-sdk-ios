@@ -44,6 +44,7 @@ extension SharedFixtureTests {
         case "resolve_button_label_ink": runButtonLabelInk(f, h)
         case "resolve_row_fill": runRowFill(f, h)
         case "resolve_dropdown_field_ink": runDropdownFieldInk(f, h)
+        case "resolve_summary_tile_fit": runSummaryTileFit(f, h)
         case "resolve_gallery_title_ink": runGalleryTitleInk(f, h)
         case "build_push_token_body": runPushTokenBody(f, h)
         case "resolve_block_container_style": runBlockContainerStyle(f, h)

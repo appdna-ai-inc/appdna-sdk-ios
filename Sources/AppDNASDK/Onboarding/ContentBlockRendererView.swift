@@ -1728,17 +1728,20 @@ struct ContentBlockRendererView: View {
                                     blockId: block.id,
                                 )
                             } else {
-                                Text(value).font(.system(size: statValueSize, weight: .bold)).foregroundColor(color)
+                                SummaryTileValue(value: value, size: statValueSize, color: color, alignment: statAlign.horizontal)
                                 Text(label).font(.system(size: statLabelSize)).foregroundColor(statLabelColor)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: statAlign)
                         .padding(16)
+                        // Tiles in a row share a height (#1680): the row is as tall as its tallest tile, and each fills it.
+                        .frame(maxHeight: .infinity, alignment: .top)
                         .background(cardBg)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
                     if perRow == 2 && rowStats.count == 1 { Spacer().frame(maxWidth: .infinity) }
                 }
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity)
