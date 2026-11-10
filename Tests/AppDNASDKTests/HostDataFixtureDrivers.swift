@@ -115,6 +115,7 @@ extension SharedFixtureTests {
         ctx.user = root("user")
         ctx.session = root("session")
         ctx.selected = root("selected")
+        ctx.flowOptions = root("flow_options")
         ctx.pending = sd["pending"]?.boolValue == true
         if let loc = sd["localizations"]?.objectValue {
             var out: [String: [String: String]] = [:]

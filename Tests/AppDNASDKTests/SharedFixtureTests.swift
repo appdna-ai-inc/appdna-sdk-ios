@@ -658,7 +658,10 @@ final class SharedFixtureTests: XCTestCase {
             return XCTFail("[\(f.id)] action.template missing")
         }
         // The options the user picked, which a drawn answer shows the label of.
-        ctx.selected = (session["selected"]?.objectValue ?? [:]).mapValues { $0.foundation }
+        ctx.selected = SelectedOptionStore.drawingRecords(
+            selected: (session["selected"]?.objectValue ?? [:]).mapValues { $0.foundation },
+            flowOptions: (session["flow_options"]?.objectValue ?? [:]).mapValues { $0.foundation }
+        )
         h.state["interpolated"] = TemplateEngine.shared.interpolate(
             template, context: ctx, key: f.action.raw["key"]?.stringValue,
             isOption: f.action.raw["is_option"]?.boolValue ?? false
@@ -1951,6 +1954,7 @@ final class SharedFixtureTests: XCTestCase {
             // resolve. It is a process-lifetime singleton, so it is reset first: a value left over
             // from an earlier fixture would make this one pass for the wrong reason.
             SelectedOptionStore.shared.resetForTesting()
+            SelectedOptionStore.shared.seedFlowOptionsForTesting((sess["flow_options"]?.objectValue ?? [:]).mapValues { $0.foundation })
             if let selected = sess["selected"]?.objectValue {
                 for (fieldId, payload) in selected {
                     SelectedOptionStore.shared.seedForTesting(fieldId: fieldId, value: payload.foundation)
@@ -1958,7 +1962,7 @@ final class SharedFixtureTests: XCTestCase {
             }
 
             if !fixtureResponses.isEmpty || !fixtureStepInputs.isEmpty || sess["selected"] != nil
-                || !fixtureHookData.isEmpty {
+                || sess["flow_options"] != nil || !fixtureHookData.isEmpty {
                 let r = resolveBlockTemplates(
                     block, hookData: fixtureHookData.isEmpty ? nil : fixtureHookData,
                     responses: fixtureResponses, stepInputs: fixtureStepInputs)

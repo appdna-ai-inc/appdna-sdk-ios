@@ -110,6 +110,7 @@ enum OnboardingStepPipeline {
         ctx.user = tctx.userTraits.map { HostJSON(any: $0) }
         ctx.session = HostJSON(any: tctx.sessionData)
         ctx.selected = HostJSON(any: input.selected)
+        ctx.flowOptions = HostJSON(any: SelectedOptionStore.shared.flowOptions)
         ctx.pending = input.pending
         ctx.localizations = input.step.config.localizations
         ctx.legacyResolve = { path, fallback in

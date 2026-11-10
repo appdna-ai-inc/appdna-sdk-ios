@@ -76,7 +76,7 @@ final class TemplateEngine {
             sessionData: sessionStore.sessionData,
             deviceInfo: Self.deviceInfo(),
             surface: surface,
-            selected: SelectedOptionStore.shared.snapshot
+            selected: SelectedOptionStore.shared.drawingRecords
         )
     }
 

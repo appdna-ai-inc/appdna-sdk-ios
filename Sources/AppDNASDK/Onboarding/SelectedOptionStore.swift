@@ -36,6 +36,61 @@ final class SelectedOptionStore: @unchecked Sendable {
         queue.async(flags: .barrier) { self.storage.removeValue(forKey: fieldId) }
     }
 
+    /// The presented flow's own options, by field id, as `{ value, label }` records. An answer with no
+    /// recorded pick (a resumed flow, a default, a host patch) still draws its label from these.
+    private var flowOptionRecords: [String: Any] = [:]
+
+    /// Keep this flow's option list. Replaces the previous flow's: only the flow on screen has answers to draw.
+    func setFlowOptions(_ flow: OnboardingFlowConfig) {
+        let records = Self.optionRecords(of: flow)
+        queue.async(flags: .barrier) { self.flowOptionRecords = records }
+    }
+
+    /// The flow's option records, for the raw pass (`flow_options`).
+    var flowOptions: [String: Any] { queue.sync { flowOptionRecords } }
+
+    /// What a drawn answer looks up: each field's picked records, then the flow's own options.
+    var drawingRecords: [String: Any] { queue.sync { Self.drawingRecords(selected: storage, flowOptions: flowOptionRecords) } }
+
+    /// Picks first, so a recorded pick wins over the flow's list.
+    static func drawingRecords(selected: [String: Any], flowOptions: [String: Any]) -> [String: Any] {
+        var out = selected
+        for (field, list) in flowOptions {
+            let picks: [Any] = selected[field].map { ($0 as? [Any]) ?? [$0] } ?? []
+            out[field] = picks + ((list as? [Any]) ?? [])
+        }
+        return out
+    }
+
+    /// `{ value, label }` for every option a step of this flow authors. A label that is still a template
+    /// has nothing to draw until it resolves, so it is left out and the stored value is drawn.
+    static func optionRecords(of flow: OnboardingFlowConfig) -> [String: Any] {
+        var out: [String: [[String: Any]]] = [:]
+        func add(_ field: String?, _ value: String?, _ label: String?) {
+            guard let field, !field.isEmpty, let value, !value.isEmpty, !value.contains("{{"),
+                  let label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !label.contains("{{") else { return }
+            out[field, default: []].append(["value": value, "label": label])
+        }
+        func walk(_ blocks: [ContentBlock]?) {
+            for block in blocks ?? [] {
+                if block.type.rawValue.hasPrefix("input_") {
+                    for option in block.field_options ?? [] { add(block.field_id, option.resolvedValue, option.label) }
+                }
+                walk(block.children)
+                walk(block.stack_children)
+            }
+        }
+        for step in flow.steps {
+            walk(step.config.content_blocks)
+            for field in step.config.fields ?? [] {
+                for option in field.options ?? [] {
+                    add(field.id, option.value.flatMap { TemplateEngine.stringify($0.value) } ?? option.id, option.label)
+                }
+            }
+        }
+        return out
+    }
+
     /// The map the template resolver reads as the `selected` root.
     var snapshot: [String: Any] {
         queue.sync { storage }
@@ -51,7 +106,12 @@ final class SelectedOptionStore: @unchecked Sendable {
     }
 
     func resetForTesting() {
-        queue.sync(flags: .barrier) { storage.removeAll() }
+        queue.sync(flags: .barrier) { storage.removeAll(); flowOptionRecords.removeAll() }
+    }
+
+    /// Test seam: the flow's option list in its stored shape, without building a whole flow.
+    func seedFlowOptionsForTesting(_ records: [String: Any]) {
+        queue.sync(flags: .barrier) { flowOptionRecords = records }
     }
 
     /// Flatten an option into something a dot path can walk.
@@ -88,9 +148,9 @@ final class SelectedOptionStore: @unchecked Sendable {
 
     /// A drawn answer as what the user picked: a select stores the option's id, and the screen
     /// must show its label. `field` is the answer's field id, `answer` the stored value (a single pick,
-    /// or a multi pick's list, whose labels are comma-joined). Nil when nothing here applies, and the
-    /// caller draws the stored value: no record, or a record for a different value (a default, or an
-    /// answer written after the pick). A multi pick keeps the stored value of any item with no label.
+    /// or a multi pick's list, whose labels are comma-joined). `selected` is `drawingRecords`, so it holds
+    /// picks then the flow's own options. Nil when nothing here applies, and the caller draws the stored
+    /// value: no record for this value anywhere. A multi pick keeps the stored value of any item with no label.
     /// Never for a value that leaves the screen: an option's `value`, a URL, a hook's headers.
     static func drawnAnswer(field: String, answer: Any?, selected: [String: Any]) -> String? {
         let records: [Any] = {

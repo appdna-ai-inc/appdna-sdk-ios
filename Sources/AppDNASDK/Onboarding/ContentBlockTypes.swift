@@ -710,7 +710,7 @@ func resolveTemplateStringReadingGoogle(
         // about what is drawn, so the position alone decides. A stored value or a link's target keeps the id.
         let placeRule = allTyped ? HostDataResolver.typedTextRule(text, key: key, isOption: isOption) : rule
         if !placeRule.covers(match.range.location),
-           let picked = SelectedOptionStore.drawnAnswer(atPath: path, answer: resolved, selected: SelectedOptionStore.shared.snapshot) {
+           let picked = SelectedOptionStore.drawnAnswer(atPath: path, answer: resolved, selected: SelectedOptionStore.shared.drawingRecords) {
             resolved = picked
         } else if (resolved as? [Any])?.isEmpty == true {
             resolved = nil // An empty pick is unresolved, never "[]".

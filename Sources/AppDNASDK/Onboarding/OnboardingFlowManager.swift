@@ -91,6 +91,9 @@ final class OnboardingFlowManager {
 
         let startTime = Date()
 
+        // Before anything draws: an answer already held (a resumed flow, a default) labels from this.
+        SelectedOptionStore.shared.setFlowOptions(flow)
+
         // Build the SwiftUI view with state
         let rendererView = OnboardingFlowHost(
             flow: flow,

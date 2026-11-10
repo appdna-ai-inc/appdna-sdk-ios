@@ -38,6 +38,8 @@ struct HostDataContext {
     var session: HostJSON? = nil
     /// `SelectedOptionStore` snapshot (`{{selected.<field_id>.label}}`).
     var selected: HostJSON? = nil
+    /// The flow's own options by field id, which label an answer with no recorded pick (not a token root).
+    var flowOptions: HostJSON? = nil
     /// "Host data pending".
     var pending: Bool = false
     var localizations: [String: [String: String]]? = nil
@@ -503,7 +505,7 @@ enum HostDataResolver {
         guard path.hasPrefix("responses.") || path.hasPrefix("step."),
               let items = resolveScopePath(path, scope)?.arr, !items.isEmpty else { return nil }
         let field = path.components(separatedBy: ".").last ?? ""
-        let records = scope.roots["selected"]?.obj?.d[field]?.arr ?? []
+        let records = (scope.roots["selected"]?.obj?.d[field]?.arr ?? []) + flowOptionRecords(field, scope)
         let texts: [String] = items.compactMap { item in
             guard let value = stringify(item) else { return nil }
             for record in records {
@@ -525,8 +527,17 @@ enum HostDataResolver {
     static func pickedLabel(_ path: String, _ value: HDVal?, _ scope: Scope) -> String? {
         guard path.hasPrefix("responses.") || path.hasPrefix("step."), let value, let stored = stringify(value) else { return nil }
         let field = path.components(separatedBy: ".").last ?? ""
-        guard let record = scope.roots["selected"]?.obj?.d[field], let v = record.obj?.d["value"], stringify(v) == stored else { return nil }
-        return pickedLabel(of: record)
+        if let record = scope.roots["selected"]?.obj?.d[field], let v = record.obj?.d["value"], stringify(v) == stored,
+           let label = pickedLabel(of: record) { return label }
+        for record in flowOptionRecords(field, scope) {
+            if let v = record.obj?.d["value"], stringify(v) == stored, let label = pickedLabel(of: record) { return label }
+        }
+        return nil
+    }
+
+    /// The flow's own options for a field, which label an answer no pick was recorded for.
+    private static func flowOptionRecords(_ field: String, _ scope: Scope) -> [HDVal] {
+        scope.roots["flow_options"]?.obj?.d[field]?.arr ?? []
     }
 
     static func formatNumber(_ n: Double) -> String? {
@@ -613,6 +624,7 @@ enum HostDataResolver {
         if let v = ctx.hookData { roots["hook_data"] = HDVal(v) }
         if let v = ctx.step { roots["step"] = HDVal(v) }
         if let v = ctx.selected { roots["selected"] = HDVal(v) }
+        if let v = ctx.flowOptions { roots["flow_options"] = HDVal(v) }
         if let v = ctx.user { roots["user"] = HDVal(v) }
         if let v = ctx.session { roots["session"] = HDVal(v) }
         return Scope(roots: roots, item: nil)
