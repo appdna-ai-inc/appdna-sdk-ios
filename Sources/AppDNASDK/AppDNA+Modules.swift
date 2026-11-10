@@ -1343,6 +1343,12 @@ extension AppDNA {
             manager?.present(surveyId: surveyId)
         }
 
+        /// Present the survey answering a placement name. False when none does.
+        @discardableResult
+        public func present(placement: String) -> Bool {
+            manager?.present(placement: placement) ?? false
+        }
+
         /// Set a delegate for survey events.
         public func setDelegate(_ delegate: AppDNASurveyDelegate?) {
             self.delegate = delegate

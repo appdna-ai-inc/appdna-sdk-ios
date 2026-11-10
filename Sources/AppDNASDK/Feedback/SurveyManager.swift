@@ -36,6 +36,16 @@ final class SurveyManager {
         presentSurvey(surveyId: surveyId, config: config, triggerEvent: "manual")
     }
 
+    /// Present the survey answering a placement name. False when no survey has that name.
+    func present(placement: String) -> Bool {
+        guard let surveyId = ItemPlacementResolver.pickSurveyId(from: surveyConfigs, placement: placement) else {
+            Log.warning("No survey found for placement: \(placement)")
+            return false
+        }
+        present(surveyId: surveyId)
+        return true
+    }
+
     /// Called by RemoteConfigManager when Firestore config/surveys updates.
     func updateConfigs(_ configs: [String: SurveyConfig]) {
         self.surveyConfigs = configs

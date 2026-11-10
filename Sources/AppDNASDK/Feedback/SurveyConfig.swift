@@ -17,6 +17,8 @@ public struct SurveyConfig: Codable {
     public let trigger_rules: SurveyTriggerRules?
     public let appearance: SurveyAppearance?
     public let follow_up_actions: SurveyFollowUpActions?
+    /// A name an app can ask for this survey by, instead of its id. Several surveys may share one.
+    public let placement: String?
 }
 
 /// A single survey question.

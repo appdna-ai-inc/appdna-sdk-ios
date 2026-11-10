@@ -21,6 +21,8 @@ public struct OnboardingFlowConfig: Codable {
     /// Keyed by node ID for O(1) lookup. Preferred over graph_layout for SDK use.
     public let graph_nodes: AnyCodable?
     public let audience_rules: AnyCodable?
+    /// A name an app can ask for this flow by, instead of its id. Several flows may share one.
+    public let placement: String?
 
     /// Non-optional steps for renderer compatibility
     public var steps: [OnboardingStep] { _steps ?? [] }
@@ -29,7 +31,7 @@ public struct OnboardingFlowConfig: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, version, _steps = "steps", _settings = "settings"
-        case status, graph_layout, graph_nodes, audience_rules
+        case status, graph_layout, graph_nodes, audience_rules, placement
     }
 
     public init(from decoder: Decoder) throws {
@@ -45,6 +47,7 @@ public struct OnboardingFlowConfig: Codable {
         self.graph_layout = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_layout)
         self.graph_nodes = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_nodes)
         self.audience_rules = try c.decodeIfPresent(AnyCodable.self, forKey: .audience_rules)
+        self.placement = c.lenient(String.self, .placement)
     }
 
     /**
@@ -73,6 +76,7 @@ public struct OnboardingFlowConfig: Codable {
         self.graph_layout = nil
         self.graph_nodes = nil
         self.audience_rules = nil
+        self.placement = nil
     }
 }
 

@@ -502,6 +502,7 @@ final class SharedFixtureTests: XCTestCase {
         case "multi_buttons_layout":           runMultiButtonsLayout(fixture, harness)
         case "compose_map_url":                runComposeMapUrl(fixture, harness)
         case "compose_cta_plan_name":          runComposeCtaPlanName(fixture, harness)
+        case "select_item_placement":          runSelectItemPlacement(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "report_paying_user":             runReportPayingUser(fixture, harness)

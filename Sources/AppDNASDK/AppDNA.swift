@@ -1122,6 +1122,29 @@ public final class AppDNA: @unchecked Sendable {
         return result
     }
 
+    /// Present the onboarding flow answering a placement name, for this user.
+    ///
+    /// Several flows may share a name: higher audience priority first, then a targeted flow before a
+    /// catch-all, then lowest id. The first whose audience rules match is shown.
+    ///
+    /// - Returns: `false` when no flow answers the name, or the SDK is not ready.
+    @discardableResult
+    public static func presentOnboarding(
+        placement: String,
+        from viewController: UIViewController? = nil,
+        delegate: AppDNAOnboardingDelegate? = nil
+    ) -> Bool {
+        guard let manager = shared.onboardingFlowManager else {
+            Log.warning("Onboarding placement \(placement) was NOT looked up: the SDK is still configuring. Wait for AppDNA.onReady() and present again.")
+            return false
+        }
+        guard let flowId = manager.flowId(placement: placement) else {
+            Log.warning("No onboarding flow found for placement: \(placement)")
+            return false
+        }
+        return presentOnboarding(flowId: flowId, from: viewController, delegate: delegate)
+    }
+
     // MARK: - Public API: Server-Driven Screens
 
     /// Show a server-driven screen by ID. The screen config is fetched from cache or Firestore.

@@ -155,6 +155,15 @@ final class OnboardingFlowManager {
         return true
     }
 
+    /// The flow answering a placement name for this user, or nil when none does.
+    func flowId(placement: String) -> String? {
+        ItemPlacementResolver.pickFlow(
+            from: Array(remoteConfigManager.getAllOnboardingFlows().values),
+            placement: placement,
+            traits: AppDNA.getUserTraits()
+        )?.id
+    }
+
     // MARK: - Private
 
     private func resolveFlow(flowId: String?) -> OnboardingFlowConfig? {
