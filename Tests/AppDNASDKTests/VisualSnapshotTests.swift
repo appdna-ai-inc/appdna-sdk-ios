@@ -1,5 +1,6 @@
 import SnapshotTesting
 import SwiftUI
+import UIKit
 import XCTest
 @testable import AppDNASDK
 
@@ -32,6 +33,10 @@ final class VisualSnapshotTests: XCTestCase {
     /// could not be re-recorded however record mode was requested. That is how one golden
     /// stayed pinned to the filter build after the render was corrected, and the iOS suite sat
     /// red on a golden nobody could refresh. One property, read by every call site.
+    /// The appearance every golden here was recorded in. Unpinned, a render took the simulator's own appearance, so the
+    /// same commit passed on a simulator in one appearance and failed 21 goldens by a few pixels in the other.
+    private static let goldenTraits = UITraitCollection(userInterfaceStyle: .light)
+
     private var recordMode: SnapshotTestingConfiguration.Record {
         if ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] != nil { return .all }
         return Self.recordSentinelExists ? .all : .never
@@ -123,14 +128,14 @@ final class VisualSnapshotTests: XCTestCase {
     /// Pinned to an edge: full width, square corners, no gutter on either side.
     func testMapAnchoredBottom_meetsBothEdges() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! renderPlaced(Self.anchoredMapJSON, .anchorBottom), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! renderPlaced(Self.anchoredMapJSON, .anchorBottom), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
     /// The authored theme colours on the surface a keyless host actually ships.
     func testMapThemedFallback_usesAuthoredSurface() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.themedMapJSON), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.themedMapJSON), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -189,19 +194,19 @@ final class VisualSnapshotTests: XCTestCase {
 
     func testButtonElementWidthAuto_sizesToItsLabel() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.autoWidthButtonJSON), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.autoWidthButtonJSON), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
     func testButtonElementWidthFill_spansTheRow() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.fillWidthButtonJSON), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.fillWidthButtonJSON), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
     func testSelectCategoryChips_firstChipActive() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.chipSelectJSON), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -231,7 +236,7 @@ final class VisualSnapshotTests: XCTestCase {
         { "label_position": "hidden", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -240,7 +245,7 @@ final class VisualSnapshotTests: XCTestCase {
         { "label_position": "above", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -249,7 +254,7 @@ final class VisualSnapshotTests: XCTestCase {
         { "label_position": "above", "label_align": "center", "label_color": "#E5E7EB", "label_font_size": 15 }
         """))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -258,7 +263,7 @@ final class VisualSnapshotTests: XCTestCase {
         { "label_position": "above", "label_align": "right", "label_color": "#E5E7EB", "label_font_size": 24 }
         """))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: v, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: v, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -303,7 +308,7 @@ final class VisualSnapshotTests: XCTestCase {
         style.strikethroughFontSize = 13
         style.strikethroughGap = 8
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -313,7 +318,7 @@ final class VisualSnapshotTests: XCTestCase {
         var style = PlanCardStyle()
         style.showSubtitle = true
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! renderPlanCard(planJSON: Self.promoPlanJSON, style: style), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -361,7 +366,7 @@ final class VisualSnapshotTests: XCTestCase {
         """)
         // Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -380,7 +385,7 @@ final class VisualSnapshotTests: XCTestCase {
         """)
         // Compare by default (CI fails on pixel drift); record only when the bridge/env asks.
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -398,7 +403,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -418,7 +423,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["sel4": "b"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -436,7 +441,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["sel5": "p"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -465,7 +470,7 @@ final class VisualSnapshotTests: XCTestCase {
         "tile_image_layout": "image_strip", "tile_strip_ratio": 0.75, "tile_surface_color": "#1F2937"
         """), inputs: ["tiles_layout": "w1"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -482,7 +487,7 @@ final class VisualSnapshotTests: XCTestCase {
         "tile_image_layout": "image_strip", "tile_strip_ratio": 0.75, "tile_surface_color": "#1F2937"
         """, optionExtras: overlay), inputs: ["tiles_layout": "w1"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -536,7 +541,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -549,7 +554,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -563,7 +568,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -576,7 +581,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -599,7 +604,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -617,7 +622,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -648,7 +653,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -676,7 +681,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -700,7 +705,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -792,7 +797,7 @@ final class VisualSnapshotTests: XCTestCase {
         //
         // To restore the pixel check, record on a machine whose simulator matches
         // `.github/workflows/sdk-ci.yml` (iPhone 16), then re-add the assertion below:
-        //     withSnapshotTesting(record: recordMode) { assertSnapshot(of: view, as: .image(layout: .sizeThatFits)) }
+        //     withSnapshotTesting(record: recordMode) { assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits)) }
         _ = view
     }
     func testSelect_imageTiles_contained() throws {
@@ -801,7 +806,7 @@ final class VisualSnapshotTests: XCTestCase {
         "tile_image_inset": 10, "tile_image_frame_width": 2, "tile_image_frame_color": "#F59E0B"
         """), inputs: ["tiles_layout": "w1"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -822,7 +827,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["tiles1": "lift"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -844,7 +849,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["bubble1": "running"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -864,7 +869,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["list1": "plus"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -881,7 +886,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -900,7 +905,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, inputs: ["glow1": "b"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -915,7 +920,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -935,7 +940,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -955,7 +960,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -975,7 +980,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -995,7 +1000,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1013,7 +1018,7 @@ final class VisualSnapshotTests: XCTestCase {
         .background(Color(hex: "#0F1117"))
 
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1029,7 +1034,7 @@ final class VisualSnapshotTests: XCTestCase {
         .background(Color(hex: "#0F1117"))
 
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1050,7 +1055,7 @@ final class VisualSnapshotTests: XCTestCase {
         .background(Color(hex: "#0F1117"))
 
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1075,7 +1080,7 @@ final class VisualSnapshotTests: XCTestCase {
             .background(Color(hex: "#E5E7EB"))
 
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1089,7 +1094,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1102,7 +1107,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1115,7 +1120,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1131,7 +1136,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1146,7 +1151,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1162,7 +1167,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1185,7 +1190,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """, pad: 0)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1204,7 +1209,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1219,7 +1224,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1240,7 +1245,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1256,7 +1261,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1275,7 +1280,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1292,7 +1297,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1308,7 +1313,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1328,7 +1333,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ], responses: ["user_name": "Alex", "age": "25"])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1343,7 +1348,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1353,7 +1358,7 @@ final class VisualSnapshotTests: XCTestCase {
         {"id": "otp", "type": "otp_input", "active_color": "#6366F1", "field_config": {"otp_length": 6, "otp_value": "1234"}}
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1373,7 +1378,7 @@ final class VisualSnapshotTests: XCTestCase {
         // The harness paints #0F1117: say so, as a step does, so an unauthored banner picks its ink for it.
         .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1405,7 +1410,7 @@ final class VisualSnapshotTests: XCTestCase {
         // The harness paints #0F1117: say so, as a step does, so an unauthored banner picks its ink for it.
         .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1429,7 +1434,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1467,7 +1472,7 @@ final class VisualSnapshotTests: XCTestCase {
         }
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1485,7 +1490,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1495,7 +1500,7 @@ final class VisualSnapshotTests: XCTestCase {
         {"id": "sb", "type": "speech_bubble", "text": "Great job! You're on a 7-day streak 🔥", "bg_color": "#FFFFFF", "text_color": "#111827", "field_config": {"bubble_tail": "left"}}
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1510,7 +1515,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1523,7 +1528,7 @@ final class VisualSnapshotTests: XCTestCase {
         // its ink from that backdrop. Without it the headline is drawn for an unknown (light) surface.
         .environment(\.googleAttributionBackdrop, .plain(hex: "#0F1117"))
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1533,7 +1538,7 @@ final class VisualSnapshotTests: XCTestCase {
         {"id": "ph", "type": "press_hold_confirm", "text": "Hold to confirm", "active_color": "#6366F1", "field_config": {"hold_progress": 0.65}}
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1549,7 +1554,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1564,7 +1569,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1574,7 +1579,7 @@ final class VisualSnapshotTests: XCTestCase {
         {"id": "mm", "type": "memory_match", "active_color": "#6366F1", "field_config": {"match_columns": 3, "match_cards": [{"symbol": "🍎", "state": "up"}, {"state": "down"}, {"symbol": "🍌", "state": "matched"}, {"state": "down"}, {"symbol": "🍎", "state": "up"}, {"symbol": "🍌", "state": "matched"}]}}
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1584,7 +1589,7 @@ final class VisualSnapshotTests: XCTestCase {
         {"id": "cal", "type": "calendar_month", "active_color": "#6366F1", "field_config": {"month_label": "June 2026", "days_in_month": 30, "start_offset": 1, "selected_days": [12, 13, 14], "today": 15}}
         """)
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1599,7 +1604,7 @@ final class VisualSnapshotTests: XCTestCase {
             """,
         ])
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: view, as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: view, as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1628,13 +1633,13 @@ final class VisualSnapshotTests: XCTestCase {
     /// pair below must therefore never match each other.
     func testMultiButtons_twoThenOne_centered() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.multiButtonsJSON("center")), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.multiButtonsJSON("center")), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
     func testMultiButtons_twoThenOne_stretched() throws {
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(Self.multiButtonsJSON("stretch")), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(Self.multiButtonsJSON("stretch")), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1657,7 +1662,7 @@ final class VisualSnapshotTests: XCTestCase {
          "element_width": "300px", "horizontal_align": "center"}
         """
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 
@@ -1667,7 +1672,7 @@ final class VisualSnapshotTests: XCTestCase {
          "element_width": "300px", "horizontal_align": "right"}
         """
         withSnapshotTesting(record: recordMode) {
-            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits))
+            assertSnapshot(of: try! render(json), as: .image(layout: .sizeThatFits, traits: Self.goldenTraits))
         }
     }
 }
