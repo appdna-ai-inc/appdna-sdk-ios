@@ -1075,7 +1075,8 @@ struct OnboardingFlowHost: View {
         // The hook's headers go to the customer's server, not to this screen, so nothing here can
         // carry the step's Google credit: a Google answer is its typed text, as on every surface
         // other than an onboarding step's own text.
-        let ctx = TemplateEngine.shared.buildContext(surface: .other)
+        var ctx = TemplateEngine.shared.buildContext(surface: .other)
+        ctx.selected = [:] // Nor a picked option's label: the customer's server keeps the id it can join on.
         return TemplateEngine.shared.interpolate(value, context: ctx)
     }
 

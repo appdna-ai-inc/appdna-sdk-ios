@@ -25,6 +25,9 @@ struct TemplateContext {
     let deviceInfo: [String: String]
     /// Where the template is drawn. A context built by hand defaults to the restrictive surface.
     var surface: TemplateSurface = .other
+    /// The options the user picked (`SelectedOptionStore`), so a drawn answer shows its label. Empty when
+    /// the text leaves the screen (a stored value, a URL, a hook's headers): those keep the option's id.
+    var selected: [String: Any] = [:]
 }
 
 /// Shared template interpolation engine for all SDK modules.
@@ -72,7 +75,8 @@ final class TemplateEngine {
             computedData: sessionStore.computedData,
             sessionData: sessionStore.sessionData,
             deviceInfo: Self.deviceInfo(),
-            surface: surface
+            surface: surface,
+            selected: SelectedOptionStore.shared.snapshot
         )
     }
 
@@ -92,6 +96,7 @@ final class TemplateEngine {
             : HostDataResolver.TypedTextRule.none
         var typedContext = context
         typedContext.surface = .other
+        typedContext.selected = [:]
 
         for match in matches.reversed() {
             guard let varRange = Range(match.range(at: 1), in: value),
@@ -155,12 +160,12 @@ final class TemplateEngine {
                 let remaining = path.dropFirst("onboarding.".count)
                 let subParts = remaining.split(separator: ".", maxSplits: 1).map(String.init)
                 guard subParts.count >= 2 else { return nil }
-                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap { answerText($0, context) }
+                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap { answerText($0, context, field: subParts[1]) }
             }
             let stepId = parts[1]
             let fieldPath = parts[2]
             guard let step = context.onboardingResponses[stepId] else { return nil }
-            if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context) }
+            if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context, field: fieldPath) }
             // `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
             // structured answer (a location selection) arrives as `field.city`. Walk it.
             let keys = fieldPath.split(separator: ".").map(String.init)
@@ -171,7 +176,7 @@ final class TemplateEngine {
                 value = (value as? [String: Any])?[key]
             }
             guard let found = value, !(found is NSNull) else { return nil }
-            return answerText(found, context)
+            return answerText(found, context, field: keys.last ?? fieldPath)
 
         case "input":
             // Shorthand: {{input.fieldId}} — searches all step responses for the field
@@ -179,7 +184,7 @@ final class TemplateEngine {
             let fieldId = parts[1]
             for (_, stepData) in context.onboardingResponses {
                 if let value = stepData[fieldId] {
-                    return answerText(value, context)
+                    return answerText(value, context, field: fieldId)
                 }
             }
             return nil
@@ -208,8 +213,10 @@ final class TemplateEngine {
 
     /// An onboarding answer as template text. Off onboarding, a Google answer (one carrying
     /// `place_id`) is its `raw_query`, and a step or list holding one has it replaced the same way
-    /// before it is stringified — so the whole-answer token never prints Google content either.
-    private func answerText(_ value: Any, _ context: TemplateContext) -> String? {
+    /// before it is stringified — so the whole-answer token never prints Google content either. A select
+    /// answer drawn here shows what the user picked (#1677); `field` is the answer's field id.
+    private func answerText(_ value: Any, _ context: TemplateContext, field: String) -> String? {
+        if let picked = SelectedOptionStore.drawnAnswer(field: field, answer: value, selected: context.selected) { return picked }
         guard context.surface == .other else { return Self.stringify(value) }
         if LocationAnswer.carriesPlaceId(value) { return Self.typedText(of: value) }
         return Self.stringify(Self.typedTextForGoogleAnswers(in: value))

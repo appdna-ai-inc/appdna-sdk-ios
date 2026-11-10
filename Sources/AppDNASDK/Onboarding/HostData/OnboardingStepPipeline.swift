@@ -119,6 +119,7 @@ enum OnboardingStepPipeline {
         // Google answer resolves there as it does on every other surface: to its typed text.
         var storedContext = tctx
         storedContext.surface = .other
+        storedContext.selected = [:]
         ctx.legacyResolveStored = { path, fallback in
             TemplateEngine.shared.resolveToken(path, fallback: fallback, context: storedContext)
         }

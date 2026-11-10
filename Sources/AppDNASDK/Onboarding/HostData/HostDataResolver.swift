@@ -507,11 +507,26 @@ enum HostDataResolver {
         let texts: [String] = items.compactMap { item in
             guard let value = stringify(item) else { return nil }
             for record in records {
-                if let o = record.obj, let v = o.d["value"], stringify(v) == value, let label = o.d["label"], let text = stringify(label) { return text }
+                if let o = record.obj, let v = o.d["value"], stringify(v) == value, let text = pickedLabel(of: record) { return text }
             }
             return value
         }
         return texts.count == items.count ? texts.joined(separator: ", ") : nil
+    }
+
+    /// A picked record's drawn text, as `SelectedOptionStore.drawnLabel` reads one: never a Google answer's content.
+    private static func pickedLabel(of record: HDVal) -> String? {
+        guard !recordGoogleKeys(record).contains("label"), let label = record.obj?.d["label"], let text = stringify(label),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
+
+    /// A drawn single-select answer as its option's label (#1677); nil for anything else. Android `pickedLabel`.
+    static func pickedLabel(_ path: String, _ value: HDVal?, _ scope: Scope) -> String? {
+        guard path.hasPrefix("responses.") || path.hasPrefix("step."), let value, let stored = stringify(value) else { return nil }
+        let field = path.components(separatedBy: ".").last ?? ""
+        guard let record = scope.roots["selected"]?.obj?.d[field], let v = record.obj?.d["value"], stringify(v) == stored else { return nil }
+        return pickedLabel(of: record)
     }
 
     static func formatNumber(_ n: Double) -> String? {
@@ -686,7 +701,9 @@ enum HostDataResolver {
                 out += url && !whole ? percentEncode(v, query: firstQuery >= 0 && firstQuery < t.index) : v
                 continue
             }
-            if let s = stringify(resolveScopePath(t.path, scope, typedText: typed)) ?? multiSelectText(t.path, scope) {
+            let value = resolveScopePath(t.path, scope, typedText: typed)
+            // What the user picked, where the token is drawn. A stored value or a URL keeps the option's id.
+            if let s = (typed || url ? nil : pickedLabel(t.path, value, scope)) ?? stringify(value) ?? multiSelectText(t.path, scope) {
                 if !typed && readsGoogleAnswer(t.path, scope) { res.readGoogle = true }
                 let encode = url && !whole
                 out += encode ? percentEncode(s, query: firstQuery >= 0 && firstQuery < t.index) : s

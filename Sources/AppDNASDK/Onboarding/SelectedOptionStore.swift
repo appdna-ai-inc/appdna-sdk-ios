@@ -77,6 +77,53 @@ final class SelectedOptionStore: @unchecked Sendable {
         return out
     }
 
+    /// The text a picked option draws, or nil: no label, a blank one, or a label that is a Google
+    /// answer's content, which a token drawing an answer does not credit. Android `drawnLabel`.
+    static func drawnLabel(_ record: Any?) -> String? {
+        guard let record, !googleKeys(of: record).contains("label"),
+              let label = (record as? [String: Any])?["label"], let text = TemplateEngine.stringify(label),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
+    }
+
+    /// A drawn answer as what the user picked (#1677): a select stores the option's id, and the screen
+    /// must show its label. `field` is the answer's field id, `answer` the stored value (a single pick,
+    /// or a multi pick's list, whose labels are comma-joined). Nil when nothing here applies, and the
+    /// caller draws the stored value: no record, or a record for a different value (a default, or an
+    /// answer written after the pick). A multi pick keeps the stored value of any item with no label.
+    /// Never for a value that leaves the screen: an option's `value`, a URL, a hook's headers.
+    static func drawnAnswer(field: String, answer: Any?, selected: [String: Any]) -> String? {
+        let records: [Any] = {
+            guard let r = selected[field] else { return [] }
+            return (r as? [Any]) ?? [r]
+        }()
+        func labelFor(_ text: String) -> String? {
+            for r in records {
+                guard let v = (r as? [String: Any])?["value"], TemplateEngine.stringify(v) == text else { continue }
+                if let label = drawnLabel(r) { return label }
+            }
+            return nil
+        }
+        guard let answer else { return nil }
+        if let items = answer as? [Any] {
+            guard !items.isEmpty else { return nil }
+            var texts: [String] = []
+            for item in items {
+                guard !(item is [String: Any]), !(item is [Any]), let t = TemplateEngine.stringify(item) else { return nil }
+                texts.append(labelFor(t) ?? t)
+            }
+            return texts.joined(separator: ", ")
+        }
+        guard !(answer is [String: Any]), let text = TemplateEngine.stringify(answer) else { return nil }
+        return labelFor(text)
+    }
+
+    /// `drawnAnswer` for a `responses.` or `step.` path, the only roots that name an answer.
+    static func drawnAnswer(atPath path: String, answer: Any?, selected: [String: Any]) -> String? {
+        guard path.hasPrefix("responses.") || path.hasPrefix("step.") else { return nil }
+        return drawnAnswer(field: path.components(separatedBy: ".").last ?? "", answer: answer, selected: selected)
+    }
+
     /// Where a recorded option keeps its Google keys (`InputOption.googleKeys`): key → typed text.
     static let googleKeysKey = "google_keys"
 

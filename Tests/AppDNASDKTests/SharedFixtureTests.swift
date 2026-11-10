@@ -656,7 +656,12 @@ final class SharedFixtureTests: XCTestCase {
         guard let template = f.action.raw["template"]?.stringValue else {
             return XCTFail("[\(f.id)] action.template missing")
         }
-        h.state["interpolated"] = TemplateEngine.shared.interpolate(template, context: ctx)
+        // The options the user picked, which a drawn answer shows the label of (#1677).
+        ctx.selected = (session["selected"]?.objectValue ?? [:]).mapValues { $0.foundation }
+        h.state["interpolated"] = TemplateEngine.shared.interpolate(
+            template, context: ctx, key: f.action.raw["key"]?.stringValue,
+            isOption: f.action.raw["is_option"]?.boolValue ?? false
+        )
 
         if let missing = f.action.raw["missing_key"]?.stringValue {
             h.state["missing_key_resolved_to"] = TemplateEngine.shared.interpolate(missing, context: ctx)

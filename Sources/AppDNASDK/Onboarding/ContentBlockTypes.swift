@@ -706,6 +706,15 @@ func resolveTemplateStringReadingGoogle(
         if wholeLocationAnswer, let line = LocationAnswer.fieldText(forStored: resolved), !(resolved is String) {
             resolved = line
         }
+        // What the user picked, where the token is drawn (#1677). `allTyped` is about Google credit, not
+        // about what is drawn, so the position alone decides. A stored value or a link's target keeps the id.
+        let placeRule = allTyped ? HostDataResolver.typedTextRule(text, key: key, isOption: isOption) : rule
+        if !placeRule.covers(match.range.location),
+           let picked = SelectedOptionStore.drawnAnswer(atPath: path, answer: resolved, selected: SelectedOptionStore.shared.snapshot) {
+            resolved = picked
+        } else if (resolved as? [Any])?.isEmpty == true {
+            resolved = nil // An empty pick is unresolved, never "[]".
+        }
         // `{{x | Guest}}` — the fallback is used when the path resolves to nothing, which is also
         // the only way an author can stop an unresolved token reaching a customer's screen.
         let fallback: String? = match.range(at: 2).location == NSNotFound
