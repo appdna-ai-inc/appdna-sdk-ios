@@ -1342,6 +1342,9 @@ struct DateWheelPickerBlockView: View {
     }()
     @State private var showPicker = false
     @State private var showDateToast = false
+    /// What the block is drawn on and the phone's own appearance: the ink of an unstyled wheel.
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
+    @SwiftUI.Environment(\.colorScheme) private var inkScheme
     @SwiftUI.Environment(\.calendar) private var environmentCalendar
     @SwiftUI.Environment(\.locale) private var environmentLocale
     // Pre-warm state: a zero-sized hidden DatePicker forces UIKit to init
@@ -1800,14 +1803,12 @@ struct DateWheelPickerBlockView: View {
     ) -> some View {
         let bg = Color(hex: bgHex)
         let isTime = components == [.hourAndMinute]
-        // Force the native picker into dark mode whenever the configured wheel
-        // or text color is clearly a light value (white labels on a dark card
-        // means the spinning wheel popover must match, otherwise it renders
-        // white-on-white and is unreadable).
+        // The wheel's scheme, and with it the ink of an unstyled wheel: dark under light authored text, else from the
+        // picker's own fill, or from the surface behind the block when it has none (the rule the dropdown field follows).
+        // Taking `.light` for every unfilled wheel drew near-black rows on a dark step.
         let resolvedScheme: ColorScheme = {
             if let hex = wheelTextColorHex, Color.isLightHex(hex) { return .dark }
-            if Color.isLightHex(bgHex) == false, bgHex.lowercased() != "transparent", bgHex != "" { return .dark }
-            return .light
+            return DropdownFieldInk.light(fieldBackground: bgHex, behind: inkBackdrop, darkAppearance: inkScheme == .dark) ? .dark : .light
         }()
         // SPEC — force the spinning time wheel into 12h/24h per time_format.
         // en_GB → 24-hour columns (no AM/PM); en_US → 12-hour + AM/PM. Only the

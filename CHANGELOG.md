@@ -36,6 +36,9 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The date wheel's other rows read on a dark step.** With no wheel colour authored, the rows above and below the band
+  take their ink from the surface behind the block. They drew near-black on a dark step.
+
 - **A date-only `date_wheel_picker` answer is the date on the wheel.** It is stored as `yyyy-MM-dd`, as on Android, in
   every time zone. It was an ISO 8601 instant of local midnight, which east of UTC carried the previous day's date into
   templates, your app and webhooks. An answer saved that way is still read back as the day it was picked.
