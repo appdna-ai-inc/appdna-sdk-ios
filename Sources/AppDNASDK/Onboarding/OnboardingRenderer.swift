@@ -288,6 +288,9 @@ struct OnboardingFlowHost: View {
                 .opacity(isInitialLoading ? 0 : 1)
             }
         }
+        // The progress bar, nav bar and step content lay out in the surface column; on a wide
+        // window they stop stretching edge to edge, while the background below still fills it.
+        .appdnaSurfaceColumn()
         // Step background renders full-screen behind progress bar + nav bar + content
         .background(
             stepFullScreenBackground

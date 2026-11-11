@@ -34,6 +34,8 @@ extension SharedFixtureTests {
         case "normalise_markdown": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
         case "resolve_header_inset": runHeaderCloseInset(f, h)
+        case "resolve_surface_column": runSurfaceColumn(f, h)
+        case "resolve_surface_layout": runSurfaceLayout(f, h)
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
         case "bottom_zone_overflows": runBottomZoneOverflows(f, h)
         case "resolve_element_container": runElementContainer(f, h)
@@ -1186,6 +1188,91 @@ extension SharedFixtureTests {
         h.state["results"] = cases.map { c -> Any in
             let bg = c.objectValue?["value"]?.stringValue
             return PaywallTextDefaults.readableHex(on: bg)
+        }
+    }
+
+    // MARK: surface_column
+
+    /**
+     The content column and the step inset at each available width, through the REAL
+     `SurfaceColumn` and `BlockFullBleed.stepHorizontalInset` — the inset is taken of the COLUMN,
+     which is what the onboarding layout hands it. Rounded to 4 places so a binary fraction
+     (393 × 0.08) compares with its decimal spelling.
+     */
+    private func runSurfaceColumn(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_surface_column needs action.cases")
+            return
+        }
+        func r(_ x: Double) -> Double { (x * 10_000).rounded() / 10_000 }
+        h.state["results"] = cases.map { c -> Any in
+            let available = CGFloat((c.objectValue?["value"]?.foundation as? NSNumber)?.doubleValue ?? 0)
+            let column = SurfaceColumn.width(available: available)
+            return [
+                "column": r(Double(column)),
+                "gutter": r(Double(SurfaceColumn.gutter(available: available))),
+                "step_inset": r(BlockFullBleed.stepHorizontalInset(screenWidth: Double(column))),
+            ] as [String: Any]
+        }
+    }
+
+    // MARK: surface_layout
+
+    /**
+     Column or split, and the three partitions, through the REAL `SurfaceLayout`. Onboarding cases are
+     zoned exactly as `ThreeZoneStepLayout.partitionBlocks` zones them (by decoding real blocks);
+     paywall cases mark as pinned what the renderer pins (`cta`, `sticky_footer`, `zone: bottom`).
+     */
+    private func runSurfaceLayout(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_surface_layout needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any], let kind = v["kind"] as? String else {
+                XCTFail("[\(f.id)] a case has no kind"); return NSNull()
+            }
+            switch kind {
+            case "mode":
+                let w = CGFloat((v["width"] as? NSNumber)?.doubleValue ?? 0)
+                let hgt = CGFloat((v["height"] as? NSNumber)?.doubleValue ?? 0)
+                let mode = SurfaceLayout.mode(width: w, height: hgt, regular: (v["regular"] as? Bool) ?? false)
+                let split = SurfaceLayout.containerWidth(available: w, splits: mode == .split)
+                return [
+                    "mode": mode.rawValue,
+                    "column_container": Double(SurfaceLayout.containerWidth(available: w, splits: false)),
+                    "split_container": Double(split),
+                    "pane": Double(mode == .split ? split / 2 : split),
+                ] as [String: Any]
+            case "onboarding":
+                let raw = (v["blocks"] as? [[String: Any]]) ?? []
+                let blocks: [ContentBlock] = raw.enumerated().compactMap { i, b in
+                    var b = b; b["id"] = "b\(i)"
+                    guard let data = try? JSONSerialization.data(withJSONObject: b) else { return nil }
+                    return try? JSONDecoder().decode(ContentBlock.self, from: data)
+                }
+                XCTAssertEqual(blocks.count, raw.count, "[\(f.id)] every block decodes")
+                let (top, center, _) = ThreeZoneStepLayout.partitionBlocks(blocks)
+                let r = SurfaceLayout.onboardingSplit(topTypes: top.map(\.type.rawValue), centerTypes: center.map(\.type.rawValue))
+                return ["hero": r.hero, "splits": r.splits] as [String: Any]
+            case "paywall":
+                let sections = (v["sections"] as? [[String: Any]]) ?? []
+                let types = sections.map { ($0["type"] as? String) ?? "" }
+                let pinned = sections.map { s -> Bool in
+                    let t = (s["type"] as? String) ?? ""
+                    return t == "cta" || t == "sticky_footer" || (s["zone"] as? String) == "bottom"
+                }
+                let r = SurfaceLayout.paywallSplit(types: types, pinned: pinned)
+                return ["pitch": r.pitch, "splits": r.splits] as [String: Any]
+            case "message":
+                return ["splits": SurfaceLayout.messageSplits(
+                    type: (v["message_type"] as? String) ?? "",
+                    hasHero: (v["hero"] as? Bool) ?? false,
+                    hasCopy: (v["copy"] as? Bool) ?? false
+                )] as [String: Any]
+            default:
+                XCTFail("[\(f.id)] unknown case kind \(kind)"); return NSNull()
+            }
         }
     }
 

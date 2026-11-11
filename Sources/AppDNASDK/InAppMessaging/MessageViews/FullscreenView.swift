@@ -27,55 +27,83 @@ struct FullscreenView: View {
         messageBody.resolvesAppearance(onFill: content.background_color ?? "#FFFFFF", darkAppearance: false)
     }
 
+    /// The message's hero media, if it has one: lottie, then rive, then video, then image.
+    private var hasHero: Bool {
+        content.lottie_url != nil || content.rive_url != nil || content.video_url != nil
+            || content.image_url.flatMap(URL.init(string:)) != nil
+    }
+
+    /// Whether there is anything to put beside a hero.
+    private var hasCopy: Bool {
+        content.title != nil || content.body != nil || content.cta_text != nil
+    }
+
+    @ViewBuilder
+    private var hero: some View {
+        // Lottie hero (takes priority over image)
+        if let lottieUrl = content.lottie_url {
+            LottieBlockView(block: LottieBlock(
+                lottie_url: lottieUrl,
+                autoplay: true, loop: true, speed: 1.0,
+                width: nil, height: 240, alignment: "center",
+                play_on_scroll: nil, play_on_tap: nil
+            ))
+        }
+        // Rive hero
+        else if let riveUrl = content.rive_url {
+            RiveBlockView(block: RiveBlock(
+                rive_url: riveUrl, artboard: nil,
+                state_machine: content.rive_state_machine,
+                autoplay: true, height: 240, alignment: "center",
+                inputs: nil, trigger_on_step_complete: nil
+            ))
+        }
+        // Video hero
+        else if let videoUrl = content.video_url {
+            VideoBlockView(block: VideoBlock(
+                video_url: videoUrl,
+                video_thumbnail_url: content.video_thumbnail_url ?? content.image_url,
+                video_height: 240,
+                video_corner_radius: 12,
+                autoplay: true, loop: true, muted: true,
+                controls: false, inline_playback: true
+            ))
+            .padding(.horizontal, 24)
+        }
+        // Optional image
+        else if let urlString = content.image_url, let url = URL(string: urlString) {
+            BundledAsyncPhaseImage(url: url) { phase in
+                if case .success(let image) = phase {
+                    image
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 300, maxHeight: 300)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var messageBody: some View {
         ZStack(alignment: .topTrailing) {
             Color(hex: content.background_color ?? "#FFFFFF")
                 .ignoresSafeArea()
 
+            // SPEC-531 §4.3 — on a wide window the hero takes the leading pane; the title, body and
+            // CTAs keep the trailing one, the same view in both modes.
+            SurfaceSplitStack(canSplit: SurfaceLayout.messageSplits(type: "fullscreen", hasHero: hasHero, hasCopy: hasCopy)) {
+                VStack {
+                    Spacer()
+                    hero
+                    Spacer()
+                }
+            } main: { splits in
             VStack(spacing: 24) {
                 Spacer()
 
-                // Lottie hero (takes priority over image)
-                if let lottieUrl = content.lottie_url {
-                    LottieBlockView(block: LottieBlock(
-                        lottie_url: lottieUrl,
-                        autoplay: true, loop: true, speed: 1.0,
-                        width: nil, height: 240, alignment: "center",
-                        play_on_scroll: nil, play_on_tap: nil
-                    ))
-                }
-                // Rive hero
-                else if let riveUrl = content.rive_url {
-                    RiveBlockView(block: RiveBlock(
-                        rive_url: riveUrl, artboard: nil,
-                        state_machine: content.rive_state_machine,
-                        autoplay: true, height: 240, alignment: "center",
-                        inputs: nil, trigger_on_step_complete: nil
-                    ))
-                }
-                // Video hero
-                else if let videoUrl = content.video_url {
-                    VideoBlockView(block: VideoBlock(
-                        video_url: videoUrl,
-                        video_thumbnail_url: content.video_thumbnail_url ?? content.image_url,
-                        video_height: 240,
-                        video_corner_radius: 12,
-                        autoplay: true, loop: true, muted: true,
-                        controls: false, inline_playback: true
-                    ))
-                    .padding(.horizontal, 24)
-                }
-                // Optional image
-                else if let urlString = content.image_url, let url = URL(string: urlString) {
-                    BundledAsyncPhaseImage(url: url) { phase in
-                        if case .success(let image) = phase {
-                            image
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: 300, maxHeight: 300)
-                        }
-                    }
+                // In a split the hero is drawn in the leading pane instead (SPEC-531 §4.3).
+                if !splits {
+                    hero
                 }
 
                 // Title: apply text_color
@@ -145,6 +173,10 @@ struct FullscreenView: View {
 
                 Spacer().frame(height: 32)
             }
+            }
+            // The hero, copy and CTA lay out in the surface column; the fill behind still covers
+            // the whole screen.
+            .appdnaSurfaceColumn()
 
             // Close button
             Button(action: onDismiss) {

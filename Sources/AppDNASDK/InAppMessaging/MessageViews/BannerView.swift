@@ -128,6 +128,8 @@ struct BannerView: View {
                 .fill(Color(hex: content.background_color ?? "#FFFFFF"))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 4)
         )
+        // Centred at the column's width on a wide window (`SurfaceColumn`).
+        .frame(maxWidth: SurfaceColumn.maxWidth)
         .padding(.horizontal, 16)
         .padding(isTop ? .top : .bottom, 8)
     }

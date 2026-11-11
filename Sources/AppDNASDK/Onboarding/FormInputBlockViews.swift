@@ -94,7 +94,7 @@ func fieldHeight(_ block: ContentBlock) -> CGFloat? {
         if let sv = SizeValue.parse(eh) {
             switch sv {
             case .px(let val): return val
-            case .percent(let frac): return UIScreen.main.bounds.height * frac
+            case .percent(let frac): return SurfaceMetrics.windowBounds.height * frac
             default: break
             }
         }

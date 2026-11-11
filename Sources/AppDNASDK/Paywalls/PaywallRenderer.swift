@@ -241,6 +241,18 @@ struct PaywallRenderer: View {
     /// Sections sorted by `style.position.vertical_align` — top bucket first, then middle
     /// (unspecified / center), then bottom. Within each bucket, original array order is preserved.
     /// This makes the console's "Position → Vertical Align" actually move sections within the layout.
+    /// SPEC-531 §4.2 — the pitch (indexes into `orderedSections`) and whether the paywall has two
+    /// panes' worth of content. Pinned exactly as the scroll below pins.
+    private var paywallSplit: (pitch: [Int], splits: Bool) {
+        let sections = orderedSections
+        let pinned = sections.map { section -> Bool in
+            section.type == "cta" || section.type == "sticky_footer"
+                || (section.type == "legal" && pinnedFooterLegalIds.contains(section.id ?? ""))
+                || (bottomZoneIds.contains(section.id ?? "") && section.zone == "bottom")
+        }
+        return SurfaceLayout.paywallSplit(types: sections.map(\.type), pinned: pinned)
+    }
+
     private var orderedSections: [PaywallSection] {
         var topBucket: [PaywallSection] = []
         var midBucket: [PaywallSection] = []
@@ -285,6 +297,19 @@ struct PaywallRenderer: View {
     private var content: some View {
         ZStack(alignment: .topTrailing) {
             // Scrollable content with pinned bottom CTA
+            // SPEC-531 §4.2 — on a wide window the pitch (everything above the plans) takes the leading
+            // pane; the plans and the pinned CTA keep the trailing one, which is the SAME view in both
+            // modes, so the scroll position and the pinned zone survive a fold or an unfold.
+            SurfaceSplitStack(canSplit: paywallSplit.splits) {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 0) {
+                        ForEach(paywallSplit.pitch, id: \.self) { idx in
+                            sectionView(for: orderedSections[idx])
+                        }
+                    }
+                    .padding(config.layout?.padding ?? 20)
+                }
+            } main: { splits in
             ScrollView(showsIndicators: false) {
                 // spacing: 0 — per-section margins handle all spacing
                 VStack(spacing: 0) {
@@ -300,7 +325,7 @@ struct PaywallRenderer: View {
                     // CTA and sticky_footer are pinned outside scroll via safeAreaInset.
                     // Sections are bucket-sorted by position.vertical_align so
                     // "top" renders first, "bottom" renders last within the scroll area.
-                    ForEach(Array(orderedSections.enumerated()), id: \.offset) { _, section in
+                    ForEach(Array(orderedSections.enumerated()), id: \.offset) { idx, section in
                         // CTA and sticky_footer are pinned via safeAreaInset.
                         // Legal sections that come AFTER cta in the original
                         // section array are pinned INSIDE the bottom inset
@@ -308,7 +333,9 @@ struct PaywallRenderer: View {
                         let isPinnedLegal = section.type == "legal" && pinnedFooterLegalIds.contains(section.id ?? "")
                         // A section pinned to the bottom zone renders there, not here.
                         let isBottomZone = bottomZoneIds.contains(section.id ?? "") && section.zone == "bottom"
-                        if section.type != "cta" && section.type != "sticky_footer" && !isPinnedLegal && !isBottomZone {
+                        // In a split, the pitch is drawn in the leading pane instead.
+                        let inLeadPane = splits && paywallSplit.pitch.contains(idx)
+                        if section.type != "cta" && section.type != "sticky_footer" && !isPinnedLegal && !isBottomZone && !inLeadPane {
                             let shouldCollapse = section.collapse_on_scroll == true
                             let collapseProgress = shouldCollapse ? min(max(scrollOffset / 50, 0), 1) : 0
 
@@ -479,6 +506,13 @@ struct PaywallRenderer: View {
                 }
                 .padding(.bottom, config.layout?.footer_padding ?? 8)
             }
+            // In a split the trailing pane's top is the paywall's top corner, where the dismiss
+            // control is drawn: start below it (SPEC-531 §4.2).
+            .padding(.top, splits ? 44 : 0)
+            }
+            // The sections and the pinned zone lay out in the surface column; on a wide window
+            // they stop stretching edge to edge, while the background below still fills it.
+            .appdnaSurfaceColumn()
             // Background as modifier — does NOT corrupt safe area (Apple HIG)
             .background { backgroundView.allowsHitTesting(false) }
 

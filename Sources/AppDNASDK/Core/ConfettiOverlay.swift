@@ -79,7 +79,7 @@ public struct ConfettiOverlay: View {
                 color: effectColors.randomElement() ?? .blue,
                 size: CGFloat.random(in: 4...12),
                 position: CGPoint(
-                    x: CGFloat.random(in: 0...UIScreen.main.bounds.width),
+                    x: CGFloat.random(in: 0...SurfaceMetrics.windowBounds.width),
                     y: -20
                 ),
                 opacity: 1.0
@@ -92,7 +92,7 @@ public struct ConfettiOverlay: View {
                 var updated = p
                 updated.position = CGPoint(
                     x: p.position.x + CGFloat.random(in: -50...50),
-                    y: UIScreen.main.bounds.height + 50
+                    y: SurfaceMetrics.windowBounds.height + 50
                 )
                 updated.opacity = 0
                 return updated

@@ -309,6 +309,9 @@ enum UnstyledInk {
 }
 
 struct ContentBlockRendererView: View {
+    /// The surface column's size (`SurfaceColumn`): the step inset, a full bleed and a section's
+    /// height extent resolve against it rather than the screen.
+    @SwiftUI.Environment(\.appdnaSurfaceSize) var surfaceSize
     /// The width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
 
@@ -488,7 +491,7 @@ struct ContentBlockRendererView: View {
             .padding(
                 .horizontal,
                 BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
-                    ? -CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width))
+                    ? -CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize))))
                     : 0,
             )
             .applyBlockPosition(
@@ -782,11 +785,11 @@ struct ContentBlockRendererView: View {
         // EPIC-4b v2 — background_extent (% of screen height, 1–100) lets the section fill the screen
         // or reach a configured % from the top. When absent, fall back to the fixed height (parity with
         // Android SectionBackgroundBlock + the console preview). Screen-relative height mirrors the
-        // `UIScreen.main.bounds.height * fraction` pattern already used in ContentBlockTypes.swift.
+        // surface-height fraction pattern used in ContentBlockTypes.swift (`SurfaceMetrics`).
         let extentPct: Double? = (block.field_config?["background_extent"]?.value as? Double)
             ?? (block.field_config?["background_extent"]?.value as? Int).map(Double.init)
         let height: CGFloat = {
-            if let pct = extentPct { return UIScreen.main.bounds.height * CGFloat(min(max(pct, 1), 100)) / 100 }
+            if let pct = extentPct { return SurfaceMetrics.height(surfaceSize) * CGFloat(min(max(pct, 1), 100)) / 100 }
             return CGFloat(block.height ?? 480)
         }()
         ZStack {
@@ -2859,7 +2862,7 @@ struct ContentBlockRendererView: View {
         }
         .padding(
             .horizontal,
-            bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width)) : 0,
+            bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize)))) : 0,
         )
     }
 

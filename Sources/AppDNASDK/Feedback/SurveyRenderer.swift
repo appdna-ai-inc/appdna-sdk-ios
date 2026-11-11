@@ -277,6 +277,9 @@ struct SurveyContainerView: View {
                 }
             }
             .padding()
+            // The questions and buttons lay out in the surface column; the background below still
+            // fills the sheet or the screen on a wide window.
+            .appdnaSurfaceColumn()
             // Extend the survey background into the BOTTOM safe area (home-indicator
             // strip) so a bottom-sheet survey has no uncolored gap below the content.
             // Only the bottom is extended — the top stays contained so a gradient

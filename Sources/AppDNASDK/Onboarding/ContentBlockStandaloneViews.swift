@@ -1903,6 +1903,8 @@ private struct WheelScrollOffsetKey: PreferenceKey {
 }
 
 struct WheelPickerBlockView: View {
+    /// The surface column, which the wheel centres its selected value in.
+    @SwiftUI.Environment(\.appdnaSurfaceSize) private var surfaceSize
     let block: ContentBlock
     /// Previously this view had no binding to the
     /// onboarding response dict, so the user's spin was silently dropped.
@@ -2060,7 +2062,7 @@ struct WheelPickerBlockView: View {
     @ViewBuilder
     private func modernHorizontalWheel(values: [Double], initialIndex: Int, unitStr: String, unitPos: String, highlightCol: Color) -> some View {
         let itemWidth = horizontalItemWidth
-        let sidePad = UIScreen.main.bounds.width / 2 - itemWidth / 2
+        let sidePad = SurfaceMetrics.width(surfaceSize) / 2 - itemWidth / 2
 
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 0) {
@@ -2105,7 +2107,7 @@ struct WheelPickerBlockView: View {
     @ViewBuilder
     private func legacyHorizontalWheel(values: [Double], initialIndex: Int, unitStr: String, unitPos: String, highlightCol: Color) -> some View {
         let itemWidth = horizontalItemWidth
-        let sidePad = UIScreen.main.bounds.width / 2 - itemWidth / 2
+        let sidePad = SurfaceMetrics.width(surfaceSize) / 2 - itemWidth / 2
 
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -2372,8 +2374,8 @@ struct StarBackgroundBlockView: View {
     private func initializeParticles(count: Int, minSize: CGFloat, maxSize: CGFloat) {
         particles = (0..<count).map { _ in
             StarParticle(
-                x: CGFloat.random(in: 0...UIScreen.main.bounds.width),
-                y: CGFloat.random(in: 0...(UIScreen.main.bounds.height)),
+                x: CGFloat.random(in: 0...SurfaceMetrics.windowBounds.width),
+                y: CGFloat.random(in: 0...(SurfaceMetrics.windowBounds.height)),
                 size: CGFloat.random(in: minSize...maxSize),
                 opacity: Double.random(in: 0.2...1.0),
                 speed: CGFloat.random(in: 0.2...1.0)
@@ -2388,9 +2390,9 @@ struct StarBackgroundBlockView: View {
             particles[i].opacity = max(0.1, min(1.0, particles[i].opacity))
 
             // Wrap around when particle falls off screen
-            if particles[i].y > UIScreen.main.bounds.height {
+            if particles[i].y > SurfaceMetrics.windowBounds.height {
                 particles[i].y = -particles[i].size
-                particles[i].x = CGFloat.random(in: 0...UIScreen.main.bounds.width)
+                particles[i].x = CGFloat.random(in: 0...SurfaceMetrics.windowBounds.width)
             }
         }
     }

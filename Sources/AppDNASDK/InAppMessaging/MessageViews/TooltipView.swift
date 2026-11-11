@@ -128,6 +128,8 @@ struct TooltipView: View {
                 .offset(y: -6)
                 .shadow(color: .black.opacity(0.08), radius: 2, y: 2)
         }
+        // Centred at the column's width on a wide window (`SurfaceColumn`).
+        .frame(maxWidth: SurfaceColumn.maxWidth)
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
     }

@@ -560,7 +560,7 @@ enum StyleEngine {
                         lottie_url: urlStr,
                         autoplay: true, loop: bg?.animation_loop ?? true,
                         speed: 1.0, width: nil,
-                        height: UIScreen.main.bounds.height,
+                        height: SurfaceMetrics.windowBounds.height,
                         alignment: "center",
                         play_on_scroll: nil, play_on_tap: nil
                     ))
@@ -593,7 +593,7 @@ enum StyleEngine {
                         artboard: nil,
                         state_machine: "State Machine 1",
                         autoplay: true,
-                        height: UIScreen.main.bounds.height,
+                        height: SurfaceMetrics.windowBounds.height,
                         alignment: "center",
                         inputs: nil, trigger_on_step_complete: nil
                     ))

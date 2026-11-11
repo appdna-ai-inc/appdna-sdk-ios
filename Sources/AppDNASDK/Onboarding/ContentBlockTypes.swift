@@ -1066,7 +1066,9 @@ extension EnvironmentValues {
 /// rather than collapsing to zero.
 func relativeWidth(_ fraction: CGFloat, container: CGFloat) -> CGFloat {
     if container > 0 { return container * fraction }
-    let screen = UIScreen.main.bounds.width
+    // The surface column (`SurfaceColumn`), not the screen: the screen is not the space a surface
+    // has in a resized window, and on a two-display phone it is ambiguous.
+    let screen = SurfaceColumn.width(available: SurfaceMetrics.windowBounds.width)
     return (screen - (max(24, screen * 0.08) * 2)) * fraction
 }
 
@@ -1127,6 +1129,8 @@ struct RelativeSizingModifier: ViewModifier {
     struct HeightModifier: ViewModifier {
         let size: SizeValue?
         var useMin: Bool = false
+        /// The surface's measured size; a percentage height is a fraction of its height.
+        @SwiftUI.Environment(\.appdnaSurfaceSize) private var surfaceSize
         func body(content: Content) -> some View {
             switch size {
             case .fill:
@@ -1141,7 +1145,7 @@ struct RelativeSizingModifier: ViewModifier {
                 if fraction >= 1.0 {
                     content.frame(maxHeight: .infinity)
                 } else {
-                    let h = UIScreen.main.bounds.height * fraction
+                    let h = SurfaceMetrics.height(surfaceSize) * fraction
                     if useMin {
                         content.frame(minHeight: h)
                     } else {

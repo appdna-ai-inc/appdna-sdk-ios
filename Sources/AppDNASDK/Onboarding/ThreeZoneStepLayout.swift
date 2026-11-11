@@ -6,6 +6,8 @@ import SwiftUI
 // Background uses .background() modifier, content stays in normal safe area.
 
 struct ThreeZoneStepLayout: View {
+    /// Whether the window allows a split (`SurfaceLayout`, SPEC-531).
+    @SwiftUI.Environment(\.appdnaSurfaceMode) private var surfaceMode
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
     @Binding var toggleValues: [String: Bool]
@@ -56,9 +58,28 @@ struct ThreeZoneStepLayout: View {
                 // `empty_state.mode == hidden` hides the block (raw-pass blocks only).
                 && !OnboardingStepPipeline.isHiddenByEmptyState($0, rawResolved: rawResolvedIds.contains($0.id))
         }
-        let (topBlocks, centerBlocks, bottomBlocks) = Self.partitionBlocks(visible)
-        let onlyCenterContent = topBlocks.isEmpty && !centerBlocks.isEmpty
+        let (topAll, centerAll, bottomBlocks) = Self.partitionBlocks(visible)
+        // Decided on the step as authored, so the scroll shape below does not change when a split
+        // lifts the hero out (a change of branch would rebuild the scroll and lose its position).
+        let onlyCenterContent = topAll.isEmpty && !centerAll.isEmpty
+        // SPEC-531 §4.1 — on a wide window the step's hero (its leading visuals) takes the leading
+        // pane; the copy, the inputs and the pinned CTA keep the trailing one.
+        let partition = SurfaceLayout.onboardingSplit(
+            topTypes: topAll.map(\.type.rawValue), centerTypes: centerAll.map(\.type.rawValue)
+        )
+        let splits = surfaceMode == .split && partition.splits
+        let heroFromTop = !topAll.isEmpty
+        let hero = splits ? Array((heroFromTop ? topAll : centerAll).prefix(partition.hero)) : []
+        let topBlocks = splits && heroFromTop ? Array(topAll.dropFirst(partition.hero)) : topAll
+        let centerBlocks = splits && !heroFromTop ? Array(centerAll.dropFirst(partition.hero)) : centerAll
 
+        SurfaceSplitStack(canSplit: splits) {
+            VStack(spacing: 12) {
+                Spacer(minLength: 0)
+                zoneRenderer(blocks: hero)
+                Spacer(minLength: 0)
+            }
+        } main: { _ in
         Group {
             if onlyCenterContent {
                 // Only center content — vertically centre it WHEN IT FITS, and scroll from the top
@@ -161,6 +182,7 @@ struct ThreeZoneStepLayout: View {
                 .padding(.bottom, 8)
             }
         }
+        }
     }
 
     @ViewBuilder
@@ -188,7 +210,9 @@ struct ThreeZoneStepLayout: View {
         // The ONE definition of the step's horizontal inset, shared with the full-bleed modifier
         // that has to cancel it. A constant there and a formula here is how a background
         // "reaching the screen edges" stopped eleven points short.
-        .padding(.horizontal, CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: UIScreen.main.bounds.width)))
+        // Read from the pane the renderer is in (`StepHorizontalInset`), not from this view's own
+        // environment: in a split the two differ.
+        .modifier(StepHorizontalInset())
     }
 
     static func partitionBlocks(_ blocks: [ContentBlock]) -> (top: [ContentBlock], center: [ContentBlock], bottom: [ContentBlock]) {
@@ -213,5 +237,13 @@ private struct ScrollOffsetPrefKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
+    }
+}
+
+/// The step's side inset, a fraction of the width of the column or pane the content is in.
+struct StepHorizontalInset: ViewModifier {
+    @SwiftUI.Environment(\.appdnaSurfaceSize) private var surfaceSize
+    func body(content: Content) -> some View {
+        content.padding(.horizontal, CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize)))))
     }
 }

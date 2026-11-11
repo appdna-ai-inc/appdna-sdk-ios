@@ -9,7 +9,7 @@ struct EntryAnimationModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .offset(y: animation == "slide_up" && !appeared ? UIScreen.main.bounds.height : 0)
+            .offset(y: animation == "slide_up" && !appeared ? SurfaceMetrics.windowBounds.height : 0)
             .opacity((animation == "fade_in" || animation == "slide_up") && !appeared ? 0 : 1)
             .scaleEffect(animation == "scale_in" && !appeared ? 0.8 : 1)
             .animation(.easeOut(duration: Double(durationMs) / 1000), value: appeared)
@@ -134,7 +134,7 @@ struct DismissAnimationModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .offset(y: animation == "slide_down" && isDismissing ? UIScreen.main.bounds.height : 0)
+            .offset(y: animation == "slide_down" && isDismissing ? SurfaceMetrics.windowBounds.height : 0)
             .opacity(animation == "fade_out" && isDismissing ? 0 : 1)
             .animation(.easeIn(duration: 0.3), value: isDismissing)
     }

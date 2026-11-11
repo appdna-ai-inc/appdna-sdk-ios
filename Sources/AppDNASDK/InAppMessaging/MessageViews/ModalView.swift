@@ -157,6 +157,8 @@ struct ModalView: View {
                     .fill(Color(hex: content.background_color ?? "#FFFFFF"))
             )
             .applyBlurBackdrop(content.blur_backdrop)
+            // A card, not a stretched sheet, on a wide window (`SurfaceColumn`).
+            .frame(maxWidth: SurfaceColumn.maxWidth)
             .padding(.horizontal, 32)
 
             // Confetti overlay
