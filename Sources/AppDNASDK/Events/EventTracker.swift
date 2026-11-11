@@ -74,8 +74,22 @@ final class EventTracker {
     /// Whether analytics consent is currently granted.
     var isConsentGranted: Bool { analyticsConsent }
 
+    /// Where every tracked event goes for in-app message and survey trigger evaluation
+    /// (`TriggerDispatcher.record`). Set by `configure()`; nil in tests that do not need it.
+    ///
+    /// 🔴 This is the ONLY route to a trigger. The SDK's own events (`app_open`, `session_start`, the
+    /// onboarding and billing events) are tracked here and never pass through the public
+    /// `AppDNA.track`, which is where evaluation used to live — so none of them could show a message.
+    internal var triggerSink: ((String, [String: Any]?) -> Void)?
+
     /// Track an event. If consent is false, the event is silently dropped.
     func track(event: String, properties: [String: Any]?, clientSeq: Int64? = nil) {
+        /*
+         Every event reaches trigger evaluation, consented or not, after the work below — exactly as
+         a host event did when evaluation lived in `AppDNA.track` (which evaluated whether or not the
+         tracker then dropped the event for consent). An in-app message is not analytics.
+         */
+        defer { triggerSink?(event, properties) }
         guard analyticsConsent else {
             Log.debug("Event '\(event)' dropped — analytics consent is false")
             return

@@ -493,6 +493,9 @@ public final class AppDNA: @unchecked Sendable {
     private var identityManager: IdentityManager?
     private var sessionManager: SessionManager?
     private var eventTracker: EventTracker?
+    /// Every tracked event's route to in-app message and survey triggers. Built with the tracker, so the
+    /// session start and the cold-launch `app_open` are HELD until the managers and config are ready.
+    private var triggerDispatcher: TriggerDispatcher?
     private var eventQueue: EventQueue?
     private var remoteConfigManager: RemoteConfigManager?
     private var featureFlagManager: FeatureFlagManager?
@@ -893,11 +896,10 @@ public final class AppDNA: @unchecked Sendable {
             preInitLock.unlock() // configure() published while we waited → mint below (seq lands above the block)
         }
         shared.queue.async {
+            // Trigger evaluation (in-app messages, then surveys) happens inside the tracker, which
+            // hands every event — this one and every one the SDK tracks itself — to the
+            // `TriggerDispatcher`. Evaluating here as well would evaluate a host event twice.
             shared.eventTracker?.track(event: event, properties: properties)
-            // Evaluate in-app messages on every tracked event
-            shared.messageManager?.onEvent(eventName: event, properties: properties)
-            // Evaluate surveys on every tracked event (v0.3)
-            shared.surveyManager?.onEvent(eventName: event, properties: properties)
         }
     }
 
@@ -1722,6 +1724,18 @@ public final class AppDNA: @unchecked Sendable {
 
         // 2. Initialize event system
         let tracker = EventTracker(identityManager: identityMgr)
+        // Trigger routing exists from the tracker's first event (the pre-init drain and the session
+        // start below are tracked long before the message and survey managers exist): those events are
+        // held by the dispatcher and evaluated once `initializeManagers` attaches the managers and the
+        // config is ready. Evaluated on `queue`, where host events have always been evaluated.
+        let triggers = TriggerDispatcher(executor: { [weak self] work in
+            guard let self else { return }
+            self.queue.async(execute: work)
+        })
+        self.triggerDispatcher = triggers
+        tracker.triggerSink = { [weak triggers] event, properties in
+            triggers?.record(event: event, properties: properties)
+        }
         // NB: eventTracker is published LATER (under preInitLock, after setEventQueue).
 
         let eq = EventQueue(
@@ -2213,6 +2227,20 @@ public final class AppDNA: @unchecked Sendable {
             )
         }
 
+        // Trigger evaluation. The managers exist now; the config is ready at once when a previous fetch
+        // is cached on disk, else when the first fetch reaches the server. Until both, the events
+        // tracked so far (the session start, the cold-launch `app_open`, the pre-init drain) are held.
+        if let triggers = self.triggerDispatcher {
+            triggers.attach { [weak self] surface, event, properties in
+                switch surface {
+                case .message: self?.messageManager?.onEvent(eventName: event, properties: properties)
+                case .survey: self?.surveyManager?.onEvent(eventName: event, properties: properties)
+                }
+            }
+            remoteCfg.onFetchSucceeded = { [weak triggers] in triggers?.markConfigReady() }
+            if configCache.loadFetchedAt() != nil { triggers.markConfigReady() }
+        }
+
         // Fetch Firestore configs (includes onboarding + messages + surveys)
         remoteCfg.fetchConfigs()
 
@@ -2279,6 +2307,9 @@ public final class AppDNA: @unchecked Sendable {
         // Feed bundled config to RemoteConfigManager — only fills empty caches
         remoteConfigManager?.loadBundledConfig(json)
         Log.info("Loaded bundled config (version \(bundleVersion))")
+        // A bundled config is a config the SDK serves: held trigger events are evaluated against it now
+        // rather than waiting for a fetch an offline first launch may never make.
+        triggerDispatcher?.markConfigReady()
     }
 
     // MARK: - Helpers
@@ -2388,7 +2419,10 @@ public final class AppDNA: @unchecked Sendable {
             shared.eventQueue?.flushForShutdown()
             shared.eventQueue = nil
             shared.runtimeConfigCache = nil
+            shared.eventTracker?.triggerSink = nil
             shared.eventTracker = nil
+            shared.triggerDispatcher?.detach()
+            shared.triggerDispatcher = nil
             // The `Transaction.updates` listener is a long-lived Task holding the tracker we just
             // released. Cancel it, or a re-configure()d SDK ends up with two live listeners.
             shared.subscriptionObserver?.stop()

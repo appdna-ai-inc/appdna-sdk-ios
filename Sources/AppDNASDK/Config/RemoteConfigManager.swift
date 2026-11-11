@@ -90,6 +90,11 @@ final class RemoteConfigManager {
     /// check). Only a genuine network failure (offline, no cache) leaves it false. Accessed on `queue`.
     private var configFetchReachedServer = false
 
+    /// Called once per fetch that reached the server, after its configs are parsed and handed to the
+    /// managers. `TriggerDispatcher.markConfigReady` — the events held at launch are evaluated against
+    /// the fetched config.
+    var onFetchSucceeded: (() -> Void)?
+
     /// Called by SurveyManager to get current survey configs.
     private var surveyUpdateHandler: (([String: SurveyConfig]) -> Void)?
 
@@ -532,6 +537,9 @@ final class RemoteConfigManager {
 
             self.configCache.markFetched()
             Log.info("Remote config fetched successfully")
+            // After the `queue.sync` above: every parse this fetch queued on `queue` (the surveys handed to
+            // SurveyManager among them) has run, so held trigger events see the fetched config.
+            self.onFetchSucceeded?()
             self.eventTracker?.track(event: "config_fetched", properties: nil)
             NotificationCenter.default.post(name: AppDNA.configUpdated, object: nil)
 
