@@ -241,7 +241,7 @@ struct PaywallRenderer: View {
     /// Sections sorted by `style.position.vertical_align` — top bucket first, then middle
     /// (unspecified / center), then bottom. Within each bucket, original array order is preserved.
     /// This makes the console's "Position → Vertical Align" actually move sections within the layout.
-    /// SPEC-531 §4.2 — the pitch (indexes into `orderedSections`) and whether the paywall has two
+    /// The pitch (indexes into `orderedSections`) and whether the paywall has two
     /// panes' worth of content. Pinned exactly as the scroll below pins.
     private var paywallSplit: (pitch: [Int], splits: Bool) {
         let sections = orderedSections
@@ -297,7 +297,7 @@ struct PaywallRenderer: View {
     private var content: some View {
         ZStack(alignment: .topTrailing) {
             // Scrollable content with pinned bottom CTA
-            // SPEC-531 §4.2 — on a wide window the pitch (everything above the plans) takes the leading
+            // On a wide window the pitch (everything above the plans) takes the leading
             // pane; the plans and the pinned CTA keep the trailing one, which is the SAME view in both
             // modes, so the scroll position and the pinned zone survive a fold or an unfold.
             SurfaceSplitStack(canSplit: paywallSplit.splits) {
@@ -507,7 +507,7 @@ struct PaywallRenderer: View {
                 .padding(.bottom, config.layout?.footer_padding ?? 8)
             }
             // In a split the trailing pane's top is the paywall's top corner, where the dismiss
-            // control is drawn: start below it (SPEC-531 §4.2).
+            // control is drawn: start below it.
             .padding(.top, splits ? 44 : 0)
             }
             // The sections and the pinned zone lay out in the surface column; on a wide window

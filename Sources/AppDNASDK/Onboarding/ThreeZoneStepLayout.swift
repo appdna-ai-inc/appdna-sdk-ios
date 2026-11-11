@@ -6,7 +6,7 @@ import SwiftUI
 // Background uses .background() modifier, content stays in normal safe area.
 
 struct ThreeZoneStepLayout: View {
-    /// Whether the window allows a split (`SurfaceLayout`, SPEC-531).
+    /// Whether the window allows a split (`SurfaceLayout`).
     @SwiftUI.Environment(\.appdnaSurfaceMode) private var surfaceMode
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
@@ -62,7 +62,7 @@ struct ThreeZoneStepLayout: View {
         // Decided on the step as authored, so the scroll shape below does not change when a split
         // lifts the hero out (a change of branch would rebuild the scroll and lose its position).
         let onlyCenterContent = topAll.isEmpty && !centerAll.isEmpty
-        // SPEC-531 §4.1 — on a wide window the step's hero (its leading visuals) takes the leading
+        // On a wide window the step's hero (its leading visuals) takes the leading
         // pane; the copy, the inputs and the pinned CTA keep the trailing one.
         let partition = SurfaceLayout.onboardingSplit(
             topTypes: topAll.map(\.type.rawValue), centerTypes: centerAll.map(\.type.rawValue)

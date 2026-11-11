@@ -83,7 +83,7 @@ enum SurfaceMetrics {
 
 // MARK: - The split (two panes)
 
-/// Column or two panes. SPEC-531 §3; shared fixture `dto_parsing/surface_layout`.
+/// Column or two panes; shared fixture `dto_parsing/surface_layout`.
 public enum SurfaceLayoutMode: String {
     case column, split
 }

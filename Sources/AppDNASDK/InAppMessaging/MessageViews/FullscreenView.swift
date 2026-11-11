@@ -89,7 +89,7 @@ struct FullscreenView: View {
             Color(hex: content.background_color ?? "#FFFFFF")
                 .ignoresSafeArea()
 
-            // SPEC-531 §4.3 — on a wide window the hero takes the leading pane; the title, body and
+            // On a wide window the hero takes the leading pane; the title, body and
             // CTAs keep the trailing one, the same view in both modes.
             SurfaceSplitStack(canSplit: SurfaceLayout.messageSplits(type: "fullscreen", hasHero: hasHero, hasCopy: hasCopy)) {
                 VStack {
@@ -101,7 +101,7 @@ struct FullscreenView: View {
             VStack(spacing: 24) {
                 Spacer()
 
-                // In a split the hero is drawn in the leading pane instead (SPEC-531 §4.3).
+                // In a split the hero is drawn in the leading pane instead.
                 if !splits {
                     hero
                 }
