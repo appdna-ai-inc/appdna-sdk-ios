@@ -390,6 +390,51 @@ struct FormInputPasswordBlock: View {
 }
 
 /// Date, Time, or DateTime picker input.
+/// The compact date field's sheet: the wheel, its Done button and the sheet's own fill, all in one scheme. The wheel
+/// was forced light while the sheet followed the phone, so a phone in Dark drew black rows on a dark sheet.
+struct CompactDateSheet: View {
+    @Binding var selection: Date
+    let components: DatePickerComponents
+    let accent: Color
+    let locale: Locale
+    let timeZone: TimeZone
+    let scheme: ColorScheme
+    let onDone: () -> Void
+
+    /// The system sheet colour in `scheme` (a sheet is an elevated surface), painted rather than inherited so it cannot
+    /// disagree with the wheel's ink.
+    static func fill(_ scheme: ColorScheme) -> Color {
+        let traits = UITraitCollection(traitsFrom: [UITraitCollection(userInterfaceStyle: scheme == .dark ? .dark : .light),
+                                                    UITraitCollection(userInterfaceLevel: .elevated)])
+        return Color(UIColor.systemBackground.resolvedColor(with: traits))
+    }
+
+    var body: some View {
+        let content = VStack(spacing: 16) {
+            DatePicker("", selection: $selection, displayedComponents: components)
+                .datePickerStyle(.wheel)
+                .labelsHidden()
+                .tint(accent)
+                .environment(\.locale, locale)
+                .environment(\.timeZone, timeZone)
+            Button("Done", action: onDone)
+                .buttonStyle(.borderedProminent)
+                .tint(accent)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Self.fill(scheme).ignoresSafeArea())
+        .environment(\.colorScheme, scheme)
+        if #available(iOS 16.4, *) {
+            content.presentationDetents([.medium]).presentationBackground(Self.fill(scheme))
+        } else if #available(iOS 16.0, *) {
+            content.presentationDetents([.medium])
+        } else {
+            content
+        }
+    }
+}
+
 struct FormInputDateBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
@@ -608,26 +653,11 @@ struct FormInputDateBlock: View {
                     )
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
                     .sheet(isPresented: $showCompactPopover) {
-                        let sheetContent = VStack(spacing: 16) {
-                            DatePicker("", selection: $selectedDate, displayedComponents: components)
-                                .datePickerStyle(.wheel)
-                                .labelsHidden()
-                                .tint(accentColor)
-                                .environment(\.locale, timeLocale ?? Locale.current)
-                                .environment(\.colorScheme, resolvedScheme ?? .light)
-                                .environment(\.timeZone, answerZone)
-                            Button("Done") { showCompactPopover = false }
-                                .buttonStyle(.borderedProminent)
-                                .tint(accentColor)
-                        }
-                        .padding()
-                        Group {
-                            if #available(iOS 16.0, *) {
-                                sheetContent.presentationDetents([.medium])
-                            } else {
-                                sheetContent
-                            }
-                        }
+                        // The sheet draws on its own surface, not the step: an authored scheme, else the phone's.
+                        CompactDateSheet(selection: $selectedDate, components: components, accent: accentColor,
+                                         locale: timeLocale ?? Locale.current, timeZone: answerZone,
+                                         scheme: resolvedScheme ?? inkScheme,
+                                         onDone: { showCompactPopover = false })
                     }
                 }
             }
