@@ -39,6 +39,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 - **`animated_image`: one long image scrolling in a seamless loop.** Set `image_url`, `height` (the visible height; the block fills the width), `corner_radius`, `alt`, and in `field_config` `scroll_direction` (`left`, `right`, `up`, `down`) and `scroll_speed` (points per second, 1–400, default 30). The image fills the block across the scroll direction and repeats along it, so the loop never jumps.
 
 - **A block's background can reach past it on each side.** `field_config.background_bleed_top`, `background_bleed_bottom`, `background_bleed_left` and `background_bleed_right` take `"edge"` (reach the screen edge on that side) or a number of points (up to 400). The block's content stays where it was; only the background moves. Left and right still follow `background_full_bleed`, and an authored value wins over it. Set from the console on Multi-buttons: to the edges for a group at the bottom of a screen, by a set amount for a group in the middle.
+- **The SDK tells AppDNA when a user declines analytics.** Declined users' events never leave the device, so the
+  server could not honour the decision on messages it sends itself. The SDK now sends one small consent signal
+  (`POST /api/v1/ingest/consent`: the device's anonymous ID, the user's ID if known, the decision and a timestamp)
+  when the decision is set or changes, when the user changes while analytics is declined, and once at each launch
+  while analytics is declined. A failed signal is retried up to three times, then at the next launch; an
+  acknowledged one is not sent again. `setConsent` called before `configure()` is now kept and applied when the SDK
+  configures. A signal not yet acknowledged at `shutdown()` is not retried after it; it is sent again at the
+  next `configure`.
 
 - **A plan's savings figure is computed from the prices drawn.** Write `{{savings_percent}}` in a plan's `badge` or `savings_text` ("Best value – save {{savings_percent}}"). The SDK fills it from the prices the paywall shows (the App Store's once it answers, the authored ones otherwise), per month and rounded down, and hides the text when no figure can be worked out. A typed percentage is drawn as written.
 

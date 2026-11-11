@@ -465,6 +465,78 @@ public final class AppDNA: @unchecked Sendable {
         shared.queue.sync {}
     }
 
+    // MARK: consent-signal test hooks (internal, `@testable` only; never public API — test-only)
+
+    /// The test reset's "no flush": a relaunch drops the event queue unflushed.
+    static var shutdownSkipsFlushForTesting = false
+
+    /// The test reset: process death in a process that does not die. Row 11 for the consent sender, no flush.
+    internal static func resetForTesting() {
+        shutdownSkipsFlushForTesting = true
+        shutdown()
+        shared.queue.sync {
+            shared.consentSender = nil
+            shared.consentRowZeroCall = false
+        }
+        shutdownSkipsFlushForTesting = false
+        consentSchedulerForTesting?.cancelAll()
+        ConsentTestLatch.clear()
+        ConsentSignalSender.staleArrivals = 0
+    }
+
+    /// The clock seam: the consent sender's serial executor and clock. Process-static; nil clears it.
+    internal static func installConsentClockForTesting(_ scheduler: ConsentScheduler?) {
+        consentSchedulerForTesting = scheduler
+    }
+
+    /// Seeds a consent case's `setup` (JSON) into the real stores: `anon_id` and `persisted_user_id` (the Keychain
+    /// the identity reads), the ack record (`ack_state`, `dropped_state`) and `stored_decision`. Only while
+    /// unconfigured.
+    internal static func seedConsentFixtureForTesting(setupJSON: Data) throws {
+        guard let setup = try JSONSerialization.jsonObject(with: setupJSON) as? [String: Any] else { return }
+        let keychain: KeychainStoring = keychainStoreFactoryForTesting?() ?? KeychainStore()
+        for key in [ConsentSignalPersistence.slotKey, ConsentSignalPersistence.lastTsKey, ConsentSignalPersistence.generationKey] {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        if let anon = setup["anon_id"] as? String { keychain.setAnonId(anon) }
+        if setup.keys.contains("persisted_user_id") {
+            if let u = setup["persisted_user_id"] as? String { keychain.setUserId(u) } else { keychain.clearUserId() }
+        }
+        ConsentStore.decision = setup["stored_decision"] as? Bool
+        let ackRaw = setup["ack_state"] as? [String: Any]
+        let ack: ConsentSyncTable.Ack = ackRaw == nil ? .none
+            : ((ackRaw?["unknown"] as? Bool) == true ? .unknown : ConsentSignalPersistence.ack(from: ackRaw))
+        let dropped = (setup["dropped_state"] as? [String: Any]).flatMap(ConsentSignalPersistence.triple(from:))
+        let record = ConsentSignalPersistence.ackRecord(ack, dropped)
+        let data = try JSONSerialization.data(withJSONObject: record)
+        keychain.setString(key: ConsentSignalPersistence.ackKey, value: String(data: data, encoding: .utf8) ?? "")
+    }
+
+    /// Waits until no consent request is on the wire; returns the completions not yet run, or nil on timeout.
+    internal static func awaitConsentSenderIdleForTesting(timeoutMs: Int64) async -> Int? {
+        let sender = shared.queue.sync { shared.consentSender }
+        guard let sender else { return 0 }
+        return await sender.awaitIdle(timeoutMs: timeoutMs)
+    }
+
+    /// The consent sender's next retry deadline on the seam's clock, or nil.
+    internal static func nextConsentDeadlineForTesting() -> Int64? {
+        consentSchedulerForTesting?.nextDeadlineMs
+    }
+
+    internal static func setConsentLatchForTesting(point: String, holdMs: Int64) {
+        ConsentTestLatch.arm(point: point, holdMs: holdMs)
+    }
+
+    internal static func awaitConsentLatchEngagedForTesting(timeoutMs: Int64) -> Bool {
+        ConsentTestLatch.awaitEngaged(timeoutMs: timeoutMs)
+    }
+
+    /// Completions, retry fires and evaluations that arrived at an ended sender (counted at the fence).
+    internal static func staleConsentArrivalsForTesting() -> Int {
+        ConsentSignalSender.staleArrivals
+    }
+
     /// Test-only: how many times `performConfigure` actually built the SDK (i.e. was NOT superseded
     /// by a later configure()/shutdown()). A `configure(); shutdown(); configure()` on one tick must
     /// leave this at 1 — the first, superseded build must be a no-op. See `configureEpoch`.
@@ -526,6 +598,16 @@ public final class AppDNA: @unchecked Sendable {
     /// Double-`configure()` guard. Set the INSTANT `configure()` is entered, long before the SDK can
     /// do anything — so it must never be used to answer "is the SDK usable yet".
     private var isConfigured = false
+
+    // MARK: the analytics-consent signal (all on `queue`)
+    /// The sender of the current configure; nil before `performConfigure` builds it and after `shutdown()`.
+    private var consentSender: ConsentSignalSender?
+    /// Row 0: a `setConsent` was processed while no sender existed. Set inside `setConsent`'s `queue` block when
+    /// the sender is nil — never keyed on `isConfigured`, which `configure()` sets long before the sender exists.
+    private var consentRowZeroCall = false
+    /// Test seams (process-static, so the reset keeps them). Nil in production.
+    static var consentSchedulerForTesting: ConsentScheduler?
+    static var keychainStoreFactoryForTesting: (() -> KeychainStoring)?
 
     /// Monotonic configure generation, bumped under `initLock` on every accepted `configure()` AND on
     /// every `shutdown()`. `performConfigure` captures the value it was scheduled with and bails if a
@@ -710,6 +792,8 @@ public final class AppDNA: @unchecked Sendable {
 
             shared.identityManager?.identify(userId: userId, traits: traits)
             Log.info("Identified user: \(userId)")
+            // a user change while analytics is declined re-signals with the new user.
+            if previousUserId != userId { shared.notifyConsentUserChanged() }
             // The push token's server row now names this user.
             shared.pushTokenManager?.reregister()
 
@@ -782,7 +866,10 @@ public final class AppDNA: @unchecked Sendable {
     /// subsequent user signing in on the same device.
     public static func reset() {
         shared.queue.async {
+            let userBeforeReset = shared.identityManager?.currentIdentity.userId
             shared.identityManager?.reset()
+            // the user became nil; while analytics is declined that is re-signalled.
+            if userBeforeReset != nil { shared.notifyConsentUserChanged() }
             // The push token's server row no longer names the signed-out user.
             shared.pushTokenManager?.reregister()
             shared.experimentManager?.resetExposures()
@@ -1565,8 +1652,40 @@ public final class AppDNA: @unchecked Sendable {
         ConsentStore.decision = analytics
         shared.queue.async {
             shared.eventTracker?.setConsent(analytics: analytics)
+            // tell AppDNA (one signal, outside the event pipeline). With no sender yet this is
+            // row 0: the decision is already persisted above, and the next configure treats the call as row 1.
+            if let sender = shared.consentSender {
+                if let e = shared.consentEffective() { sender.setConsent(e) }
+            } else {
+                shared.consentRowZeroCall = true
+            }
             Log.info("Consent updated: analytics=\(analytics)")
         }
+    }
+
+    /// E: the device's anon id, its user id or nil, and `decision ?? !requireConsent`. On `queue`.
+    private func consentEffective() -> ConsentSyncTable.Triple? {
+        guard let id = identityManager?.currentIdentity else { return nil }
+        return ConsentSyncTable.Triple(
+            anonId: id.anonId, userId: id.userId,
+            analytics: ConsentStore.effectiveConsent(requireConsent: options.requireConsent)
+        )
+    }
+
+    /// A user change: while analytics is declined it is re-signalled with the new user (rows 1 / 2). On `queue`.
+    private func notifyConsentUserChanged() {
+        guard let sender = consentSender, let e = consentEffective() else { return }
+        sender.userChanged(e)
+    }
+
+    /// A public consent call that reached an ended sender is re-run on the current one, or held as row 0. On `queue`.
+    private func consentHandoff(_ event: ConsentSyncTable.Event) {
+        guard let sender = consentSender else {
+            if case .setConsent = event { consentRowZeroCall = true }
+            return
+        }
+        guard let e = consentEffective() else { return }
+        if case .userChanged = event { sender.userChanged(e) } else { sender.setConsent(e) }
     }
 
     // MARK: - Public API: Ready callback
@@ -1709,11 +1828,31 @@ public final class AppDNA: @unchecked Sendable {
 
         // 1. Initialize core managers
         let keychainStore = KeychainStore()
-        let identityMgr = IdentityManager(keychainStore: keychainStore)
+        let identityKeychain: KeychainStoring = Self.keychainStoreFactoryForTesting?() ?? keychainStore
+        let identityMgr = IdentityManager(keychainStore: identityKeychain)
         self.identityManager = identityMgr
 
         let client = APIClient(apiKey: apiKey, environment: environment)
         self.apiClient = client
+
+        // Consent-signal row 3: the consent sender of this configure. At most one signal now — a pending decision,
+        // the per-launch `false` while declined, or a decision that differs from the last acknowledged one.
+        let consentSignal = ConsentSignalSender(
+            scheduler: Self.consentSchedulerForTesting ?? DispatchConsentScheduler(),
+            persistence: ConsentSignalPersistence(keychain: identityKeychain),
+            post: { body in await client.postConsentOnce(body: body) },
+            handoff: { event in AppDNA.shared.queue.async { AppDNA.shared.consentHandoff(event) } }
+        )
+        self.consentSender = consentSignal
+        let consentRowZero = consentRowZeroCall
+        consentRowZeroCall = false
+        consentSignal.configure(
+            ConsentSyncTable.Triple(
+                anonId: identityMgr.currentIdentity.anonId, userId: identityMgr.currentIdentity.userId,
+                analytics: ConsentStore.effectiveConsent(requireConsent: options.requireConsent)
+            ),
+            rowZeroCall: consentRowZero
+        )
 
         // Runtime settings before any bootstrap: the host's values, else the built-in defaults.
         let initialRuntime = RuntimeSettings.resolveAll(options: options, bootstrap: nil)
@@ -2393,7 +2532,12 @@ public final class AppDNA: @unchecked Sendable {
         // AppDNA pushes until the next `configure()`.
         PushGate.shared.markShutDown(epoch: shutdownEpoch)
 
+        // Consent-signal row 11: end the consent sender's epoch NOW, so a `setConsent` after `shutdown()` returns is
+        // row 0. Its retry is cancelled; a request in flight is abandoned (its late completion meets the fence). The
+        // slot and the unknown mark are persisted, so the next configure re-sends.
+        ConsentSignalSender.endCurrentEpoch()
         shared.queue.async {
+            shared.consentSender = nil
             // 🔴 BILLING GOES DOWN FIRST — BEFORE THE PIPELINE THAT REPORTS IT.
             //
             // This used to happen ~70 lines below, AFTER `eventTracker` was released. Between those two
@@ -2416,7 +2560,7 @@ public final class AppDNA: @unchecked Sendable {
             // `configure`. `flushForShutdown` keeps the queue alive until the attempt has finished — with
             // `flush()` the queue was released before its weak-captured attempt ran (Android makes the same
             // one attempt in `EventQueue.shutdown()`).
-            shared.eventQueue?.flushForShutdown()
+            if !AppDNA.shutdownSkipsFlushForTesting { shared.eventQueue?.flushForShutdown() }
             shared.eventQueue = nil
             shared.runtimeConfigCache = nil
             shared.eventTracker?.triggerSink = nil

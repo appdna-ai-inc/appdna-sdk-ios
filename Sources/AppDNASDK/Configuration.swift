@@ -191,7 +191,7 @@ public struct AppDNAOptions: Sendable {
 
     /// When true, analytics stay OFF until the host calls
     /// `setConsent(analytics:)`, and no event (including `sdk_initialized`) is emitted before that
-    /// decision. When false — the default, preserving today's behavior — analytics are opt-out.
+    /// decision; the SDK sends only its consent signal (the device's ID, the user's ID if known, and the decision). When false — the default, preserving today's behavior — analytics are opt-out.
     ///
     /// Either way the decision is now **persisted**: `setConsent(false)` used to be silently undone
     /// by the next cold start.

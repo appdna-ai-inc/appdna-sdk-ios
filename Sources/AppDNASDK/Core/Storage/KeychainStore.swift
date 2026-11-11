@@ -30,6 +30,16 @@ protocol KeychainStoring: AnyObject {
     func getUserTraits() -> [String: Any]?
     func setUserTraits(_ traits: [String: Any])
     func clearUserTraits()
+
+    /// Generic Keychain strings: the consent signal's ack record lives here, beside `anon_id`.
+    func getString(key: String) -> String?
+    func setString(key: String, value: String)
+}
+
+extension KeychainStoring {
+    /// Default for identity-only doubles: no generic storage.
+    func getString(key: String) -> String? { nil }
+    func setString(key: String, value: String) {}
 }
 
 /// Wrapper around KeychainAccess for identity persistence.

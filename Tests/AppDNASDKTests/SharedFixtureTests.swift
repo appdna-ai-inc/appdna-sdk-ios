@@ -507,6 +507,8 @@ final class SharedFixtureTests: XCTestCase {
         case "compose_cta_plan_name":          runComposeCtaPlanName(fixture, harness)
         case "select_item_placement":          runSelectItemPlacement(fixture, harness)
         case "identify":                       runIdentify(fixture, harness)
+        // the consent-signal fixtures: scripted SDK calls against a stub server (real AppDNA).
+        case "script":                         await runConsentScript(fixture, harness)
         case "track_event":                    runTrackEvent(fixture, harness)
         case "report_paying_user":             runReportPayingUser(fixture, harness)
         case "present_surface_under_experiment": runPresentSurfaceUnderExperiment(fixture, harness)

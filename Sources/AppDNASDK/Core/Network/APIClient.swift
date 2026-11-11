@@ -225,6 +225,30 @@ final class APIClient {
         return request
     }
 
+    /// the consent signal (`POST /api/v1/ingest/consent`), ONE network attempt (URLSession never
+    /// re-sends a POST on its own). The sender owns the retry policy (the consent state table). Classified by
+    /// `disposition(for:)`, the same table the event upload uses (`permanent_4xx_dropped`).
+    func postConsentOnce(body: [String: Any]) async -> ConsentPostOutcome {
+        do {
+            let request = try postRequest(path: ConsentSignalSender.path, body: body)
+            let (_, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse else { return .transient(retryAfterSeconds: nil) }
+            switch Self.disposition(for: http.statusCode) {
+            case .success:
+                return .success
+            case .dropPermanent:
+                Log.warning("Consent signal rejected (HTTP \(http.statusCode)): dropped until the next launch.")
+                return .drop
+            case .retryTransient:
+                let ra = Self.parseRetryAfter(http.value(forHTTPHeaderField: "Retry-After")).map { Int64($0.rounded(.up)) }
+                return .transient(retryAfterSeconds: ra)
+            }
+        } catch {
+            Log.warning("Consent signal network error: \(error.localizedDescription)")
+            return .transient(retryAfterSeconds: nil)
+        }
+    }
+
     /// Fire-and-forget POST for event batches with gzip compression. Returns success status.
     func sendEvents(_ data: Data) async -> Bool {
         lastEventUploadRejectedPermanently = false
