@@ -67,6 +67,7 @@ extension SharedFixtureTests {
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_segmented_default": runSegmentedDefault(f, h)
         case "resolve_select_default": runSelectDefault(f, h)
+        case "resolve_survey_answer_events": runSurveyAnswerEvents(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
         default:
@@ -847,6 +848,25 @@ extension SharedFixtureTests {
             let current: Any? = o?["current"]?.stringValue
             return SegmentedDefault.pick(current: current, options: options, required: o?["required"]?.boolValue == true) ?? ""
         }
+    }
+
+    /// The production gate the survey renderer calls on every answer change and on Next / Submit.
+    private func runSurveyAnswerEvents(_ f: Fixture, _ h: Harness) {
+        guard let script = f.action.raw["script"]?.arrayValue else { return XCTFail("[\(f.id)] survey_answer_events needs action.script") }
+        let gate = SurveyAnswerEvents()
+        var out: [String] = []
+        for step in script {
+            let o = step.objectValue
+            let id = o?["question_id"]?.stringValue ?? ""
+            let e: SurveyAnswerEvents.Emit?
+            switch o?["op"]?.stringValue {
+            case "changed": e = gate.changed(questionId: id, type: o?["type"]?.stringValue ?? "", answer: o?["answer"]?.foundation ?? NSNull())
+            case "leaving": e = gate.leaving(questionId: id)
+            default: return XCTFail("[\(f.id)] unknown op")
+            }
+            if let e { out.append("\(e.questionId)=\(e.answer)") }
+        }
+        h.state["results"] = out
     }
 
     /// The production rule (`SelectDefault.initial`), called as the Select and Segmented renderers call it.

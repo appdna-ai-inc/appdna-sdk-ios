@@ -55,6 +55,8 @@ struct SurveyContainerView: View {
 
     @State private var currentQuestionIndex = 0
     @State private var answers: [String: SurveyAnswer] = [:] // keyed by question_id
+    /// `survey_question_answered` once per question answered, not once per keystroke.
+    @State private var answerEvents = SurveyAnswerEvents()
     @State private var visibleQuestions: [SurveyQuestion] = []
     @SwiftUI.Environment(\.dismiss) private var dismiss
     // Adapt survey styling to system dark/light mode.
@@ -403,7 +405,17 @@ struct SurveyContainerView: View {
         return true
     }
 
+    /// The question on screen, left forward (Next / Submit): its typed answer is tracked now, once.
+    private func trackLeaving() {
+        guard currentQuestionIndex < visibleQuestions.count else { return }
+        let q = visibleQuestions[currentQuestionIndex]
+        if let e = answerEvents.leaving(questionId: q.id ?? "") {
+            onQuestionAnswered?(config.name ?? "", q, SurveyAnswer(question_id: e.questionId, answer: e.answer))
+        }
+    }
+
     private func advanceQuestion() {
+        trackLeaving()
         computeVisibleQuestions()
         if currentQuestionIndex < visibleQuestions.count - 1 {
             currentQuestionIndex += 1
@@ -411,6 +423,7 @@ struct SurveyContainerView: View {
     }
 
     private func submitSurvey() {
+        trackLeaving()
         // Haptic on submit
         HapticEngine.triggerIfEnabled(
             theme?.haptic?.triggers?.on_form_submit,
@@ -469,7 +482,9 @@ struct SurveyContainerView: View {
                     // Fire the on_option_select haptic like Android (SurveyActivity onAnswer).
                     // iOS never invoked this configurable survey trigger.
                     HapticEngine.triggerIfEnabled(theme?.haptic?.triggers?.on_option_select, config: theme?.haptic)
-                    onQuestionAnswered?(config.name ?? "", question, answer)
+                    if let e = answerEvents.changed(questionId: qId, type: question.type ?? "", answer: answer.answer) {
+                        onQuestionAnswered?(config.name ?? "", question, SurveyAnswer(question_id: e.questionId, answer: e.answer))
+                    }
                 }
                 // Recompute visible questions when answers change (for conditional show_if)
                 computeVisibleQuestions()
