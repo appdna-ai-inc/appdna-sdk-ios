@@ -38,6 +38,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`app_open` is tracked on a cold launch too.** It was tracked only when the app returned from the
+  background, so a user who opened the app from cold never sent it: journeys and funnels that start or wait on
+  `app_open` missed every cold launch. It is now tracked once per foreground entry: on a launch with UI and on
+  each return. A scene-based launch that also posts `willEnterForegroundNotification` still sends one, an app
+  launched in the background sends it when its UI first appears, and a `shutdown()` and `configure()` inside one
+  foreground sends none. No properties, as before. A cold launch no longer rotates the session twice when the
+  scene lifecycle also posts the foreground notification.
+
 - **Time and date-and-time answers work in the app's time zone.** Set in the console under Settings → Apps (UTC
   unless changed), it is the zone a `time` or `datetime` wheel shows and takes, and answers are stored with its offset:
   `2026-11-10T15:03:00+01:00`, `15:03:00+01:00`. A drawn `{{responses…}}` shows them as `2026-11-10 15:03` / `15:03`.

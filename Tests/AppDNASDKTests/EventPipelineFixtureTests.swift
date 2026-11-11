@@ -263,6 +263,9 @@ final class EventPipelineFixtureTests: XCTestCase {
         var out: [Fixture] = []
         for url in items where url.lastPathComponent.hasSuffix(".fixture.json") {
             let data = try Data(contentsOf: url)
+            // A session-lifecycle fixture (`lifecycle` block, no `pipeline`) is driven by
+            // SessionLifecycleFixtureTests.
+            if (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["pipeline"] == nil { continue }
             do {
                 let f = try decoder.decode(Fixture.self, from: data)
                 if f.category == "events" && f.platforms.contains("ios") { out.append(f) }
