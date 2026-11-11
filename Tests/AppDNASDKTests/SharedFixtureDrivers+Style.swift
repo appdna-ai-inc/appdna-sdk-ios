@@ -66,6 +66,7 @@ extension SharedFixtureTests {
         case "resolve_named_icon_library": runNamedIconLibrary(f, h)
         case "resolve_segmented_presentation": runSegmentedPresentation(f, h)
         case "resolve_segmented_default": runSegmentedDefault(f, h)
+        case "resolve_select_default": runSelectDefault(f, h)
         case "resolve_rive_input_kind": runRiveInputKind(f, h)
         case "track_events_with_observer": runEventObserver(f, h)
         default:
@@ -845,6 +846,33 @@ extension SharedFixtureTests {
             let o = c.objectValue
             let current: Any? = o?["current"]?.stringValue
             return SegmentedDefault.pick(current: current, options: options, required: o?["required"]?.boolValue == true) ?? ""
+        }
+    }
+
+    /// The production rule (`SelectDefault.initial`), called as the Select and Segmented renderers call it.
+    private func runSelectDefault(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue,
+              let options = f.setup.raw["options"]?.arrayValue?.compactMap({ $0.stringValue }) else {
+            return XCTFail("[\(f.id)] select_default needs action.cases and setup.options")
+        }
+        func plain(_ v: AnyJSON?) -> Any? {
+            guard let v else { return nil }
+            let f = v.foundation
+            return f is NSNull ? nil : f
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue
+            let multi = o?["multi"]?.boolValue == true
+            let presentation = o?["presentation"]?.stringValue ?? "dropdown"
+            return SelectDefault.initial(
+                current: plain(o?["current"]),
+                optionValues: options,
+                defaultValue: plain(o?["default"]),
+                multi: multi,
+                maxSelections: o?["max_selections"]?.doubleValue.map { Int($0) },
+                required: o?["required"]?.boolValue == true,
+                firstOptionRule: presentation == "segmented" || (presentation == "bubble_scroll" && !multi)
+            ) ?? ""
         }
     }
 

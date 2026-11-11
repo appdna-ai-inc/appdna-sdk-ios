@@ -1076,10 +1076,30 @@ struct FormInputSelectBlock: View {
              * is answered, so a restored answer and a host-patched value of another type both
              * stand.
              */
-            if displayStyle == "bubble_scroll", !isMultiSelect, selectedValue.isEmpty,
-               let first = SegmentedDefault.pick(current: inputValues[fieldId], options: block.field_options ?? [], required: block.field_required == true) {
-                selectedValue = first
-                inputValues[fieldId] = first
+            /*
+             * An author's default answer (`field_config.default_value`) is preselected AND written, as a tap writes it,
+             * so a required question with a default can be continued at once and the answer leaves with the step like a
+             * picked one. Without a default only the bubble_scroll row above keeps its first-option rule.
+             */
+            guard selectedValue.isEmpty, selectedValues.isEmpty else { return }
+            let authored = block.field_options ?? []
+            let written = SelectDefault.initial(
+                current: inputValues[fieldId],
+                optionValues: authored.map(\.resolvedValue),
+                defaultValue: block.field_config?["default_value"]?.value,
+                multi: isMultiSelect,
+                maxSelections: cfgDouble(block.field_config?["max_selections"]).map { Int($0) },
+                required: block.field_required == true,
+                firstOptionRule: displayStyle == "bubble_scroll" && !isMultiSelect
+            )
+            if let single = written as? String {
+                selectedValue = single
+                inputValues[fieldId] = single
+                if let option = authored.first(where: { $0.resolvedValue == single }) { SelectedOptionStore.shared.record(fieldId: fieldId, option: option) }
+            } else if let many = written as? [String] {
+                selectedValues = many
+                inputValues[fieldId] = many
+                SelectedOptionStore.shared.record(fieldId: fieldId, options: many.compactMap { v in authored.first { $0.resolvedValue == v } })
             }
         }
         // The stored value changed from outside the view (a pruned selection, a host's
@@ -2430,6 +2450,19 @@ struct FormInputSegmentedBlock: View {
         }
     }
 
+    /// An author's default answer beats the first-option rule and applies to a required question too (`SelectDefault`).
+    private func initialAnswer(fieldId: String, options: [InputOption]) -> String? {
+        SelectDefault.initial(
+            current: inputValues[fieldId],
+            optionValues: options.map(\.resolvedValue),
+            defaultValue: block.field_config?["default_value"]?.value,
+            multi: false,
+            maxSelections: nil,
+            required: block.field_required == true,
+            firstOptionRule: true
+        ) as? String
+    }
+
     @ViewBuilder
     private var segmentedControl: some View {
         let fieldId = block.field_id ?? block.id
@@ -2469,18 +2502,20 @@ struct FormInputSegmentedBlock: View {
         }
         .onAppear {
             if let saved = inputValues[fieldId] as? String, !saved.isEmpty { selectedValue = saved }
-            else if selectedValue.isEmpty, let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options, required: block.field_required == true) {
+            else if selectedValue.isEmpty, let first = initialAnswer(fieldId: fieldId, options: options) {
                 selectedValue = first
                 inputValues[fieldId] = first
+                if let option = options.first(where: { $0.resolvedValue == first }) { SelectedOptionStore.shared.record(fieldId: fieldId, option: option) }
             }
         }
         // Options that arrive only after pending ends (empty → non-empty) get the same
-        // default-first rule `.onAppear` applied, when nothing is selected yet.
+        // rule `.onAppear` applied, when nothing is selected yet.
         .onChange(of: options.isEmpty) { isEmpty in
             guard !isEmpty, selectedValue.isEmpty,
-                  let first = SegmentedDefault.pick(current: inputValues[fieldId], options: options, required: block.field_required == true) else { return }
+                  let first = initialAnswer(fieldId: fieldId, options: options) else { return }
             selectedValue = first
             inputValues[fieldId] = first
+            if let option = options.first(where: { $0.resolvedValue == first }) { SelectedOptionStore.shared.record(fieldId: fieldId, option: option) }
         }
         // The step cleared a selection its rendered options no longer contain: the
         // view's selected state follows it (same resync as the Select). An unrecognised value type
@@ -3502,12 +3537,59 @@ enum SelectionResync {
 /// first option is selected AND written. A host-set value of another type is an answer — left alone.
 enum SegmentedDefault {
     /// A required question starts empty, so the user has to answer it: only an optional one takes the first option.
+    /// The same rule `SelectDefault` applies with no author default, so the two cannot drift.
     static func pick(current: Any?, options: [InputOption], required: Bool = false) -> String? {
-        if required { return nil }
+        SelectDefault.initial(current: current, optionValues: options.map(\.resolvedValue), defaultValue: nil,
+                              multi: false, maxSelections: nil, required: required, firstOptionRule: true) as? String
+    }
+}
+
+/// An author's default answer on a select question (`field_config.default_value`), on top of the first-option rule.
+///
+/// Returns what to WRITE as the answer when the question shows: a `String` (single), a `[String]` (multi), or nil to
+/// write nothing. Only an unanswered question takes it (absent, "" or an empty list): a restored answer and a host value
+/// of another type win. A default naming no option is ignored; a number reads as its string; a multi default keeps the
+/// authored order, drops unknown and repeated values and is cut to `max_selections`. With no usable default, a single
+/// question whose presentation has the first-option rule (the segmented control, a bubble_scroll row) takes its first
+/// option unless it is required. Mirrors Android `selectDefault`; shared fixture `select_default_answer`.
+enum SelectDefault {
+    static func initial(current: Any?, optionValues: [String], defaultValue: Any?, multi: Bool,
+                        maxSelections: Int?, required: Bool, firstOptionRule: Bool) -> Any? {
         if let current {
-            guard let s = current as? String, s.isEmpty else { return nil }
+            let unanswered = (current as? String)?.isEmpty == true || ((current as? [Any])?.isEmpty == true)
+            if !unanswered { return nil }
         }
-        return options.first?.resolvedValue
+        let raw: [Any]
+        switch defaultValue {
+        case nil: raw = []
+        case let codables as [AnyCodable]: raw = codables.map(\.value)
+        case let list as [Any]: raw = list
+        case let some?: raw = [some]
+        }
+        var authored: [String] = []
+        for v in raw {
+            let item = (v as? AnyCodable)?.value ?? v
+            guard let s = valueString(item), optionValues.contains(s), !authored.contains(s) else { continue }
+            authored.append(s)
+        }
+        if multi {
+            if authored.isEmpty { return nil }
+            if let cap = maxSelections, cap > 0 { return Array(authored.prefix(cap)) }
+            return authored
+        }
+        if let first = authored.first { return first }
+        if !firstOptionRule || required { return nil }
+        guard let first = optionValues.first, !first.isEmpty else { return nil }
+        return first
+    }
+
+    /// An authored default value as an option value: a string, or a number as its string (`2`, not `2.0`).
+    private static func valueString(_ v: Any) -> String? {
+        if v is Bool { return nil }
+        if let s = v as? String { return s.isEmpty ? nil : s }
+        if let i = v as? Int { return String(i) }
+        if let d = v as? Double, d.isFinite { return d == d.rounded() && abs(d) < 1e15 ? String(Int64(d)) : String(d) }
+        return nil
     }
 }
 
