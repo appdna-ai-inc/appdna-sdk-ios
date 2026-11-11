@@ -6,6 +6,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.0.86] — unreleased
 
+### Changed
+
+- **An image with no description is decorative, and screen readers skip it.** An onboarding image block, a
+  paywall image section or a screen image section whose Alt text is blank or unset is now hidden from VoiceOver
+  (it was announced as "Image", or with no description); one with Alt text is read as that text, as an image. An
+  in-app message's image and a survey question's image have no description field, so they are always skipped.
+
 ### Fixed
 
 - **The Date Picker draws the style chosen in the console.** `field_config.picker_variant` (`graphical` · `wheel` · `compact`) decides what a `date_wheel_picker` draws; unset, a date is the calendar and a date-and-time or a year the wheel. A **Date** field (`input_date` / `input_datetime`) with `picker_presentation: inline` — the console's default — always drew the calendar, so its Picker Variant changed nothing: it now draws the variant chosen.

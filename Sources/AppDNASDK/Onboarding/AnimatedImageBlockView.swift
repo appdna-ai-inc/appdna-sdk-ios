@@ -132,10 +132,8 @@ struct AnimatedImageBlockView: View {
         .clipShape(RoundedRectangle(cornerRadius: CGFloat(block.corner_radius ?? 0)))
         .onAppear { loader.load(block.image_url) }
         .onChange(of: block.image_url) { loader.load($0) }
-        .accessibilityElement()
-        .accessibilityAddTraits(.isImage)
-        .accessibilityLabel(block.alt ?? "")
-        .accessibilityHidden((block.alt ?? "").isEmpty)
+        // The same rule as every authored image: alt read as the image, blank (or whitespace) alt decorative.
+        .authoredImageAccessibility(block.imageAccessibilityLabel)
     }
 }
 

@@ -293,6 +293,15 @@ internal enum StickyFooterSectionRenderer: SectionRenderer {
 
 // MARK: - Media Sections
 
+/// A screen image section's accessibility: the screens editor's "Alt Text" (`alt`), trimmed, or nil when it is
+/// blank and the image is decorative (`AuthoredImageAccessibility`). Android's `ScreenImageAccessibility` is the
+/// same; `packages/sdk-shared-fixtures/dto_parsing/screen_image_alt.fixture.json` pins both.
+enum ScreenImageAccessibility {
+    static func label(_ section: ScreenSection) -> String? {
+        AuthoredImageAccessibility.label(section.data?["alt"]?.value as? String)
+    }
+}
+
 internal enum ImageSectionRenderer: SectionRenderer {
     static func render(section: ScreenSection, context: SectionContext) -> AnyView {
         let imageURL = section.data?["image_url"]?.value as? String
@@ -309,6 +318,7 @@ internal enum ImageSectionRenderer: SectionRenderer {
                     }
                     .frame(height: height.map { CGFloat($0) })
                     .clipShape(RoundedRectangle(cornerRadius: CGFloat(cornerRadius)))
+                    .authoredImageAccessibility(ScreenImageAccessibility.label(section))
                 }
             }
         )

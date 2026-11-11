@@ -1032,7 +1032,7 @@ struct ContentBlockRendererView: View {
         return Group {
             if block.image_frame == "phone" || block.image_frame == "phone_thin",
                let urlString = block.image_url, let url = URL(string: urlString) {
-                phoneMockup(url: url, height: imgHeight, alt: block.imageAccessibilityLabel, thin: block.image_frame == "phone_thin", fit: imageFit)
+                phoneMockup(url: url, height: imgHeight, thin: block.image_frame == "phone_thin", fit: imageFit)
             } else if block.image_frame == "glow" || block.image_frame == "color_frame",
                       let urlString = block.image_url, let url = URL(string: urlString) {
                 // Effects on the plain image rather than mockups. Settings come from
@@ -1060,7 +1060,6 @@ struct ContentBlockRendererView: View {
                     case .success(let image):
                         styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                             .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
-                            .accessibilityLabel(block.imageAccessibilityLabel)
                     default:
                         imagePlaceholder
                             .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
@@ -1081,15 +1080,12 @@ struct ContentBlockRendererView: View {
                         // Honor overflow="visible" (no clip), matching Android + preview.
                         if block.overflow == "visible" {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         } else if isCircle {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                                 .clipShape(Circle())
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         } else {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                                 .clipShape(RoundedRectangle(cornerRadius: cr))
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         }
                     case .failure:
                         imagePlaceholder
@@ -1102,6 +1098,9 @@ struct ContentBlockRendererView: View {
                 EmptyView()
             }
         }
+        // Every branch and every phase: a described image is one element read as its alt, a decorative one
+        // (blank alt) is skipped — while it loads and if it fails, too.
+        .authoredImageAccessibility(block.imageAccessibilityLabel)
         .frame(maxWidth: .infinity)
     }
 
@@ -1109,7 +1108,7 @@ struct ContentBlockRendererView: View {
     /// `thin: true` is the same mockup with a narrower bezel. One function rather than two,
     /// because everything except the padding and the two radii is identical, and a copy is how the
     /// notch or the width cap ends up different between them.
-    private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false, fit: String = "cover") -> some View {
+    private func phoneMockup(url: URL, height: CGFloat, thin: Bool = false, fit: String = "cover") -> some View {
         let pad: CGFloat = thin ? 4 : 10
         let outerR: CGFloat = thin ? 32 : 40
         let innerR: CGFloat = thin ? 28 : 30
@@ -1152,7 +1151,6 @@ struct ContentBlockRendererView: View {
         }
         .padding(pad)
         .background(RoundedRectangle(cornerRadius: outerR).fill(Color(hex: "#101012")))
-        .accessibilityLabel(alt ?? ContentBlock.defaultImageAccessibilityLabel)
     }
 
     private var imagePlaceholder: some View {

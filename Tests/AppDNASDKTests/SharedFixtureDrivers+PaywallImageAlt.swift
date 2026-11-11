@@ -6,6 +6,7 @@
 //   resolve_onboarding_image_alt REAL: the lenient `[ContentBlock]` decode a step runs →
 //                              `ContentBlock.imageAccessibilityLabel`, the label every image branch of
 //                              `ContentBlockRendererView` uses.
+//   resolve_screen_image_alt   REAL: `ScreenConfig` decoding → `ScreenImageAccessibility.label(_:)`.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -168,7 +169,39 @@ extension SharedFixtureTests {
                 XCTFail("[\(f.id)] case \(name): the block did not decode")
                 return NSNull()
             }
-            return decoded.imageAccessibilityLabel
+            return decoded.imageAccessibilityLabel.map { $0 as Any } ?? NSNull()
+        }
+    }
+
+    // resolve_screen_image_alt REAL: `ScreenConfig` decoding of a screen with one image section →
+    // `ScreenImageAccessibility.label(_:)`, the description `ImageSectionRenderer` hands VoiceOver (nil: hidden).
+    func runScreenImageAlt(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_screen_image_alt needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let sectionData = obj["data"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: [
+                      "id": "scr_alt_\(name)", "sections": [["id": "s1", "type": "image_section", "data": sectionData]],
+                  ]) else {
+                XCTFail("[\(f.id)] case \(name): needs data")
+                return NSNull()
+            }
+            let screen: ScreenConfig
+            do {
+                screen = try JSONDecoder().decode(ScreenConfig.self, from: data)
+            } catch {
+                XCTFail("[\(f.id)] case \(name): the screen did not decode: \(error)")
+                return NSNull()
+            }
+            guard let section = screen.sections?.first(where: { $0.type == "image_section" }) else {
+                XCTFail("[\(f.id)] case \(name): the image section was dropped")
+                return NSNull()
+            }
+            return ScreenImageAccessibility.label(section).map { $0 as Any } ?? NSNull()
         }
     }
 

@@ -2016,15 +2016,11 @@ public struct ContentBlock: Codable, Identifiable {
 }
 
 extension ContentBlock {
-    /// What VoiceOver says for an image block: the console's "Alt text" (`alt`), trimmed, else "Image".
-    /// One rule for every place an image block is drawn; Android's `ContentBlock.imageAccessibilityLabel`
-    /// is the same, and `packages/sdk-shared-fixtures/dto_parsing/onboarding_image_alt.fixture.json` pins both.
-    static let defaultImageAccessibilityLabel = "Image"
-
-    var imageAccessibilityLabel: String {
-        guard let t = alt?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
-            return Self.defaultImageAccessibilityLabel
-        }
-        return t
+    /// What VoiceOver says for an image block: the console's "Alt text" (`alt`), trimmed — or nil when it is
+    /// blank, and the image is then decorative and skipped (`AuthoredImageAccessibility`). One rule for every
+    /// place an image block is drawn; Android's `ContentBlock.imageAccessibilityLabel` is the same, and
+    /// `packages/sdk-shared-fixtures/dto_parsing/onboarding_image_alt.fixture.json` pins both.
+    var imageAccessibilityLabel: String? {
+        AuthoredImageAccessibility.label(alt)
     }
 }

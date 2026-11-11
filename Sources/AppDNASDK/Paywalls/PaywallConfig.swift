@@ -1457,12 +1457,12 @@ public struct PostPurchaseFailureConfig: Codable {
     }
 }
 
-/// What a screen reader says for a paywall image section: the authored alt text, trimmed, or nil when there
-/// is none (the image is then announced as SwiftUI's default). ONE rule; Android's `PaywallImageAccessibility`
-/// is the same, and `packages/sdk-shared-fixtures/dto_parsing/paywall_image_alt.fixture.json` pins both.
+/// What a screen reader says for a paywall image section: the authored alt text, trimmed, or nil when it is
+/// blank — the image is then decorative and skipped (`AuthoredImageAccessibility`). ONE rule; Android's
+/// `PaywallImageAccessibility` is the same, and `packages/sdk-shared-fixtures/dto_parsing/paywall_image_alt.fixture.json`
+/// pins both.
 enum PaywallImageAccessibility {
     static func label(_ data: PaywallSectionData?) -> String? {
-        guard let t = data?.alt?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
-        return t
+        AuthoredImageAccessibility.label(data?.alt)
     }
 }

@@ -81,6 +81,8 @@ private struct MessageContentInlineView: View {
                 }
                 .frame(height: 140)
                 .clipShape(RoundedRectangle(cornerRadius: CGFloat(content.corner_radius ?? 12)))
+                // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
+                .authoredImageAccessibility(nil)
             }
             if let title = content.title {
                 Text(title)
