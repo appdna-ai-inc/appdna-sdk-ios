@@ -219,6 +219,9 @@ struct ThemedDateWheel: View {
                         .accessibilityIdentifier("date_wheel.\(column.rawValue)")
                 }
             }
+            // The columns are exactly the wheel, and nothing they draw leaves it.
+            .frame(height: height)
+            .clipped()
         }
         .frame(height: height)
         .frame(maxWidth: .infinity)
@@ -243,13 +246,49 @@ private struct WheelColumn: UIViewRepresentable {
     let haptic: Bool
     let onSelect: (Int) -> Void
 
-    func makeUIView(context: Context) -> WheelScrollView {
-        WheelScrollView()
+    func makeUIView(context: Context) -> WheelWindowView {
+        WheelWindowView()
     }
 
-    func updateUIView(_ view: WheelScrollView, context: Context) {
-        view.configure(items: items, selected: selected, name: name, rowHeight: rowHeight, fontSize: fontSize,
-                       highlight: highlight, text: text, haptic: haptic, onSelect: onSelect)
+    func updateUIView(_ view: WheelWindowView, context: Context) {
+        view.rowHeight = rowHeight
+        view.wheel.configure(items: items, selected: selected, name: name, rowHeight: rowHeight, fontSize: fontSize,
+                             highlight: highlight, text: text, haptic: haptic, onSelect: onSelect)
+    }
+}
+
+/// The fixed window a column scrolls behind. Rows are clipped to it while they move, and fade out over the last row at
+/// the top and bottom, as the system wheel's rows do, so a row never slides past the wheel's edge as a hard-cut line.
+///
+/// The fade lives on this view and not on the scroll view: a scroll view's layer moves with its content, so a mask on it
+/// would scroll away with the rows (and lag behind a tap's animated glide).
+final class WheelWindowView: UIView {
+    let wheel = WheelScrollView()
+    private let fade = CAGradientLayer()
+    var rowHeight: CGFloat = 38 { didSet { if rowHeight != oldValue { setNeedsLayout() } } }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        clipsToBounds = true
+        addSubview(wheel)
+        let solid = UIColor.black
+        fade.colors = [solid.withAlphaComponent(0), solid.withAlphaComponent(0.55), solid, solid, solid.withAlphaComponent(0.55),
+                       solid.withAlphaComponent(0)].map(\.cgColor)
+        layer.mask = fade
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if wheel.frame != bounds { wheel.frame = bounds }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        fade.frame = bounds
+        // Over one row from each edge: clear at the edge, 0.55 at the middle of the outermost row, solid by its inner edge.
+        let edge = bounds.height > 0 ? min(0.5, rowHeight / bounds.height) : 0
+        fade.locations = [0, edge / 2, edge, 1 - edge, 1 - edge / 2, 1].map { NSNumber(value: Double($0)) }
+        CATransaction.commit()
     }
 }
 
