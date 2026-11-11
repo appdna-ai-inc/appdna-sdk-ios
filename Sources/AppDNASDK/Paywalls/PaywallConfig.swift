@@ -815,6 +815,12 @@ struct PaywallPlan: Codable, Identifiable {
      authored label.
      */
     var resolvedStoreTrial: String?
+    /// The store's NUMERIC price for this plan's product, beside the localized `resolvedStorePrice`.
+    /// A savings figure is arithmetic, and a localized string ("79,99 €") is not a number to do it on.
+    /// Filled by the presenter, never decoded. nil when the lookup failed or did not know the product.
+    var resolvedStoreAmount: Double?
+    /// The saving `PlanSavings` computed for this plan from the prices drawn, or nil when unknown.
+    var resolvedSavingsPercent: Int?
     /// `var` so `PlanSavings.apply` can fill `{{savings_percent}}` once, for every render site.
     var badge: String?
     private let trialDuration: String?   // Legacy: "trial_duration" string
