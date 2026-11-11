@@ -68,6 +68,27 @@
           "referenceName": "Monthly",
           "subscriptionGroupID": "21497001",
           "type": "RecurringSubscription"
+        },
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "79.99",
+          "familyShareable": false,
+          "groupNumber": 2,
+          "internalID": "6497000006",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Annual",
+              "displayName": "Annual",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "ai.appdna.test.annual",
+          "recurringSubscriptionPeriod": "P1Y",
+          "referenceName": "Annual",
+          "subscriptionGroupID": "21497001",
+          "type": "RecurringSubscription"
         }
       ]
     },

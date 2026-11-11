@@ -44,6 +44,9 @@ enum StorePriceLookup {
          and is deliberately not rendered as a free trial.
          */
         let trialIso: String?
+
+        /// The NUMERIC price, for arithmetic on it — a savings figure (`PlanSavings`). nil when absent.
+        var amount: Double? = nil
     }
 
     /**
@@ -106,7 +109,8 @@ enum StorePriceLookup {
                     map[p.id] = StoreFacts(
                         price: p.displayPrice,
                         periodIso: iso(sub?.subscriptionPeriod),
-                        trialIso: trial
+                        trialIso: trial,
+                        amount: NSDecimalNumber(decimal: p.price).doubleValue
                     )
                 }
                 if map.isEmpty {

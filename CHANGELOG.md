@@ -8,6 +8,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A plan's savings figure is computed from the prices drawn.** Write `{{savings_percent}}` in a plan's `badge` or `savings_text` ("Best value – save {{savings_percent}}"). The SDK fills it from the prices the paywall shows (the App Store's once it answers, the authored ones otherwise), per month and rounded down, and hides the text when no figure can be worked out. A typed percentage is drawn as written.
+
 - **Onboarding flows and surveys can be asked for by name.** `presentOnboarding(placement:)` and `surveys.present(placement:)` show the item whose placement matches, set in the console. Several flows can share a name: higher audience priority first, then a targeted flow before a catch-all, then lowest id. `false` when nothing answers the name.
 
 - **The date wheel is drawn by the SDK.** A `date_wheel_picker` wheel's selection band is `highlight_color` at 10% opacity, its columns follow the locale's date order, and `picker_mode: year` answers a single year as four digits. Calendars the wheel cannot number (for example Japanese eras) keep the system wheel.

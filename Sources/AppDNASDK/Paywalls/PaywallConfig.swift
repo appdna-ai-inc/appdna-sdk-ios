@@ -15,7 +15,7 @@ struct PaywallConfig: Codable {
     let version: Int?
     // Design tokens
     let animation: AnimationConfig?
-    let localizations: [String: [String: String]]?
+    var localizations: [String: [String: String]]?
     let default_locale: String?
     // Rich media
     let haptic: HapticConfig?
@@ -135,6 +135,91 @@ struct PaywallConfig: Codable {
         out.plans = timed(plans)
         out._sections = timed(_sections)
         out.layout?.sections = timed(layout?.sections)
+        return out
+    }
+
+    /**
+     Everything the store answered, applied the way the presenter applies it: price, period, trial,
+     numeric amount, and THEN the savings figure over the prices that result. One function so the
+     presenter and the tests that render its output cannot drift apart.
+
+     A trial is present only for a product this user is ELIGIBLE for (see `StoreFacts.trialIso`).
+     An empty map still fills `{{savings_percent}}`, from the authored prices that will be drawn.
+     */
+    func applyingStoreFacts(_ facts: [String: StorePriceLookup.StoreFacts]) -> PaywallConfig {
+        applyingStorePrices(facts.compactMapValues(\.price))
+            .applyingStorePeriods(facts.compactMapValues(\.periodIso))
+            .applyingStoreTrials(facts.compactMapValues(\.trialIso))
+            .applyingStoreAmounts(facts.compactMapValues(\.amount))
+            .applyingSavings()
+    }
+
+    /// A copy with the store's NUMERIC price on every plan, wherever that plan lives — the same
+    /// three places as `applyingStorePrices`, for the reason recorded there.
+    func applyingStoreAmounts(_ amounts: [String: Double]) -> PaywallConfig {
+        guard !amounts.isEmpty else { return self }
+        func valued(_ list: [PaywallPlan]?) -> [PaywallPlan]? {
+            list?.map { plan in
+                var copy = plan
+                copy.resolvedStoreAmount = plan.productId.flatMap { amounts[$0] }
+                return copy
+            }
+        }
+        func valued(_ list: [PaywallSection]?) -> [PaywallSection]? {
+            list?.map { section in
+                guard section.type == "plans", let plans = section.data?.plans else { return section }
+                var copy = section
+                copy.setPlans(valued(plans))
+                return copy
+            }
+        }
+        var out = self
+        out.plans = valued(plans)
+        out._sections = valued(_sections)
+        out.layout?.sections = valued(layout?.sections)
+        return out
+    }
+
+    /**
+     A copy with every `{{savings_percent}}` filled from the prices each plan list DRAWS, and every
+     text whose figure cannot be known removed (`PlanSavings`). Run AFTER the store substitutions.
+
+     Each list is computed against its own siblings, in the same three places as the store walk.
+     The plan-text localizations (`plan.<i>.badge`, `plan.<i>.savings`) are filled too, against the
+     list the renderer draws in the order it draws it: the renderer's `loc` interpolates every
+     `{{…}}` through `TemplateEngine`, which knows no `savings_percent` and would draw a translated
+     "Save {{savings_percent}}" as "Save ".
+     */
+    func applyingSavings() -> PaywallConfig {
+        func saved(_ list: [PaywallSection]?) -> [PaywallSection]? {
+            list?.map { section in
+                guard section.type == "plans", let plans = section.data?.plans else { return section }
+                var copy = section
+                copy.setPlans(PlanSavings.apply(plans))
+                return copy
+            }
+        }
+        var out = self
+        out.plans = plans.map(PlanSavings.apply)
+        out._sections = saved(_sections)
+        out.layout?.sections = saved(layout?.sections)
+
+        guard let locs = localizations, locs.values.contains(where: { table in table.values.contains(where: { PlanSavings.hasToken($0) }) }) else { return out }
+        let rawDrawn = sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
+        let drawn = PlanSavings.percents(PaywallPlanOrder.sorted(rawDrawn.isEmpty ? (plans ?? []) : rawDrawn))
+        out.localizations = locs.mapValues { table in
+            var t: [String: String] = [:]
+            for (key, value) in table {
+                guard PlanSavings.hasToken(value) else { t[key] = value; continue }
+                let parts = key.split(separator: ".")
+                let pct: Int? = (parts.count == 3 && parts[0] == "plan" && (parts[2] == "badge" || parts[2] == "savings"))
+                    ? Int(parts[1]).flatMap { $0 >= 0 && $0 < drawn.count ? drawn[$0] : nil }
+                    : nil
+                // Unfillable: the key is dropped, so the plan's own (already filled, or hidden) text stands.
+                if let filled = PlanSavings.fill(value, percent: pct) { t[key] = filled }
+            }
+            return t
+        }
         return out
     }
 }
@@ -730,14 +815,15 @@ struct PaywallPlan: Codable, Identifiable {
      authored label.
      */
     var resolvedStoreTrial: String?
-    let badge: String?
+    /// `var` so `PlanSavings.apply` can fill `{{savings_percent}}` once, for every render site.
+    var badge: String?
     private let trialDuration: String?   // Legacy: "trial_duration" string
     let trial: PaywallPlanTrial?         // New: {duration_days, label} object
     let isDefault: Bool?
     let sort_order: Int?
     let description: String?
     let features: [String]?
-    let savings_text: String?
+    var savings_text: String?
     let cta_text: String?
     let icon: String?
     let image_url: String?
@@ -897,6 +983,8 @@ struct PaywallPlan: Codable, Identifiable {
         // `CodingKeys` because it is not in the published document.
         self.resolvedStorePeriod = nil
         self.resolvedStoreTrial = nil
+        self.resolvedStoreAmount = nil
+        self.resolvedSavingsPercent = nil
         self.period = c.lenient(String.self, .period)
         self.badge = c.lenient(String.self, .badge)
         self.trialDuration = PaywallPlan.looseString(c, .trialDuration)

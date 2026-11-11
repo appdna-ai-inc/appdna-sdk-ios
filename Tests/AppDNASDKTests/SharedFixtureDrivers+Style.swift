@@ -42,6 +42,7 @@ extension SharedFixtureTests {
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_select_advance_on_pick": runSelectAdvanceOnPick(f, h)
         case "resolve_store_price": runStorePrice(f, h)
+        case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
         case "resolve_survey_choice_options": runSurveyChoiceOptions(f, h)
         case "resolve_button_label_colour": runButtonLabelColour(f, h)
@@ -1044,6 +1045,50 @@ extension SharedFixtureTests {
                 storePrice: v["store_price"] as? String
             )
             return [out.priceDisplay, out.source] as [Any]
+        }
+    }
+
+    // MARK: resolve_plan_savings
+
+    /**
+     A plan's savings claim against the prices the paywall DRAWS, through the real decode, the
+     presenter's real store substitutions and `applyingSavings` — the path a device runs.
+
+     Each case's plans are published inside a `plans` section in `layout.sections` (where every real
+     paywall keeps them; the first store substitution walked only the root array and reached none).
+     `store_*` keys are what the store answered and are stripped from the published plan.
+     */
+    private func runPlanSavings(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_plan_savings needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let raw = v["plans"] as? [[String: Any]] else {
+                XCTFail("[\(f.id)] a case had no value.plans")
+                return NSNull()
+            }
+            var prices: [String: String] = [:], periods: [String: String] = [:], amounts: [String: Double] = [:]
+            let published: [[String: Any]] = raw.map { p in
+                let id = p["product_id"] as? String ?? ""
+                if let x = p["store_price"] as? String { prices[id] = x }
+                if let x = p["store_period"] as? String { periods[id] = x }
+                if let x = p["store_amount"] as? NSNumber { amounts[id] = x.doubleValue }
+                return p.filter { !$0.key.hasPrefix("store_") }
+            }
+            let doc: [String: Any] = ["id": "fixture_paywall", "layout": ["type": "stack", "sections": [["type": "plans", "config": ["plans": published]]]]]
+            guard let data = try? JSONSerialization.data(withJSONObject: doc),
+                  let config = try? JSONDecoder().decode(PaywallConfig.self, from: data) else {
+                XCTFail("[\(f.id)] the paywall did not decode")
+                return NSNull()
+            }
+            let drawn = config.applyingStorePrices(prices)
+                .applyingStorePeriods(periods)
+                .applyingStoreAmounts(amounts)
+                .applyingSavings()
+            let plans = drawn.sections.first(where: { $0.type == "plans" })?.data?.plans ?? []
+            return plans.map { p -> [Any] in [p.badge.map { $0 as Any } ?? NSNull(), p.savings_text.map { $0 as Any } ?? NSNull()] }
         }
     }
 
