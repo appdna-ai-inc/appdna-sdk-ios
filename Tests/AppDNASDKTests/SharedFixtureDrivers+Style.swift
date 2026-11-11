@@ -872,8 +872,8 @@ extension SharedFixtureTests {
     /// The production rule (`SelectDefault.initial`), called as the Select and Segmented renderers call it.
     private func runSelectDefault(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue,
-              let options = f.setup.raw["options"]?.arrayValue?.compactMap({ $0.stringValue }) else {
-            return XCTFail("[\(f.id)] select_default needs action.cases and setup.options")
+              let options = f.action.raw["options"]?.arrayValue?.compactMap({ $0.stringValue }) else {
+            return XCTFail("[\(f.id)] select_default needs action.cases and action.options")
         }
         func plain(_ v: AnyJSON?) -> Any? {
             guard let v else { return nil }
