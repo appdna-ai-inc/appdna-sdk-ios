@@ -43,7 +43,7 @@ final class AddWidgetWalkUITests: XCTestCase {
     /// Launches a host build on the seeded flow and presents it.
     private func presentFlow(bundle: String? = nil) -> XCUIApplication {
         let app = bundle.map { XCUIApplication(bundleIdentifier: $0) } ?? XCUIApplication()
-        app.launchArguments += ["-appdnaSeedOnboarding", "widget-walk", "-appdnaFlow", Self.flowId, "-appdnaLogLevel", "debug"]
+        app.launchArguments += ["-appdnaSeedOnboarding", "widget-walk", "-appdnaFlow", Self.flowId, "-appdnaLogLevel", "debug", "-appdnaProbeWidgets", "1"]
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 30), "the host did not launch")
         var presented = false
@@ -142,7 +142,7 @@ final class AddWidgetWalkUITests: XCTestCase {
     /// app. The how-to closes itself and the step lands on `added`. Repeated `WIDGET_WALK_RUNS` times
     /// (default 5), timing the return → landing.
     func testAddingTheWidgetFromTheGalleryIsDetectedOnReturn() throws {
-        let runs = Int(ProcessInfo.processInfo.environment["WIDGET_WALK_RUNS"] ?? "") ?? 5
+        let runs = Int(ProcessInfo.processInfo.environment["WIDGET_WALK_RUNS"] ?? "") ?? 3
         var timings: [String] = []
         for run in 1...runs {
             let app = presentFlow()
@@ -177,6 +177,11 @@ final class AddWidgetWalkUITests: XCTestCase {
         a.lifetime = .keepAlways
         add(a)
         NSLog("AppDNA-E2E widget freshness: \(timings.joined(separator: " | "))")
+        // 🔴 WidgetKit reports ONE configuration per widget kind and size, however many are placed
+        // (`-appdnaProbeWidgets` logs `n=1` with eleven small widgets on the Home Screen), so only an add
+        // whose size is new to this simulator can be detected; later adds of the same size read
+        // not_added on every platform API there is. Precondition for a detected run: no small
+        // "Sample widget" on the Home Screen before the walk. Every run's outcome is recorded above.
         XCTAssertTrue(timings.contains { $0.contains(": added after") }, "no run detected the widget on return: \(timings)")
     }
 
@@ -228,7 +233,13 @@ final class AddWidgetWalkUITests: XCTestCase {
         // The gallery's app list is a list of cells, one per app with widgets; the host's is labelled
         // with its display name. (The search field's own text matches a label predicate too, so the
         // CELL is asked for by name.)
-        let hostEntry = springboard.cells["AppDNA Host"]
+        var hostEntry = springboard.cells["AppDNA Host"]
+        if !hostEntry.waitForExistence(timeout: 3), springboard.buttons["Clear text"].exists {
+            // The gallery can reopen with the previous search still typed and no match listed.
+            springboard.buttons["Clear text"].tap()
+            search.typeText("AppDNA")
+            hostEntry = springboard.cells["AppDNA Host"]
+        }
         guard hostEntry.waitForExistence(timeout: 5) else {
             tree("34-run\(run)-search-tree", springboard)
             XCTFail("run \(run): stopped at SEARCH — the host app is not listed in the widget gallery")
@@ -238,8 +249,13 @@ final class AddWidgetWalkUITests: XCTestCase {
         sleepRunLoop(1.5)
         shot("35-run\(run)-host-widgets")
 
-        let add = springboard.buttons["Add Widget"]
-        guard add.waitForExistence(timeout: 5) else {
+        // The host's page labels its button " Add Widget" — a glyph, then the words — so it is found by
+        // what the label contains, the bottom-most one being the sheet's.
+        let addMatches = springboard.buttons.matching(NSPredicate(format: "label CONTAINS 'Add Widget'"))
+        _ = addMatches.firstMatch.waitForExistence(timeout: 5)
+        let add = addMatches.allElementsBoundByIndex.filter { $0.isHittable }.max { $0.frame.minY < $1.frame.minY }
+            ?? addMatches.firstMatch
+        guard add.exists else {
             tree("35-run\(run)-host-widgets-tree", springboard)
             XCTFail("run \(run): stopped at the HOST'S WIDGETS — no Add Widget button")
             return

@@ -24,6 +24,7 @@
 // a test runner in the way.
 import SwiftUI
 import UIKit
+import WidgetKit
 import AppDNASDK
 
 @main
@@ -78,6 +79,7 @@ enum Launch {
         #if DEBUG
         armRootSwapIfAsked()
         seedOnboardingCacheIfAsked()
+        probeWidgetsIfAsked()
         #endif
 
         if let lvl = arg("appdnaLogLevel") {
@@ -118,6 +120,34 @@ enum Launch {
               let data = try? Data(contentsOf: url) else { return }
         UserDefaults(suiteName: "ai.appdna.sdk.config")?.set(data, forKey: "onboarding")
         NSLog("AppDNA-E2E seeded the onboarding cache from \(name).json")
+    }
+
+    /*
+     WHAT WIDGETKIT REPORTS, IN THE SYSTEM LOG: `-appdnaProbeWidgets` logs the host's placed widgets
+     (`WidgetCenter.getCurrentConfigurations`) at launch and on every return to the foreground, as
+     `AppDNA-E2E widgets n=<count> [...]`, so a walk can read what the SDK's detection read — a UI test
+     cannot see the SDK's stdout. Debug-only and opt-in.
+    */
+    private static var widgetProbeObserver: NSObjectProtocol?
+    static func probeWidgetsIfAsked() {
+        guard arg("appdnaProbeWidgets") != nil, widgetProbeObserver == nil else { return }
+        func probe(_ when: String) {
+            WidgetCenter.shared.getCurrentConfigurations { result in
+                switch result {
+                case .success(let infos):
+                    NSLog("AppDNA-E2E widgets \(when) n=\(infos.count) \(infos.map { "\($0.kind)/\($0.family)/h\($0.hashValue)" })")
+                case .failure(let error):
+                    NSLog("AppDNA-E2E widgets \(when) failed \(error)")
+                }
+            }
+        }
+        probe("launch")
+        widgetProbeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            probe("active")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { probe("active+2s") }
+        }
     }
 
     private static var swapObserver: NSObjectProtocol?
