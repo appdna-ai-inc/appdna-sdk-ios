@@ -104,14 +104,22 @@ final class ConsentSignalPersistence: ConsentSignalPersisting {
             s.ack = Self.ack(from: obj["ack"])
             s.dropped = (obj["dropped"] as? [String: Any]).flatMap(Self.triple(from:))
         }
-        if let obj = defaults.dictionary(forKey: Self.slotKey), let slot = Self.slot(from: obj) { s.slot = slot }
+        if let data = defaults.data(forKey: Self.slotKey),
+           let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let slot = Self.slot(from: obj) { s.slot = slot }
         if let ts = defaults.object(forKey: Self.lastTsKey) as? NSNumber { s.lastBodyTs = ts.int64Value }
         s.lastGeneration = (defaults.object(forKey: Self.generationKey) as? NSNumber)?.int64Value ?? 0
         return s
     }
 
     func save(_ state: ConsentSyncTable.State) {
-        if let slot = state.slot { defaults.set(Self.json(slot), forKey: Self.slotKey) } else { defaults.removeObject(forKey: Self.slotKey) }
+        // The slot is stored as JSON data, not as a dictionary: an absent user is `NSNull`, which is not a property-list
+        // value, and UserDefaults raises on it (an Objective-C exception, uncatchable in Swift).
+        if let slot = state.slot, let data = try? JSONSerialization.data(withJSONObject: Self.json(slot)) {
+            defaults.set(data, forKey: Self.slotKey)
+        } else {
+            defaults.removeObject(forKey: Self.slotKey)
+        }
         if let ts = state.lastBodyTs { defaults.set(NSNumber(value: ts), forKey: Self.lastTsKey) } else { defaults.removeObject(forKey: Self.lastTsKey) }
         defaults.set(NSNumber(value: state.lastGeneration), forKey: Self.generationKey)
         let record = Self.ackRecord(state.ack, state.dropped)
