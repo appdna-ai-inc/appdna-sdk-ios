@@ -224,6 +224,75 @@ func parseMeasurementConfig(_ block: ContentBlock) -> MeasurementConfig? {
     )
 }
 
+// MARK: Palette — every colour the measurement picker draws, one key each
+
+/// The colour of every part of a measurement picker, resolved from `field_config`.
+///
+/// Before, the drum styles (`wheel`, `dial`) drew their band, the value on the band and the rows
+/// around it from keys named for the ruler (`track_color`, `needle_color`, `tick_color`), the unit
+/// label and the inactive toggle in the system's secondary grey, and the active toggle's label in
+/// white, so an author could not set those at all. Each part now has its own key, and an unset key
+/// falls back to exactly what was drawn before. Shared with Android and the console preview through
+/// the `resolve_measurement_palette` fixture.
+struct MeasurementPalette: Equatable {
+    let value: String
+    let unit: String
+    let label: String
+    let toggleActive: String
+    let toggleActiveText: String
+    let toggleText: String
+    let tick: String
+    let track: String
+    /// `nil` = the track colour at 60% opacity, the band drawn before the key existed.
+    let band: String?
+    let bandText: String
+    let rowText: String
+
+    /// The fixture's view of the palette: role name → hex, `band` `nil` when derived.
+    var roles: [String: Any] {
+        [
+            "value": value, "unit": unit, "label": label,
+            "toggle_active": toggleActive, "toggle_active_text": toggleActiveText, "toggle_text": toggleText,
+            "tick": tick, "track": track, "band": band.map { $0 as Any } ?? NSNull(), "band_text": bandText, "row_text": rowText,
+        ]
+    }
+}
+
+/// `field_config` keys of the palette, in role order. The console writes each one.
+let measurementPaletteKeys = [
+    "needle_color", "unit_color", "label_color", "toggle_active_color", "toggle_active_text_color",
+    "toggle_text_color", "tick_color", "track_color", "band_color", "band_text_color", "row_text_color",
+]
+
+/// One rule for every platform: an authored, non-blank string wins; otherwise the pinned default.
+func measurementPalette(_ cfg: [String: Any], highlight: String?, dark: Bool) -> MeasurementPalette {
+    func s(_ k: String) -> String? {
+        guard let v = cfg[k] as? String else { return nil }
+        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+    let accent: String = {
+        if let h = highlight?.trimmingCharacters(in: .whitespacesAndNewlines), !h.isEmpty { return h }
+        return "#6366F1"
+    }()
+    let muted = dark ? "#94A3B8" : "#64748B"
+    let value = s("needle_color") ?? accent
+    let tick = s("tick_color") ?? (dark ? "#475569" : "#CBD5E1")
+    return MeasurementPalette(
+        value: value,
+        unit: s("unit_color") ?? muted,
+        label: s("label_color") ?? muted,
+        toggleActive: s("toggle_active_color") ?? accent,
+        toggleActiveText: s("toggle_active_text_color") ?? "#FFFFFF",
+        toggleText: s("toggle_text_color") ?? muted,
+        tick: tick,
+        track: s("track_color") ?? (dark ? "#334155" : "#E2E8F0"),
+        band: s("band_color"),
+        bandText: s("band_text_color") ?? value,
+        rowText: s("row_text_color") ?? tick
+    )
+}
+
 // MARK: - Measurement view
 
 struct MeasurementWheelBlockView: View {
@@ -264,26 +333,26 @@ struct MeasurementWheelBlockView: View {
         measurementSnap(measurementFromBase(holdBase, currentUnit), currentUnit)
     }
 
-    // Colors (pinned defaults; dark-mode-aware for tick/track).
-    private var tickColor: Color {
-        Color(hex: config.tickColorHex ?? (colorScheme == .dark ? "#475569" : "#CBD5E1"))
+    // Colors — one key per drawn part, through the shared palette rule.
+    private var palette: MeasurementPalette {
+        measurementPalette(
+            block.field_config?.mapValues { $0.value } ?? [:],
+            highlight: block.highlight_color,
+            dark: colorScheme == .dark
+        )
     }
-    private var trackColor: Color {
-        Color(hex: config.trackColorHex ?? (colorScheme == .dark ? "#334155" : "#E2E8F0"))
-    }
-    private var accentColor: Color {
-        Color(hex: config.needleColorHex ?? block.highlight_color ?? "#6366F1")
-    }
-    private var toggleColor: Color {
-        Color(hex: config.toggleActiveColorHex ?? block.highlight_color ?? "#6366F1")
-    }
+    private var tickColor: Color { Color(hex: palette.tick) }
+    private var trackColor: Color { Color(hex: palette.track) }
+    private var accentColor: Color { Color(hex: palette.value) }
+    private var toggleColor: Color { Color(hex: palette.toggleActive) }
+    private var bandFill: Color { palette.band.map { Color(hex: $0) } ?? trackColor.opacity(0.6) }
 
     var body: some View {
         VStack(spacing: 16) {
             if let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
                 Text(label)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(hex: palette.label))
             }
 
             valueDisplay
@@ -309,7 +378,7 @@ struct MeasurementWheelBlockView: View {
                 .monospacedDigit()
             Text(currentUnit.label)
                 .font(.system(size: CGFloat(config.unitFontSize), weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(Color(hex: palette.unit))
         }
         .environment(\.layoutDirection, .leftToRight)
     }
@@ -325,7 +394,7 @@ struct MeasurementWheelBlockView: View {
                 } label: {
                     Text(config.units[i].label)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(selected ? .white : .secondary)
+                        .foregroundColor(Color(hex: selected ? palette.toggleActiveText : palette.toggleText))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(selected ? toggleColor : Color.clear)
@@ -440,7 +509,7 @@ struct MeasurementWheelBlockView: View {
         let half = 2   // 5 visible rows
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(trackColor.opacity(0.6))
+                .fill(bandFill)
                 .frame(height: rowH)
             VStack(spacing: 0) {
                 ForEach(-half...half, id: \.self) { off in
@@ -452,7 +521,7 @@ struct MeasurementWheelBlockView: View {
                     let scale = perspective ? max(0.62, 1 - Double(abs(off)) * 0.16) : 1.0
                     Text(inRange ? formattedDisplay(vals[idx]) : " ")
                         .font(.system(size: off == 0 ? 24 : 18, weight: off == 0 ? .bold : .regular))
-                        .foregroundColor(off == 0 ? accentColor : tickColor)
+                        .foregroundColor(Color(hex: off == 0 ? palette.bandText : palette.rowText))
                         .opacity(off == 0 ? 1 : max(0.18, 1 - Double(abs(off)) * 0.30))
                         .scaleEffect(scale)
                         .frame(height: rowH)

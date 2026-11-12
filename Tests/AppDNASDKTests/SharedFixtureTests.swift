@@ -524,6 +524,7 @@ final class SharedFixtureTests: XCTestCase {
             if await drivePushFixtures(fixture, harness) { return }
             if await driveMapFixtures(fixture, harness) { return }
             if await driveStyle(fixture, harness) { return }
+            if drivePickerFixtures(fixture, harness) { return }
             if await driveMessageFixtures(fixture, harness) { return }
             if await driveConfigIndexFixtures(fixture, harness) { return }
             XCTFail("""
