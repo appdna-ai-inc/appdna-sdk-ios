@@ -19,7 +19,7 @@ final class MeasurementPickerRenderTests: XCTestCase {
     private let size = CGSize(width: 393, height: 520)
 
     private func frame(_ fieldConfig: String) throws -> [UInt8] {
-        let json = #"[{ "id": "w", "type": "wheel_picker", "field_id": "weight", "highlight_color": "#888888", "field_config": \#(fieldConfig) }]"#
+        let json = ##"[{ "id": "w", "type": "wheel_picker", "field_id": "weight", "highlight_color": "#888888", "field_config": \##(fieldConfig) }]"##
         let blocks = try JSONDecoder().decode([ContentBlock].self, from: Data(json.utf8))
         let host = UIHostingController(rootView: ContentBlockRendererView(blocks: blocks, onAction: { _, _ in }, toggleValues: .constant([:]), inputValues: .constant([:]))
             .padding(16)
@@ -60,14 +60,14 @@ final class MeasurementPickerRenderTests: XCTestCase {
         return n
     }
 
-    private let units = #"[{"id":"kg","label":"kg","min":30,"max":200,"step":0.5,"decimals":1,"factor":1,"offset":0},{"id":"lbs","label":"lbs","min":66,"max":441,"step":1,"decimals":0,"factor":2.20462,"offset":0}]"#
+    private let units = ##"[{"id":"kg","label":"kg","min":30,"max":200,"step":0.5,"decimals":1,"factor":1,"offset":0},{"id":"lbs","label":"lbs","min":66,"max":441,"step":1,"decimals":0,"factor":2.20462,"offset":0}]"##
 
     private func wheel(_ colours: String) -> String {
-        #"{"measurement_type":"weight","measurement_style":"wheel","measurement_default":115,"unit_default":"kg","unit_font_size":40,"units":\#(units)\#(colours)}"#
+        ##"{"measurement_type":"weight","measurement_style":"wheel","measurement_default":115,"unit_default":"kg","unit_font_size":40,"units":\##(units)\##(colours)}"##
     }
 
     func testEveryAuthoredPartOfTheWheelReachesThePixels() throws {
-        let authored = try frame(wheel(#","band_color":"#FF0000","band_text_color":"#0000FF","row_text_color":"#00FF00","unit_color":"#FF00FF","toggle_active_color":"#FFFF00","toggle_active_text_color":"#00FFFF","toggle_text_color":"#800000""#))
+        let authored = try frame(wheel(##","band_color":"#FF0000","band_text_color":"#0000FF","row_text_color":"#00FF00","unit_color":"#FF00FF","toggle_active_color":"#FFFF00","toggle_active_text_color":"#00FFFF","toggle_text_color":"#800000""##))
         let plain = try frame(wheel(""))
         let checks: [(String, ([UInt8]) -> Int)] = [
             ("band_color", { self.count($0, 255, 0, 0) }),
@@ -87,9 +87,9 @@ final class MeasurementPickerRenderTests: XCTestCase {
     }
 
     func testTheLinearStyleDrawsItsSliderInItsColours() throws {
-        let one = #"[{"id":"cm","label":"cm","min":100,"max":220,"step":1,"decimals":0,"factor":1,"offset":0}]"#
-        let linear = try frame(#"{"measurement_type":"height","measurement_style":"linear","measurement_default":160,"units":\#(one),"thumb_color":"#FF0000","track_color":"#0000FF","thumb_size":40}"#)
-        let ruler = try frame(#"{"measurement_type":"height","measurement_style":"ruler","measurement_default":160,"units":\#(one),"thumb_color":"#FF0000","track_color":"#0000FF","thumb_size":40}"#)
+        let one = ##"[{"id":"cm","label":"cm","min":100,"max":220,"step":1,"decimals":0,"factor":1,"offset":0}]"##
+        let linear = try frame(##"{"measurement_type":"height","measurement_style":"linear","measurement_default":160,"units":\##(one),"thumb_color":"#FF0000","track_color":"#0000FF","thumb_size":40}"##)
+        let ruler = try frame(##"{"measurement_type":"height","measurement_style":"ruler","measurement_default":160,"units":\##(one),"thumb_color":"#FF0000","track_color":"#0000FF","thumb_size":40}"##)
         let thumb = count(linear, 255, 0, 0), track = count(linear, 0, 0, 255)
         NSLog("[measurement-linear] thumb=\(thumb) track=\(track) ruler-thumb=\(count(ruler, 255, 0, 0))")
         XCTAssertGreaterThan(thumb, 400, "the linear thumb is drawn in thumb_color")
