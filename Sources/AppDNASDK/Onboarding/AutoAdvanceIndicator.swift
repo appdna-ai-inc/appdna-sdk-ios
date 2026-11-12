@@ -73,9 +73,9 @@ public enum AutoAdvanceIndicator {
 
 /// Draws one resolved moment of the countdown. Pure, so a test can render a given instant.
 ///
-/// `inline: true` is the TOP placement: the drawing takes only its own height, because the step
-/// gives it that space above the content (`safeAreaInset`) rather than painting it over the heading.
-/// The bottom placement fills the step and aligns to its bottom edge, over the content's pinned zone.
+/// `inline: true` is how the step host draws it: the drawing takes only its own height, because the
+/// step gives it that space above or below the content (`safeAreaInset`) rather than painting it over
+/// the heading or the pinned button. `inline: false` fills its container and aligns to the edge.
 struct AutoAdvanceIndicatorDrawing: View {
     let view: AutoAdvanceIndicator.Frame
     var inline: Bool = false
@@ -100,7 +100,7 @@ struct AutoAdvanceIndicatorDrawing: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(view.position == "top" ? .vertical : .bottom, view.position == "top" ? 8 : 12)
+        .padding(.vertical, 8)
         .allowsHitTesting(false)
 
         if inline {
@@ -111,10 +111,10 @@ struct AutoAdvanceIndicatorDrawing: View {
     }
 }
 
-/// The live countdown for one placement. The step host draws `"top"` in a `safeAreaInset` above the
-/// content (so it reserves its own space and never covers the first block) and `"bottom"` as an
-/// overlay; each draws only when the author's `position` is its own. Ticks from the moment the step's
-/// timer was scheduled.
+/// The live countdown for one placement. The step host draws `"top"` and `"bottom"` each in a
+/// `safeAreaInset`, so the countdown reserves its own space and never covers the first block or the
+/// pinned button; each draws only when the author's `position` is its own. Ticks from the moment the
+/// step's timer was scheduled.
 struct AutoAdvanceIndicatorOverlay: View {
     let step: OnboardingStep
     let startedAt: Date
@@ -124,7 +124,7 @@ struct AutoAdvanceIndicatorOverlay: View {
         if let first = AutoAdvanceIndicator.resolve(step: step, elapsed: 0), first.position == placement {
             TimelineView(.periodic(from: startedAt, by: 0.05)) { ctx in
                 if let v = AutoAdvanceIndicator.resolve(step: step, elapsed: ctx.date.timeIntervalSince(startedAt)) {
-                    AutoAdvanceIndicatorDrawing(view: v, inline: placement == "top")
+                    AutoAdvanceIndicatorDrawing(view: v, inline: true)
                 }
             }
             .allowsHitTesting(false)

@@ -237,16 +237,15 @@ struct OnboardingFlowHost: View {
                             .contentShape(Rectangle())
                             .onTapGesture { tapAnywhereAdvance() }
                     )
-                    // A countdown authored at the TOP takes its own space above the content, so it
-                    // never prints over the step's first block: the content is inset by its height.
+                    // The countdown the author turned on takes its own space at the top or the bottom,
+                    // so it never prints over the step's first block or its pinned button: the content
+                    // is inset by its height. It never takes a tap.
                     .safeAreaInset(edge: .top, spacing: 0) {
                         AutoAdvanceIndicatorOverlay(step: step, startedAt: autoAdvanceStartedAt, placement: "top")
                     }
-
-                    // The countdown the author turned on, drawn while the step waits to advance by
-                    // itself — at the BOTTOM, over the content, below the banners; never takes a tap.
-                    AutoAdvanceIndicatorOverlay(step: step, startedAt: autoAdvanceStartedAt, placement: "bottom")
-                        .id(AnyHashable(currentIndex))
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        AutoAdvanceIndicatorOverlay(step: step, startedAt: autoAdvanceStartedAt, placement: "bottom")
+                    }
 
                     // Error banner
                     if showError, let msg = errorMessage {

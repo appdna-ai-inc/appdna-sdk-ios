@@ -110,4 +110,24 @@ final class AutoAdvanceIndicatorRenderTests: XCTestCase {
         NSLog("[indicator-top] label rows \(blue.first ?? -1)…\(label), heading from \(heading)")
         XCTAssertLessThan(label, heading, "the countdown overlaps the heading")
     }
+
+    /// A countdown at the BOTTOM takes its own space below the step's pinned button (the walk saw them overlap).
+    func testABottomCountdownSitsBelowThePinnedButtonNotOverIt() throws {
+        let s = try step(["show": true, "style": "text", "text": "Next in {seconds}s", "text_color": "#2563EB", "font_size": 20, "position": "bottom"])
+        let frame = try XCTUnwrap(AutoAdvanceIndicator.resolve(step: s, elapsed: 1))
+        let host = VStack {
+            Spacer()
+            Text("BUTTON").font(.system(size: 28, weight: .bold)).foregroundColor(.black)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            AutoAdvanceIndicatorDrawing(view: frame, inline: true)
+        }
+        .frame(width: size.width, height: 300).background(Color.white)
+        let blue = try rows(host, height: 300) { r, g, b in b > 180 && r < 90 && g < 140 }
+        let black = try rows(host, height: 300) { r, g, b in r < 40 && g < 40 && b < 40 }
+        let label = try XCTUnwrap(blue.first), button = try XCTUnwrap(black.last)
+        NSLog("[indicator-bottom] button to \(button), label from \(label)")
+        XCTAssertGreaterThan(label, button, "the countdown overlaps the pinned button")
+    }
 }
