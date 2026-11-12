@@ -681,7 +681,12 @@ enum BlockKeyTypes {
         "input_select": [
             "categories[].icon": "string",
             "categories[].label": "string",
+            "correct_values": "string_list",
             "empty_text": "string",
+            "feedback_correct_color": "string",
+            "feedback_correct_text": "string",
+            "feedback_wrong_color": "string",
+            "feedback_wrong_text": "string",
             "hide_when_empty": "bool",
         ],
         "map": [

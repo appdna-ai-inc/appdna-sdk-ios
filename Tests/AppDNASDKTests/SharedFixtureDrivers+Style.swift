@@ -43,6 +43,7 @@ extension SharedFixtureTests {
         case "resolve_location_search": runLocationSearch(f, h)
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_select_advance_on_pick": runSelectAdvanceOnPick(f, h)
+        case "resolve_select_answer_feedback": runSelectAnswerFeedback(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -1125,6 +1126,29 @@ extension SharedFixtureTests {
             }
             guard let delay = StepAutoAdvance.delaySeconds(for: step) else { return NSNull() }
             return delay
+        }
+    }
+
+    // MARK: resolve_select_answer_feedback
+
+    /// The right/wrong message for a selection, through the REAL `ContentBlock` decode and the real policy.
+    private func runSelectAnswerFeedback(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_select_answer_feedback needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let raw = v["block"] as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            guard let m = SelectAnswerFeedback.message(block: block, selection: v["selection"] as? [String] ?? []) else {
+                return NSNull()
+            }
+            return ["verdict": m.isCorrect ? "correct" : "wrong", "text": m.text, "color": m.colorHex] as [String: Any]
         }
     }
 

@@ -1075,6 +1075,18 @@ struct FormInputSelectBlock: View {
                 dropdownSelectView(options: options, fieldId: fieldId)
             }
             }
+            // Right or wrong, once the user has answered (`field_config.correct_values`).
+            if let feedback = SelectAnswerFeedback.message(
+                block: block,
+                selection: SelectOptionTap.isMultiSelect(block) ? selectedValues : [selectedValue]
+            ) {
+                Text(feedback.text)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: feedback.colorHex))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("select-answer-feedback")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // An option that owns sheet_blocks opens them in a bottom
