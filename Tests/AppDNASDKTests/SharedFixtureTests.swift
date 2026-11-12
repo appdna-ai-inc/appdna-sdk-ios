@@ -218,6 +218,9 @@ final class SharedFixtureTests: XCTestCase {
         let tracker: EventTracker
 
         init() {
+            // A case starts with no dropped-events count, so a count an EARLIER case left behind
+            // cannot surface as a leading `_sdk_events_dropped` in this one (the counter is process-wide).
+            _ = DroppedEventsCounter.getAndReset()
             let keychain = KeychainStore(service: "ai.appdna.sdk.fixture.\(UUID().uuidString)")
             self.identityManager = IdentityManager(keychainStore: keychain)
             self.tracker = EventTracker(identityManager: identityManager)

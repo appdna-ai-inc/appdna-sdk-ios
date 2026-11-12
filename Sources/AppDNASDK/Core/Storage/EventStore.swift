@@ -821,12 +821,31 @@ enum DroppedEventsCounter {
     private static let key = "ai.appdna.sdk.dropped_events"
     private static let lock = NSLock()
 
+    /*
+     Where the count lives: `UserDefaults.standard` in an app. Under XCTest, a domain private to
+     this test PROCESS.
+
+     🔴 Every package test process on one simulator is the same `xctest` tool, so they all share ONE
+     standard defaults domain. Two suites running at once on the shared simulator therefore shared
+     this counter: drops counted by one surfaced as a leading `_sdk_events_dropped` in the other's
+     next tracked event, and a fixture that expected exactly one event saw two. A per-process suite
+     closes that; it is wiped when first opened, so a recycled pid inherits nothing. Production is
+     unchanged — an app never has `XCTestConfigurationFilePath` set.
+     */
+    static let defaults: UserDefaults = {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil else { return .standard }
+        let name = "ai.appdna.sdk.tests.dropped.\(ProcessInfo.processInfo.processIdentifier)"
+        guard let suite = UserDefaults(suiteName: name) else { return .standard }
+        suite.removePersistentDomain(forName: name)
+        return suite
+    }()
+
     static func increment(_ n: Int) {
         guard n > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
-        let current = UserDefaults.standard.integer(forKey: key)
-        UserDefaults.standard.set(current + n, forKey: key)
+        let current = defaults.integer(forKey: key)
+        defaults.set(current + n, forKey: key)
     }
 
     /// Atomically read + reset. Test helper (fixtures read the accrued count); production uses
@@ -834,8 +853,8 @@ enum DroppedEventsCounter {
     static func getAndReset() -> Int {
         lock.lock()
         defer { lock.unlock() }
-        let current = UserDefaults.standard.integer(forKey: key)
-        if current > 0 { UserDefaults.standard.set(0, forKey: key) }
+        let current = defaults.integer(forKey: key)
+        if current > 0 { defaults.set(0, forKey: key) }
         return current
     }
 
@@ -846,7 +865,7 @@ enum DroppedEventsCounter {
     static func peek() -> Int {
         lock.lock()
         defer { lock.unlock() }
-        return UserDefaults.standard.integer(forKey: key)
+        return defaults.integer(forKey: key)
     }
 
     /// Atomic DECREMENT-by-N (floored at 0), called once the meta carrying N is durable.
@@ -854,7 +873,7 @@ enum DroppedEventsCounter {
         guard n > 0 else { return }
         lock.lock()
         defer { lock.unlock() }
-        let current = UserDefaults.standard.integer(forKey: key)
-        UserDefaults.standard.set(max(0, current - n), forKey: key)
+        let current = defaults.integer(forKey: key)
+        defaults.set(max(0, current - n), forKey: key)
     }
 }

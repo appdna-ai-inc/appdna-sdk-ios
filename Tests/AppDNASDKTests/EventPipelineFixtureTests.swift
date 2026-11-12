@@ -50,7 +50,6 @@ final class EventPipelineFixtureTests: XCTestCase {
     }
 
     private static let seqKey = "ai.appdna.sdk.client_seq"
-    private static let dropKey = "ai.appdna.sdk.dropped_events"
 
     // MARK: - Umbrella test
 
@@ -65,7 +64,7 @@ final class EventPipelineFixtureTests: XCTestCase {
 
     private func resetCounters() {
         ClientSeqCounter.resetForTesting() // reset the reserve-block in-memory state + persisted ceiling
-        UserDefaults.standard.removeObject(forKey: Self.dropKey)
+        _ = DroppedEventsCounter.getAndReset() // its own per-test-process domain, not .standard
     }
 
     private func makeEvent(_ name: String) -> SDKEvent {
