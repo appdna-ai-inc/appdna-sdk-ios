@@ -142,6 +142,7 @@ struct WalkMenuView: View {
             AppDNA.lifecycleDelegate = TrackedEventLog.shared
             AppDNA.paywall.setDelegate(TrackedEventLog.shared)
             AppDNA.deepLinks.setDelegate(TrackedEventLog.shared)
+            AppDNA.onboarding.setDelegate(TrackedEventLog.shared)
             refreshResponses()
         }
         .onChange(of: log.names) { _ in refreshResponses() }
