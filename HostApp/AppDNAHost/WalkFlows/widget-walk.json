@@ -38,6 +38,14 @@
         "value": "unavailable"
        },
        "target_step_id": "st_unavailable"
+      },
+      {
+       "condition": {
+        "type": "answer_equals",
+        "answer_key": "widget_status",
+        "value": "unknown"
+       },
+       "target_step_id": "st_unknown"
       }
      ],
      "config": {
@@ -178,6 +186,27 @@
        },
        {
         "id": "st_unavailable_next",
+        "type": "button",
+        "text": "Finish",
+        "action": "next",
+        "zone": "bottom"
+       }
+      ]
+     }
+    },
+    {
+     "id": "st_unknown",
+     "name": "unknown",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "st_unknown_head",
+        "type": "heading",
+        "text": "Widget status: unknown"
+       },
+       {
+        "id": "st_unknown_next",
         "type": "button",
         "text": "Finish",
         "action": "next",
