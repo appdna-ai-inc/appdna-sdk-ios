@@ -17,6 +17,8 @@
 //     -appdnaScreen <id>
 //     -appdnaAutoPresent paywall     present one straight away, without a tap
 //     -appdnaAutoPresentDelay 8      seconds to wait for config before presenting
+//     -appdnaIdentify <user id>      identify after configure (a consent walk)
+//     -appdnaConsent true|false      setConsent after configure (a consent walk)
 //
 // Auto-present exists because the simulator exposes no tap verb to this environment — no `simctl`
 // verb, no `idb`, and `osascript` is blocked. A UI TEST can tap (it runs inside the simulator), and
@@ -93,6 +95,24 @@ enum Launch {
             NSLog("AppDNA-E2E log level \(lvl)")
         }
         NSLog("AppDNA-E2E host configured env=sandbox key=\(key.prefix(8))…")
+        consentWalkIfAsked()
+    }
+
+    /*
+     A CONSENT WALK: identify and set the analytics decision the way a host app calls them, after
+     `configure`, from launch arguments. The SDK sends its consent signal on its own; the walk reads
+     the server's row. Nothing happens without the arguments.
+    */
+    static func consentWalkIfAsked() {
+        let user = arg("appdnaIdentify")
+        let consent = arg("appdnaConsent")
+        guard user != nil || consent != nil else { return }
+        // Once the SDK is ready, as a host that identifies after its own sign-in does.
+        AppDNA.onReady {
+            if let user { AppDNA.identify(userId: user) }
+            if let consent { AppDNA.setConsent(analytics: consent == "true") }
+            NSLog("AppDNA-E2E consent-walk user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
+        }
     }
 
     /*
