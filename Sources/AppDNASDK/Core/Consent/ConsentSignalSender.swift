@@ -270,11 +270,13 @@ final class ConsentSignalSender {
             }
             return
         }
+        let (next, effects) = ConsentSyncTable.next(state, event)
+        // The test hold between a completion's check (the table has decided, from the state as it is now) and its
+        // act (the state written, the effects run).
         switch event {
         case .success, .transient, .drop: ConsentTestLatch.pass("check_act")
         default: break
         }
-        let (next, effects) = ConsentSyncTable.next(state, event)
         state = next
         persistence.save(state)
         for fx in effects { run(fx) }
@@ -348,7 +350,8 @@ final class ConsentSignalSender {
     var stateForTesting: ConsentSyncTable.State { state }
 }
 
-/// Test-only hold points (`io_return`, `check_act`): the next pass through the armed point blocks for `holdMs` of
+/// Test-only hold points (`io_return`: a request has returned, before its completion is queued; `check_act`: a
+/// completion has been decided, before it is written and acted on): the next pass through the armed point blocks for `holdMs` of
 /// real time, once. The reset clears it. Inert in production (nothing arms it).
 enum ConsentTestLatch {
     private static let lock = NSLock()

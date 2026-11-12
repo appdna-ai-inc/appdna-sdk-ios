@@ -129,6 +129,10 @@ final class ConsentStubServer: @unchecked Sendable {
     private let clock: () -> Int64
 
     var recorded: [Recorded] { lock.lock(); defer { lock.unlock() }; return _recorded }
+    /// A one-row model of the server's `sdk_consent_signals`: each 2xx request is applied when it is answered, by
+    /// `ts_ms` with `>=` (a later-answered request with an equal `ts_ms` wins), as the server does.
+    private var _modelRow: (tsMs: Int64, analytics: Bool)?
+    var modelAnalytics: Bool? { lock.lock(); defer { lock.unlock() }; return _modelRow?.analytics }
     var baseURL: String { "http://127.0.0.1:\(port)" }
 
     init?(replies: [[String: Any]], clock: @escaping () -> Int64) {
@@ -200,6 +204,13 @@ final class ConsentStubServer: @unchecked Sendable {
                 if (r["network_failure"] as? Bool) == true { return }
                 status = (r["status"] as? Int) ?? 202
                 headers = (r["headers"] as? [String: String]) ?? [:]
+                // A per-request delay: the request is held for `delay_ms` of real time before it is applied and answered.
+                if let d = (r["delay_ms"] as? NSNumber)?.doubleValue, d > 0 { Thread.sleep(forTimeInterval: d / 1000) }
+            }
+            if (200..<300).contains(status), let ts = (obj["ts_ms"] as? NSNumber)?.int64Value, let a = obj["analytics"] as? Bool {
+                lock.lock()
+                if _modelRow == nil || ts >= _modelRow!.tsMs { _modelRow = (ts, a) }
+                lock.unlock()
             }
         } else if path.hasPrefix("/api/v1/sdk/bootstrap") {
             status = 200
@@ -231,7 +242,21 @@ struct ConsentFixtureCase {
 
     private var name: String { json["name"] as? String ?? "?" }
 
-    func run() async {
+    /// What a case leaves behind for an SDK-target test to assert beyond `expect.requests`.
+    final class Outcome {
+        var recorded: [ConsentStubServer.Recorded] = []
+        var modelAnalytics: Bool?
+        var staleArrivals = 0
+    }
+
+    @discardableResult
+    func run() async -> Outcome {
+        let outcome = Outcome()
+        await runInto(outcome)
+        return outcome
+    }
+
+    private func runInto(_ outcome: Outcome) async {
         let setup = json["setup"] as? [String: Any] ?? [:]
         let script = json["script"] as? [[String: Any]] ?? []
         let expected = (json["expect"] as? [String: Any])?["requests"] as? [[String: Any]] ?? []
@@ -254,6 +279,11 @@ struct ConsentFixtureCase {
             APIBaseURL.gateForTesting = nil
             server.stop()
         }
+        defer {
+            outcome.recorded = server.recorded
+            outcome.modelAnalytics = server.modelAnalytics
+        }
+        let spawned = DispatchGroup()
         // install, reset, seed, configure
         AppDNA.installConsentClockForTesting(scheduler)
         AppDNA.keychainStoreFactoryForTesting = { ConsentFixtureKeychain.shared }
@@ -288,11 +318,67 @@ struct ConsentFixtureCase {
                 let advanced = await advance(scheduler, by: ms)
                 if !advanced { return fail("advance timed out at op \(i)") }
                 continue
+            // ── SDK-target timing ops (built in code by `ConsentSenderTimingTests`, never in a fixture file) ──
+            case "arm_latch":
+                AppDNA.setConsentLatchForTesting(point: op["point"] as? String ?? "", holdMs: (op["hold_ms"] as? NSNumber)?.int64Value ?? 0)
+                continue
+            case "await_latch":
+                let engaged = await Task.detached { AppDNA.awaitConsentLatchEngagedForTesting(timeoutMs: 10_000) }.value
+                if !engaged { return fail("the latch never engaged at op \(i)") }
+                continue
+            case "spawn":
+                // The ops run in order on another thread, without settling, while this thread goes on.
+                let ops = op["ops"] as? [[String: Any]] ?? []
+                spawned.enter()
+                Thread.detachNewThread {
+                    for o in ops { Self.runOffMain(o) }
+                    spawned.leave()
+                }
+                continue
+            case "join":
+                let joined = await Task.detached { spawned.wait(timeout: .now() + 10) == .success }.value
+                if !joined { return fail("a spawned thread did not finish at op \(i)") }
+            case "settle": break
+            case "await_recorded":
+                let n = op["count"] as? Int ?? 1
+                let end = Date().addingTimeInterval(Double(settleTimeoutMs) / 1000)
+                while server.recorded.count < n {
+                    if Date() > end { return fail("the stub never received \(n) request(s) at op \(i)") }
+                    await pump(scheduler)
+                    try? await Task.sleep(nanoseconds: 2_000_000)
+                }
+                continue
+            case "await_stale":
+                let n = op["count"] as? Int ?? 1
+                let end = Date().addingTimeInterval(Double(settleTimeoutMs) / 1000)
+                while AppDNA.staleConsentArrivalsForTesting() < n {
+                    if Date() > end { return fail("\(n) stale arrival(s) never reached the fence at op \(i)") }
+                    await pump(scheduler)
+                    try? await Task.sleep(nanoseconds: 2_000_000)
+                }
+                outcome.staleArrivals = AppDNA.staleConsentArrivalsForTesting()
+            case "assert_ack":
+                // The ack record as it is persisted right now, compared exactly (`ack`, and `dropped` when given).
+                let raw = ConsentFixtureKeychain.shared.getString(key: ConsentSignalPersistence.ackKey) ?? "{}"
+                let rec = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String: Any] ?? [:]
+                let want = op["ack"]
+                let gotAck = ConsentSignalPersistence.ack(from: rec["ack"])
+                let wantAck = (want as? [String: Any]).map { ConsentSignalPersistence.ack(from: $0) } ?? ConsentSignalPersistence.ack(from: want)
+                if gotAck != wantAck { fail("op \(i): ack \(gotAck) ≠ \(wantAck)") }
+                if op.keys.contains("dropped") {
+                    let gotDropped = (rec["dropped"] as? [String: Any]).flatMap(ConsentSignalPersistence.triple(from:))
+                    let wantDropped = (op["dropped"] as? [String: Any]).flatMap(ConsentSignalPersistence.triple(from:))
+                    if gotDropped != wantDropped { fail("op \(i): dropped \(String(describing: gotDropped)) ≠ \(String(describing: wantDropped))") }
+                }
+                continue
             default:
                 return fail("NO DRIVER for script op '\(kind)' on ios")
             }
             // `settle: false`: the next op follows at once, on the same tick (a call made before configure finished).
             if (op["settle"] as? Bool) == false { continue }
+            // `settle: "pump"`: run what is due now (the queues, then the executor) without waiting for the wire, so a
+            // request can be held in flight while the next op runs.
+            if (op["settle"] as? String) == "pump" { await pump(scheduler); continue }
             let settled = await settle(scheduler)
             if !settled {
                 return fail("settle timed out after op \(i) (\(kind)); recorded so far: \(server.recorded.map { $0.body })")
@@ -315,7 +401,8 @@ struct ConsentFixtureCase {
             case "shutdown":
                 if !configured { fail("shutdown while unconfigured at op \(i)"); return false }
                 configured = false
-            case "set_consent", "advance_clock_ms": break
+            case "set_consent", "advance_clock_ms", "arm_latch", "await_latch", "spawn", "join", "settle",
+                 "await_recorded", "await_stale", "assert_ack": break
             default:
                 if !configured { fail("SDK call '\(k)' while unconfigured at op \(i)"); return false }
             }
@@ -339,6 +426,28 @@ struct ConsentFixtureCase {
             DispatchQueue.main.async { done.resume() }
         }
         await Task.detached { AppDNA.drainSDKQueueForTesting() }.value
+    }
+
+    /// Runs what is due now without waiting on the wire: the queues, then every task due on the executor.
+    private func pump(_ scheduler: ManualConsentScheduler) async {
+        await drainQueues()
+        scheduler.popDue()
+    }
+
+    /// One op on a spawned thread: an SDK call, or a wait for the latch. Never settles.
+    nonisolated private static func runOffMain(_ op: [String: Any]) {
+        switch op["kind"] as? String ?? "" {
+        case "await_latch":
+            if !AppDNA.awaitConsentLatchEngagedForTesting(timeoutMs: 10_000) { XCTFail("spawned: the latch never engaged") }
+        case "set_consent": AppDNA.setConsent(analytics: op["analytics"] as? Bool ?? false)
+        case "identify": AppDNA.identify(userId: op["userId"] as? String ?? "")
+        case "reset": AppDNA.reset()
+        case "shutdown": AppDNA.shutdown()
+        case "configure":
+            AppDNA.configure(apiKey: "adn_test_consent_fixture_key", environment: .sandbox,
+                             options: AppDNAOptions(requireConsent: op["require_consent"] as? Bool ?? false))
+        case let k: XCTFail("spawned: NO DRIVER for '\(k)' on ios")
+        }
     }
 
     private func settle(_ scheduler: ManualConsentScheduler) async -> Bool {
