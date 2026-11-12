@@ -1,8 +1,8 @@
 // PendingMessageFollowTests.swift
 //
-// #1731 — a journey's in-app step to an anonymous user was marked sent and never drawn: the listener started only at
+// A journey's in-app step to an anonymous user was marked sent and never drawn: the listener started only at
 // identify. These tests pin the rule (`listenIds`) and run the shared fixture's script through the real listener
-// twice — once as the SDK now follows identity, once with the pre-#1731 rule (nothing before identify, the user id
+// twice — once as the SDK now follows identity, once with the previous rule (nothing before identify, the user id
 // only after it) as the RED CONTROL: the same harness must see that rule lose the anonymous deliveries, or a green
 // run of the fixture proves nothing.
 //
@@ -48,7 +48,7 @@ final class PendingMessageFollowTests: XCTestCase {
         XCTAssertEqual(state["unconsumed"] as? [String], ["user-1/d4"])
     }
 
-    /// RED CONTROL — the pre-#1731 rule through the same listener and rig: only the delivery addressed to the user id
+    /// RED CONTROL — the previous rule through the same listener and rig: only the delivery addressed to the user id
     /// after identify is drawn; the one written before launch, the anonymous enrolment's later step and the one after
     /// sign-out are all lost, and stay unconsumed.
     func testRedControlUserOnlyRuleLosesAnonymousDeliveries() throws {

@@ -878,7 +878,7 @@ public final class AppDNA: @unchecked Sendable {
                     userId: userId
                 )
             }
-            // #1731 — journey in-app messages: the anon id stays listened on (a journey that enrolled this device
+            // Journey in-app messages: the anon id stays listened on (a journey that enrolled this device
             // anonymously keeps delivering there), and the user id joins it.
             shared.followPendingMessages()
 
@@ -925,7 +925,7 @@ public final class AppDNA: @unchecked Sendable {
             shared.messageManager?.resetSession()
             shared.surveyManager?.resetSession()
             shared.webEntitlementManager?.stopObserving()
-            // #1731 — the signed-out user's deliveries are no longer listened on; the anon id's still are.
+            // The signed-out user's deliveries are no longer listened on; the anon id's still are.
             shared.followPendingMessages()
             // The subscription snapshot is device-global; identity is not. Clear it on sign-out so the
             // next user's first reconcile does not diff their entitlements against this user's snapshot
@@ -2265,7 +2265,7 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
-    /// On `queue`. #1731 — points the journey in-app message listener at the ids a journey delivers to: the anon id,
+    /// On `queue`. Points the journey in-app message listener at the ids a journey delivers to: the anon id,
     /// and the user id when identified (`PendingMessageListener.listenIds`). Needs the bootstrap's org and app.
     private func followPendingMessages() {
         guard let data = bootstrapData, let identity = identityManager?.currentIdentity else { return }
@@ -2283,7 +2283,7 @@ public final class AppDNA: @unchecked Sendable {
         if let userId = identityManager?.currentIdentity.userId {
             webEntitlementManager?.startObserving(orgId: data.orgId, appId: data.appId, userId: userId)
         }
-        // #1731 — journey in-app messages, on the anon id (and the user id when identified).
+        // Journey in-app messages, on the anon id (and the user id when identified).
         followPendingMessages()
         remoteConfigManager?.attachFirestorePath(data.firestorePath)
 
@@ -2461,7 +2461,7 @@ public final class AppDNA: @unchecked Sendable {
                 userId: userId
             )
         }
-        // #1731 — journey in-app messages are listened for from configure, on the anon id (and the user id when one
+        // Journey in-app messages are listened for from configure, on the anon id (and the user id when one
         // is already identified). They used to start only for an identified user, so a journey's in-app step to an
         // anonymous user was marked sent and never shown.
         self.followPendingMessages()

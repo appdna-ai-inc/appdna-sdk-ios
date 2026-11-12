@@ -1,12 +1,12 @@
 // SharedFixtureDrivers+PendingFollow.swift
 //
-// iOS driver for `follow_pending_messages` (#1731): which ids the journey in-app message listener reads deliveries
+// iOS driver for `follow_pending_messages`: which ids the journey in-app message listener reads deliveries
 // from, across configure / identify / reset. Driven through the REAL `PendingMessageListener.follow` and its REAL
 // queueing, de-duplication and retry; only the two edges are replaced — the Firestore subscription (by a store that
 // answers the listener's `consumed == false` query the way Firestore does: everything unconsumed at once when a
 // listener opens, then each new document) and the screen (a presenter that draws synchronously when a window exists).
 //
-// `legacyUserOnly` replays the pre-#1731 rule (nothing before identify, the user id only after it) through the same
+// `legacyUserOnly` replays the previous rule (nothing before identify, the user id only after it) through the same
 // listener, for the red control in `PendingMessageFollowTests`.
 //
 // © 2026 AppDNA AI, Inc.

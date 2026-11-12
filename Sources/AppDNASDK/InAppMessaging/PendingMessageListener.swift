@@ -11,7 +11,7 @@ import SwiftUI
 /// the console. Writes `consumed: true` back to Firestore after display
 /// so repeat polls / the REST fallback don't double-deliver.
 ///
-/// #1731 — WHICH ids it listens on. A journey enrols the unit the server keys every event on, `user_id ?? anon_id`,
+/// WHICH ids it listens on. A journey enrols the unit the server keys every event on, `user_id ?? anon_id`,
 /// and delivers each of its in-app steps to that enrolment's id for the life of the enrolment. So:
 ///   - from configure, the device's ANON id — an anonymous user's journey writes there (the listener used to start
 ///     only at `identify`, so those messages were marked sent and never drawn);
