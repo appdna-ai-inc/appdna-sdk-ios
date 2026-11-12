@@ -734,6 +734,8 @@ struct FormInputSelectBlock: View {
     var onAdvance: (() -> Void)? = nil
     /// The pending advance after a pick. Leaving the view (Back, a host advance) cancels it.
     @State private var advanceTimer = StepAutoAdvanceTimer()
+    /// The question asked before an advance (`field_config.advance_confirm`), while it is showing.
+    @State private var pendingConfirmation: SelectAdvanceOnPick.Confirmation? = nil
 
     @State private var selectedValue: String = ""
     // An ordered [String] (append-on-select, acting as an ordered set) so the
@@ -1094,6 +1096,17 @@ struct FormInputSelectBlock: View {
         // lets one engine serve both the chooser and the detail screens.
         .sheet(item: $sheetOption) { opt in
             OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil }, rawResolved: rawResolved, blockId: block.id)
+        }
+        // "Are you sure?" before the advance. Cancel stays on the screen with the pick kept, so the user can pick again.
+        .alert(
+            pendingConfirmation?.text ?? "",
+            isPresented: Binding(get: { pendingConfirmation != nil }, set: { if !$0 { pendingConfirmation = nil } })
+        ) {
+            Button(pendingConfirmation?.no ?? "No", role: .cancel) { pendingConfirmation = nil }
+            Button(pendingConfirmation?.yes ?? "Yes") {
+                pendingConfirmation = nil
+                onAdvance?()
+            }
         }
         .onAppear {
             let fieldId = block.field_id ?? block.id
@@ -1944,7 +1957,12 @@ struct FormInputSelectBlock: View {
     /// A later pick replaces the pending advance, so a double tap advances once.
     private func advanceAfterPick(before: [String], after: [String], opensSheet: Bool, delay: Double = SelectAdvanceOnPick.delaySeconds) {
         guard let onAdvance, SelectAdvanceOnPick.shouldAdvance(block: block, before: before, after: after, opensSheet: opensSheet) else { return }
-        advanceTimer.schedule(after: delay, onAdvance)
+        // The author asked to confirm: the beat draws the pick, then the question; only its confirm advances.
+        if let ask = SelectAdvanceOnPick.confirmation(block: block) {
+            advanceTimer.schedule(after: delay) { pendingConfirmation = ask }
+        } else {
+            advanceTimer.schedule(after: delay, onAdvance)
+        }
     }
 
     private func fontWeight(_ raw: String?) -> Font.Weight {

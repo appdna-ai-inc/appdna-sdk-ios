@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Select that advances on the pick can ask first.** `field_config.advance_confirm: true` beside `auto_advance` opens
+  a dialog (`advance_confirm_text`, default "Are you sure?") before the step moves on; its confirm button
+  (`advance_confirm_yes`, default "Yes") advances, and its cancel button (`advance_confirm_no`, default "No") stays with
+  the pick kept.
 - **A Select can say whether the pick was right.** `field_config.correct_values` marks the correct option(s); once
   the user has answered, `feedback_correct_text` (default "Correct!") in `feedback_correct_color` (default #16A34A) or
   `feedback_wrong_text` (default "Not quite.") in `feedback_wrong_color` (default #DC2626) shows under the options. A

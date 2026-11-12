@@ -679,6 +679,10 @@ enum BlockKeyTypes {
             "agreement_text": "string",
         ],
         "input_select": [
+            "advance_confirm": "bool",
+            "advance_confirm_no": "string",
+            "advance_confirm_text": "string",
+            "advance_confirm_yes": "string",
             "categories[].icon": "string",
             "categories[].label": "string",
             "correct_values": "string_list",
