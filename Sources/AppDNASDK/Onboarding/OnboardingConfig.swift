@@ -321,7 +321,7 @@ public struct OnboardingStep: Codable, Identifiable {
      */
     public let tap_anywhere_advances: Bool?
 
-    /// #1432 — the countdown this step draws while it waits to advance by itself (`AutoAdvanceIndicator`).
+    /// The countdown this step draws while it waits to advance by itself (`AutoAdvanceIndicator`).
     /// Off unless `show: true`. Read at the step root, then under `layout`, like the timer it belongs to.
     public let auto_advance_indicator: [String: AnyCodable]?
 
@@ -395,7 +395,7 @@ public struct OnboardingStep: Codable, Identifiable {
         // half the flows (`auto_advance_seconds` learned this the same way).
         self.tap_anywhere_advances = (try? c.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances))
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances) })
-        // #1432 — the countdown, on the same ladder as the timer it draws.
+        // The countdown, on the same ladder as the timer it draws.
         self.auto_advance_indicator = (try? c.decodeIfPresent([String: AnyCodable].self, forKey: .auto_advance_indicator))
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent([String: AnyCodable].self, forKey: .auto_advance_indicator) })
         // Read next_step_rules from step level, but also check layout.next_step_rules
@@ -476,7 +476,7 @@ public struct OnboardingStep: Codable, Identifiable {
          had no way forward at all on the next cold one.
         */
         try c.encodeIfPresent(tap_anywhere_advances, forKey: .tap_anywhere_advances)
-        // #1432 — encoded too, or a cold start from the cache loses the countdown.
+        // Encoded too, or a cold start from the cache loses the countdown.
         try c.encodeIfPresent(auto_advance_indicator, forKey: .auto_advance_indicator)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
         // Verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.

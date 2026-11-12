@@ -1230,7 +1230,7 @@ extension SharedFixtureTests {
 
     // MARK: resolve_auto_advance_indicator
 
-    /// #1432 — the countdown a self-advancing step draws, through the REAL `OnboardingStep` decode (the
+    /// The countdown a self-advancing step draws, through the REAL `OnboardingStep` decode (the
     /// editor writes it inside `layout`) and the real policy and resolver.
     private func runAutoAdvanceIndicator(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
