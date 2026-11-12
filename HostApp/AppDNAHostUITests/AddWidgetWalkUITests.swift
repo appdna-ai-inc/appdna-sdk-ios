@@ -41,9 +41,9 @@ final class AddWidgetWalkUITests: XCTestCase {
     }
 
     /// Launches a host build on the seeded flow and presents it.
-    private func presentFlow(bundle: String? = nil) -> XCUIApplication {
+    private func presentFlow(bundle: String? = nil, extra: [String] = []) -> XCUIApplication {
         let app = bundle.map { XCUIApplication(bundleIdentifier: $0) } ?? XCUIApplication()
-        app.launchArguments += ["-appdnaSeedOnboarding", "widget-walk", "-appdnaFlow", Self.flowId, "-appdnaLogLevel", "debug", "-appdnaProbeWidgets", "1"]
+        app.launchArguments += ["-appdnaSeedOnboarding", "widget-walk", "-appdnaFlow", Self.flowId, "-appdnaLogLevel", "debug", "-appdnaProbeWidgets", "1"] + extra
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 30), "the host did not launch")
         var presented = false
@@ -83,6 +83,8 @@ final class AddWidgetWalkUITests: XCTestCase {
     /// Close and a swipe each return to the step without advancing; Done with nothing added lands on
     /// the `not_added` branch.
     func testCloseAndSwipeStayAndDoneWithoutAddingIsNotAdded() throws {
+        // `not_added` means "the user had none of the app's widgets and none appeared": start clean.
+        XCTAssertEqual(removeAllHostWidgets(tag: "00-clean"), 0, "no widget of the host may be left over")
         let app = presentFlow()
         shot("01-step", app)
 
@@ -138,59 +140,140 @@ final class AddWidgetWalkUITests: XCTestCase {
 
     // MARK: - Add the widget through the Home Screen
 
-    /// Through SpringBoard: home, long press, edit, add widget, search the host, add; then back to the
-    /// app. The how-to closes itself and the step lands on `added`. Repeated `WIDGET_WALK_RUNS` times
-    /// (default 5), timing the return → landing.
-    func testAddingTheWidgetFromTheGalleryIsDetectedOnReturn() throws {
-        let runs = Int(ProcessInfo.processInfo.environment["WIDGET_WALK_RUNS"] ?? "") ?? 3
-        var timings: [String] = []
-        for run in 1...runs {
-            let app = presentFlow()
+    /// THE STATUSES, through SpringBoard, from a CLEAN Home Screen, `WIDGET_WALK_ROUNDS` times
+    /// (default 2). Each round:
+    ///   a. Done with no widget of the app placed            → `not_added`;
+    ///   b. add a SMALL widget, return                        → `added` on return (timed);
+    ///   c. add a second SMALL widget, return, Done           → `unknown` (WidgetKit cannot see a
+    ///      second widget of a size already placed);
+    ///   d. with the debug seam that skips the read on return, add a MEDIUM widget, return, Done
+    ///      → `added` by the Done re-read (the CTA re-query branch);
+    ///   e. remove every widget the round added, and prove none is left.
+    func testTheStatusesThroughTheGallery() throws {
+        let rounds = Int(ProcessInfo.processInfo.environment["WIDGET_WALK_ROUNDS"] ?? "") ?? 2
+        var log: [String] = []
+        for r in 1...rounds {
+            XCTAssertEqual(removeAllHostWidgets(tag: "40-r\(r)-clean"), 0, "round \(r) starts clean")
+
+            // a. nothing placed, Done → not_added
+            var app = presentFlow()
             app.buttons["Add the widget"].tap()
-            XCTAssertTrue(howtoShown(app), "run \(run): the how-to did not open")
-            shot("30-run\(run)-howto", app)
-
-            try addWidgetFromGallery(run: run)
-
-            let back = Date()
-            app.activate()
-            let landed = app.staticTexts["Widget status: added"].waitForExistence(timeout: 15)
-            let seconds = Date().timeIntervalSince(back)
-            shot("39-run\(run)-after-return", app)
-            let state = landed ? "added" : (app.staticTexts["Keep your streak in view"].exists ? "still-on-step" : "other")
-            timings.append("run \(run): \(state) after \(String(format: "%.2f", seconds))s")
-            NSLog("AppDNA-E2E widget freshness run \(run): \(state) \(String(format: "%.2f", seconds))s events=\(lastEvents(app))")
-            if !landed {
-                // Is the how-to still up (detection missed), and does Done's re-read see it?
-                let stillHowto = howtoShown(app, timeout: 1)
-                if stillHowto {
-                    howtoButton(app, "Done").tap()
-                    let viaDone = app.staticTexts["Widget status: added"].waitForExistence(timeout: 8)
-                    timings.append("run \(run): Done re-read → \(viaDone ? "added" : "not added")")
-                    shot("39-run\(run)-after-done", app)
-                }
-            }
+            XCTAssertTrue(howtoShown(app))
+            howtoButton(app, "Done").tap()
+            let a = app.staticTexts["Widget status: not_added"].waitForExistence(timeout: 8)
+            shot("41-r\(r)-a-done-nothing-placed", app)
+            log.append("r\(r) a: \(a ? "not_added" : "MISSED")")
             app.terminate()
+
+            // b. first SMALL widget, return → added on return
+            app = presentFlow()
+            app.buttons["Add the widget"].tap()
+            XCTAssertTrue(howtoShown(app))
+            try addWidgetFromGallery(tag: "42-r\(r)-b", medium: false)
+            var back = Date()
+            app.activate()
+            let b = app.staticTexts["Widget status: added"].waitForExistence(timeout: 15)
+            log.append("r\(r) b: \(b ? "added on return after \(String(format: "%.2f", Date().timeIntervalSince(back)))s" : "MISSED")")
+            shot("43-r\(r)-b-added-on-return", app)
+            app.terminate()
+
+            // c. second SMALL widget, return, Done → unknown
+            app = presentFlow()
+            app.buttons["Add the widget"].tap()
+            XCTAssertTrue(howtoShown(app))
+            try addWidgetFromGallery(tag: "44-r\(r)-c", medium: false)
+            app.activate()
+            let stayed = howtoShown(app, timeout: 5)
+            shot("45-r\(r)-c-back-howto-still-up", app)
+            howtoButton(app, "Done").tap()
+            let c = app.staticTexts["Widget status: unknown"].waitForExistence(timeout: 8)
+            log.append("r\(r) c: \(stayed ? "how-to stayed up" : "how-to gone"); Done → \(c ? "unknown" : "MISSED")")
+            shot("46-r\(r)-c-done-unknown", app)
+            app.terminate()
+
+            // d. MEDIUM widget with the read on return skipped, Done → added (the Done re-read)
+            app = presentFlow(extra: ["-AppDNADebugWidgetSkipReturnRead", "YES"])
+            app.buttons["Add the widget"].tap()
+            XCTAssertTrue(howtoShown(app))
+            try addWidgetFromGallery(tag: "47-r\(r)-d", medium: true)
+            back = Date()
+            app.activate()
+            let held = howtoShown(app, timeout: 5)
+            shot("48-r\(r)-d-back-howto-still-up", app)
+            howtoButton(app, "Done").tap()
+            let d = app.staticTexts["Widget status: added"].waitForExistence(timeout: 8)
+            log.append("r\(r) d: \(held ? "how-to stayed up (seam)" : "how-to gone"); Done → \(d ? "added" : "MISSED")")
+            shot("49-r\(r)-d-done-added", app)
+            app.terminate()
+
+            // e. remove what the round added; none may be left
+            let removed = removeAllHostWidgets(tag: "50-r\(r)-cleanup")
+            let left = removeAllHostWidgets(tag: "51-r\(r)-verify")
+            log.append("r\(r) e: removed \(removed), left \(left)")
+            XCTAssertTrue(a && b && c && d, "round \(r): \(log)")
+            XCTAssertEqual(left, 0, "round \(r) leaves no widget behind")
         }
-        let a = XCTAttachment(string: timings.joined(separator: "\n"))
-        a.name = "freshness"
-        a.lifetime = .keepAlways
-        add(a)
-        NSLog("AppDNA-E2E widget freshness: \(timings.joined(separator: " | "))")
-        // 🔴 WidgetKit reports ONE configuration per widget kind and size, however many are placed
-        // (`-appdnaProbeWidgets` logs `n=1` with eleven small widgets on the Home Screen), so only an add
-        // whose size is new to this simulator can be detected; later adds of the same size read
-        // not_added on every platform API there is. Precondition for a detected run: no small
-        // "Sample widget" on the Home Screen before the walk. Every run's outcome is recorded above.
-        XCTAssertTrue(timings.contains { $0.contains(": added after") }, "no run detected the widget on return: \(timings)")
+        let att = XCTAttachment(string: log.joined(separator: "\n"))
+        att.name = "statuses"
+        att.lifetime = .keepAlways
+        add(att)
+        NSLog("AppDNA-E2E widget statuses: \(log.joined(separator: " | "))")
+    }
+
+    // MARK: - Cleaning the Home Screen
+
+    /// The host's widgets on the visible Home Screen page: elements labelled for the host app that are
+    /// widget-sized (an app icon is about 60 pt; a small widget about 160).
+    private func visibleHostWidgets() -> [XCUIElement] {
+        springboard.descendants(matching: .any)
+            .matching(NSPredicate(format: "label CONTAINS 'AppDNA Host' OR label CONTAINS 'Sample'"))
+            .allElementsBoundByIndex
+            .filter { $0.exists && $0.frame.width > 120 && $0.frame.height > 120 && $0.isHittable }
+    }
+
+    /// Removes every widget of the host from every Home Screen page (long press → Remove Widget →
+    /// Remove). Returns how many it removed; called again it returns 0 when none is left.
+    @discardableResult
+    private func removeAllHostWidgets(tag: String) -> Int {
+        XCUIDevice.shared.press(.home)
+        _ = springboard.wait(for: .runningForeground, timeout: 10)
+        sleepRunLoop(1)
+        XCUIDevice.shared.press(.home) // the first page
+        sleepRunLoop(1)
+        var removed = 0
+        for page in 0..<4 {
+            var guardCount = 0
+            while let w = visibleHostWidgets().first, guardCount < 12 {
+                guardCount += 1
+                w.press(forDuration: 1.4)
+                let remove = springboard.buttons["Remove Widget"]
+                guard remove.waitForExistence(timeout: 3) else {
+                    springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)).tap()
+                    break
+                }
+                remove.tap()
+                let confirm = springboard.alerts.buttons["Remove"]
+                if confirm.waitForExistence(timeout: 3) { confirm.tap() }
+                removed += 1
+                sleepRunLoop(1)
+            }
+            if page < 3 {
+                springboard.swipeLeft()
+                sleepRunLoop(1)
+            }
+        }
+        XCUIDevice.shared.press(.home)
+        sleepRunLoop(1)
+        shot("\(tag)-home-removed-\(removed)")
+        return removed
     }
 
     /// Drives SpringBoard's widget gallery. Fails saying exactly which step it could not reach.
-    private func addWidgetFromGallery(run: Int) throws {
+    private func addWidgetFromGallery(tag: String, medium: Bool) throws {
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(springboard.wait(for: .runningForeground, timeout: 10))
         sleepRunLoop(1.5)
-        shot("31-run\(run)-home")
+        shot("\(tag)-1-home")
 
         // Enter jiggle mode: long press an icon and pick "Edit Home Screen", else long press empty space.
         _ = springboard.icons.firstMatch.waitForExistence(timeout: 5)
@@ -203,7 +286,7 @@ final class AddWidgetWalkUITests: XCTestCase {
             springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.93)).press(forDuration: 2.0)
         }
         sleepRunLoop(1)
-        shot("32-run\(run)-jiggle")
+        shot("\(tag)-2-jiggle")
 
         // iOS 18+: "Edit" → "Add Widget"; iOS 17: "+" / "Add Widget" at once.
         if !springboard.buttons["Add Widget"].exists, springboard.buttons["Edit"].waitForExistence(timeout: 3) {
@@ -211,24 +294,24 @@ final class AddWidgetWalkUITests: XCTestCase {
         }
         let addEntry = galleryEntry()
         guard addEntry.waitForExistence(timeout: 5) else {
-            tree("32-run\(run)-springboard-tree", springboard)
-            XCTFail("run \(run): stopped at JIGGLE MODE — no Add Widget / + control in SpringBoard")
+            tree("\(tag)-2-springboard-tree", springboard)
+            XCTFail("\(tag): stopped at JIGGLE MODE — no Add Widget / + control in SpringBoard")
             return
         }
         addEntry.tap()
         sleepRunLoop(1.5)
-        shot("33-run\(run)-gallery")
+        shot("\(tag)-3-gallery")
 
         let search = springboard.searchFields.firstMatch
         guard search.waitForExistence(timeout: 5) else {
-            tree("33-run\(run)-gallery-tree", springboard)
-            XCTFail("run \(run): stopped at the GALLERY — no search field")
+            tree("\(tag)-3-gallery-tree", springboard)
+            XCTFail("\(tag): stopped at the GALLERY — no search field")
             return
         }
         search.tap()
         search.typeText("AppDNA Host")
         sleepRunLoop(1.5)
-        shot("34-run\(run)-search")
+        shot("\(tag)-4-search")
 
         // The gallery's app list is a list of cells, one per app with widgets; the host's is labelled
         // with its display name. (The search field's own text matches a label predicate too, so the
@@ -241,13 +324,21 @@ final class AddWidgetWalkUITests: XCTestCase {
             hostEntry = springboard.cells["AppDNA Host"]
         }
         guard hostEntry.waitForExistence(timeout: 5) else {
-            tree("34-run\(run)-search-tree", springboard)
-            XCTFail("run \(run): stopped at SEARCH — the host app is not listed in the widget gallery")
+            tree("\(tag)-4-search-tree", springboard)
+            XCTFail("\(tag): stopped at SEARCH — the host app is not listed in the widget gallery")
             return
         }
         hostEntry.tap()
         sleepRunLoop(1.5)
-        shot("35-run\(run)-host-widgets")
+        if medium {
+            // The host's page shows one size at a time; the medium one is the next page.
+            let preview = springboard.buttons.matching(NSPredicate(format: "label BEGINSWITH 'AppDNA Host'")).firstMatch
+            if preview.waitForExistence(timeout: 3) { preview.swipeLeft() }
+            sleepRunLoop(1.5)
+            let mediumPreview = springboard.buttons.matching(NSPredicate(format: "value CONTAINS 'Medium'")).firstMatch
+            XCTAssertTrue(mediumPreview.waitForExistence(timeout: 3), "\(tag): the medium size is not showing")
+        }
+        shot("\(tag)-5-host-widgets")
 
         // The host's page labels its button " Add Widget" — a glyph, then the words — so it is found by
         // what the label contains, the bottom-most one being the sheet's.
@@ -256,19 +347,19 @@ final class AddWidgetWalkUITests: XCTestCase {
         let add = addMatches.allElementsBoundByIndex.filter { $0.isHittable }.max { $0.frame.minY < $1.frame.minY }
             ?? addMatches.firstMatch
         guard add.exists else {
-            tree("35-run\(run)-host-widgets-tree", springboard)
-            XCTFail("run \(run): stopped at the HOST'S WIDGETS — no Add Widget button")
+            tree("\(tag)-5-host-widgets-tree", springboard)
+            XCTFail("\(tag): stopped at the HOST'S WIDGETS — no Add Widget button")
             return
         }
         add.tap()
         sleepRunLoop(1.5)
-        shot("36-run\(run)-placed")
+        shot("\(tag)-6-placed")
 
         // Leave jiggle mode.
         let done = springboard.buttons["Done"]
         if done.waitForExistence(timeout: 3) { done.tap() } else { XCUIDevice.shared.press(.home) }
         sleepRunLoop(1)
-        shot("37-run\(run)-home-with-widget")
+        shot("\(tag)-7-home-with-widget")
     }
 
     private func galleryEntry() -> XCUIElement {
