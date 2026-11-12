@@ -8,6 +8,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A journey's in-app messages reach users who have not signed in.** The SDK listened for messages a journey sends only after `identify`, so a journey's "Send in-app message" step to an anonymous user was counted as sent and never shown. The SDK now listens from `configure` on the device's anonymous ID; after `identify` on the anonymous ID and the user ID (a journey that started before sign-in keeps sending to the anonymous ID); after `reset()` on the anonymous ID again. A message that arrives while another is on screen is shown when that one closes, a message that cannot be drawn yet (no window at a cold launch) is retried, and a message is never shown twice.
+
 - **In-app messages and surveys trigger on the SDK's own events.** A message or survey whose trigger is an event the SDK tracks itself (`app_open`, which is the console's default message trigger, `session_start`, `onboarding_flow_completed`, the purchase events, and the others on the auto-tracked events page) never appeared: only events passed to `track()` were checked against triggers. Every tracked event is now checked once, message first. Events tracked before the SDK has its config, such as `app_open` on a cold launch, are held (up to 32) and checked once the config is ready; a config cached from an earlier launch, or bundled in the app, is used at once. A message never triggers on the `in_app_message_*` events and a survey never triggers on the `survey_*` events, so showing one cannot show another of the same kind.
 
 ### Added

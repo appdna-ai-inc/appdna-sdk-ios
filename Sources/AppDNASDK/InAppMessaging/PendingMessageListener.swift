@@ -4,94 +4,269 @@ import UIKit
 import SwiftUI
 
 /// Listens for journey-triggered in-app messages at
-/// `orgs/{orgId}/apps/{appId}/users/{userId}/pending_messages` and
+/// `orgs/{orgId}/apps/{appId}/users/{id}/pending_messages` and
 /// renders them through the same `MessageRenderer` pipeline used for
 /// remote-config-driven messages, so a journey-delivered modal /
 /// fullscreen / banner / tooltip looks identical to one configured in
 /// the console. Writes `consumed: true` back to Firestore after display
 /// so repeat polls / the REST fallback don't double-deliver.
+///
+/// #1731 — WHICH ids it listens on. A journey enrols the unit the server keys every event on, `user_id ?? anon_id`,
+/// and delivers each of its in-app steps to that enrolment's id for the life of the enrolment. So:
+///   - from configure, the device's ANON id — an anonymous user's journey writes there (the listener used to start
+///     only at `identify`, so those messages were marked sent and never drawn);
+///   - after `identify`, the anon id AND the user id — a journey that enrolled the device anonymously keeps writing to
+///     the anon id after the user signs in, and a journey that enrols the signed-in user writes to the user id;
+///   - after `reset()`, the anon id again (the anon id survives a reset; the signed-out user's id is dropped).
+/// `listenIds(anonId:userId:)` is that rule; `follow(...)` applies it, keeping a listener that is still wanted (no
+/// restart, so no re-delivery) and remembering what it presented (a delivery is drawn at most once per process).
 final class PendingMessageListener {
-    private var listener: ListenerRegistration?
+
+    /// One delivery document as a subscription hands it over.
+    struct Delivery {
+        let id: String
+        let data: [String: Any]
+        /// Writes `consumed: true` back to the delivery document.
+        let markConsumed: () -> Void
+    }
+
+    /// Opens a listener on one user's unconsumed deliveries (`path` = `orgs/{o}/apps/{a}/users/{id}/pending_messages`);
+    /// the closure it returns removes it. The default is the Firestore snapshot listener; a test passes its own.
+    typealias Subscribe = (_ orgId: String, _ appId: String, _ id: String, _ onAdded: @escaping (Delivery) -> Void) -> (() -> Void)?
+    /// Draws a delivery. `onShown(true)` once it is on screen, `onShown(false)` when it could not be drawn (no window
+    /// yet); `onClosed` when the user dismissed it. The default is `MessageRenderer` over the top view controller.
+    typealias Present = (_ deliveryId: String, _ config: MessageConfig, _ onShown: @escaping (Bool) -> Void, _ onClosed: @escaping () -> Void) -> Void
+    /// Runs `block` after `seconds` — the retry of a delivery that could not be drawn yet.
+    typealias Schedule = (_ seconds: Double, _ block: @escaping () -> Void) -> Void
+
+    /// The ids whose deliveries the device shows: the anon id, then the user id when it is set and different.
+    static func listenIds(anonId: String?, userId: String?) -> [String] {
+        var ids: [String] = []
+        if let a = anonId, !a.isEmpty { ids.append(a) }
+        if let u = userId, !u.isEmpty, !ids.contains(u) { ids.append(u) }
+        return ids
+    }
+
+    /// How many times a delivery that could not be drawn (no window yet, at a cold launch) is retried.
+    static let maxPresentAttempts = 5
+
+    private struct Pending {
+        let key: String
+        let ownerKey: String
+        let delivery: Delivery
+        let config: MessageConfig
+    }
+
     private weak var eventTracker: EventTracker?
-    private var isPresenting = false
+    private let subscribe: Subscribe
+    private let presentDelivery: Present
+    private let schedule: Schedule
+    private let lock = NSLock()
+    private final class Token {}
+    private struct Subscription {
+        let token: Token
+        /// nil while the listener is being opened.
+        let remove: (() -> Void)?
+    }
+    /// Live subscriptions, keyed `org/app/id`.
+    private var subscriptions: [String: Subscription] = [:]
+    /// The delivery on screen (or being put there), keyed `org/app/id/deliveryId`.
+    private var presentingKey: String?
+    /// Deliveries that arrived while another was on screen, in arrival order.
+    private var waiting: [Pending] = []
+    /// Deliveries drawn by this process — a re-delivered document (a listener re-opened before the `consumed` write
+    /// landed) is never drawn twice.
+    private var presented: Set<String> = []
+    private var attempts: [String: Int] = [:]
 
-    init(eventTracker: EventTracker?) {
+    init(
+        eventTracker: EventTracker?,
+        subscribe: Subscribe? = nil,
+        present: Present? = nil,
+        schedule: Schedule? = nil
+    ) {
         self.eventTracker = eventTracker
+        self.subscribe = subscribe ?? PendingMessageListener.firestoreSubscribe
+        self.presentDelivery = present ?? { [weak eventTracker] id, config, onShown, onClosed in
+            PendingMessageListener.presentOnTopViewController(
+                tracker: eventTracker, messageId: id, config: config, onShown: onShown, onClosed: onClosed
+            )
+        }
+        self.schedule = schedule ?? { seconds, block in DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: block) }
     }
 
-    /// Begin observing the per-user pending_messages subcollection.
-    /// Called from `AppDNA.identify(userId:traits:)`. Tears down any
-    /// previous listener first so rapid re-identify doesn't leak.
-    func startObserving(orgId: String, appId: String, userId: String) {
-        stopObserving()
-
-        guard let db = AppDNA.firestoreDB else {
-            Log.debug("PendingMessageListener: Firestore not configured — skipping")
-            return
+    /// Listen on exactly `listenIds(anonId:userId:)` under this org and app: a listener still wanted is kept as it is,
+    /// one no longer wanted is removed (and its waiting deliveries dropped), a new one is opened. Called at configure
+    /// (once the bootstrap names the org and app), on a recovered bootstrap, on `identify` and on `reset()`.
+    func follow(orgId: String, appId: String, anonId: String?, userId: String?) {
+        let wanted = Self.listenIds(anonId: anonId, userId: userId).map { (id: $0, key: "\(orgId)/\(appId)/\($0)") }
+        let wantedKeys = Set(wanted.map(\.key))
+        lock.lock()
+        let removed = subscriptions.filter { !wantedKeys.contains($0.key) }
+        for key in removed.keys { subscriptions.removeValue(forKey: key) }
+        waiting.removeAll { !wantedKeys.contains($0.ownerKey) }
+        let toOpen = wanted.filter { subscriptions[$0.key] == nil }
+        // Registered before the listener opens: its first snapshot (the deliveries already waiting) may arrive at once.
+        var placeholders: [String: Token] = [:]
+        for w in toOpen {
+            let token = Token()
+            placeholders[w.key] = token
+            subscriptions[w.key] = Subscription(token: token, remove: nil)
         }
-
-        let ref = db
-            .collection("orgs").document(orgId)
-            .collection("apps").document(appId)
-            .collection("users").document(userId)
-            .collection("pending_messages")
-            .whereField("consumed", isEqualTo: false)
-
-        Log.debug("PendingMessageListener: observing orgs/\(orgId)/apps/\(appId)/users/\(userId)/pending_messages")
-
-        listener = ref.addSnapshotListener { [weak self] snapshot, error in
-            guard let self else { return }
-            if let error {
-                Log.error("PendingMessageListener error: \(error.localizedDescription)")
-                return
+        lock.unlock()
+        for (_, sub) in removed { sub.remove?() }
+        for w in toOpen {
+            Log.debug("PendingMessageListener: observing orgs/\(orgId)/apps/\(appId)/users/\(w.id)/pending_messages")
+            let ownerKey = w.key
+            let remove = subscribe(orgId, appId, w.id, { [weak self] delivery in
+                self?.handleIncoming(ownerKey: ownerKey, delivery: delivery, now: Date())
+            })
+            lock.lock()
+            let stillOurs = subscriptions[w.key]?.token === placeholders[w.key]
+            if stillOurs {
+                if let remove { subscriptions[w.key] = Subscription(token: placeholders[w.key]!, remove: remove) }
+                else { subscriptions.removeValue(forKey: w.key) }
             }
-            guard let snapshot else { return }
-            let now = Date()
-            for change in snapshot.documentChanges where change.type == .added {
-                let doc = change.document
-                self.handleIncoming(doc: doc, now: now)
-            }
+            lock.unlock()
+            if !stillOurs { remove?() }
         }
     }
 
-    /// Tear down listener. Called from `AppDNA.reset()` and on sign-out.
+    /// The ids listened on now (`org/app/id`), sorted — what a test reads.
+    var observedKeys: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return subscriptions.keys.sorted()
+    }
+
+    /// Tear down every listener. Called from `AppDNA.shutdown()`.
     func stopObserving() {
-        listener?.remove()
-        listener = nil
+        lock.lock()
+        let all = Array(subscriptions.values)
+        subscriptions.removeAll()
+        waiting.removeAll()
+        lock.unlock()
+        for sub in all { sub.remove?() }
     }
 
     deinit { stopObserving() }
 
     // MARK: - Private
 
-    private func handleIncoming(doc: QueryDocumentSnapshot, now: Date) {
-        let data = doc.data()
-
-        guard let config = Self.decodeDelivery(data: data, now: now) else {
-            Log.debug("PendingMessageListener: skipping \(doc.documentID) (expired or missing content)")
+    private func handleIncoming(ownerKey: String, delivery: Delivery, now: Date) {
+        guard let config = Self.decodeDelivery(data: delivery.data, now: now) else {
+            Log.debug("PendingMessageListener: skipping \(delivery.id) (expired or missing content)")
             return
         }
+        let key = "\(ownerKey)/\(delivery.id)"
+        lock.lock()
+        // Still listened on (a late callback from a removed listener is ignored), and not already drawn or queued.
+        guard subscriptions[ownerKey] != nil, !presented.contains(key), presentingKey != key,
+              !waiting.contains(where: { $0.key == key }) else { lock.unlock(); return }
+        let firstSight = attempts[key] == nil
+        if firstSight { attempts[key] = 0 }
+        lock.unlock()
 
-        eventTracker?.track(event: "in_app_message_received", properties: [
-            "delivery_id": doc.documentID,
-            "trigger": (data["trigger"] as? String) ?? "journey",
-            "source": "pending_messages",
-        ])
-
-        present(messageId: doc.documentID, config: config) { [weak self] rendered in
-            if rendered {
-                doc.reference.updateData(["consumed": true]) { err in
-                    if let err {
-                        Log.warning("PendingMessageListener: failed to mark consumed: \(err.localizedDescription)")
-                    }
-                }
-                self?.eventTracker?.track(event: "in_app_message_shown", properties: [
-                    "delivery_id": doc.documentID,
-                    "source": "pending_messages",
-                    "message_type": config.message_type?.rawValue ?? "modal",
-                ])
-            }
+        if firstSight {
+            eventTracker?.track(event: "in_app_message_received", properties: [
+                "delivery_id": delivery.id,
+                "trigger": (delivery.data["trigger"] as? String) ?? "journey",
+                "source": "pending_messages",
+            ])
         }
+        enqueue(Pending(key: key, ownerKey: ownerKey, delivery: delivery, config: config))
+    }
+
+    private func enqueue(_ p: Pending) {
+        lock.lock()
+        if presentingKey != nil {
+            Log.debug("PendingMessageListener: another message presenting — queueing \(p.delivery.id)")
+            waiting.append(p)
+            lock.unlock()
+            return
+        }
+        presentingKey = p.key
+        lock.unlock()
+        presentNow(p)
+    }
+
+    private func presentNow(_ p: Pending) {
+        presentDelivery(p.delivery.id, p.config, { [weak self] rendered in
+            guard let self else { return }
+            if rendered {
+                self.lock.lock(); self.presented.insert(p.key); self.lock.unlock()
+                p.delivery.markConsumed()
+                self.eventTracker?.track(event: "in_app_message_shown", properties: [
+                    "delivery_id": p.delivery.id,
+                    "source": "pending_messages",
+                    "message_type": p.config.message_type?.rawValue ?? "modal",
+                ])
+            } else {
+                // Not drawn (no window yet at a cold launch): the document stays unconsumed; retried a few times.
+                self.lock.lock()
+                self.presentingKey = nil
+                let n = (self.attempts[p.key] ?? 0) + 1
+                self.attempts[p.key] = n
+                self.lock.unlock()
+                if n < Self.maxPresentAttempts {
+                    self.schedule(Double(n)) { [weak self] in self?.retry(p) }
+                }
+                self.presentNext()
+            }
+        }, { [weak self] in
+            guard let self else { return }
+            self.lock.lock(); self.presentingKey = nil; self.lock.unlock()
+            self.presentNext()
+        })
+    }
+
+    private func retry(_ p: Pending) {
+        lock.lock()
+        let live = subscriptions[p.ownerKey] != nil && !presented.contains(p.key)
+            && presentingKey != p.key && !waiting.contains(where: { $0.key == p.key })
+        lock.unlock()
+        if live { enqueue(p) }
+    }
+
+    private func presentNext() {
+        lock.lock()
+        guard presentingKey == nil, !waiting.isEmpty else { lock.unlock(); return }
+        let next = waiting.removeFirst()
+        presentingKey = next.key
+        lock.unlock()
+        presentNow(next)
+    }
+
+    private static func firestoreSubscribe(
+        orgId: String, appId: String, id: String, onAdded: @escaping (Delivery) -> Void
+    ) -> (() -> Void)? {
+        guard let db = AppDNA.firestoreDB else {
+            Log.debug("PendingMessageListener: Firestore not configured — skipping")
+            return nil
+        }
+        let registration = db
+            .collection("orgs").document(orgId)
+            .collection("apps").document(appId)
+            .collection("users").document(id)
+            .collection("pending_messages")
+            .whereField("consumed", isEqualTo: false)
+            .addSnapshotListener { snapshot, error in
+                if let error {
+                    Log.error("PendingMessageListener error: \(error.localizedDescription)")
+                    return
+                }
+                guard let snapshot else { return }
+                for change in snapshot.documentChanges where change.type == .added {
+                    let doc = change.document
+                    onAdded(Delivery(id: doc.documentID, data: doc.data(), markConsumed: {
+                        doc.reference.updateData(["consumed": true]) { err in
+                            if let err {
+                                Log.warning("PendingMessageListener: failed to mark consumed: \(err.localizedDescription)")
+                            }
+                        }
+                    }))
+                }
+            }
+        return { registration.remove() }
     }
 
     /// The delivery document as the listener receives it → the `MessageConfig` it presents, or nil
@@ -169,62 +344,52 @@ final class PendingMessageListener {
     /// so journey-delivered messages get identical UX to config-driven
     /// ones (no UIAlertController fallback, no missing styling, no
     /// missing rich-media fields).
-    private func present(
+    private static func presentOnTopViewController(
+        tracker: EventTracker?,
         messageId: String,
         config: MessageConfig,
-        completion: @escaping (Bool) -> Void
+        onShown: @escaping (Bool) -> Void,
+        onClosed: @escaping () -> Void
     ) {
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { completion(false); return }
-            guard !self.isPresenting else {
-                Log.debug("PendingMessageListener: another message presenting — deferring \(messageId)")
-                completion(false)
-                return
-            }
+        DispatchQueue.main.async {
             guard let windowScene = UIApplication.shared.connectedScenes
                 .compactMap({ $0 as? UIWindowScene })
                 .first,
                   let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-                Log.warning("PendingMessageListener: no root view controller — cannot present \(messageId)")
-                completion(false)
+                Log.warning("PendingMessageListener: no root view controller — cannot present \(messageId) yet")
+                onShown(false)
                 return
             }
             var topVC = rootVC
             while let presented = topVC.presentedViewController { topVC = presented }
 
-            self.isPresenting = true
-
             let view = MessageRenderer(
                 messageId: messageId,
                 config: config,
-                onCTATap: { [weak self] in
-                    self?.eventTracker?.track(event: "in_app_message_clicked", properties: [
+                onCTATap: {
+                    tracker?.track(event: "in_app_message_clicked", properties: [
                         "delivery_id": messageId,
                         "cta_action": config.content?.cta_action?.type?.rawValue ?? "dismiss",
                         "source": "pending_messages",
                     ])
-                    self?.handleCTAAction(config.content?.cta_action)
-                    topVC.dismiss(animated: true) {
-                        self?.isPresenting = false
-                    }
+                    handleCTAAction(config.content?.cta_action)
+                    topVC.dismiss(animated: true) { onClosed() }
                 },
-                onDismiss: { [weak self] in
-                    self?.eventTracker?.track(event: "in_app_message_dismissed", properties: [
+                onDismiss: {
+                    tracker?.track(event: "in_app_message_dismissed", properties: [
                         "delivery_id": messageId,
                         "source": "pending_messages",
                     ])
-                    topVC.dismiss(animated: true) {
-                        self?.isPresenting = false
-                    }
+                    topVC.dismiss(animated: true) { onClosed() }
                 }
             )
 
             let hostingVC = MessageHosting.makeHost(rootView: view, config: config)
-            topVC.present(hostingVC, animated: true) { completion(true) }
+            topVC.present(hostingVC, animated: true) { onShown(true) }
         }
     }
 
-    private func handleCTAAction(_ action: CTAAction?) {
+    private static func handleCTAAction(_ action: CTAAction?) {
         // dismiss / unknown / a link type with no link: nothing extra (the caller dismisses).
         // Config-driven URL — scheme-checked before it reaches the OS.
         guard let urlString = action?.linkToOpen, let url = URLSafety.sanitized(urlString) else { return }

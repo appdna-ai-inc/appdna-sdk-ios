@@ -741,13 +741,10 @@ public final class AppDNA: @unchecked Sendable {
                     appId: bootstrapData.appId,
                     userId: userId
                 )
-                // Start journey-triggered pending-messages listener.
-                shared.pendingMessageListener?.startObserving(
-                    orgId: bootstrapData.orgId,
-                    appId: bootstrapData.appId,
-                    userId: userId
-                )
             }
+            // #1731 — journey in-app messages: the anon id stays listened on (a journey that enrolled this device
+            // anonymously keeps delivering there), and the user id joins it.
+            shared.followPendingMessages()
 
             // Silently refresh the entitlement cache so
             // the next paywall_trigger entitlement gate reflects
@@ -789,7 +786,8 @@ public final class AppDNA: @unchecked Sendable {
             shared.messageManager?.resetSession()
             shared.surveyManager?.resetSession()
             shared.webEntitlementManager?.stopObserving()
-            shared.pendingMessageListener?.stopObserving()
+            // #1731 — the signed-out user's deliveries are no longer listened on; the anon id's still are.
+            shared.followPendingMessages()
             // The subscription snapshot is device-global; identity is not. Clear it on sign-out so the
             // next user's first reconcile does not diff their entitlements against this user's snapshot
             // and fabricate a phantom subscription_canceled/_renewal_failed. See clearPersistedSnapshot().
@@ -2065,6 +2063,13 @@ public final class AppDNA: @unchecked Sendable {
         }
     }
 
+    /// On `queue`. #1731 — points the journey in-app message listener at the ids a journey delivers to: the anon id,
+    /// and the user id when identified (`PendingMessageListener.listenIds`). Needs the bootstrap's org and app.
+    private func followPendingMessages() {
+        guard let data = bootstrapData, let identity = identityManager?.currentIdentity else { return }
+        pendingMessageListener?.follow(orgId: data.orgId, appId: data.appId, anonId: identity.anonId, userId: identity.userId)
+    }
+
     /// On `queue`. The `queue` half of a recovered bootstrap — what `initializeManagers` does with
     /// `bootstrapData` on a first success, applied to the managers that already run.
     private func applyRecoveredBootstrap(_ data: BootstrapData, tracker: EventTracker, recovery: BootstrapRecovery) {
@@ -2075,8 +2080,9 @@ public final class AppDNA: @unchecked Sendable {
         }
         if let userId = identityManager?.currentIdentity.userId {
             webEntitlementManager?.startObserving(orgId: data.orgId, appId: data.appId, userId: userId)
-            pendingMessageListener?.startObserving(orgId: data.orgId, appId: data.appId, userId: userId)
         }
+        // #1731 — journey in-app messages, on the anon id (and the user id when identified).
+        followPendingMessages()
         remoteConfigManager?.attachFirestorePath(data.firestorePath)
 
         Self.initErrorLock.lock()
@@ -2252,13 +2258,11 @@ public final class AppDNA: @unchecked Sendable {
                 appId: bootstrapData.appId,
                 userId: userId
             )
-            // Also start pending-messages listener if already identified.
-            self.pendingMessageListener?.startObserving(
-                orgId: bootstrapData.orgId,
-                appId: bootstrapData.appId,
-                userId: userId
-            )
         }
+        // #1731 — journey in-app messages are listened for from configure, on the anon id (and the user id when one
+        // is already identified). They used to start only for an identified user, so a journey's in-app step to an
+        // anonymous user was marked sent and never shown.
+        self.followPendingMessages()
 
         // Wire module namespaces (v1.0). (Billing is wired in `performConfigure`, right after its bridge
         // is built: ready from the first call, not after the bootstrap.)
