@@ -5,6 +5,11 @@ import XCTest
 /// host mirrors into `host.lastEvents`. THE CONTROL: a URL the host never received is not there.
 final class DeepLinkSchemeUITests: XCTestCase {
     func testASampleSchemeURLReachesTheDeepLinkHandler() throws {
+        // `XCUIApplication.open(_:)` is iOS 16.4+, and the host (like the SDK) targets iOS 16.0: the
+        // call is gated so the UI-test target compiles at the host's own deployment target.
+        guard #available(iOS 16.4, *) else {
+            throw XCTSkip("XCUIApplication.open(_:) needs iOS 16.4; this simulator is older")
+        }
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 15))
