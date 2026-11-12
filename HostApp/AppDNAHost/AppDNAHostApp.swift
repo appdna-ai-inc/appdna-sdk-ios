@@ -16,7 +16,7 @@
 //     -appdnaSurvey <id>
 //     -appdnaScreen <id>
 //     -appdnaAutoPresent paywall     present one straight away, without a tap
-//     -appdnaAutoPresentDelay 8      seconds to wait for config before presenting
+//     -appdnaAutoPresentDelay 8      seconds before presenting, so the fetched config has landed
 //     -appdnaIdentify <user id>      identify after configure (a consent walk)
 //     -appdnaConsent true|false      setConsent after configure (a consent walk)
 //     -appdnaIdentifyAt tick|ready   when: right after configure, on the same tick, or in onReady (default)
