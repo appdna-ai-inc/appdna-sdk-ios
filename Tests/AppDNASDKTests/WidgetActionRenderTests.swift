@@ -138,10 +138,10 @@ final class WidgetActionRenderTests: XCTestCase {
     private static let bottomButton = #"{"id":"cta_w","type":"button","text":"Add the widget","action":"add_widget","zone":"bottom","howto_blocks_ios":\#(howto)}"#
 
     /// Tap → the how-to over the step (its authored blocks) → Done with no new widget → ONE advance
-    /// carrying `widget_status: not_added`.
+    /// carrying `widget_status: unknown` (a widget of the app was already placed at the tap).
     /// RED CONTROL: the router without `.environment(\.appdnaWidgetAction, …)` — the tap advances at
     /// once through the default arm and nothing is presented.
-    func testRouterTapPresentsTheHowtoAndDoneAdvancesNotAdded() throws {
+    func testRouterTapPresentsTheHowtoAndDoneAdvancesUnknown() throws {
         let r = try route("[\(Self.bottomButton)]")
         defer { r.hosted.close() }
         r.hosted.tap("add_widget button") { $0 == "Add the widget" }
@@ -153,8 +153,8 @@ final class WidgetActionRenderTests: XCTestCase {
 
         sheet.handle("next")
         XCTAssertTrue(r.hosted.wait { r.payloads.value.count == 1 })
-        XCTAssertEqual(r.payloads.value.first??[WidgetStatus.answerKey] as? String, "not_added")
-        XCTAssertEqual(r.events.value, ["widget_add_tapped", "widget_howto_shown", "widget_not_added", "widget_howto_dismissed"])
+        XCTAssertEqual(r.payloads.value.first??[WidgetStatus.answerKey] as? String, "unknown")
+        XCTAssertEqual(r.events.value, ["widget_add_tapped", "widget_howto_shown", "widget_add_unknown", "widget_howto_dismissed"])
     }
 
     /// The user adds the widget with the how-to open and comes back: the router's didBecomeActive

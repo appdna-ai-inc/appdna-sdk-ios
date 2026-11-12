@@ -153,7 +153,7 @@ final class WidgetAddAttemptTests: XCTestCase {
     }
 
     /// `existing_count` is null when the read at the tap fails; detection is then off, so Done yields
-    /// `not_added` with `detection: unavailable` and no second read.
+    /// `unknown` (iOS cannot tell) with no second read.
     /// RED CONTROL: `existing_count` reported as 0 for a failed read.
     func testFailedReadAtTheTapTurnsDetectionOff() throws {
         let source = ImmediateWidgetSource(nil)
@@ -166,9 +166,9 @@ final class WidgetAddAttemptTests: XCTestCase {
         attempt.doneTapped()
         systemDismissedIfClosed(attempt, hadSheet: had)
         XCTAssertEqual(source.reads, 1, "no read on Done with S0 unknown")
-        XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_howto_shown", "widget_not_added", "widget_howto_dismissed"])
-        XCTAssertEqual(spy.props("widget_not_added")?["detection"] as? String, "unavailable")
-        XCTAssertEqual(spy.advances, [.notAdded])
+        XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_howto_shown", "widget_add_unknown", "widget_howto_dismissed"])
+        XCTAssertTrue(spy.props("widget_add_unknown")?["existing_count"] is NSNull)
+        XCTAssertEqual(spy.advances, [.unknown])
     }
 
     // MARK: - howto × active
@@ -195,8 +195,8 @@ final class WidgetAddAttemptTests: XCTestCase {
     }
 
     /// Row: HOWTO × ACTIVE, no new widget → stays in HOWTO, nothing emitted.
-    /// RED CONTROL: treating any answered read as "added" (a count compare of 1 vs 1 cannot be, but a
-    /// non-empty S1 can) advances here.
+    /// RED CONTROL: `appDidBecomeActive` concluding on every answered read (`conclude` instead of
+    /// waiting for a new widget) advances here.
     func testReturnWithoutANewWidgetStays() throws {
         let source = ImmediateWidgetSource([Self.small])
         let (attempt, spy) = make(source: source)
@@ -220,15 +220,16 @@ final class WidgetAddAttemptTests: XCTestCase {
 
     // MARK: - howto × Done → checking
 
-    /// Rows: HOWTO × DONE_CTA → CHECKING (a read); CHECKING × QUERY(S1) with nothing new →
-    /// `widget_not_added{howto, ok}`, close(cta), `dismissed{cta}`, advance `not_added`. While the read
-    /// is out, a second Done, a tap and a return are all ignored.
-    /// RED CONTROL: `doneTapped` advancing without the read (no CHECKING state) emits before `answer`.
+    /// Rows: HOWTO × DONE_CTA → CHECKING (a read); CHECKING × QUERY(S1) with nothing new and NO widget
+    /// at the tap → `widget_not_added{howto, ok}`, close(cta), `dismissed{cta}`, advance `not_added`.
+    /// While the read is out, a second Done, a tap and a return are all ignored.
+    /// RED CONTROL: `doneTapped` advancing without the read (no CHECKING state) emits before `answer`;
+    /// `outcome` answering `unknown` for an empty S0 fails the status.
     func testDoneWithoutAddingAdvancesNotAdded() throws {
         let source = HeldWidgetSource()
         let (attempt, spy) = make(source: source)
         attempt.tap(try Self.button())
-        source.answer([Self.small])
+        source.answer([])
         attempt.doneTapped()
         XCTAssertEqual(attempt.phase, .checking)
         XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_howto_shown"], "nothing decided until S1 is read")
@@ -237,7 +238,7 @@ final class WidgetAddAttemptTests: XCTestCase {
         attempt.appDidBecomeActive()
         XCTAssertEqual(source.waiting, 1, "one read in flight")
         let had = attempt.sheet != nil
-        source.answer([Self.small])
+        source.answer([])
         systemDismissedIfClosed(attempt, hadSheet: had)
         XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_howto_shown", "widget_not_added", "widget_howto_dismissed"])
         XCTAssertEqual(spy.props("widget_not_added")?["method"] as? String, "howto")
@@ -245,6 +246,36 @@ final class WidgetAddAttemptTests: XCTestCase {
         XCTAssertEqual(spy.props("widget_howto_dismissed")?["via"] as? String, "cta")
         XCTAssertEqual(spy.advances, [.notAdded])
         XCTAssertNil(attempt.sheet)
+    }
+
+    /// The user ALREADY had the app's widget at the tap and nothing new appeared: WidgetKit cannot see a
+    /// second widget of a size already placed, so the outcome is `unknown` — `widget_add_unknown{howto,
+    /// existing_count}`, never `widget_not_added`.
+    /// RED CONTROL: `outcome` answering `not_added` whenever nothing was added (the old rule).
+    func testDoneWithAWidgetAlreadyPlacedIsUnknown() throws {
+        let source = ImmediateWidgetSource([Self.small])
+        let (attempt, spy) = make(source: source)
+        attempt.tap(try Self.button())
+        let had = attempt.sheet != nil
+        attempt.doneTapped()
+        systemDismissedIfClosed(attempt, hadSheet: had)
+        XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_howto_shown", "widget_add_unknown", "widget_howto_dismissed"])
+        XCTAssertEqual(spy.props("widget_add_unknown")?["method"] as? String, "howto")
+        XCTAssertEqual(spy.props("widget_add_unknown")?["existing_count"] as? Int, 1)
+        XCTAssertEqual(spy.advances, [.unknown])
+    }
+
+    /// The rule itself, every case: added wins; not_added only from an empty, known S0 with a read
+    /// that answered; everything else unknown.
+    /// RED CONTROL: each wrong rule (`not_added` for any miss; `unknown` for an empty S0; `not_added`
+    /// on a failed read) fails its own line.
+    func testTheOutcomeRule() {
+        typealias A = WidgetAddAttempt
+        XCTAssertEqual(A.outcome(added: Self.medium, before: [Self.small], detection: "ok"), .added)
+        XCTAssertEqual(A.outcome(added: nil, before: [], detection: "ok"), .notAdded, "no widget before, none now")
+        XCTAssertEqual(A.outcome(added: nil, before: [Self.small], detection: "ok"), .unknown, "one already placed")
+        XCTAssertEqual(A.outcome(added: nil, before: [], detection: "unavailable"), .unknown, "the Done read failed")
+        XCTAssertEqual(A.outcome(added: nil, before: nil, detection: "unavailable"), .unknown, "the tap read failed")
     }
 
     /// Row: CHECKING × QUERY(S1) with a new widget → `widget_added{howto}`, `added` (the CTA re-query).
@@ -262,16 +293,21 @@ final class WidgetAddAttemptTests: XCTestCase {
         XCTAssertEqual(spy.advances, [.added])
     }
 
-    /// A read at Done that fails → `not_added` with `detection: unavailable`.
-    func testDoneWithAFailedReadIsNotAddedUnavailable() throws {
+    /// A read at Done that FAILS, though the user had no widget at the tap → `unknown` (iOS cannot
+    /// tell), with `existing_count` 0, after exactly one read at Done.
+    /// RED CONTROL: `check` treating a failed read as an empty set (`placed ?? []`) concludes
+    /// `not_added`.
+    func testDoneWithAFailedReadIsUnknown() throws {
         let source = HeldWidgetSource()
         let (attempt, spy) = make(source: source)
         attempt.tap(try Self.button())
         source.answer([])
         attempt.doneTapped()
+        XCTAssertEqual(source.waiting, 1, "Done reads once")
         source.answer(nil)
-        XCTAssertEqual(spy.props("widget_not_added")?["detection"] as? String, "unavailable")
-        XCTAssertEqual(spy.advances, [.notAdded])
+        XCTAssertFalse(spy.names.contains("widget_not_added"))
+        XCTAssertEqual(spy.props("widget_add_unknown")?["existing_count"] as? Int, 0)
+        XCTAssertEqual(spy.advances, [.unknown])
     }
 
     // MARK: - howto × close
@@ -362,14 +398,17 @@ final class WidgetAddAttemptTests: XCTestCase {
     }
 
     /// A button whose how-to is empty (authored before the field existed) ends the attempt as Done
-    /// would — read, `widget_not_added`, advance — with no sheet.
+    /// would — read, outcome, advance — with no sheet, no `widget_howto_shown` and no dismissal.
+    /// RED CONTROL: `tap` presenting an empty how-to (the `howto.isEmpty` branch removed) shows a sheet.
     func testAnEmptyHowtoEndsTheAttemptWithoutASheet() throws {
         let source = ImmediateWidgetSource([])
         let (attempt, spy) = make(source: source)
         attempt.tap(try Self.button(howto: []))
         XCTAssertNil(attempt.sheet)
+        XCTAssertEqual(source.reads, 2, "the tap's read and the Done-equivalent read")
         XCTAssertEqual(spy.names, ["widget_add_tapped", "widget_not_added"])
         XCTAssertEqual(spy.advances, [.notAdded])
+        XCTAssertEqual(attempt.phase, .done)
     }
 
     // MARK: - The sheet's buttons

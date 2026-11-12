@@ -15,7 +15,7 @@ import WidgetKit
  * a count compare, so a widget removed and another added in the same trip still reads as added, and
  * the new widget's `family` is well defined.
  *
- * The outcome reaches the step's answers as `widget_status` (`added` | `not_added` | `unavailable`),
+ * The outcome reaches the step's answers as `widget_status` (`added` | `not_added` | `unknown` | `unavailable`),
  * merged through the ordinary advance, so `next_step_rules` branch on it like any other answer.
  *
  * Seams: `WidgetHostProbe` (does the app ship a WidgetKit extension?) takes a bundle, because under
@@ -29,6 +29,10 @@ enum WidgetStatus: String {
     case added
     case notAdded = "not_added"
     case unavailable
+    /// iOS only: the attempt ended, nothing new appeared, and the user ALREADY had a widget of the app
+    /// (or the widgets could not be read). WidgetKit reports one entry per kind and size, so a second
+    /// widget of a size already placed is invisible: "not added" would be a guess.
+    case unknown
 
     static let answerKey = "widget_status"
 }
@@ -172,7 +176,7 @@ extension WidgetInstance {
 /// | idle     | tap                        | read S0 → `widget_add_tapped`, present how-to, `widget_howto_shown` → howto |
 /// | howto    | active, S0 known           | read S1; S1−S0 non-empty → close(detected), `widget_howto_dismissed{detected}`, `widget_added{howto}`, advance `added` → done; else stay |
 /// | howto    | Done                       | → checking; read S1 |
-/// | checking | S1 read                    | `widget_added` / `widget_not_added`, close(cta), `widget_howto_dismissed{cta}`, advance → done |
+/// | checking | S1 read                    | `widget_added` / `widget_not_added` (no widget before) / `widget_add_unknown` (one before, or a read failed), close(cta), `widget_howto_dismissed{cta}`, advance → done |
 /// | howto    | close (swipe / Close)      | `widget_howto_dismissed{via}` → idle (attempt retired, step NOT advanced) |
 /// | any      | the step goes away         | attempt discarded, nothing emitted → idle |
 ///
@@ -235,6 +239,9 @@ final class WidgetAddAttempt: ObservableObject {
     private var pendingClose: PendingClose?
 
     private enum PendingClose { case via(CloseVia), discarded }
+
+    /// The debug-only walk seam's defaults key (see `appDidBecomeActive`).
+    static let skipReturnReadKey = "AppDNADebugWidgetSkipReturnRead"
 
     /// Test seam: the platform an attempt created without one uses (the step router creates its own).
     /// Nil in production.
@@ -303,6 +310,15 @@ final class WidgetAddAttempt: ObservableObject {
     /// `UIApplication.didBecomeActiveNotification`: the user may be back from the Home Screen.
     func appDidBecomeActive() {
         guard phase == .howto, let before else { return }
+        #if DEBUG
+        // Device-walk seam, debug builds only: `-AppDNADebugWidgetSkipReturnRead YES` leaves detection to
+        // the Done re-read, so a walk can exercise "add, return, Done → added" — on a device the read on
+        // return otherwise always gets there first.
+        if UserDefaults.standard.bool(forKey: Self.skipReturnReadKey) {
+            Log.debug("[Onboarding] add_widget: the read on return is skipped (debug walk seam)")
+            return
+        }
+        #endif
         let attempt = serial
         platform.configurations.read { [weak self] placed in
             guard let self, self.serial == attempt, self.phase == .howto, let placed,
@@ -366,7 +382,8 @@ final class WidgetAddAttempt: ObservableObject {
     /// are on the Home Screen (eleven small widgets of one kind read as `n=1`), and `WidgetInfo`
     /// compares by value. So a widget is detected when its kind-and-size is new to the user (the
     /// first small one: detected 1.25 s after returning), and a second widget of a size already
-    /// placed is invisible to any app — it reads `not_added`.
+    /// placed is invisible to any app — so with a widget already placed, nothing new reads `unknown`
+    /// (`outcome(added:before:detection:)`), never `not_added`.
     static func firstAdded(before: Set<WidgetInstance>, after: Set<WidgetInstance>) -> WidgetInstance? {
         after.subtracting(before).sorted { $0.id < $1.id }.first
     }
@@ -386,17 +403,38 @@ final class WidgetAddAttempt: ObservableObject {
         }
     }
 
+    /// The attempt's outcome (`outcome(added:before:detection:)`), its event, then the close and the
+    /// one advance.
     private func conclude(added: WidgetInstance?, detection: String, closeSheet: Bool) {
-        if let added {
-            self.track(event: "widget_added", properties: ["method": "howto", "family": added.family])
-        } else {
+        let status = Self.outcome(added: added, before: before, detection: detection)
+        switch status {
+        case .added:
+            self.track(event: "widget_added", properties: ["method": "howto", "family": added?.family ?? ""])
+        case .notAdded:
             self.track(event: "widget_not_added", properties: ["method": "howto", "detection": detection])
+        default:
+            self.track(event: "widget_add_unknown", properties: [
+                "method": "howto",
+                "existing_count": before.map { $0.count as Any } ?? NSNull(),
+            ])
         }
         if closeSheet {
             close(.cta)
             self.track(event: "widget_howto_dismissed", properties: ["via": CloseVia.cta.rawValue])
         }
-        finish(added == nil ? .notAdded : .added)
+        finish(status)
+    }
+
+    /// THE RULE, in one place:
+    /// - a new kind-and-size appeared → `added`;
+    /// - the user had NO widget of the app at the tap, both reads answered, nothing appeared →
+    ///   `not_added`;
+    /// - anything else → `unknown`: they already had one (a second of that size is invisible to
+    ///   WidgetKit), or a read failed — iOS cannot tell, so it does not guess.
+    static func outcome(added: WidgetInstance?, before: Set<WidgetInstance>?, detection: String) -> WidgetStatus {
+        if added != nil { return .added }
+        if detection == "ok", let before, before.isEmpty { return .notAdded }
+        return .unknown
     }
 
     /// Dismiss the sheet, recording why first so `onDismiss` does not report it again.
