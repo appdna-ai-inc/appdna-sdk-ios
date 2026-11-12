@@ -1,7 +1,7 @@
 import SwiftUI
 
 /**
- #1432 — the countdown a step that advances by itself can draw while it waits.
+ The countdown a step that advances by itself can draw while it waits.
 
  Authored as `auto_advance_indicator` beside `auto_advance_seconds`; off unless `show: true`, so every
  flow already published draws nothing, as before. `{seconds}` in the text is the whole seconds LEFT,
@@ -72,11 +72,16 @@ public enum AutoAdvanceIndicator {
 }
 
 /// Draws one resolved moment of the countdown. Pure, so a test can render a given instant.
+///
+/// `inline: true` is the TOP placement: the drawing takes only its own height, because the step
+/// gives it that space above the content (`safeAreaInset`) rather than painting it over the heading.
+/// The bottom placement fills the step and aligns to its bottom edge, over the content's pinned zone.
 struct AutoAdvanceIndicatorDrawing: View {
     let view: AutoAdvanceIndicator.Frame
+    var inline: Bool = false
 
     var body: some View {
-        VStack(spacing: 6) {
+        let drawing = VStack(spacing: 6) {
             if let label = view.label {
                 Text(label)
                     .font(.system(size: CGFloat(view.fontSize)))
@@ -95,22 +100,31 @@ struct AutoAdvanceIndicatorDrawing: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(view.position == "top" ? .top : .bottom, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: view.position == "top" ? .top : .bottom)
+        .padding(view.position == "top" ? .vertical : .bottom, view.position == "top" ? 8 : 12)
         .allowsHitTesting(false)
+
+        if inline {
+            drawing.frame(maxWidth: .infinity)
+        } else {
+            drawing.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: view.position == "top" ? .top : .bottom)
+        }
     }
 }
 
-/// The live countdown over a step: ticks from the moment the step's timer was scheduled.
+/// The live countdown for one placement. The step host draws `"top"` in a `safeAreaInset` above the
+/// content (so it reserves its own space and never covers the first block) and `"bottom"` as an
+/// overlay; each draws only when the author's `position` is its own. Ticks from the moment the step's
+/// timer was scheduled.
 struct AutoAdvanceIndicatorOverlay: View {
     let step: OnboardingStep
     let startedAt: Date
+    var placement: String = "bottom"
 
     var body: some View {
-        if AutoAdvanceIndicator.resolve(step: step, elapsed: 0) != nil {
+        if let first = AutoAdvanceIndicator.resolve(step: step, elapsed: 0), first.position == placement {
             TimelineView(.periodic(from: startedAt, by: 0.05)) { ctx in
                 if let v = AutoAdvanceIndicator.resolve(step: step, elapsed: ctx.date.timeIntervalSince(startedAt)) {
-                    AutoAdvanceIndicatorDrawing(view: v)
+                    AutoAdvanceIndicatorDrawing(view: v, inline: placement == "top")
                 }
             }
             .allowsHitTesting(false)
