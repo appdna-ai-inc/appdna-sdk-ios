@@ -809,6 +809,9 @@ struct OnboardingFlowHost: View {
     }
 
     private func handleStepCompleted(step: OnboardingStep, data: [String: Any]?) {
+        // A completion for a step that is no longer on screen is dropped: one tap can reach both a
+        // control and the step's tap-anywhere handler, and the step must move once.
+        guard currentIndex < flow.steps.count, flow.steps[currentIndex].id == step.id else { return }
         // Auth-style actions require a delegate to perform the side effect
         // (sign in, register, send OTP, etc.) before the user advances past
         // the credential-collection step. Without a delegate the SDK has
@@ -1221,11 +1224,26 @@ struct OnboardingFlowHost: View {
         guard currentIndex < flow.steps.count,
               flow.steps[currentIndex].tap_anywhere_advances == true else { return }
         guard !isProcessing else { return }
-        HapticEngine.triggerIfEnabled(
-            flow.settings.haptic?.triggers?.on_step_advance,
-            config: flow.settings.haptic,
-        )
-        advanceOrComplete()
+        /*
+         🔴 DEFERRED, AND DROPPED IF THE TAP WAS A CONTROL'S. The simultaneous tap gesture also
+         completes when the tap lands on a BUTTON, so the button's own action and this both advanced:
+         one tap, two steps, the next screen skipped. A tap a control handled moves the step (or
+         starts its processing) within the same event; checking a moment later whether the step is
+         still the one that was tapped lets that tap belong to the control alone.
+         */
+        let tappedStepId = flow.steps[currentIndex].id
+        let tappedSerial = presentationSerial
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard presentationSerial == tappedSerial,
+                  currentIndex < flow.steps.count,
+                  flow.steps[currentIndex].id == tappedStepId,
+                  !isProcessing else { return }
+            HapticEngine.triggerIfEnabled(
+                flow.settings.haptic?.triggers?.on_step_advance,
+                config: flow.settings.haptic,
+            )
+            advanceOrComplete()
+        }
     }
 
     /**
