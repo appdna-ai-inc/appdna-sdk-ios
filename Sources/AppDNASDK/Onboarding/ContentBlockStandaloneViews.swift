@@ -1894,13 +1894,22 @@ struct DateWheelPickerBlockView: View {
                         .frame(maxWidth: .infinity)
                 )
             } else {
-                // Default: graphical calendar
+                // Default: the month calendar. The SDK's own grid (the range calendar in single-day mode), not
+                // `DatePicker(.graphical)`: the system calendar's day cells took no tap inside an onboarding step.
+                let ink: Color = wheelTextColorHex.map { Color(hex: $0) } ?? (resolvedScheme == .dark ? .white : .black)
                 return AnyView(
-                    DatePicker("", selection: $selectedDate, in: dateRange, displayedComponents: components)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .tint(highlightCol)
-                        .environment(\.colorScheme, resolvedScheme)
+                    DateRangeCalendarView(
+                        selection: Binding(
+                            get: { DateRangeSelection(start: DateRangeCalendarView.dayKey(selectedDate), end: nil) },
+                            set: { new in
+                                if let k = new.start, let d = DateRangeCalendarView.moving(selectedDate, toDayKey: k) { selectedDate = d }
+                            }
+                        ),
+                        bounds: dateRange, accent: highlightCol, rangeFill: .clear, text: ink,
+                        initialMonth: selectedDate, single: true
+                    )
+                    .padding(8)
+                    .environment(\.colorScheme, resolvedScheme)
                 )
             }
         }()

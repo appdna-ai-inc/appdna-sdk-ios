@@ -569,14 +569,43 @@ struct FormInputDateBlock: View {
                         .colorMultiply(wheelTextColorHex.map { Color(hex: $0) } ?? .white)
                         .background(Color(hex: wheelBgHex ?? fieldBgHex ?? "transparent").opacity(wheelOpacity))
                         .cornerRadius(cornerRadius)
-                case "graphical":
-                    DatePicker("", selection: $selectedDate, displayedComponents: components)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .tint(accentColor)
-                        .environment(\.locale, timeLocale ?? Locale.current)
-                        .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
-                        .cornerRadius(cornerRadius)
+                case "graphical" where components.contains(.date):
+                    // The SDK's own month grid, as the Date Picker draws it: the system calendar's day cells took no
+                    // tap inside an onboarding step. Out-of-bounds days are greyed here; the checks below still run.
+                    // A date and time adds the time under the grid, as the system calendar drew it: a compact time
+                    // field that opens the time wheel.
+                    let now = Date()
+                    let lo = DateWheelPickerBlockView.parseDate(block.min_date)
+                        ?? (block.allow_past == false ? now : Calendar.current.date(byAdding: .year, value: -150, to: now)!)
+                    let hi = DateWheelPickerBlockView.parseDate(block.max_date)
+                        ?? (block.allow_future == false ? now : Calendar.current.date(byAdding: .year, value: 50, to: now)!)
+                    VStack(spacing: 0) {
+                        DateRangeCalendarView(
+                            selection: Binding(
+                                get: { DateRangeSelection(start: DateRangeCalendarView.dayKey(selectedDate, in: answerZone), end: nil) },
+                                set: { new in
+                                    if let k = new.start, let d = DateRangeCalendarView.moving(selectedDate, toDayKey: k, in: answerZone) { selectedDate = d }
+                                }
+                            ),
+                            bounds: lo...Swift.max(lo, hi), accent: accentColor, rangeFill: .clear,
+                            text: wheelTextColorHex.map { Color(hex: $0) } ?? .primary,
+                            initialMonth: selectedDate, single: true
+                        )
+                        .padding(8)
+                        if components.contains(.hourAndMinute) {
+                            DatePicker("", selection: $selectedDate, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.compact)
+                                .labelsHidden()
+                                .tint(accentColor)
+                                .environment(\.locale, timeLocale ?? Locale.current)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .padding(.horizontal, 8)
+                                .padding(.bottom, 8)
+                                .accessibilityIdentifier("date_field.time")
+                        }
+                    }
+                    .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
+                    .cornerRadius(cornerRadius)
                 default: // compact
                     // Fully custom tap-to-open pattern instead of SwiftUI's
                     // `.datePickerStyle(.compact)`. The native compact style

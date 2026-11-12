@@ -11,6 +11,11 @@ struct DateRangeCalendarView: View {
     let rangeFill: Color
     let text: Color
     let initialMonth: Date
+    /// One day, not a range: the calendar the Calendar style draws. A tap selects the day (`start`), and no bar is drawn.
+    /// It is this view rather than the system `DatePicker(.graphical)` because the system calendar's day cells did not
+    /// take a tap inside an onboarding step on iOS 26 (its collection-view selection lost to the step's tap gestures),
+    /// while this grid's own taps did.
+    var single: Bool = false
 
     @State private var month: Date?
     @State private var showingYears = false
@@ -30,6 +35,26 @@ struct DateRangeCalendarView: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f
+    }
+
+    /// `yyyy-MM-dd` of `date` in `zone` (the phone's by default; a date and time answers in the app's zone).
+    static func dayKey(_ date: Date, in zone: TimeZone = .current) -> String {
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.timeZone = zone
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.string(from: date)
+    }
+
+    /// `date` moved to the day `key` names, keeping its time of day (a picked day changes only the day).
+    static func moving(_ date: Date, toDayKey key: String, in zone: TimeZone = .current) -> Date? {
+        let p = key.split(separator: "-").compactMap { Int($0) }
+        guard p.count == 3 else { return nil }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
+        var c = cal.dateComponents([.hour, .minute, .second], from: date)
+        c.year = p[0]; c.month = p[1]; c.day = p[2]
+        return cal.date(from: c)
     }
 
     private func firstOfMonth(_ d: Date) -> Date {
@@ -114,9 +139,9 @@ struct DateRangeCalendarView: View {
         let enabled = key >= lo && key <= hi
         let s = selection.start, e = selection.end
         let isStart = key == s
-        let isEnd = key == e
-        let inside = s != nil && e != nil && key > s! && key < e!
-        let complete = s != nil && e != nil && s != e
+        let isEnd = !single && key == e
+        let inside = !single && s != nil && e != nil && key > s! && key < e!
+        let complete = !single && s != nil && e != nil && s != e
         ZStack {
             // The bar: full width inside the range, half width behind each end.
             HStack(spacing: 0) {
@@ -134,11 +159,18 @@ struct DateRangeCalendarView: View {
         .frame(height: 40)
         .opacity(enabled ? 1 : 0.3)
         .contentShape(Rectangle())
-        .onTapGesture { if enabled { selection = selection.tapping(key) } }
+        .onTapGesture { pick(key, enabled: enabled) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(DateFormatter.localizedString(from: date, dateStyle: .long, timeStyle: .none)))
         .accessibilityAddTraits(isStart || isEnd || inside ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("date_range.day.\(key)")
+        // VoiceOver's double tap picks the day, as a finger does.
+        .accessibilityAction { pick(key, enabled: enabled) }
+    }
+
+    private func pick(_ key: String, enabled: Bool) {
+        guard enabled else { return }
+        selection = single ? DateRangeSelection(start: key, end: nil) : selection.tapping(key)
     }
 
     private var yearList: some View {

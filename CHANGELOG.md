@@ -15,6 +15,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A day can be picked on the Calendar style inside an onboarding step.** A Date Picker in its Calendar style (`picker_variant: graphical`, the default for a date) and an inline Date or Date-and-time field with the Calendar variant drew the system calendar, whose day cells took no tap inside a step: only its month arrows and year header worked. The calendar is now drawn by the SDK — the same month grid the range calendar uses, with the month and year header opening a list of years — and a tapped day is stored (a date and time keeps its time of day, set from a time field under the grid). VoiceOver can pick a day too.
+
 - **The Date Picker draws the style chosen in the console.** `field_config.picker_variant` (`graphical` · `wheel` · `compact`) decides what a `date_wheel_picker` draws; unset, a date is the calendar and a date-and-time or a year the wheel. A **Date** field (`input_date` / `input_datetime`) with `picker_presentation: inline` — the console's default — always drew the calendar, so its Picker Variant changed nothing: it now draws the variant chosen.
 
 - **Every colour of a measurement wheel picker can be set.** The `wheel` and `dial` styles drew their band, the value on the band and the rows around it from the ruler's keys, and the unit label, the field label and both unit-toggle labels in colours no key reached. Each part now has its own `field_config` key: `band_color`, `band_text_color`, `row_text_color`, `unit_color`, `label_color`, `toggle_active_text_color` and `toggle_text_color`, beside the existing `needle_color`, `tick_color`, `track_color` and `toggle_active_color`. Unset keys draw what was drawn before.

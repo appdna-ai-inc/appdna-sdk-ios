@@ -3,9 +3,11 @@
 // The pickers OPERATED through the accessibility tree of a real hosted view — the path VoiceOver takes, and the closest
 // a unit test gets to a finger:
 //   - the linear measurement slider: `accessibilityIncrement()` / `accessibilityDecrement()` on its element move the
-//     stored value by one step each (VoiceOver's swipe up / down).
-//   CONTROL: the slider's value is read before the action (it must start where it was seeded), so a pass is the action
-//   landing rather than the seed being read back.
+//     stored value by one step each (VoiceOver's swipe up / down);
+//   - the Calendar-style Date Picker and the Calendar Date / Date-and-time field: activating a day's element stores
+//     that day (a date and time keeps its time of day).
+//   CONTROLS: the slider's value is read before the action (it must start where it was seeded), and the day is one the
+//   picker did NOT open on, so a pass is the action landing rather than the seed being read back.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -90,5 +92,45 @@ final class PickerAccessibilityActionTests: XCTestCase {
         slider.accessibilityDecrement(); settle(0.3)
         XCTAssertEqual(store.values["height"] as? Int, 159, "swipe down: one step down each")
         XCTAssertEqual(slider.accessibilityValue, "159 cm", "VoiceOver announces the value and its unit")
+    }
+
+    /// `seed` is a saved answer: a Date field opens on the saved answer (it has no authored default), so a seed pins the
+    /// month the calendar opens on whatever day the test runs.
+    private func pickADay(_ json: String, field: String, seed: String? = nil) throws -> (before: Any?, after: Any?) {
+        let store = Store()
+        if let seed { store.values[field] = seed }
+        let view = try host(json, store)
+        let before = store.values[field]
+        var c = DateComponents(); c.year = 2026; c.month = 11; c.day = 20; c.hour = 12
+        let label = DateFormatter.localizedString(from: Calendar.current.date(from: c)!, dateStyle: .long, timeStyle: .none)
+        let day = try XCTUnwrap(element("date_range.day.2026-11-20", in: view)
+            ?? elements(view).first { $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button) },
+            "the day is an accessibility element (\(label)); labels: \(elements(view).compactMap(\.accessibilityLabel).prefix(60))")
+        XCTAssertTrue(day.accessibilityActivate(), "the day takes an activation")
+        settle(0.4)
+        return (before, store.values[field])
+    }
+
+    func testACalendarStyleDatePickerStoresTheDayTapped() throws {
+        let r = try pickADay(##"[{"id":"d","type":"date_wheel_picker","field_id":"cal","picker_mode":"date","default_date_value":"2026-11-12","min_date":"2026-01-01","max_date":"2027-12-31","field_config":{"picker_variant":"graphical"}}]"##, field: "cal")
+        XCTAssertNotEqual(r.before as? String, "2026-11-20", "control: the picker did not open on the day tapped")
+        XCTAssertEqual(r.after as? String, "2026-11-20")
+    }
+
+    func testACalendarDateFieldStoresTheDayTapped() throws {
+        let r = try pickADay(##"[{"id":"f","type":"input_date","field_id":"born","picker_presentation":"inline","min_date":"2026-01-01","max_date":"2027-12-31","field_config":{"picker_variant":"graphical"}}]"##, field: "born", seed: "2026-11-12")
+        XCTAssertEqual(r.before as? String, "2026-11-12", "control: the field opened on its saved day, not the day tapped")
+        XCTAssertEqual(r.after as? String, "2026-11-20")
+    }
+
+    /// A date-and-time field in the Calendar variant: the day tapped is stored and the time of day is kept.
+    func testACalendarDateTimeFieldStoresTheDayTappedAndKeepsTheTime() throws {
+        let seed = AnswerTime.dateTimeString(
+            try XCTUnwrap(AnswerTime.date(from: "2026-11-12T09:30:00Z", in: AnswerTime.zone)), in: AnswerTime.zone)
+        let r = try pickADay(##"[{"id":"t","type":"input_datetime","field_id":"when","picker_presentation":"inline","min_date":"2026-01-01","max_date":"2027-12-31","field_config":{"picker_variant":"graphical"}}]"##, field: "when", seed: seed)
+        XCTAssertEqual(r.before as? String, seed, "control: the field opened on its saved answer")
+        let after = try XCTUnwrap(r.after as? String, "a day tap writes the answer")
+        XCTAssertTrue(after.hasPrefix("2026-11-20T"), "the day tapped: \(after)")
+        XCTAssertEqual(after.dropFirst(10), seed.dropFirst(10), "the time of day is kept: \(after) vs \(seed)")
     }
 }
