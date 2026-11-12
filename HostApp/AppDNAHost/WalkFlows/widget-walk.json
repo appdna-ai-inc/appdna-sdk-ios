@@ -1,0 +1,192 @@
+{
+ "flows": {
+  "widget_walk_flow": {
+   "id": "widget_walk_flow",
+   "name": "Widget walk",
+   "version": 1,
+   "status": "active",
+   "settings": {
+    "allow_skip": false,
+    "show_progress": false
+   },
+   "steps": [
+    {
+     "id": "widget",
+     "name": "Widget",
+     "type": "custom",
+     "next_step_rules": [
+      {
+       "condition": {
+        "type": "answer_equals",
+        "answer_key": "widget_status",
+        "value": "added"
+       },
+       "target_step_id": "st_added"
+      },
+      {
+       "condition": {
+        "type": "answer_equals",
+        "answer_key": "widget_status",
+        "value": "not_added"
+       },
+       "target_step_id": "st_not_added"
+      },
+      {
+       "condition": {
+        "type": "answer_equals",
+        "answer_key": "widget_status",
+        "value": "unavailable"
+       },
+       "target_step_id": "st_unavailable"
+      }
+     ],
+     "config": {
+      "content_blocks": [
+       {
+        "id": "widget_head",
+        "type": "heading",
+        "text": "Keep your streak in view"
+       },
+       {
+        "id": "widget_body",
+        "type": "text",
+        "text": "A synthetic step with an Add widget button."
+       },
+       {
+        "id": "group",
+        "type": "multi_buttons",
+        "children": [
+         {
+          "type": "button",
+          "text": "Widget from group",
+          "action": "add_widget",
+          "howto_blocks_ios": [
+           {
+            "id": "howto_head",
+            "type": "heading",
+            "text": "Add the widget"
+           },
+           {
+            "id": "howto_steps",
+            "type": "rich_text",
+            "markdown_content": "1. Touch and hold an empty area of your Home Screen until the apps jiggle. 2. Tap **+** in the corner (or **Edit**, then **Add Widget**). 3. Search for our app, choose a size, and tap **Add Widget**."
+           },
+           {
+            "id": "howto_done",
+            "type": "button",
+            "text": "Done",
+            "action": "next"
+           },
+           {
+            "id": "howto_close",
+            "type": "button",
+            "text": "Close",
+            "action": "dismiss",
+            "variant": "text"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "cta_widget",
+        "type": "button",
+        "text": "Add the widget",
+        "action": "add_widget",
+        "zone": "bottom",
+        "howto_blocks_ios": [
+         {
+          "id": "howto_head",
+          "type": "heading",
+          "text": "Add the widget"
+         },
+         {
+          "id": "howto_steps",
+          "type": "rich_text",
+          "markdown_content": "1. Touch and hold an empty area of your Home Screen until the apps jiggle. 2. Tap **+** in the corner (or **Edit**, then **Add Widget**). 3. Search for our app, choose a size, and tap **Add Widget**."
+         },
+         {
+          "id": "howto_done",
+          "type": "button",
+          "text": "Done",
+          "action": "next"
+         },
+         {
+          "id": "howto_close",
+          "type": "button",
+          "text": "Close",
+          "action": "dismiss",
+          "variant": "text"
+         }
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "id": "st_added",
+     "name": "added",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "st_added_head",
+        "type": "heading",
+        "text": "Widget status: added"
+       },
+       {
+        "id": "st_added_next",
+        "type": "button",
+        "text": "Finish",
+        "action": "next",
+        "zone": "bottom"
+       }
+      ]
+     }
+    },
+    {
+     "id": "st_not_added",
+     "name": "not_added",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "st_not_added_head",
+        "type": "heading",
+        "text": "Widget status: not_added"
+       },
+       {
+        "id": "st_not_added_next",
+        "type": "button",
+        "text": "Finish",
+        "action": "next",
+        "zone": "bottom"
+       }
+      ]
+     }
+    },
+    {
+     "id": "st_unavailable",
+     "name": "unavailable",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "st_unavailable_head",
+        "type": "heading",
+        "text": "Widget status: unavailable"
+       },
+       {
+        "id": "st_unavailable_next",
+        "type": "button",
+        "text": "Finish",
+        "action": "next",
+        "zone": "bottom"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

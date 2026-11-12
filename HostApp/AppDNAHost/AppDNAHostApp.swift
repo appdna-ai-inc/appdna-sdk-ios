@@ -77,6 +77,7 @@ enum Launch {
         */
         #if DEBUG
         armRootSwapIfAsked()
+        seedOnboardingCacheIfAsked()
         #endif
 
         if let lvl = arg("appdnaLogLevel") {
@@ -104,6 +105,21 @@ enum Launch {
      Debug-only and opt-in: `-appdnaSwapRootOnForeground`.
     */
     #if DEBUG
+    /*
+     A SYNTHETIC FLOW WITHOUT A SERVER: `-appdnaSeedOnboarding <name>` writes the bundled
+     `WalkFlows/<name>.json` (the published shape: `{"flows": {<id>: <flow>}}`) into the SDK's config
+     cache before `configure`. With no reachable bootstrap the SDK runs on its cached config, so the
+     flow is decoded, rendered and operated by production code; only the delivery from the console is
+     skipped. Debug-only and opt-in.
+    */
+    static func seedOnboardingCacheIfAsked() {
+        guard let name = arg("appdnaSeedOnboarding"),
+              let url = Bundle.main.url(forResource: name, withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return }
+        UserDefaults(suiteName: "ai.appdna.sdk.config")?.set(data, forKey: "onboarding")
+        NSLog("AppDNA-E2E seeded the onboarding cache from \(name).json")
+    }
+
     private static var swapObserver: NSObjectProtocol?
     private static var backgroundObserver: NSObjectProtocol?
 
