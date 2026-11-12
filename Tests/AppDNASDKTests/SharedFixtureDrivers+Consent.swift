@@ -244,6 +244,10 @@ struct ConsentFixtureCase {
         }
         defer {
             AppDNA.resetForTesting()
+            // Leave nothing behind: a declined decision left in the store makes every later test's events vanish.
+            ConsentFixtureKeychain.shared.wipe()
+            wipeDefaults()
+            ConsentStore.decision = nil
             AppDNA.installConsentClockForTesting(nil)
             AppDNA.keychainStoreFactoryForTesting = nil
             APIBaseURL.infoPlistReaderForTesting = nil
@@ -288,7 +292,9 @@ struct ConsentFixtureCase {
                 return fail("NO DRIVER for script op '\(kind)' on ios")
             }
             let settled = await settle(scheduler)
-            if !settled { return fail("settle timed out after op \(i) (\(kind))") }
+            if !settled {
+                return fail("settle timed out after op \(i) (\(kind)); recorded so far: \(server.recorded.map { $0.body })")
+            }
         }
         assertRequests(expected, server.recorded, epoch: epoch)
     }
@@ -323,11 +329,13 @@ struct ConsentFixtureCase {
     }
 
     private func drainQueues() async {
-        // The main queue: spin the run loop until a sentinel posted behind everything has run.
-        var done = false
-        DispatchQueue.main.async { done = true }
-        let end = Date().addingTimeInterval(5)
-        while !done && Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.005)) }
+        // The main queue: post a sentinel behind everything already on it and SUSPEND until it has run. This case runs
+        // on the main actor, whose job is itself the main queue's current item, so spinning the run loop here cannot
+        // service the main queue: the spin used to sit out its whole 5 s cap on every drain, and two drains used up the
+        // 10 s settle before a configure-time send's completion was popped. Suspending yields the main queue.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { done.resume() }
+        }
         await Task.detached { AppDNA.drainSDKQueueForTesting() }.value
     }
 
