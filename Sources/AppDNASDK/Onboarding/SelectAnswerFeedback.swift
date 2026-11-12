@@ -40,12 +40,12 @@ enum SelectAnswerFeedback {
         let raw = block.field_config?["correct_values"]?.value
         let list: [Any] = (raw as? [Any]) ?? (raw.map { [$0] } ?? [])
         var seen = Set<String>()
-        return list.compactMap(valueString).filter { seen.insert($0).inserted }
+        return list.compactMap { valueString($0) }.filter { seen.insert($0).inserted }
     }
 
     /// What a stored answer picked, in values.
     static func selection(from stored: Any?) -> [String] {
-        if let list = stored as? [Any] { return list.compactMap(valueString) }
+        if let list = stored as? [Any] { return list.compactMap { valueString($0) } }
         return valueString(stored).map { [$0] } ?? []
     }
 

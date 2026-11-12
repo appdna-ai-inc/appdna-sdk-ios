@@ -1152,7 +1152,7 @@ extension SharedFixtureTests {
                 XCTFail("[\(f.id)] a case did not decode")
                 return NSNull()
             }
-            let blocks = rawBlocks.compactMap(decode)
+            let blocks = rawBlocks.compactMap { decode($0) }
             XCTAssertEqual(blocks.count, rawBlocks.count, "[\(f.id)] every block decodes")
             return CtaDependencies.met(button: button, blocks: blocks, inputValues: v["input_values"] as? [String: Any] ?? [:])
         }
