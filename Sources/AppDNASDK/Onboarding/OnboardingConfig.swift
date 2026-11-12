@@ -321,6 +321,10 @@ public struct OnboardingStep: Codable, Identifiable {
      */
     public let tap_anywhere_advances: Bool?
 
+    /// #1432 — the countdown this step draws while it waits to advance by itself (`AutoAdvanceIndicator`).
+    /// Off unless `show: true`. Read at the step root, then under `layout`, like the timer it belongs to.
+    public let auto_advance_indicator: [String: AnyCodable]?
+
     /// The step's content blocks as RAW JSON, ids stamped (`<stepId>/<index path>`).
     ///
     /// The typed model drops what the raw host-data pass needs (`data_templates`, a token in a typed
@@ -333,6 +337,7 @@ public struct OnboardingStep: Codable, Identifiable {
         case id, name, type, config, layout, hook, hide_progress, hide_back, content_blocks, next_step_rules
         case request_store_review
         case auto_advance_seconds, wait_for_host, tap_anywhere_advances
+        case auto_advance_indicator
         case raw_content_blocks
     }
 
@@ -345,7 +350,7 @@ public struct OnboardingStep: Codable, Identifiable {
     /// step's `layout` object (verified against `OnboardingFlowConfigSyncService.mapStepsForFirestore`,
     /// which never hoists `layout.*` to the step root). Read them from `layout` with a step-root
     /// fallback for any older/hand-written config.
-    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review, auto_advance_seconds, wait_for_host, tap_anywhere_advances }
+    private enum LayoutFlagKeys: String, CodingKey { case hide_progress, hide_back, request_store_review, auto_advance_seconds, wait_for_host, tap_anywhere_advances, auto_advance_indicator }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -390,6 +395,9 @@ public struct OnboardingStep: Codable, Identifiable {
         // half the flows (`auto_advance_seconds` learned this the same way).
         self.tap_anywhere_advances = (try? c.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances))
             ?? (layoutFlags.flatMap { try? $0.decodeIfPresent(Bool.self, forKey: .tap_anywhere_advances) })
+        // #1432 — the countdown, on the same ladder as the timer it draws.
+        self.auto_advance_indicator = (try? c.decodeIfPresent([String: AnyCodable].self, forKey: .auto_advance_indicator))
+            ?? (layoutFlags.flatMap { try? $0.decodeIfPresent([String: AnyCodable].self, forKey: .auto_advance_indicator) })
         // Read next_step_rules from step level, but also check layout.next_step_rules
         // which may have richer conditions from the Logic panel
         let stepRules = try c.decodeIfPresent([NextStepRule].self, forKey: .next_step_rules)
@@ -468,13 +476,16 @@ public struct OnboardingStep: Codable, Identifiable {
          had no way forward at all on the next cold one.
         */
         try c.encodeIfPresent(tap_anywhere_advances, forKey: .tap_anywhere_advances)
+        // #1432 — encoded too, or a cold start from the cache loses the countdown.
+        try c.encodeIfPresent(auto_advance_indicator, forKey: .auto_advance_indicator)
         try c.encodeIfPresent(next_step_rules, forKey: .next_step_rules)
         // Verbatim, so a cold start from the cache keeps `data_templates` / `repeat`.
         try c.encodeIfPresent(rawContentBlocks, forKey: .raw_content_blocks)
     }
 
-    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil, auto_advance_seconds: Double? = nil, wait_for_host: Bool? = nil, tap_anywhere_advances: Bool? = nil) {
+    public init(id: String = "", type: StepType = .custom, config: StepConfig = StepConfig(), hook: StepHookConfig? = nil, hide_progress: Bool? = nil, hide_back: Bool? = nil, next_step_rules: [NextStepRule]? = nil, name: String? = nil, request_store_review: Bool? = nil, auto_advance_seconds: Double? = nil, wait_for_host: Bool? = nil, tap_anywhere_advances: Bool? = nil, auto_advance_indicator: [String: AnyCodable]? = nil) {
         self.rawContentBlocks = nil
+        self.auto_advance_indicator = auto_advance_indicator
         self.id = id
         self.name = name
         self.type = type

@@ -47,6 +47,7 @@ extension SharedFixtureTests {
         case "resolve_select_advance_confirm": runSelectAdvanceConfirm(f, h)
         case "resolve_cta_dependencies": runCtaDependencies(f, h)
         case "resolve_block_bleed": runBlockBleed(f, h)
+        case "resolve_auto_advance_indicator": runAutoAdvanceIndicator(f, h)
         case "resolve_animated_image": runAnimatedImage(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
@@ -1224,6 +1225,36 @@ extension SharedFixtureTests {
                 after: v["after"] as? [String] ?? [],
                 opensSheet: v["opens_sheet"] as? Bool ?? false
             )
+        }
+    }
+
+    // MARK: resolve_auto_advance_indicator
+
+    /// #1432 — the countdown a self-advancing step draws, through the REAL `OnboardingStep` decode (the
+    /// editor writes it inside `layout`) and the real policy and resolver.
+    private func runAutoAdvanceIndicator(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_auto_advance_indicator needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any], var step = v["step"] as? [String: Any] else {
+                XCTFail("[\(f.id)] a case had no step")
+                return NSNull()
+            }
+            step["id"] = step["id"] ?? "fixture_step"
+            step["type"] = step["type"] ?? "splash"
+            guard let data = try? JSONSerialization.data(withJSONObject: step),
+                  let decoded = try? JSONDecoder().decode(OnboardingStep.self, from: data) else {
+                XCTFail("[\(f.id)] a step did not decode")
+                return NSNull()
+            }
+            guard let r = AutoAdvanceIndicator.resolve(step: decoded, elapsed: (v["elapsed_seconds"] as? NSNumber)?.doubleValue ?? 0) else { return NSNull() }
+            return [
+                "style": r.style, "label": r.label.map { $0 as Any } ?? NSNull(), "fraction": r.fraction, "position": r.position,
+                "text_color": r.textColor, "font_size": r.fontSize, "bar_color": r.barColor, "track_color": r.trackColor,
+                "bar_height": r.barHeight,
+            ] as [String: Any]
         }
     }
 

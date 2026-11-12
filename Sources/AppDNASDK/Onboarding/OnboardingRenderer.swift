@@ -45,6 +45,8 @@ struct OnboardingFlowHost: View {
     @StateObject private var hostDataCoordinator = HostDataPendingCoordinator()
     /// The pending step-level auto-advance, cancelled when the step changes or the flow goes.
     @State private var autoAdvance = StepAutoAdvanceTimer()
+    /// #1432 — when the current step's auto-advance timer started, the clock its countdown draws from.
+    @State private var autoAdvanceStartedAt = Date()
     @State private var presentationSerial = 0
     /// The per-step interaction data layer, its stamps, the flow-level
     /// `callSeq`, the current presentation and one `InteractionCoordinator` per presentation. The SAME
@@ -235,6 +237,11 @@ struct OnboardingFlowHost: View {
                             .contentShape(Rectangle())
                             .onTapGesture { tapAnywhereAdvance() }
                     )
+
+                    // #1432 — the countdown the author turned on, drawn while the step waits to
+                    // advance by itself. Above the content, below the banners; never takes a tap.
+                    AutoAdvanceIndicatorOverlay(step: step, startedAt: autoAdvanceStartedAt)
+                        .id(AnyHashable(currentIndex))
 
                     // Error banner
                     if showError, let msg = errorMessage {
@@ -725,6 +732,7 @@ struct OnboardingFlowHost: View {
          timer would skip the step the user is actually on.
          */
         autoAdvance.cancel()
+        autoAdvanceStartedAt = Date()
         if let delay = StepAutoAdvance.delaySeconds(for: step) {
             let serialAtSchedule = presentationSerial
             autoAdvance.schedule(after: delay) {
