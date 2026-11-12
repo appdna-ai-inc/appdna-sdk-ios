@@ -16,7 +16,10 @@
 //     -appdnaSurvey <id>
 //     -appdnaScreen <id>
 //     -appdnaAutoPresent paywall     present one straight away, without a tap
-//     -appdnaAutoPresentDelay 8      seconds to wait for config before presenting
+//     -appdnaAutoPresentDelay 8      seconds before presenting, so the fetched config has landed
+//     -appdnaIdentify <user id>      identify after configure (a consent walk)
+//     -appdnaConsent true|false      setConsent after configure (a consent walk)
+//     -appdnaIdentifyAt tick|ready   when: right after configure, on the same tick, or in onReady (default)
 //
 // Auto-present exists because the simulator exposes no tap verb to this environment — no `simctl`
 // verb, no `idb`, and `osascript` is blocked. A UI TEST can tap (it runs inside the simulator), and
@@ -24,6 +27,7 @@
 // a test runner in the way.
 import SwiftUI
 import UIKit
+import WidgetKit
 import AppDNASDK
 
 @main
@@ -77,6 +81,8 @@ enum Launch {
         */
         #if DEBUG
         armRootSwapIfAsked()
+        seedOnboardingCacheIfAsked()
+        probeWidgetsIfAsked()
         #endif
 
         if let lvl = arg("appdnaLogLevel") {
@@ -90,6 +96,34 @@ enum Launch {
             NSLog("AppDNA-E2E log level \(lvl)")
         }
         NSLog("AppDNA-E2E host configured env=sandbox key=\(key.prefix(8))…")
+        consentWalkIfAsked()
+    }
+
+    /*
+     A CONSENT WALK: identify and set the analytics decision the way a host app calls them, after
+     `configure`, from launch arguments. The SDK sends its consent signal on its own; the walk reads
+     the server's row. Nothing happens without the arguments.
+    */
+    static func consentWalkIfAsked() {
+        let user = arg("appdnaIdentify")
+        let consent = arg("appdnaConsent")
+        guard user != nil || consent != nil else { return }
+        let apply = {
+            if let user { AppDNA.identify(userId: user) }
+            if let consent { AppDNA.setConsent(analytics: consent == "true") }
+        }
+        if arg("appdnaIdentifyAt") == "tick" {
+            // On the configure tick, as a host that restores its signed-in user at launch does: the SDK is still
+            // configuring, so the calls are held and applied once it has.
+            apply()
+            NSLog("AppDNA-E2E consent-walk at=tick user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
+            return
+        }
+        // Once the SDK is ready, as a host that identifies after its own sign-in does.
+        AppDNA.onReady {
+            apply()
+            NSLog("AppDNA-E2E consent-walk at=ready user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
+        }
     }
 
     /*
@@ -104,6 +138,49 @@ enum Launch {
      Debug-only and opt-in: `-appdnaSwapRootOnForeground`.
     */
     #if DEBUG
+    /*
+     A SYNTHETIC FLOW WITHOUT A SERVER: `-appdnaSeedOnboarding <name>` writes the bundled
+     `WalkFlows/<name>.json` (the published shape: `{"flows": {<id>: <flow>}}`) into the SDK's config
+     cache before `configure`. With no reachable bootstrap the SDK runs on its cached config, so the
+     flow is decoded, rendered and operated by production code; only the delivery from the console is
+     skipped. Debug-only and opt-in.
+    */
+    static func seedOnboardingCacheIfAsked() {
+        guard let name = arg("appdnaSeedOnboarding"),
+              let url = Bundle.main.url(forResource: name, withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return }
+        UserDefaults(suiteName: "ai.appdna.sdk.config")?.set(data, forKey: "onboarding")
+        NSLog("AppDNA-E2E seeded the onboarding cache from \(name).json")
+    }
+
+    /*
+     WHAT WIDGETKIT REPORTS, IN THE SYSTEM LOG: `-appdnaProbeWidgets` logs the host's placed widgets
+     (`WidgetCenter.getCurrentConfigurations`) at launch and on every return to the foreground, as
+     `AppDNA-E2E widgets n=<count> [...]`, so a walk can read what the SDK's detection read — a UI test
+     cannot see the SDK's stdout. Debug-only and opt-in.
+    */
+    private static var widgetProbeObserver: NSObjectProtocol?
+    static func probeWidgetsIfAsked() {
+        guard arg("appdnaProbeWidgets") != nil, widgetProbeObserver == nil else { return }
+        func probe(_ when: String) {
+            WidgetCenter.shared.getCurrentConfigurations { result in
+                switch result {
+                case .success(let infos):
+                    NSLog("AppDNA-E2E widgets \(when) n=\(infos.count) \(infos.map { "\($0.kind)/\($0.family)/h\($0.hashValue)" })")
+                case .failure(let error):
+                    NSLog("AppDNA-E2E widgets \(when) failed \(error)")
+                }
+            }
+        }
+        probe("launch")
+        widgetProbeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { _ in
+            probe("active")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { probe("active+2s") }
+        }
+    }
+
     private static var swapObserver: NSObjectProtocol?
     private static var backgroundObserver: NSObjectProtocol?
 

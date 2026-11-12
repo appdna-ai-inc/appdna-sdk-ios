@@ -107,7 +107,10 @@ let package = Package(
                 .copy("Resources/appdna_google_maps_logo_white.png"),
                 .copy("Resources/appdna_google_maps_logo_light_outline.png"),
                 .copy("Resources/appdna_google_maps_logo_dark_outline.png")
-            ]
+            ],
+            // The `add_widget` button reads the app's placed widgets through `WidgetCenter`. `import
+            // WidgetKit` autolinks it; named here too so the dependency is visible beside the others.
+            linkerSettings: [.linkedFramework("WidgetKit")]
         ),
         .target(
             name: "AppDNANotificationExtension",

@@ -1342,6 +1342,8 @@ struct DateWheelPickerBlockView: View {
     }()
     @State private var showPicker = false
     @State private var showDateToast = false
+    /// The range calendar's picked days (`selection_mode: "range"`).
+    @State private var rangeSelection = DateRangeSelection(start: nil, end: nil)
     /// What the block is drawn on and the phone's own appearance: the ink of an unstyled wheel.
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
@@ -1428,9 +1430,12 @@ struct DateWheelPickerBlockView: View {
         // pinned CTA button. Date-only can still default to "graphical" (calendar).
         let explicitVariant = (block.field_config?["picker_variant"]?.value as? String)
             ?? (block.field_config?["date_picker_variant"]?.value as? String)
-        let isDatetimeMode = components.contains(.date) && components.contains(.hourAndMinute)
-        // A single-year answer is only ever a wheel.
-        let variant = isYearMode ? "wheel" : (explicitVariant ?? (isDatetimeMode ? "wheel" : "graphical"))
+        // A single-year answer is only ever a wheel; a date-only picker can pick a range of days.
+        let variant = DatePickerStyle.standalone(
+            mode: block.picker_mode ?? (block.type == .input_time ? "time" : block.type == .input_datetime ? "datetime" : "date"),
+            variant: explicitVariant,
+            selection: block.field_config?["selection_mode"]?.value as? String
+        )
         // The console writes bg/border to the shared `block_style` struct on
         // `date_wheel_picker` (not `field_style` like text inputs). Also the
         // wheel/calendar bg are top-level props, not nested in field_config.
@@ -1652,7 +1657,18 @@ struct DateWheelPickerBlockView: View {
         return calendar
     }
 
+    /// A range calendar answers with its own keys (`DateRangeSelection.answer`), never a single date.
+    private var isRangeMode: Bool {
+        DatePickerStyle.standalone(mode: block.picker_mode ?? "date", variant: nil,
+                                   selection: block.field_config?["selection_mode"]?.value as? String) == "range"
+    }
+
+    private func persistRange() {
+        for (k, v) in rangeSelection.answer(fieldId: block.field_id ?? block.id) { inputValues[k] = v }
+    }
+
     private func persistDate() {
+        if isRangeMode { return }
         let fieldId = block.field_id ?? block.id
         inputValues[fieldId] = DateWheelAnswer.string(for: selectedDate, mode: answerMode, calendar: answerCalendar)
         if isYearMode { return }
@@ -1670,6 +1686,7 @@ struct DateWheelPickerBlockView: View {
 
     private func restoreDate() {
         let fieldId = block.field_id ?? block.id
+        if isRangeMode { rangeSelection = DateRangeSelection.restore(inputValues, fieldId: fieldId) }
         if let saved = inputValues[fieldId] as? String, let date = DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
             let range = dateRange
             selectedDate = min(max(date, range.lowerBound), range.upperBound)
@@ -1723,7 +1740,29 @@ struct DateWheelPickerBlockView: View {
         let useWheel = variant == "wheel"
         let useCompact = variant == "compact"
 
-        if components.contains(.date) && components.contains(.hourAndMinute) {
+        if variant == "range" {
+            let rangeHex = block.field_config?["range_color"]?.value as? String
+            DateRangeCalendarView(
+                selection: Binding(get: { rangeSelection }, set: { new in
+                    rangeSelection = new
+                    persistRange()
+                }),
+                bounds: dateRange,
+                accent: highlightCol,
+                rangeFill: rangeHex.map { Color(hex: $0) } ?? highlightCol.opacity(0.2),
+                text: wheelTextColorHex.map { Color(hex: $0) } ?? (inkScheme == .dark ? .white : .primary),
+                initialMonth: Self.parseDate(rangeSelection.start) ?? selectedDate
+            )
+            .padding(Swift.max(pickerPadding, 8))
+            .background(
+                ZStack {
+                    RoundedRectangle(cornerRadius: pickerCornerRadius).fill(Color(hex: calendarBg))
+                    RoundedRectangle(cornerRadius: pickerCornerRadius)
+                        .strokeBorder(Color(hex: pickerBorderColor ?? "#00000000"), lineWidth: pickerBorderWidth)
+                }
+            )
+            .clipShape(RoundedRectangle(cornerRadius: pickerCornerRadius))
+        } else if components.contains(.date) && components.contains(.hourAndMinute) {
             // DateTime: date above, time wheel below (user requested this order)
             VStack(spacing: spacing) {
                 datePart(
@@ -1855,13 +1894,22 @@ struct DateWheelPickerBlockView: View {
                         .frame(maxWidth: .infinity)
                 )
             } else {
-                // Default: graphical calendar
+                // Default: the month calendar. The SDK's own grid (the range calendar in single-day mode), not
+                // `DatePicker(.graphical)`: the system calendar's day cells took no tap inside an onboarding step.
+                let ink: Color = wheelTextColorHex.map { Color(hex: $0) } ?? (resolvedScheme == .dark ? .white : .black)
                 return AnyView(
-                    DatePicker("", selection: $selectedDate, in: dateRange, displayedComponents: components)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .tint(highlightCol)
-                        .environment(\.colorScheme, resolvedScheme)
+                    DateRangeCalendarView(
+                        selection: Binding(
+                            get: { DateRangeSelection(start: DateRangeCalendarView.dayKey(selectedDate), end: nil) },
+                            set: { new in
+                                if let k = new.start, let d = DateRangeCalendarView.moving(selectedDate, toDayKey: k) { selectedDate = d }
+                            }
+                        ),
+                        bounds: dateRange, accent: highlightCol, rangeFill: .clear, text: ink,
+                        initialMonth: selectedDate, single: true
+                    )
+                    .padding(8)
+                    .environment(\.colorScheme, resolvedScheme)
                 )
             }
         }()

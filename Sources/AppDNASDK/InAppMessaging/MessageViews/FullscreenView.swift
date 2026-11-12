@@ -80,6 +80,8 @@ struct FullscreenView: View {
                         .frame(maxWidth: 300, maxHeight: 300)
                 }
             }
+            // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
+            .authoredImageAccessibility(nil)
         }
     }
 

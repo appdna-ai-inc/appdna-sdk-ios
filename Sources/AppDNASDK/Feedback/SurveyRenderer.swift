@@ -202,6 +202,8 @@ struct SurveyContainerView: View {
                        let imageUrl = visibleQuestions[currentQuestionIndex].image_url {
                         MediaImageView(url: imageUrl, maxHeight: 140, cornerRadius: 8)
                             .padding(.horizontal)
+                            // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
+                            .authoredImageAccessibility(nil)
                     }
 
                     // Current question: apply style engine + theme font

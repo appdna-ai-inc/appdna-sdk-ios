@@ -37,7 +37,7 @@ internal enum ConsentStore {
     /// **opt-OUT by default**, and `sdk_initialized` — carrying device, OS, locale and session
     /// context — is emitted by `configure()` **before the user has made any consent decision at
     /// all**. If your app needs a lawful basis before the first byte leaves the device, you MUST
-    /// pass `requireConsent: true`; nothing else in this SDK will do it for you.
+    /// pass `requireConsent: true`; nothing else in this SDK will do it for you. (Then the SDK sends only its consent signal (the device's ID, the user's ID if known, and the decision).)
     ///
     /// This is a deliberate contract, not an oversight, and the reasoning is worth stating because
     /// the line reads like a bug:
@@ -57,7 +57,8 @@ internal enum ConsentStore {
     ///     and a host migration, neither of which is a wrapper's to invent.
     ///
     /// - Parameter requireConsent: when true, the absence of a decision means **denied** (opt-in),
-    ///   and NO event — `sdk_initialized` included — is emitted until `setConsent(_:)` is called.
+    ///   and NO event — `sdk_initialized` included — is emitted until `setConsent(_:)` is called;
+    ///   the SDK sends only its consent signal (the device's ID, the user's ID if known, and the decision).
     static func effectiveConsent(requireConsent: Bool) -> Bool {
         decision ?? !requireConsent
     }

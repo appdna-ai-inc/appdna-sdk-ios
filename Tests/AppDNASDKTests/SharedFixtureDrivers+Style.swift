@@ -43,6 +43,12 @@ extension SharedFixtureTests {
         case "resolve_location_search": runLocationSearch(f, h)
         case "resolve_step_auto_advance": runStepAutoAdvance(f, h)
         case "resolve_select_advance_on_pick": runSelectAdvanceOnPick(f, h)
+        case "resolve_select_answer_feedback": runSelectAnswerFeedback(f, h)
+        case "resolve_select_advance_confirm": runSelectAdvanceConfirm(f, h)
+        case "resolve_cta_dependencies": runCtaDependencies(f, h)
+        case "resolve_block_bleed": runBlockBleed(f, h)
+        case "resolve_auto_advance_indicator": runAutoAdvanceIndicator(f, h)
+        case "resolve_animated_image": runAnimatedImage(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -1128,6 +1134,75 @@ extension SharedFixtureTests {
         }
     }
 
+    // MARK: resolve_cta_dependencies
+
+    /// Whether a button's dependencies hold, through the REAL `ContentBlock` decode and the real policy.
+    private func runCtaDependencies(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_cta_dependencies needs action.cases")
+            return
+        }
+        func decode(_ raw: Any?) -> ContentBlock? {
+            guard let raw = raw as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: raw) else { return nil }
+            return try? JSONDecoder().decode(ContentBlock.self, from: data)
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let button = decode(v["button"]),
+                  let rawBlocks = v["blocks"] as? [Any] else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let blocks = rawBlocks.compactMap { decode($0) }
+            XCTAssertEqual(blocks.count, rawBlocks.count, "[\(f.id)] every block decodes")
+            return CtaDependencies.met(button: button, blocks: blocks, inputValues: v["input_values"] as? [String: Any] ?? [:])
+        }
+    }
+
+    // MARK: resolve_select_advance_confirm
+
+    /// The question asked before a Select's advance, through the REAL `ContentBlock` decode and the real policy.
+    private func runSelectAdvanceConfirm(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_select_advance_confirm needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let raw = v["block"] as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            guard let ask = SelectAdvanceOnPick.confirmation(block: block) else { return NSNull() }
+            return ["text": ask.text, "yes": ask.yes, "no": ask.no] as [String: Any]
+        }
+    }
+
+    // MARK: resolve_select_answer_feedback
+
+    /// The right/wrong message for a selection, through the REAL `ContentBlock` decode and the real policy.
+    private func runSelectAnswerFeedback(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_select_answer_feedback needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let raw = v["block"] as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: raw),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            guard let m = SelectAnswerFeedback.message(block: block, selection: v["selection"] as? [String] ?? []) else {
+                return NSNull()
+            }
+            return ["verdict": m.isCorrect ? "correct" : "wrong", "text": m.text, "color": m.colorHex] as [String: Any]
+        }
+    }
+
     // MARK: resolve_select_advance_on_pick
 
     /// Whether a pick advances the step, through the REAL `ContentBlock` decode and the real policy.
@@ -1150,6 +1225,93 @@ extension SharedFixtureTests {
                 after: v["after"] as? [String] ?? [],
                 opensSheet: v["opens_sheet"] as? Bool ?? false
             )
+        }
+    }
+
+    // MARK: resolve_auto_advance_indicator
+
+    /// The countdown a self-advancing step draws, through the REAL `OnboardingStep` decode (the
+    /// editor writes it inside `layout`) and the real policy and resolver.
+    private func runAutoAdvanceIndicator(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_auto_advance_indicator needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any], var step = v["step"] as? [String: Any] else {
+                XCTFail("[\(f.id)] a case had no step")
+                return NSNull()
+            }
+            step["id"] = step["id"] ?? "fixture_step"
+            step["type"] = step["type"] ?? "splash"
+            guard let data = try? JSONSerialization.data(withJSONObject: step),
+                  let decoded = try? JSONDecoder().decode(OnboardingStep.self, from: data) else {
+                XCTFail("[\(f.id)] a step did not decode")
+                return NSNull()
+            }
+            guard let r = AutoAdvanceIndicator.resolve(step: decoded, elapsed: (v["elapsed_seconds"] as? NSNumber)?.doubleValue ?? 0) else { return NSNull() }
+            return [
+                "style": r.style, "label": r.label.map { $0 as Any } ?? NSNull(), "fraction": r.fraction, "position": r.position,
+                "text_color": r.textColor, "font_size": r.fontSize, "bar_color": r.barColor, "track_color": r.trackColor,
+                "bar_height": r.barHeight,
+            ] as [String: Any]
+        }
+    }
+
+    // MARK: resolve_block_bleed
+
+    /// How far a block's background reaches on each side, through the REAL `ContentBlock` decode
+    /// (the field_config values arrive as whatever JSON type the author wrote) and the real resolver.
+    private func runBlockBleed(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_block_bleed needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any],
+                  let fc = v["field_config"] as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: ["id": "bleed", "type": "multi_buttons", "field_config": fc]),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let num = { (k: String) -> Double in (v[k] as? NSNumber)?.doubleValue ?? 0 }
+            let r = BlockFullBleed.resolve(
+                fieldConfig: block.field_config?.mapValues { $0.value },
+                stepInset: num("step_inset"), edgeTop: num("edge_top"), edgeBottom: num("edge_bottom")
+            )
+            return [r.top, r.right, r.bottom, r.left]
+        }
+    }
+
+    // MARK: resolve_animated_image
+
+    /// An animated_image strip's direction, speed, tile length and loop offset, through the REAL
+    /// `ContentBlock` decode and the real marquee functions.
+    private func runAnimatedImage(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_animated_image needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any],
+                  let fc = v["field_config"] as? [String: Any],
+                  let natural = v["natural_size"] as? [NSNumber], let blockSize = v["block_size"] as? [NSNumber],
+                  let data = try? JSONSerialization.data(withJSONObject: ["id": "anim", "type": "animated_image", "field_config": fc]),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let cfg = block.field_config?.mapValues { $0.value }
+            let d = AnimatedImageMarquee.direction(cfg?["scroll_direction"])
+            let s = AnimatedImageMarquee.speed(cfg?["scroll_speed"])
+            let tile = AnimatedImageMarquee.tileLength(
+                direction: d,
+                naturalSize: CGSize(width: natural[0].doubleValue, height: natural[1].doubleValue),
+                blockSize: CGSize(width: blockSize[0].doubleValue, height: blockSize[1].doubleValue)
+            )
+            let off = AnimatedImageMarquee.offset(direction: d, speed: s, tileLength: tile, elapsed: (v["elapsed_seconds"] as? NSNumber)?.doubleValue ?? 0)
+            return [d, s, (tile * 1000).rounded() / 1000, off] as [Any]
         }
     }
 

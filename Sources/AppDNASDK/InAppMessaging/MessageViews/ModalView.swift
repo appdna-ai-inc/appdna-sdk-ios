@@ -89,6 +89,8 @@ struct ModalView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
+                    // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
+                    .authoredImageAccessibility(nil)
                 }
 
                 // Title: apply text_color

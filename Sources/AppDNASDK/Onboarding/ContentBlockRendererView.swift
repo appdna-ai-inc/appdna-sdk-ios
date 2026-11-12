@@ -314,6 +314,9 @@ struct ContentBlockRendererView: View {
     @SwiftUI.Environment(\.appdnaSurfaceSize) var surfaceSize
     /// The width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
+    /// Per block id: how far the block's slot sits from the top and bottom of the window, for a
+    /// background authored to reach the screen edge vertically (`background_bleed_top/_bottom: "edge"`).
+    @State private var bleedEdges: [String: BleedEdgeDistances] = [:]
 
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
@@ -362,6 +365,10 @@ struct ContentBlockRendererView: View {
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
+    /// The onboarding step's `add_widget` channel (nil on Screens / SDUI and inside every sheet). When
+    /// set, an `add_widget` button hands it the decoded block; when nil, the button takes the ordinary
+    /// action path, which advances and keeps the step's answers.
+    @SwiftUI.Environment(\.appdnaWidgetAction) private var widgetAction: WidgetActionChannel?
     /// What is drawn behind these blocks, and the appearance: the ink of unstyled text (`UnstyledInk`).
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
@@ -485,15 +492,15 @@ struct ContentBlockRendererView: View {
             // What the block draws behind its own content, for a Google logo inside it.
             .modifier(GoogleAttributionBlockBackdrop(block: block))
             .applyBlockStyle(block.type == .warning_banner ? WarningBannerChrome.resolve(block: block).wrapper : block.block_style)
-            // AFTER the background, so the background is what widens. Negative horizontal
-            // padding is SwiftUI's "extend outward"; Compose has to measure for it instead
-            // (`Modifier.fullBleedHorizontal`), which is why the inset lives in one shared place.
-            .padding(
-                .horizontal,
-                BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
-                    ? -CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize))))
-                    : 0,
-            )
+            // AFTER the background, so the background is what widens. Negative padding is
+            // SwiftUI's "extend outward"; Compose has to measure for it instead
+            // (`Modifier.fullBleed`), which is why the resolver lives in one shared place
+            // (`BlockFullBleed.resolve`). The content gets the same amount back as padding
+            // (`multiButtonsBlock`), so only the background moves.
+            .padding(bleedInsets(block).negatedEdgeInsets)
+            // Measured on the SLOT — after the negative padding has given the box its laid-out
+            // size back — so the measurement cannot feed on its own result.
+            .background(bleedEdgeReader(block))
             .applyBlockPosition(
                 verticalAlign: block.vertical_align,
                 horizontalAlign: block.horizontal_align,
@@ -509,6 +516,39 @@ struct ContentBlockRendererView: View {
         } else {
             content
         }
+    }
+
+    /// How far this block's background reaches past it on each side (`BlockFullBleed.resolve`).
+    private func bleedInsets(_ block: ContentBlock) -> BlockFullBleed.Insets {
+        let fc = block.field_config?.mapValues { $0.value }
+        let edges = bleedEdges[block.id] ?? BleedEdgeDistances(top: 0, bottom: 0)
+        return BlockFullBleed.resolve(
+            fieldConfig: fc,
+            stepInset: BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize))),
+            edgeTop: edges.top,
+            edgeBottom: edges.bottom
+        )
+    }
+
+    /// Measures the block's slot against the window, only for a block whose background reaches a
+    /// vertical edge — nothing else pays for a GeometryReader.
+    @ViewBuilder
+    private func bleedEdgeReader(_ block: ContentBlock) -> some View {
+        if BlockFullBleed.needsMeasuredEdge(block.field_config?.mapValues { $0.value }) {
+            GeometryReader { geo in
+                let frame = geo.frame(in: .global)
+                Color.clear
+                    .onAppear { recordBleedEdges(block.id, frame) }
+                    .onChange(of: frame) { recordBleedEdges(block.id, $0) }
+            }
+        }
+    }
+
+    private func recordBleedEdges(_ id: String, _ frame: CGRect) {
+        let window = SurfaceMetrics.windowBounds.height
+        let next = BleedEdgeDistances(top: Double(max(0, frame.minY)), bottom: Double(max(0, window - frame.maxY)))
+        if let current = bleedEdges[id], abs(current.top - next.top) < 0.5, abs(current.bottom - next.bottom) < 0.5 { return }
+        bleedEdges[id] = next
     }
 
     /// Resolves dynamic bindings and template strings on a block.
@@ -530,6 +570,7 @@ struct ContentBlockRendererView: View {
         case .text: return AnyView(textBlock(block))
         case .image: return AnyView(imageBlock(block))
         case .media_gallery: return AnyView(mediaGalleryBlock(block))
+        case .animated_image: return AnyView(AnimatedImageBlockView(block: block))
         case .section_background: return AnyView(sectionBackgroundBlock(block))
         case .carousel: return AnyView(CarouselBlockView(block: block, onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,
                                                          // Onboarding passes the step's layered list; Screens pass nil, so a page
@@ -991,7 +1032,7 @@ struct ContentBlockRendererView: View {
         return Group {
             if block.image_frame == "phone" || block.image_frame == "phone_thin",
                let urlString = block.image_url, let url = URL(string: urlString) {
-                phoneMockup(url: url, height: imgHeight, alt: block.imageAccessibilityLabel, thin: block.image_frame == "phone_thin", fit: imageFit)
+                phoneMockup(url: url, height: imgHeight, thin: block.image_frame == "phone_thin", fit: imageFit)
             } else if block.image_frame == "glow" || block.image_frame == "color_frame",
                       let urlString = block.image_url, let url = URL(string: urlString) {
                 // Effects on the plain image rather than mockups. Settings come from
@@ -1019,7 +1060,6 @@ struct ContentBlockRendererView: View {
                     case .success(let image):
                         styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                             .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
-                            .accessibilityLabel(block.imageAccessibilityLabel)
                     default:
                         imagePlaceholder
                             .clipShape(RoundedRectangle(cornerRadius: isGlow ? cr : max(0, frameRadius - 6)))
@@ -1040,15 +1080,12 @@ struct ContentBlockRendererView: View {
                         // Honor overflow="visible" (no clip), matching Android + preview.
                         if block.overflow == "visible" {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         } else if isCircle {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                                 .clipShape(Circle())
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         } else {
                             styledImage(image, fit: imageFit, aspect: aspectRatioValue, maxHeight: imgHeight, alignment: positionAlignment)
                                 .clipShape(RoundedRectangle(cornerRadius: cr))
-                                .accessibilityLabel(block.imageAccessibilityLabel)
                         }
                     case .failure:
                         imagePlaceholder
@@ -1061,6 +1098,9 @@ struct ContentBlockRendererView: View {
                 EmptyView()
             }
         }
+        // Every branch and every phase: a described image is one element read as its alt, a decorative one
+        // (blank alt) is skipped — while it loads and if it fails, too.
+        .authoredImageAccessibility(block.imageAccessibilityLabel)
         .frame(maxWidth: .infinity)
     }
 
@@ -1068,7 +1108,7 @@ struct ContentBlockRendererView: View {
     /// `thin: true` is the same mockup with a narrower bezel. One function rather than two,
     /// because everything except the padding and the two radii is identical, and a copy is how the
     /// notch or the width cap ends up different between them.
-    private func phoneMockup(url: URL, height: CGFloat, alt: String?, thin: Bool = false, fit: String = "cover") -> some View {
+    private func phoneMockup(url: URL, height: CGFloat, thin: Bool = false, fit: String = "cover") -> some View {
         let pad: CGFloat = thin ? 4 : 10
         let outerR: CGFloat = thin ? 32 : 40
         let innerR: CGFloat = thin ? 28 : 30
@@ -1111,7 +1151,6 @@ struct ContentBlockRendererView: View {
         }
         .padding(pad)
         .background(RoundedRectangle(cornerRadius: outerR).fill(Color(hex: "#101012")))
-        .accessibilityLabel(alt ?? ContentBlock.defaultImageAccessibilityLabel)
     }
 
     private var imagePlaceholder: some View {
@@ -1130,10 +1169,20 @@ struct ContentBlockRendererView: View {
         // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
         // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
         // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
+        // `cta_dependencies`: the button is inactive (a tap does nothing) until every named condition on the step holds,
+        // drawn in `cta_disabled_bg_color`, or its own colour faded when none is set.
+        let hasDependencies = CtaDependencies.has(block)
+        let dependenciesMet = !hasDependencies
+            || CtaDependencies.met(button: block, blocks: gateBlocks ?? blocks, inputValues: inputValues)
         let fillHex: String = {
             let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            if hasDependencies {
+                let gateMet = (enabledHex == nil && disabledHex == nil)
+                    || RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
+                return dependenciesMet && gateMet ? (enabledHex ?? fallback) : (disabledHex ?? fallback)
+            }
             guard enabledHex != nil || disabledHex != nil else { return fallback }
             // The step's ONE layered list (every zone), markers honoured.
             let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
@@ -1162,7 +1211,12 @@ struct ContentBlockRendererView: View {
             textColor: block.text_color, styleColor: block.style?.color, variant: btnVariant, fillHex: fillHex)
         let labelColor = Color(hex: labelHex)
 
+        let fadesInactive = hasDependencies && !dependenciesMet
+            && (block.field_config?["cta_disabled_bg_color"]?.value as? String) == nil
+
         return Button {
+            // Inactive until its dependencies hold: the tap is not an action.
+            guard dependenciesMet else { return }
             if let onTapOverride {
                 onTapOverride()
             } else if isRefresh {
@@ -1178,6 +1232,11 @@ struct ContentBlockRendererView: View {
                 } else {
                     onInteract(block.id, "refresh", block.action_value)
                 }
+            } else if block.action == WidgetActionChannel.actionName, let widgetAction {
+                // The channel gets the block itself: its how-to blocks and id ride with it, so a child
+                // button at any depth — with or without an authored id — reaches the step's attempt.
+                OnboardingPressedButton.shared.record(block.id, action: WidgetActionChannel.actionName)
+                widgetAction.tap(block)
             } else {
                 OnboardingPressedButton.shared.record(block.id, action: block.action ?? "next")
                 onAction(block.action ?? "next", block.action_value)
@@ -1271,7 +1330,8 @@ struct ContentBlockRendererView: View {
         .applyPressedStyle(block.pressed_style)
         // The loading button is not tappable: no pressed-style feedback, no tap.
         .allowsHitTesting(!isLoading)
-        .accessibilityValue(isLoading ? Text("Loading") : Text(""))
+        .opacity(fadesInactive ? CtaDependencies.inactiveOpacity : 1)
+        .accessibilityValue(isLoading ? Text("Loading") : Text(dependenciesMet ? "" : "Inactive"))
     }
 
     // MARK: - Sound Button (Device QA — s20/s22)
@@ -2856,14 +2916,11 @@ struct ContentBlockRendererView: View {
          * `renderBlock` pulls the whole styled box outward by the same amount. Changing the width
          * cannot do this — `element_width: 100%` is 100% of a column that is already inset.
          */
-        let bleeds = BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
         MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
             renderBlock(child).applyBlockContainerStyle(child)
         }
-        .padding(
-            .horizontal,
-            bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize)))) : 0,
-        )
+        // Every side the background reaches out by (`renderBlock`), given back to the rows.
+        .padding(bleedInsets(block).edgeInsets)
     }
 
     @ViewBuilder
@@ -4511,4 +4568,20 @@ struct UnstyledInkReader<Content: View>: View {
     @SwiftUI.Environment(\.colorScheme) private var scheme
     @ViewBuilder let content: (Color) -> Content
     var body: some View { content(UnstyledInk.text(behind: behind, darkAppearance: scheme == .dark)) }
+}
+
+
+/// How far a block's slot sits from the top and bottom of the window (see `BlockFullBleed.resolve`).
+struct BleedEdgeDistances: Equatable {
+    var top: Double
+    var bottom: Double
+}
+
+extension BlockFullBleed.Insets {
+    var edgeInsets: EdgeInsets {
+        EdgeInsets(top: CGFloat(top), leading: CGFloat(left), bottom: CGFloat(bottom), trailing: CGFloat(right))
+    }
+    var negatedEdgeInsets: EdgeInsets {
+        EdgeInsets(top: -CGFloat(top), leading: -CGFloat(left), bottom: -CGFloat(bottom), trailing: -CGFloat(right))
+    }
 }

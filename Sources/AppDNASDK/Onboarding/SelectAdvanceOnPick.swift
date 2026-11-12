@@ -25,4 +25,29 @@ enum SelectAdvanceOnPick {
         guard let limit = cfgDouble(block.field_config?["max_selections"]), limit >= 1 else { return false }
         return after.count > before.count && Double(after.count) >= limit
     }
+
+    /// The question asked before the advance, when the author asked for one.
+    struct Confirmation: Equatable {
+        let text: String
+        let yes: String
+        let no: String
+    }
+
+    /// `field_config.advance_confirm: true` on a Select that advances: the pick that would advance asks first, with
+    /// `advance_confirm_text` (default "Are you sure?"), a confirm button `advance_confirm_yes` (default "Yes") that
+    /// advances and a cancel button `advance_confirm_no` (default "No") that stays with the pick kept. Without
+    /// `auto_advance` there is nothing to confirm. Pinned by the shared fixture `step_advance/select_advance_confirm`.
+    static func confirmation(block: ContentBlock) -> Confirmation? {
+        guard block.auto_advance == true, (block.field_config?["advance_confirm"]?.value as? Bool) == true else { return nil }
+        func text(_ key: String, _ fallback: String) -> String {
+            guard let s = block.field_config?[key]?.value as? String,
+                  !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return fallback }
+            return s
+        }
+        return Confirmation(
+            text: text("advance_confirm_text", "Are you sure?"),
+            yes: text("advance_confirm_yes", "Yes"),
+            no: text("advance_confirm_no", "No")
+        )
+    }
 }

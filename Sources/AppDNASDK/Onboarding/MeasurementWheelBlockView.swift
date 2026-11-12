@@ -160,7 +160,40 @@ private func measurementNum(_ v: Any?) -> Double? {
     return nil
 }
 
-private let measurementValidStyles: Set<String> = ["ruler", "gauge", "dial", "wheel"]
+private let measurementValidStyles: Set<String> = ["ruler", "gauge", "dial", "wheel", "linear"]
+
+// MARK: Linear style — a vertical slider, bottom = min, top = max (pinned by `resolve_measurement_linear`)
+
+/// The snapped value at `fraction` of the slider's height (0 = bottom = `min`, 1 = top = `max`), clamped last.
+func measurementLinearValue(_ fraction: Double, _ unit: MeasurementUnit) -> Double {
+    let f = fraction.isFinite ? Swift.min(1, Swift.max(0, fraction)) : 0
+    return measurementSnap(unit.min + f * (unit.max - unit.min), unit)
+}
+
+/// Where `value` sits on the slider, 0 (bottom, `min`) to 1 (top, `max`); 0 for a range with no width.
+func measurementLinearFraction(_ value: Double, _ unit: MeasurementUnit) -> Double {
+    let range = unit.max - unit.min
+    guard range > 0 else { return 0 }
+    return Swift.min(1, Swift.max(0, (value - unit.min) / range))
+}
+
+/// The `linear` style's sizes from `field_config`: `linear_height` (240, 120…480), `track_width` (8, 2…40),
+/// `thumb_size` (28, 12…64). A number written as a string is read; zero, negative or not a number is unset.
+func measurementLinearSizes(_ cfg: [String: Any]) -> (height: Double, trackWidth: Double, thumbSize: Double) {
+    func n(_ k: String, _ d: Double, _ lo: Double, _ hi: Double) -> Double {
+        let raw: Double? = {
+            switch cfg[k] {
+            case let x as Double: return x
+            case let x as Int: return Double(x)
+            case let x as String: return Double(x.trimmingCharacters(in: .whitespaces))
+            default: return nil
+            }
+        }()
+        guard let x = raw, x.isFinite, x > 0 else { return d }
+        return Swift.min(hi, Swift.max(lo, x))
+    }
+    return (n("linear_height", 240, 120, 480), n("track_width", 8, 2, 40), n("thumb_size", 28, 12, 64))
+}
 
 /// Parse + validate the measurement config. Returns `nil` (→ legacy drum fallback)
 /// when `measurement_type` is unset, `units` is empty/unresolvable, or ANY unit is
@@ -224,6 +257,90 @@ func parseMeasurementConfig(_ block: ContentBlock) -> MeasurementConfig? {
     )
 }
 
+// MARK: Palette — every colour the measurement picker draws, one key each
+
+/// The colour of every part of a measurement picker, resolved from `field_config`.
+///
+/// Before, the drum styles (`wheel`, `dial`) drew their band, the value on the band and the rows
+/// around it from keys named for the ruler (`track_color`, `needle_color`, `tick_color`), the unit
+/// label and the inactive toggle in the system's secondary grey, and the active toggle's label in
+/// white, so an author could not set those at all. Each part now has its own key, and an unset key
+/// falls back to exactly what was drawn before. Shared with Android and the console preview through
+/// the `resolve_measurement_palette` fixture.
+struct MeasurementPalette: Equatable {
+    let value: String
+    let unit: String
+    let label: String
+    let toggleActive: String
+    let toggleActiveText: String
+    let toggleText: String
+    let tick: String
+    let track: String
+    /// `nil` = the track colour at 60% opacity, the band drawn before the key existed.
+    let band: String?
+    let bandText: String
+    let rowText: String
+    /// The `linear` style's thumb.
+    let thumb: String
+
+    /// The fixture's view of the palette: role name → hex, `band` `nil` when derived.
+    var roles: [String: Any] {
+        [
+            "value": value, "unit": unit, "label": label,
+            "toggle_active": toggleActive, "toggle_active_text": toggleActiveText, "toggle_text": toggleText,
+            "tick": tick, "track": track, "band": band.map { $0 as Any } ?? NSNull(), "band_text": bandText, "row_text": rowText,
+            "thumb": thumb,
+        ]
+    }
+}
+
+/// `field_config` keys of the palette, in role order. The console writes each one.
+let measurementPaletteKeys = [
+    "needle_color", "unit_color", "label_color", "toggle_active_color", "toggle_active_text_color",
+    "toggle_text_color", "tick_color", "track_color", "band_color", "band_text_color", "row_text_color",
+    "thumb_color",
+]
+
+/// One rule for every platform: an authored, non-blank string wins; otherwise the pinned default.
+func measurementPalette(_ cfg: [String: Any], highlight: String?, dark: Bool) -> MeasurementPalette {
+    let c = MeasurementPaletteSource(cfg: cfg, highlight: highlight)
+    // Every default is written as the fallback of the key that overrides it, so each colour on screen is authorable.
+    let value = c.key("needle_color") ?? c.highlight ?? "#6366F1"
+    let tick = c.key("tick_color") ?? (dark ? "#475569" : "#CBD5E1")
+    return MeasurementPalette(
+        value: value,
+        unit: c.key("unit_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        label: c.key("label_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        toggleActive: c.key("toggle_active_color") ?? c.highlight ?? "#6366F1",
+        toggleActiveText: c.key("toggle_active_text_color") ?? "#FFFFFF",
+        toggleText: c.key("toggle_text_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        tick: tick,
+        track: c.key("track_color") ?? (dark ? "#334155" : "#E2E8F0"),
+        band: c.key("band_color"),
+        bandText: c.key("band_text_color") ?? value,
+        rowText: c.key("row_text_color") ?? tick,
+        thumb: c.key("thumb_color") ?? value
+    )
+}
+
+/// The authored strings the palette reads: a key's value, or the block's `highlight_color`, trimmed; blank = unset.
+private struct MeasurementPaletteSource {
+    let cfg: [String: Any]
+    let highlight: String?
+
+    init(cfg: [String: Any], highlight: String?) {
+        self.cfg = cfg
+        let h = highlight?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.highlight = (h?.isEmpty ?? true) ? nil : h
+    }
+
+    func key(_ k: String) -> String? {
+        guard let v = cfg[k] as? String else { return nil }
+        let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t.isEmpty ? nil : t
+    }
+}
+
 // MARK: - Measurement view
 
 struct MeasurementWheelBlockView: View {
@@ -264,35 +381,45 @@ struct MeasurementWheelBlockView: View {
         measurementSnap(measurementFromBase(holdBase, currentUnit), currentUnit)
     }
 
-    // Colors (pinned defaults; dark-mode-aware for tick/track).
-    private var tickColor: Color {
-        Color(hex: config.tickColorHex ?? (colorScheme == .dark ? "#475569" : "#CBD5E1"))
+    // Colors — one key per drawn part, through the shared palette rule.
+    private var palette: MeasurementPalette {
+        measurementPalette(
+            block.field_config?.mapValues { $0.value } ?? [:],
+            highlight: block.highlight_color,
+            dark: colorScheme == .dark
+        )
     }
-    private var trackColor: Color {
-        Color(hex: config.trackColorHex ?? (colorScheme == .dark ? "#334155" : "#E2E8F0"))
-    }
-    private var accentColor: Color {
-        Color(hex: config.needleColorHex ?? block.highlight_color ?? "#6366F1")
-    }
-    private var toggleColor: Color {
-        Color(hex: config.toggleActiveColorHex ?? block.highlight_color ?? "#6366F1")
-    }
+    private var tickColor: Color { Color(hex: palette.tick) }
+    private var trackColor: Color { Color(hex: palette.track) }
+    private var accentColor: Color { Color(hex: palette.value) }
+    private var toggleColor: Color { Color(hex: palette.toggleActive) }
+    private var bandFill: Color { palette.band.map { Color(hex: $0) } ?? trackColor.opacity(0.6) }
 
     var body: some View {
         VStack(spacing: 16) {
             if let label = block.field_label ?? block.rating_label ?? block.text, !label.isEmpty {
                 Text(label)
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(Color(hex: palette.label))
             }
 
-            valueDisplay
+            if config.style == "linear" {
+                // The slider on the left, the value and its unit on the right.
+                HStack(alignment: .center, spacing: 16) {
+                    linearVisual
+                    valueDisplay.frame(maxWidth: .infinity)
+                }
+            } else {
+                valueDisplay
+            }
 
             if config.units.count > 1 {
                 unitToggle
             }
 
-            styleVisual
+            if config.style != "linear" {
+                styleVisual
+            }
         }
         .frame(maxWidth: .infinity)
         .onAppear { initializeIfNeeded() }
@@ -309,7 +436,7 @@ struct MeasurementWheelBlockView: View {
                 .monospacedDigit()
             Text(currentUnit.label)
                 .font(.system(size: CGFloat(config.unitFontSize), weight: .medium))
-                .foregroundColor(.secondary)
+                .foregroundColor(Color(hex: palette.unit))
         }
         .environment(\.layoutDirection, .leftToRight)
     }
@@ -325,7 +452,7 @@ struct MeasurementWheelBlockView: View {
                 } label: {
                     Text(config.units[i].label)
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(selected ? .white : .secondary)
+                        .foregroundColor(Color(hex: selected ? palette.toggleActiveText : palette.toggleText))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                         .background(selected ? toggleColor : Color.clear)
@@ -440,7 +567,7 @@ struct MeasurementWheelBlockView: View {
         let half = 2   // 5 visible rows
         ZStack {
             RoundedRectangle(cornerRadius: 8)
-                .fill(trackColor.opacity(0.6))
+                .fill(bandFill)
                 .frame(height: rowH)
             VStack(spacing: 0) {
                 ForEach(-half...half, id: \.self) { off in
@@ -452,7 +579,7 @@ struct MeasurementWheelBlockView: View {
                     let scale = perspective ? max(0.62, 1 - Double(abs(off)) * 0.16) : 1.0
                     Text(inRange ? formattedDisplay(vals[idx]) : " ")
                         .font(.system(size: off == 0 ? 24 : 18, weight: off == 0 ? .bold : .regular))
-                        .foregroundColor(off == 0 ? accentColor : tickColor)
+                        .foregroundColor(Color(hex: off == 0 ? palette.bandText : palette.rowText))
                         .opacity(off == 0 ? 1 : max(0.18, 1 - Double(abs(off)) * 0.30))
                         .scaleEffect(scale)
                         .frame(height: rowH)
@@ -472,6 +599,65 @@ struct MeasurementWheelBlockView: View {
                 if ni != sel { pick(vals[ni]) }
             }
         )
+    }
+
+    // MARK: Linear (vertical slider; bottom = min, top = max)
+
+    @ViewBuilder
+    private var linearVisual: some View {
+        let sizes = measurementLinearSizes(block.field_config?.mapValues { $0.value } ?? [:])
+        let h = CGFloat(sizes.height)
+        let tw = CGFloat(sizes.trackWidth)
+        let ts = CGFloat(sizes.thumbSize)
+        let frac = CGFloat(measurementLinearFraction(currentDisplay, currentUnit))
+        let cx = Swift.max(tw, ts) / 2
+        let tickX = cx + tw / 2 + 6
+        ZStack(alignment: .topLeading) {
+            // Track, then the filled part from the bottom up to the value.
+            Capsule().fill(trackColor)
+                .frame(width: tw, height: h)
+                .offset(x: cx - tw / 2, y: ts / 2)
+            Capsule().fill(accentColor)
+                .frame(width: tw, height: Swift.max(tw, h * frac))
+                .offset(x: cx - tw / 2, y: ts / 2 + h - Swift.max(tw, h * frac))
+            // Eleven ticks, a long one at each end and in the middle.
+            ForEach(0...10, id: \.self) { i in
+                Rectangle().fill(tickColor)
+                    .frame(width: i % 5 == 0 ? 14 : 8, height: 2)
+                    .offset(x: tickX, y: ts / 2 + h * (1 - CGFloat(i) / 10) - 1)
+            }
+            Circle().fill(Color(hex: palette.thumb))
+                .frame(width: ts, height: ts)
+                .shadow(color: Color.black.opacity(0.18), radius: 3, y: 1)
+                .offset(x: cx - ts / 2, y: h * (1 - frac))
+        }
+        .frame(width: tickX + 16, height: h + ts, alignment: .topLeading)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { g in
+                    linearMove(measurementLinearValue(Double(1 - (g.location.y - ts / 2) / h), currentUnit))
+                }
+                .onEnded { _ in fireCommit(writeSnapshot()) }
+        )
+        .accessibilityElement()
+        .accessibilityLabel(Text(block.field_label ?? block.rating_label ?? block.text ?? currentUnit.label))
+        .accessibilityValue(Text("\(formattedDisplay(currentDisplay)) \(currentUnit.label)"))
+        .accessibilityAdjustableAction { dir in
+            switch dir {
+            case .increment: pick(Swift.min(currentUnit.max, currentDisplay + currentUnit.step))
+            case .decrement: pick(Swift.max(currentUnit.min, currentDisplay - currentUnit.step))
+            @unknown default: break
+            }
+        }
+        .accessibilityIdentifier("measurement.linear")
+    }
+
+    /// A drag on the slider: hold and persist the value as it moves; the commit fires once, when the finger lifts.
+    private func linearMove(_ displayValue: Double) {
+        hasUserInteracted = true
+        holdBase = measurementToBase(displayValue, currentUnit)
+        writeSnapshot()
     }
 
     // MARK: Gauge (minimal radial arc + needle; reads units[] range ONLY)

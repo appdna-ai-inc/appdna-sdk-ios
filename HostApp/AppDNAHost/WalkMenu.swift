@@ -89,6 +89,10 @@ enum WalkMenu {
         case "reset":
             AppDNA.reset()
             log.note("reset()")
+        case "consent":
+            let on = item.value == "true"
+            AppDNA.setConsent(analytics: on)
+            log.note("setConsent(analytics: \(on))")
         case "push":
             Task {
                 let granted = await AppDNA.registerForPush()

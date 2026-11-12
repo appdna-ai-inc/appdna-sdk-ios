@@ -81,6 +81,62 @@ targets:
     dependencies:
       - package: AppDNASDK
         product: AppDNASDK
+      # The synthetic widget the `add_widget` walk teaches and detects, embedded in PlugIns.
+      - target: AppDNAHostWidget
+  # A minimal synthetic WidgetKit extension (`AppDNAHostWidget/SampleWidget.swift`). The SDK's
+  # `WidgetHostProbe` finds it by its extension point in the app's PlugIns.
+  AppDNAHostWidget:
+    type: app-extension
+    platform: iOS
+    sources: [AppDNAHostWidget]
+    info:
+      path: AppDNAHostWidget/Info.plist
+      # Only the extension point here; Xcode generates the rest (the widget template's own shape).
+      properties:
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.widget
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Sample widget
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+    dependencies:
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+  # THE SAME HOST WITHOUT A WIDGET. Built from the same app sources and NOT embedding
+  # `AppDNAHostWidget`, so the `add_widget` button's "this app has no widget" branch
+  # (`widget_status: unavailable`) can be walked on a real install. A different bundle id, so both can
+  # sit on one simulator; a UI test launches it by that id.
+  AppDNAHostNoWidget:
+    type: application
+    platform: iOS
+    sources:
+      - path: AppDNAHost
+        excludes: [Info.plist]
+    info:
+      path: AppDNAHostNoWidget/Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: AppDNA Host (no widget)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        AppDNABaseURLOverride: "$(APPDNA_BASE_URL_OVERRIDE)"
+        AppDNAHostApiKey: "$(APPDNA_HOST_API_KEY)"
+        AppDNAWalkMenu: "$(APPDNA_WALK_MENU)"
+        CFBundleURLTypes:
+          - CFBundleURLName: ai.appdna.sample
+            CFBundleURLSchemes: [appdnasample]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.nowidget
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - package: AppDNASDK
+        product: AppDNASDK
   # AN APP-HOSTED UNIT-TEST TARGET.
   #
   # 🔴 The package's own test target is HOSTLESS, and that is the whole limitation these three
@@ -145,6 +201,12 @@ targets:
     dependencies:
       - target: AppDNAHost
 schemes:
+  AppDNAHostNoWidget:
+    build:
+      targets:
+        AppDNAHostNoWidget: all
+    run:
+      config: Debug
   AppDNAHost:
     build:
       targets:

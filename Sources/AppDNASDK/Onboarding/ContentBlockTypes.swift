@@ -22,6 +22,8 @@ public enum ContentBlockType: String, Codable {
     case pricing_card
     // Media gallery (horizontal row of image tiles)
     case media_gallery
+    /// One long image scrolling in a seamless loop (left / right / up / down).
+    case animated_image
     // EPIC-4b — section background (vertical color zones behind overlaid content)
     case section_background
     // Swipeable carousel (paged content + dot indicator)
@@ -1578,6 +1580,11 @@ public struct ContentBlock: Codable, Identifiable {
     // Phase F: stack / row fields (container blocks)
     public var children: [ContentBlock]?
     public var stack_children: [ContentBlock]?  // Console uses this key; SDK prefers children
+    // The `add_widget` button's how-to sheets, authored as ordinary content blocks: the iOS one is
+    // what an iPhone shows (no app can add a widget on iOS), the Android one is Android's fallback.
+    // Decoded on both platforms so a walker sees the same tree everywhere.
+    public var howto_blocks_ios: [ContentBlock]?
+    public var howto_blocks_android: [ContentBlock]?
     public let z_index: Double?
     public let gap: Double?
     public let wrap: Bool?
@@ -1730,6 +1737,7 @@ public struct ContentBlock: Codable, Identifiable {
         case picker_spacing, calendar_bg_color, wheel_bg_color, wheel_height
         case wheel_line_color, wheel_line_stroke_width
         case children, stack_children, z_index, gap, wrap, align_items
+        case howto_blocks_ios, howto_blocks_android
         case row_direction, row_distribution, row_child_fill, column_ratios
         case view_key, custom_config, placeholder_image_url, placeholder_text
         case particle_type, density, speed, secondary_color, size_range, fullscreen
@@ -1947,6 +1955,8 @@ public struct ContentBlock: Codable, Identifiable {
         // A bad CHILD costs that child, not the row it sits in.
         self.children = try c.decodeLenientArray(ContentBlock.self, forKey: .children, in: "block.children")
         self.stack_children = try c.decodeLenientArray(ContentBlock.self, forKey: .stack_children, in: "block.stack_children")
+        self.howto_blocks_ios = try c.decodeLenientArray(ContentBlock.self, forKey: .howto_blocks_ios, in: "block.howto_blocks_ios")
+        self.howto_blocks_android = try c.decodeLenientArray(ContentBlock.self, forKey: .howto_blocks_android, in: "block.howto_blocks_android")
         self.z_index = c.lenient(Double.self, .z_index)
         self.gap = c.lenient(Double.self, .gap)
         self.wrap = c.lenient(Bool.self, .wrap)
@@ -2006,15 +2016,11 @@ public struct ContentBlock: Codable, Identifiable {
 }
 
 extension ContentBlock {
-    /// What VoiceOver says for an image block: the console's "Alt text" (`alt`), trimmed, else "Image".
-    /// One rule for every place an image block is drawn; Android's `ContentBlock.imageAccessibilityLabel`
-    /// is the same, and `packages/sdk-shared-fixtures/dto_parsing/onboarding_image_alt.fixture.json` pins both.
-    static let defaultImageAccessibilityLabel = "Image"
-
-    var imageAccessibilityLabel: String {
-        guard let t = alt?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else {
-            return Self.defaultImageAccessibilityLabel
-        }
-        return t
+    /// What VoiceOver says for an image block: the console's "Alt text" (`alt`), trimmed — or nil when it is
+    /// blank, and the image is then decorative and skipped (`AuthoredImageAccessibility`). One rule for every
+    /// place an image block is drawn; Android's `ContentBlock.imageAccessibilityLabel` is the same, and
+    /// `packages/sdk-shared-fixtures/dto_parsing/onboarding_image_alt.fixture.json` pins both.
+    var imageAccessibilityLabel: String? {
+        AuthoredImageAccessibility.label(alt)
     }
 }

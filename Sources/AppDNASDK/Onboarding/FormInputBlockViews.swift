@@ -498,14 +498,13 @@ struct FormInputDateBlock: View {
         // Android (ContentBlockRenderer.kt:7780-7784) + preview: "field" → tap-to-open compact,
         // "inline" → graphical (only for variants that include a date component; time-only has no
         // graphical style so it falls through to picker_variant).
-        let variant: String = {
-            if block.picker_presentation == "field" {
-                return "compact"
-            } else if block.picker_presentation == "inline" && components.contains(.date) {
-                return "graphical"
-            }
-            return (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
-        }()
+        // The console's "Picker Variant" decides for an inline field too; it used to be overridden by the
+        // calendar whenever the presentation was `inline`, the default (DatePickerStyle.formField).
+        let variant: String = DatePickerStyle.formField(
+            presentation: block.picker_presentation,
+            variant: block.field_config?["picker_variant"]?.value as? String,
+            hasDate: components.contains(.date)
+        )
         // SPEC — honor time_format ("12h"/"24h") + time_text_size on the time
         // picker. The console writes both to input_time/input_datetime which
         // route here (not to DateWheelPickerBlockView). Locale en_GB forces 24h
@@ -570,14 +569,43 @@ struct FormInputDateBlock: View {
                         .colorMultiply(wheelTextColorHex.map { Color(hex: $0) } ?? .white)
                         .background(Color(hex: wheelBgHex ?? fieldBgHex ?? "transparent").opacity(wheelOpacity))
                         .cornerRadius(cornerRadius)
-                case "graphical":
-                    DatePicker("", selection: $selectedDate, displayedComponents: components)
-                        .datePickerStyle(.graphical)
-                        .labelsHidden()
-                        .tint(accentColor)
-                        .environment(\.locale, timeLocale ?? Locale.current)
-                        .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
-                        .cornerRadius(cornerRadius)
+                case "graphical" where components.contains(.date):
+                    // The SDK's own month grid, as the Date Picker draws it: the system calendar's day cells took no
+                    // tap inside an onboarding step. Out-of-bounds days are greyed here; the checks below still run.
+                    // A date and time adds the time under the grid, as the system calendar drew it: a compact time
+                    // field that opens the time wheel.
+                    let now = Date()
+                    let lo = DateWheelPickerBlockView.parseDate(block.min_date)
+                        ?? (block.allow_past == false ? now : Calendar.current.date(byAdding: .year, value: -150, to: now)!)
+                    let hi = DateWheelPickerBlockView.parseDate(block.max_date)
+                        ?? (block.allow_future == false ? now : Calendar.current.date(byAdding: .year, value: 50, to: now)!)
+                    VStack(spacing: 0) {
+                        DateRangeCalendarView(
+                            selection: Binding(
+                                get: { DateRangeSelection(start: DateRangeCalendarView.dayKey(selectedDate, in: answerZone), end: nil) },
+                                set: { new in
+                                    if let k = new.start, let d = DateRangeCalendarView.moving(selectedDate, toDayKey: k, in: answerZone) { selectedDate = d }
+                                }
+                            ),
+                            bounds: lo...Swift.max(lo, hi), accent: accentColor, rangeFill: .clear,
+                            text: wheelTextColorHex.map { Color(hex: $0) } ?? .primary,
+                            initialMonth: selectedDate, single: true
+                        )
+                        .padding(8)
+                        if components.contains(.hourAndMinute) {
+                            DatePicker("", selection: $selectedDate, displayedComponents: .hourAndMinute)
+                                .datePickerStyle(.compact)
+                                .labelsHidden()
+                                .tint(accentColor)
+                                .environment(\.locale, timeLocale ?? Locale.current)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                                .padding(.horizontal, 8)
+                                .padding(.bottom, 8)
+                                .accessibilityIdentifier("date_field.time")
+                        }
+                    }
+                    .background(Color(hex: calendarBgHex ?? fieldBgHex ?? "transparent").opacity(calendarOpacity))
+                    .cornerRadius(cornerRadius)
                 default: // compact
                     // Fully custom tap-to-open pattern instead of SwiftUI's
                     // `.datePickerStyle(.compact)`. The native compact style
@@ -734,6 +762,8 @@ struct FormInputSelectBlock: View {
     var onAdvance: (() -> Void)? = nil
     /// The pending advance after a pick. Leaving the view (Back, a host advance) cancels it.
     @State private var advanceTimer = StepAutoAdvanceTimer()
+    /// The question asked before an advance (`field_config.advance_confirm`), while it is showing.
+    @State private var pendingConfirmation: SelectAdvanceOnPick.Confirmation? = nil
 
     @State private var selectedValue: String = ""
     // An ordered [String] (append-on-select, acting as an ordered set) so the
@@ -1075,6 +1105,18 @@ struct FormInputSelectBlock: View {
                 dropdownSelectView(options: options, fieldId: fieldId)
             }
             }
+            // Right or wrong, once the user has answered (`field_config.correct_values`).
+            if let feedback = SelectAnswerFeedback.message(
+                block: block,
+                selection: SelectOptionTap.isMultiSelect(block) ? selectedValues : [selectedValue]
+            ) {
+                Text(feedback.text)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(Color(hex: feedback.colorHex))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 4)
+                    .accessibilityIdentifier("select-answer-feedback")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // An option that owns sheet_blocks opens them in a bottom
@@ -1082,6 +1124,17 @@ struct FormInputSelectBlock: View {
         // lets one engine serve both the chooser and the detail screens.
         .sheet(item: $sheetOption) { opt in
             OptionBottomSheetView(option: opt, onDismiss: { sheetOption = nil }, rawResolved: rawResolved, blockId: block.id)
+        }
+        // "Are you sure?" before the advance. Cancel stays on the screen with the pick kept, so the user can pick again.
+        .alert(
+            pendingConfirmation?.text ?? "",
+            isPresented: Binding(get: { pendingConfirmation != nil }, set: { if !$0 { pendingConfirmation = nil } })
+        ) {
+            Button(pendingConfirmation?.no ?? "No", role: .cancel) { pendingConfirmation = nil }
+            Button(pendingConfirmation?.yes ?? "Yes") {
+                pendingConfirmation = nil
+                onAdvance?()
+            }
         }
         .onAppear {
             let fieldId = block.field_id ?? block.id
@@ -1932,7 +1985,12 @@ struct FormInputSelectBlock: View {
     /// A later pick replaces the pending advance, so a double tap advances once.
     private func advanceAfterPick(before: [String], after: [String], opensSheet: Bool, delay: Double = SelectAdvanceOnPick.delaySeconds) {
         guard let onAdvance, SelectAdvanceOnPick.shouldAdvance(block: block, before: before, after: after, opensSheet: opensSheet) else { return }
-        advanceTimer.schedule(after: delay, onAdvance)
+        // The author asked to confirm: the beat draws the pick, then the question; only its confirm advances.
+        if let ask = SelectAdvanceOnPick.confirmation(block: block) {
+            advanceTimer.schedule(after: delay) { pendingConfirmation = ask }
+        } else {
+            advanceTimer.schedule(after: delay, onAdvance)
+        }
     }
 
     private func fontWeight(_ raw: String?) -> Font.Weight {
@@ -3408,7 +3466,9 @@ private extension View {
 
 // MARK: - the option bottom sheet
 
-/// Presents an option's `sheet_blocks` through the ordinary content-block renderer.
+/// Presents an option's `sheet_blocks` through the ordinary content-block renderer, on the engine it
+/// shares with the `add_widget` how-to (`BlockSheetView`; `howto_blocks_ios` on iOS,
+/// `howto_blocks_android` on Android).
 ///
 /// One engine, two authoring presets: the console seeds a chooser set (slider / toggle /
 /// preview / CTA) or a detail set (badge / heading / media / CTA), and the author edits from
@@ -3428,77 +3488,47 @@ struct OptionBottomSheetView: View {
     /// The block whose option opened the sheet: with the option's id, it finds the sheet's SOURCE in
     /// the step, which the sheet's Google credit is decided from.
     var blockId: String? = nil
-
-    @State private var sheetToggles: [String: Bool] = [:]
-    @State private var sheetInputs: [String: Any]
+    /// The sheet's inputs when it opens — empty in production; a render test seeds a field's answer.
+    private let inputs: [String: Any]
     /// The step's credit context. The sheet is a modal above the step, so it draws its own credit.
     @SwiftUI.Environment(\.googleCreditSheetContext) private var creditContext
 
     /// What the sheet draws behind its content: the system sheet background (no fill of its own).
-    static let backdrop: GoogleMapsAttribution.Backdrop = .plain(hex: nil)
-    @SwiftUI.Environment(\.appdnaDeviceColorScheme) private var deviceScheme
-    @SwiftUI.Environment(\.colorScheme) private var currentScheme
+    static let backdrop: GoogleMapsAttribution.Backdrop = BlockSheetView.backdrop
 
-    /// `inputs`: the sheet's own inputs when it opens — empty in production; a render test seeds a
-    /// field's answer.
     init(option: InputOption, onDismiss: @escaping () -> Void, rawResolved: Bool = false, blockId: String? = nil,
          inputs: [String: Any] = [:]) {
         self.option = option
         self.onDismiss = onDismiss
         self.rawResolved = rawResolved
         self.blockId = blockId
-        _sheetInputs = State(initialValue: inputs)
+        self.inputs = inputs
     }
 
-    /// Whether the sheet's own blocks template a Google answer — their `step` root read against the
-    /// sheet's own inputs.
-    private var showsGoogleCredit: Bool {
-        creditContext?.shows(
-            blockId: blockId, optionId: option.id,
-            presentedSheetBlocks: option.sheet_blocks ?? [], sheetInputs: sheetInputs
-        ) ?? false
-    }
-
+    /// The engine is `BlockSheetView`: Done (`next` / `continue`) and Close (`dismiss`) both close an
+    /// option sheet — the flow continues underneath, where the option is already selected — and every
+    /// other action inside it does nothing.
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag handle — the affordance in the reporter's recording.
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-
-            ScrollView {
-                ContentBlockRendererView(
-                    blocks: option.sheet_blocks ?? [],
-                    onAction: { action, _ in
-                        // The CTA closes the sheet; the flow continues underneath, where the
-                        // option is already selected.
-                        if action == "next" || action == "continue" || action == "dismiss" { onDismiss() }
-                    },
-                    toggleValues: $sheetToggles,
-                    inputValues: $sheetInputs
-                )
-                .environment(\.appdnaRawResolved, rawResolved)
-                // A sheet has its own inputs and no interaction channel. SwiftUI
-                // environment reaches `.sheet` content, so the step's channel is cut off explicitly:
-                // a `refresh_step` button in `sheet_blocks` fires nothing (REFRESH_STEP_CANNOT_FIRE).
-                .environment(\.appdnaStepInteraction, nil)
-                // The sheet is filled with the system background, whatever the step underneath
-                // draws: a Google logo inside the sheet picks its variant from the sheet.
-                .environment(\.googleAttributionBackdrop, Self.backdrop)
-                .environment(\.colorScheme, deviceScheme ?? currentScheme)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
+        let context = creditContext
+        let blockId = blockId
+        let option = option
+        let sheetBlocks = option.sheet_blocks ?? []
+        BlockSheetView(
+            blocks: sheetBlocks,
+            loc: nil,
+            onDone: onDismiss,
+            onClose: onDismiss,
+            rawResolved: rawResolved,
+            inputs: inputs,
+            // Whether the sheet's own blocks template a Google answer — their `step` root read
+            // against the sheet's own inputs.
+            showsGoogleCredit: { sheetInputs in
+                context?.shows(
+                    blockId: blockId, optionId: option.id,
+                    presentedSheetBlocks: sheetBlocks, sheetInputs: sheetInputs
+                ) ?? false
             }
-            // Google's attribution inside the sheet, the container its text is drawn in.
-            if showsGoogleCredit {
-                GoogleMapsTextAttribution(backdrop: Self.backdrop)
-                    .padding(.bottom, 12)
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        )
     }
 }
 

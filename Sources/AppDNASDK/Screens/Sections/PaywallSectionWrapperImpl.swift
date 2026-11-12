@@ -808,6 +808,7 @@ private struct ImageSectionView: View {
                 }
                 .frame(maxHeight: data?.height ?? 240)
                 .clipShape(RoundedRectangle(cornerRadius: data?.cornerRadius ?? 12))
+                .authoredImageAccessibility(PaywallImageAccessibility.label(data))
             }
         }
     }
