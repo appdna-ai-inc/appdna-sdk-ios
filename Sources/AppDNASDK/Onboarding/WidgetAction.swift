@@ -270,7 +270,7 @@ final class WidgetAddAttempt: ObservableObject {
         guard platform.hasWidgetExtension() else {
             Log.warning("add_widget: this app ships no WidgetKit extension, so there is no widget to add; "
                 + "advancing with widget_status=unavailable")
-            track("widget_add_unavailable", ["reason": "no_widget"])
+            self.track(event: "widget_add_unavailable", properties: ["reason": "no_widget"])
             finish(.unavailable)
             return
         }
@@ -282,7 +282,7 @@ final class WidgetAddAttempt: ObservableObject {
         platform.configurations.read { [weak self] placed in
             guard let self, self.serial == attempt, self.phase == .reading else { return }
             self.before = placed
-            self.track("widget_add_tapped", [
+            self.track(event: "widget_add_tapped", properties: [
                 "block_id": self.blockId,
                 "existing_count": placed.map { $0.count as Any } ?? NSNull(),
             ])
@@ -296,7 +296,7 @@ final class WidgetAddAttempt: ObservableObject {
             }
             self.sheet = HowtoSheet(blockId: self.blockId, blocks: howto)
             self.phase = .howto
-            self.track("widget_howto_shown", ["block_id": self.blockId])
+            self.track(event: "widget_howto_shown", properties: ["block_id": self.blockId])
         }
     }
 
@@ -308,8 +308,8 @@ final class WidgetAddAttempt: ObservableObject {
             guard let self, self.serial == attempt, self.phase == .howto, let placed,
                   let added = Self.firstAdded(before: before, after: placed) else { return }
             self.close(.detected)
-            self.track("widget_howto_dismissed", ["via": CloseVia.detected.rawValue])
-            self.track("widget_added", ["method": "howto", "family": added.family])
+            self.track(event: "widget_howto_dismissed", properties: ["via": CloseVia.detected.rawValue])
+            self.track(event: "widget_added", properties: ["method": "howto", "family": added.family])
             self.finish(.added)
         }
     }
@@ -324,7 +324,7 @@ final class WidgetAddAttempt: ObservableObject {
     /// The how-to's Close (`dismiss`) button. Returns to the step without advancing.
     func closeTapped() {
         guard phase == .howto else { return }
-        track("widget_howto_dismissed", ["via": CloseVia.dismiss.rawValue])
+        self.track(event: "widget_howto_dismissed", properties: ["via": CloseVia.dismiss.rawValue])
         close(.dismiss)
         retire()
         phase = .idle
@@ -341,7 +341,7 @@ final class WidgetAddAttempt: ObservableObject {
             // `checking` disables the swipe; if one lands anyway the Done has already decided.
             return
         }
-        track("widget_howto_dismissed", ["via": CloseVia.swipe.rawValue])
+        self.track(event: "widget_howto_dismissed", properties: ["via": CloseVia.swipe.rawValue])
         retire()
         phase = .idle
     }
@@ -381,13 +381,13 @@ final class WidgetAddAttempt: ObservableObject {
 
     private func conclude(added: WidgetInstance?, detection: String, closeSheet: Bool) {
         if let added {
-            track("widget_added", ["method": "howto", "family": added.family])
+            self.track(event: "widget_added", properties: ["method": "howto", "family": added.family])
         } else {
-            track("widget_not_added", ["method": "howto", "detection": detection])
+            self.track(event: "widget_not_added", properties: ["method": "howto", "detection": detection])
         }
         if closeSheet {
             close(.cta)
-            track("widget_howto_dismissed", ["via": CloseVia.cta.rawValue])
+            self.track(event: "widget_howto_dismissed", properties: ["via": CloseVia.cta.rawValue])
         }
         finish(added == nil ? .notAdded : .added)
     }
@@ -409,7 +409,7 @@ final class WidgetAddAttempt: ObservableObject {
         before = nil
     }
 
-    private func track(_ name: String, _ extra: [String: Any]) {
+    private func track(event name: String, properties extra: [String: Any]) {
         var props: [String: Any] = ["flow_id": hooks.flowId, "step_id": hooks.stepId]
         props.merge(extra) { _, new in new }
         hooks.track(name, props)
