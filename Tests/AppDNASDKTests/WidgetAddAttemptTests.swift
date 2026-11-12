@@ -218,6 +218,19 @@ final class WidgetAddAttemptTests: XCTestCase {
         XCTAssertNil(WidgetAddAttempt.firstAdded(before: [Self.small], after: [Self.small]))
     }
 
+    /// The one entry WidgetKit reports for a size can come back with a NEW identity once a second widget
+    /// of that size is placed (iOS 26.2 simulator, walk 3). That is not a new kind or size, so it is not
+    /// `added`: with the small one already placed, the attempt ends `unknown`, whatever the timing.
+    /// RED CONTROL: `firstAdded` as `after.subtracting(before)` returns `smallAgain` here.
+    func testASizeAlreadyPlacedIsNotNewWhenItsEntryChangesIdentity() {
+        let smallAgain = WidgetInstance(id: "w_existing_reissued", kind: "SampleWidget", family: "systemSmall")
+        XCTAssertNil(WidgetAddAttempt.firstAdded(before: [Self.small], after: [smallAgain]))
+        XCTAssertNil(WidgetAddAttempt.firstAdded(before: [Self.small], after: [Self.small, smallAgain]))
+        XCTAssertEqual(WidgetAddAttempt.firstAdded(before: [Self.small], after: [smallAgain, Self.medium]), Self.medium)
+        XCTAssertEqual(WidgetAddAttempt.outcome(added: WidgetAddAttempt.firstAdded(before: [Self.small], after: [smallAgain]),
+                                                before: [Self.small], detection: "ok"), .unknown)
+    }
+
     // MARK: - howto × Done → checking
 
     /// Rows: HOWTO × DONE_CTA → CHECKING (a read); CHECKING × QUERY(S1) with nothing new and NO widget

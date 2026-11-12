@@ -375,7 +375,12 @@ final class WidgetAddAttempt: ObservableObject {
 
     // MARK: Internals
 
-    /// The new widget, if any: the first of `after − before`, by id so the choice is deterministic.
+    /// The new widget, if any: the first entry of `after` whose kind AND family `before` did not have,
+    /// by id so the choice is deterministic. Compared by kind and family, not by `WidgetInfo`'s identity:
+    /// on the iOS 26.2 simulator the one entry for a size changed identity when a SECOND widget of that
+    /// size was placed — sometimes by the return read, sometimes only by Done's (walk 3, 2026-11-12) — so
+    /// an identity compare reported that add as `added` or as `unknown` by timing alone. The owner's
+    /// rule is `added` when a new kind or size appears; a second one of a size is `unknown`.
     ///
     /// 🔴 WHAT THIS CAN SEE IS LIMITED BY WIDGETKIT, measured on the iOS 26.2 simulator: the
     /// configurations read reports ONE entry per widget kind and family, however many of that size
@@ -385,7 +390,8 @@ final class WidgetAddAttempt: ObservableObject {
     /// placed is invisible to any app — so with a widget already placed, nothing new reads `unknown`
     /// (`outcome(added:before:detection:)`), never `not_added`.
     static func firstAdded(before: Set<WidgetInstance>, after: Set<WidgetInstance>) -> WidgetInstance? {
-        after.subtracting(before).sorted { $0.id < $1.id }.first
+        let seen = Set(before.map { "\($0.kind)\u{1F}\($0.family)" })
+        return after.filter { !seen.contains("\($0.kind)\u{1F}\($0.family)") }.sorted { $0.id < $1.id }.first
     }
 
     private func check(attempt: Int, closeSheet: Bool) {
