@@ -291,6 +291,8 @@ struct ConsentFixtureCase {
             default:
                 return fail("NO DRIVER for script op '\(kind)' on ios")
             }
+            // `settle: false`: the next op follows at once, on the same tick (a call made before configure finished).
+            if (op["settle"] as? Bool) == false { continue }
             let settled = await settle(scheduler)
             if !settled {
                 return fail("settle timed out after op \(i) (\(kind)); recorded so far: \(server.recorded.map { $0.body })")

@@ -51,20 +51,67 @@ public final class AppDNA: @unchecked Sendable {
     // carries it through the drain — buildEnvelope uses it verbatim, never re-minting. Preserves the true
     // tracking order across configure() (a post-configure event minting during the drain window can no
     // longer get a lower seq than an earlier pre-init event drained after it).
-    private static var preInitBuffer: [(event: String, properties: [String: Any]?, seq: Int64)] = []
+    //
+    // The same buffer holds the identity and push calls (`identify`, `reset`, `setPushToken` …) made after
+    // `configure()` was accepted but before its build published the tracker. `configure()` returns at once and
+    // builds on `queue` after a hop through the main queue, so such a call's own `queue` block used to run FIRST,
+    // find no identity manager, and do nothing: `configure(); identify(u)` on one tick ran the session as
+    // anonymous, silently. Held here, they run at the drain in call order, interleaved with the events around
+    // them, so an event tracked after `identify` carries the user — as on Android, whose `configure()` builds
+    // synchronously. A call made before any `configure()` runs as it always did (there is no identity yet, so a
+    // user id is not stored, as on Android), now with a warning. The cap counts events only; a held call is never
+    // dropped.
+    private enum PreInitItem {
+        case event(name: String, properties: [String: Any]?, seq: Int64)
+        case call(name: String, run: () -> Void)
+    }
+    private static var preInitBuffer: [PreInitItem] = []
+    private static var preInitEventCount = 0
     private static let preInitBufferCap = 200
 
     private static func drainPreInitBuffer() {
         preInitLock.lock()
         let buffered = preInitBuffer
         preInitBuffer.removeAll()
+        preInitEventCount = 0
         preInitLock.unlock()
         guard !buffered.isEmpty else { return }
-        Log.info("Draining \(buffered.count) pre-init events")
+        Log.info("Draining \(buffered.count) pre-init events and calls")
         for item in buffered {
-            // Carry the seq stamped at track() time — do NOT re-mint at drain.
-            shared.eventTracker?.track(event: item.event, properties: item.properties, clientSeq: item.seq)
+            switch item {
+            case let .event(name, properties, seq):
+                // Carry the seq stamped at track() time — do NOT re-mint at drain.
+                shared.eventTracker?.track(event: name, properties: properties, clientSeq: seq)
+            case let .call(name, run):
+                Log.debug("Applying \(name) held until configure() finished")
+                run()
+            }
         }
+    }
+
+    /// Runs `body` on `queue` once the SDK is built. Before the build has published the tracker but after
+    /// `configure()` was accepted, `body` is held in the pre-init buffer and runs, on `queue`, at the drain, in call
+    /// order. Before any `configure()` (or after `shutdown()`) it runs on `queue` at once, as it always did.
+    private static func runWhenBuilt(_ name: String, warnBeforeConfigure: Bool = false, _ body: @escaping () -> Void) {
+        shared.initLock.lock()
+        let accepted = shared.isConfigured
+        shared.initLock.unlock()
+        if shared.eventTracker == nil {
+            preInitLock.lock()
+            if shared.eventTracker == nil {
+                if accepted {
+                    preInitBuffer.append(.call(name: name, run: body))
+                    preInitLock.unlock()
+                    return
+                }
+                preInitLock.unlock()
+                if warnBeforeConfigure { Log.warning("AppDNA.\(name)() called before configure(): there is no identity yet to apply it to") }
+                shared.queue.async(execute: body)
+                return
+            }
+            preInitLock.unlock() // configure() published while we waited → the build is ahead of us on `queue`
+        }
+        shared.queue.async(execute: body)
     }
 
     // MARK: - Delegates
@@ -478,6 +525,10 @@ public final class AppDNA: @unchecked Sendable {
             shared.consentSender = nil
             shared.consentRowZeroCall = false
         }
+        // A relaunch loses the calls held in memory.
+        preInitLock.lock()
+        preInitBuffer.removeAll { if case .call = $0 { return true } else { return false } }
+        preInitLock.unlock()
         shutdownSkipsFlushForTesting = false
         consentSchedulerForTesting?.cancelAll()
         ConsentTestLatch.clear()
@@ -761,7 +812,8 @@ public final class AppDNA: @unchecked Sendable {
         // dropped with a warning naming its key. Unsanitised, JSONSerialization raised an Objective-C
         // exception in the keychain write and the request body, which `try?` cannot catch.
         let traits = traits.map { IdentifyTraits.sanitize($0) }
-        shared.queue.async {
+        // Held until the build when `configure()` has not finished (see `runWhenBuilt`), never dropped.
+        runWhenBuilt("identify", warnBeforeConfigure: true) {
             let previousAnonId = shared.identityManager?.currentIdentity.anonId
             let previousUserId = shared.identityManager?.currentIdentity.userId
 
@@ -865,7 +917,7 @@ public final class AppDNA: @unchecked Sendable {
     /// "sign-out" hook without re-opening the leak surface for a
     /// subsequent user signing in on the same device.
     public static func reset() {
-        shared.queue.async {
+        runWhenBuilt("reset") {
             let userBeforeReset = shared.identityManager?.currentIdentity.userId
             shared.identityManager?.reset()
             // the user became nil; while analytics is declined that is re-signalled.
@@ -944,7 +996,11 @@ public final class AppDNA: @unchecked Sendable {
     /// A no-op before `configure()`: an assertion made before the SDK knows which app it belongs to
     /// cannot be attributed to one, and a silently buffered bill is worse than a missed one.
     public static func reportPayingUser(productId: String? = nil, priceCents: Int? = nil, currency: String? = nil) {
-        guard shared.eventTracker != nil else {
+        // After `configure()` was accepted the event is buffered like any other, even before the build ran.
+        shared.initLock.lock()
+        let accepted = shared.isConfigured
+        shared.initLock.unlock()
+        guard shared.eventTracker != nil || accepted else {
             Log.debug("reportPayingUser ignored: SDK not configured yet")
             return
         }
@@ -972,11 +1028,14 @@ public final class AppDNA: @unchecked Sendable {
             preInitLock.lock()
             if shared.eventTracker == nil {
                 let seq = ClientSeqCounter.next() // stamp NOW under the lock, in tracking order
-                if preInitBuffer.count >= preInitBufferCap {
-                    preInitBuffer.removeFirst() // drop-oldest
+                if preInitEventCount >= preInitBufferCap,
+                   let oldest = preInitBuffer.firstIndex(where: { if case .event = $0 { return true } else { return false } }) {
+                    preInitBuffer.remove(at: oldest) // drop-oldest event; a held call is never dropped
+                    preInitEventCount -= 1
                     DroppedEventsCounter.increment(1) // Count the pre-init overflow drop
                 }
-                preInitBuffer.append((event, properties, seq))
+                preInitBuffer.append(.event(name: event, properties: properties, seq: seq))
+                preInitEventCount += 1
                 preInitLock.unlock()
                 return
             }
@@ -1326,29 +1385,33 @@ public final class AppDNA: @unchecked Sendable {
     /// Set the APNS push token. Call from `didRegisterForRemoteNotificationsWithDeviceToken`.
     /// This registers the token with the backend for direct push delivery.
     public static func setPushToken(_ token: Data) {
-        shared.queue.async {
-            shared.pushTokenManager?.setPushToken(token)
+        // The push manager is built after the drain, in the same `queue` block: a held call re-enqueues behind it.
+        runWhenBuilt("setPushToken") {
+            shared.queue.async { shared.pushTokenManager?.setPushToken(token) }
         }
     }
 
     /// Report push permission status.
     public static func setPushPermission(granted: Bool) {
-        shared.queue.async {
-            shared.pushTokenManager?.setPushPermission(granted: granted)
+        // The push manager is built after the drain, in the same `queue` block: a held call re-enqueues behind it.
+        runWhenBuilt("setPushPermission") {
+            shared.queue.async { shared.pushTokenManager?.setPushPermission(granted: granted) }
         }
     }
 
     /// Track that a push notification was delivered (call from UNNotificationServiceExtension or foreground handler).
     public static func trackPushDelivered(pushId: String) {
-        shared.queue.async {
-            shared.pushTokenManager?.trackDelivered(pushId: pushId)
+        // The push manager is built after the drain, in the same `queue` block: a held call re-enqueues behind it.
+        runWhenBuilt("trackPushDelivered") {
+            shared.queue.async { shared.pushTokenManager?.trackDelivered(pushId: pushId) }
         }
     }
 
     /// Track that a push notification was tapped (call from notification response handler).
     public static func trackPushTapped(pushId: String, action: String? = nil) {
-        shared.queue.async {
-            shared.pushTokenManager?.trackTapped(pushId: pushId, action: action)
+        // The push manager is built after the drain, in the same `queue` block: a held call re-enqueues behind it.
+        runWhenBuilt("trackPushTapped") {
+            shared.queue.async { shared.pushTokenManager?.trackTapped(pushId: pushId, action: action) }
         }
     }
 

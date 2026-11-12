@@ -19,6 +19,7 @@
 //     -appdnaAutoPresentDelay 8      seconds to wait for config before presenting
 //     -appdnaIdentify <user id>      identify after configure (a consent walk)
 //     -appdnaConsent true|false      setConsent after configure (a consent walk)
+//     -appdnaIdentifyAt tick|ready   when: right after configure, on the same tick, or in onReady (default)
 //
 // Auto-present exists because the simulator exposes no tap verb to this environment — no `simctl`
 // verb, no `idb`, and `osascript` is blocked. A UI TEST can tap (it runs inside the simulator), and
@@ -107,11 +108,21 @@ enum Launch {
         let user = arg("appdnaIdentify")
         let consent = arg("appdnaConsent")
         guard user != nil || consent != nil else { return }
-        // Once the SDK is ready, as a host that identifies after its own sign-in does.
-        AppDNA.onReady {
+        let apply = {
             if let user { AppDNA.identify(userId: user) }
             if let consent { AppDNA.setConsent(analytics: consent == "true") }
-            NSLog("AppDNA-E2E consent-walk user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
+        }
+        if arg("appdnaIdentifyAt") == "tick" {
+            // On the configure tick, as a host that restores its signed-in user at launch does: the SDK is still
+            // configuring, so the calls are held and applied once it has.
+            apply()
+            NSLog("AppDNA-E2E consent-walk at=tick user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
+            return
+        }
+        // Once the SDK is ready, as a host that identifies after its own sign-in does.
+        AppDNA.onReady {
+            apply()
+            NSLog("AppDNA-E2E consent-walk at=ready user_id=\(user ?? "(unchanged)") consent=\(consent ?? "(unchanged)")")
         }
     }
 
