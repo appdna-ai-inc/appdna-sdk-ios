@@ -46,6 +46,7 @@ extension SharedFixtureTests {
         case "resolve_select_answer_feedback": runSelectAnswerFeedback(f, h)
         case "resolve_select_advance_confirm": runSelectAdvanceConfirm(f, h)
         case "resolve_cta_dependencies": runCtaDependencies(f, h)
+        case "resolve_block_bleed": runBlockBleed(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -1222,6 +1223,32 @@ extension SharedFixtureTests {
                 after: v["after"] as? [String] ?? [],
                 opensSheet: v["opens_sheet"] as? Bool ?? false
             )
+        }
+    }
+
+    // MARK: resolve_block_bleed
+
+    /// How far a block's background reaches on each side, through the REAL `ContentBlock` decode
+    /// (the field_config values arrive as whatever JSON type the author wrote) and the real resolver.
+    private func runBlockBleed(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_block_bleed needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any],
+                  let fc = v["field_config"] as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: ["id": "bleed", "type": "multi_buttons", "field_config": fc]),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let num = { (k: String) -> Double in (v[k] as? NSNumber)?.doubleValue ?? 0 }
+            let r = BlockFullBleed.resolve(
+                fieldConfig: block.field_config?.mapValues { $0.value },
+                stepInset: num("step_inset"), edgeTop: num("edge_top"), edgeBottom: num("edge_bottom")
+            )
+            return [r.top, r.right, r.bottom, r.left]
         }
     }
 

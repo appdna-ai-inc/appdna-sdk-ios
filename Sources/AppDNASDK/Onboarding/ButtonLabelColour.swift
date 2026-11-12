@@ -85,4 +85,86 @@ public enum BlockFullBleed {
         if let n = value as? Double { return n != 0 }
         return false
     }
+
+    // MARK: Per-side bleed
+
+    /// The most a side can reach by an authored value, in points.
+    public static let maxBleed: Double = 400
+
+    /// One side as authored: the screen edge, or a number of points (0 = not at all).
+    public enum Side: Equatable {
+        case edge
+        case points(Double)
+    }
+
+    /// How far the background reaches past the block on each side, in points.
+    public struct Insets: Equatable {
+        public var top: Double
+        public var right: Double
+        public var bottom: Double
+        public var left: Double
+        public static let zero = Insets(top: 0, right: 0, bottom: 0, left: 0)
+        public var isZero: Bool { top == 0 && right == 0 && bottom == 0 && left == 0 }
+    }
+
+    static let sideKeys: [String: String] = [
+        "top": "background_bleed_top", "bottom": "background_bleed_bottom",
+        "left": "background_bleed_left", "right": "background_bleed_right",
+    ]
+
+    /**
+     One side as authored, or `nil` when the side is not authored at all (the caller then applies
+     its fallback). Anything that is neither `"edge"` nor a positive number is an AUTHORED 0: an
+     explicit value must beat `background_full_bleed`, or an author could never take one side back
+     off. Mirrors `src/lib/onboarding/block-bleed.ts` `bleedSide` and Android.
+     */
+    static func side(_ raw: Any?) -> Side? {
+        guard let raw, !(raw is NSNull) else { return nil }
+        if let s = raw as? String, s == "edge" { return .edge }
+        var n = Double.nan
+        if raw is Bool {
+            n = .nan
+        } else if let d = raw as? Double {
+            n = d
+        } else if let i = raw as? Int {
+            n = Double(i)
+        } else if let s = raw as? String {
+            let t = s.trimmingCharacters(in: .whitespaces)
+            n = t.isEmpty ? .nan : (Double(t) ?? .nan)
+        }
+        guard n.isFinite, n > 0 else { return .points(0) }
+        return .points(min(n, maxBleed))
+    }
+
+    /// The side the renderer applies, after the `background_full_bleed` fallback for left and right.
+    static func effectiveSide(_ fieldConfig: [String: Any]?, _ name: String) -> Side {
+        if let authored = side(fieldConfig?[sideKeys[name] ?? ""]) { return authored }
+        if (name == "left" || name == "right") && isOn(fieldConfig?["background_full_bleed"]) { return .edge }
+        return .points(0)
+    }
+
+    /// Whether the top or bottom reaches an edge, so the renderer has to measure where the block sits.
+    public static func needsMeasuredEdge(_ fieldConfig: [String: Any]?) -> Bool {
+        effectiveSide(fieldConfig, "top") == .edge || effectiveSide(fieldConfig, "bottom") == .edge
+    }
+
+    /**
+     How far the background reaches on each side. `"edge"` is the step's horizontal inset on the
+     left and right, and the MEASURED distance from the block's slot to the surface edge on the top
+     and bottom. Pinned by the shared fixture `dto_parsing/block_background_bleed`.
+     */
+    public static func resolve(fieldConfig: [String: Any]?, stepInset: Double, edgeTop: Double, edgeBottom: Double) -> Insets {
+        func value(_ name: String, _ edge: Double) -> Double {
+            switch effectiveSide(fieldConfig, name) {
+            case .edge: return max(0, edge)
+            case .points(let p): return p
+            }
+        }
+        return Insets(
+            top: value("top", edgeTop),
+            right: value("right", stepInset),
+            bottom: value("bottom", edgeBottom),
+            left: value("left", stepInset)
+        )
+    }
 }

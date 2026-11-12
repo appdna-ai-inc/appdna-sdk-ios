@@ -314,6 +314,9 @@ struct ContentBlockRendererView: View {
     @SwiftUI.Environment(\.appdnaSurfaceSize) var surfaceSize
     /// The width this renderer is laid out in, measured once and handed to every child.
     @State private var measuredContainerWidth: CGFloat = 0
+    /// Per block id: how far the block's slot sits from the top and bottom of the window, for a
+    /// background authored to reach the screen edge vertically (`background_bleed_top/_bottom: "edge"`).
+    @State private var bleedEdges: [String: BleedEdgeDistances] = [:]
 
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
@@ -485,15 +488,15 @@ struct ContentBlockRendererView: View {
             // What the block draws behind its own content, for a Google logo inside it.
             .modifier(GoogleAttributionBlockBackdrop(block: block))
             .applyBlockStyle(block.type == .warning_banner ? WarningBannerChrome.resolve(block: block).wrapper : block.block_style)
-            // AFTER the background, so the background is what widens. Negative horizontal
-            // padding is SwiftUI's "extend outward"; Compose has to measure for it instead
-            // (`Modifier.fullBleedHorizontal`), which is why the inset lives in one shared place.
-            .padding(
-                .horizontal,
-                BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
-                    ? -CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize))))
-                    : 0,
-            )
+            // AFTER the background, so the background is what widens. Negative padding is
+            // SwiftUI's "extend outward"; Compose has to measure for it instead
+            // (`Modifier.fullBleed`), which is why the resolver lives in one shared place
+            // (`BlockFullBleed.resolve`). The content gets the same amount back as padding
+            // (`multiButtonsBlock`), so only the background moves.
+            .padding(bleedInsets(block).negatedEdgeInsets)
+            // Measured on the SLOT — after the negative padding has given the box its laid-out
+            // size back — so the measurement cannot feed on its own result.
+            .background(bleedEdgeReader(block))
             .applyBlockPosition(
                 verticalAlign: block.vertical_align,
                 horizontalAlign: block.horizontal_align,
@@ -509,6 +512,39 @@ struct ContentBlockRendererView: View {
         } else {
             content
         }
+    }
+
+    /// How far this block's background reaches past it on each side (`BlockFullBleed.resolve`).
+    private func bleedInsets(_ block: ContentBlock) -> BlockFullBleed.Insets {
+        let fc = block.field_config?.mapValues { $0.value }
+        let edges = bleedEdges[block.id] ?? BleedEdgeDistances(top: 0, bottom: 0)
+        return BlockFullBleed.resolve(
+            fieldConfig: fc,
+            stepInset: BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize))),
+            edgeTop: edges.top,
+            edgeBottom: edges.bottom
+        )
+    }
+
+    /// Measures the block's slot against the window, only for a block whose background reaches a
+    /// vertical edge — nothing else pays for a GeometryReader.
+    @ViewBuilder
+    private func bleedEdgeReader(_ block: ContentBlock) -> some View {
+        if BlockFullBleed.needsMeasuredEdge(block.field_config?.mapValues { $0.value }) {
+            GeometryReader { geo in
+                let frame = geo.frame(in: .global)
+                Color.clear
+                    .onAppear { recordBleedEdges(block.id, frame) }
+                    .onChange(of: frame) { recordBleedEdges(block.id, $0) }
+            }
+        }
+    }
+
+    private func recordBleedEdges(_ id: String, _ frame: CGRect) {
+        let window = SurfaceMetrics.windowBounds.height
+        let next = BleedEdgeDistances(top: Double(max(0, frame.minY)), bottom: Double(max(0, window - frame.maxY)))
+        if let current = bleedEdges[id], abs(current.top - next.top) < 0.5, abs(current.bottom - next.bottom) < 0.5 { return }
+        bleedEdges[id] = next
     }
 
     /// Resolves dynamic bindings and template strings on a block.
@@ -2872,14 +2908,11 @@ struct ContentBlockRendererView: View {
          * `renderBlock` pulls the whole styled box outward by the same amount. Changing the width
          * cannot do this — `element_width: 100%` is 100% of a column that is already inset.
          */
-        let bleeds = BlockFullBleed.isOn(block.field_config?["background_full_bleed"]?.value)
         MultiButtonsRows(rows: rows, perRow: perRow, gap: gap, stretchLastRow: stretchLastRow) { child in
             renderBlock(child).applyBlockContainerStyle(child)
         }
-        .padding(
-            .horizontal,
-            bleeds ? CGFloat(BlockFullBleed.stepHorizontalInset(screenWidth: Double(SurfaceMetrics.width(surfaceSize)))) : 0,
-        )
+        // Every side the background reaches out by (`renderBlock`), given back to the rows.
+        .padding(bleedInsets(block).edgeInsets)
     }
 
     @ViewBuilder
@@ -4527,4 +4560,20 @@ struct UnstyledInkReader<Content: View>: View {
     @SwiftUI.Environment(\.colorScheme) private var scheme
     @ViewBuilder let content: (Color) -> Content
     var body: some View { content(UnstyledInk.text(behind: behind, darkAppearance: scheme == .dark)) }
+}
+
+
+/// How far a block's slot sits from the top and bottom of the window (see `BlockFullBleed.resolve`).
+struct BleedEdgeDistances: Equatable {
+    var top: Double
+    var bottom: Double
+}
+
+extension BlockFullBleed.Insets {
+    var edgeInsets: EdgeInsets {
+        EdgeInsets(top: CGFloat(top), leading: CGFloat(left), bottom: CGFloat(bottom), trailing: CGFloat(right))
+    }
+    var negatedEdgeInsets: EdgeInsets {
+        EdgeInsets(top: -CGFloat(top), leading: -CGFloat(left), bottom: -CGFloat(bottom), trailing: -CGFloat(right))
+    }
 }
