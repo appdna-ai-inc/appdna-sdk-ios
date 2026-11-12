@@ -11,7 +11,7 @@
 import Foundation
 import AppDNASDK
 
-final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPaywallDelegate, AppDNADeepLinkDelegate {
+final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPaywallDelegate, AppDNADeepLinkDelegate, AppDNAOnboardingDelegate {
     static let shared = TrackedEventLog()
 
     /// Newest first, capped — a test asserts on an event from several steps ago without racing
@@ -64,6 +64,28 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
         record("deeplink:" + url.absoluteString)
         note("deep link received: \(url.absoluteString)")
         DispatchQueue.main.async { [weak self] in self?.deepLink = WalkDeepLink(url: url) }
+    }
+
+    /*
+     The onboarding callbacks a walk has to READ, not infer: which step is on screen (so a timed
+     advance can be clocked from the log), what a toggle or other element handed the host
+     (`onElementInteraction`, e.g. `toggle_dark_mode` with "true"/"false"), and the responses a
+     completed flow delivered. Observe-only: every hook returns the SDK's default.
+     */
+    func onOnboardingStepChanged(flowId: String, stepId: String, stepIndex: Int, totalSteps: Int) {
+        note("step \(stepIndex + 1)/\(totalSteps) \(stepId)")
+    }
+
+    func onOnboardingCompleted(flowId: String, responses: [String: Any]) {
+        let json = (try? JSONSerialization.data(withJSONObject: responses, options: [.sortedKeys]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? "\(responses)"
+        note("onboarding completed responses=" + json)
+    }
+
+    func onElementInteraction(flowId: String, stepId: String, blockId: String, action: String,
+                              value: String?, inputValues: [String: Any]) async -> ElementInteractionResult? {
+        note("element blockId=\(blockId) action=\(action) value=\(value ?? "nil")")
+        return nil
     }
 
     func onEventTracked(name: String, properties: [String: Any]) {
