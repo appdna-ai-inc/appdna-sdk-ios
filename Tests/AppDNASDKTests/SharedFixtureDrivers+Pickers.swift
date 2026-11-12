@@ -5,6 +5,8 @@
 //
 //   resolve_measurement_palette  REAL: `measurementPalette(_:highlight:dark:)`, the rule
 //                                `MeasurementWheelBlockView` draws every colour from.
+//   resolve_measurement_linear   REAL: `measurementLinearValue`, `measurementLinearFraction` and
+//                                `measurementLinearSizes`, which the `linear` slider calls.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -19,6 +21,7 @@ extension SharedFixtureTests {
     func drivePickerFixtures(_ f: Fixture, _ h: Harness) -> Bool {
         switch f.action.kind {
         case "resolve_measurement_palette": runMeasurementPalette(f, h)
+        case "resolve_measurement_linear": runMeasurementLinear(f, h)
         default: return false
         }
         return true
@@ -39,6 +42,26 @@ extension SharedFixtureTests {
             let highlight = c["highlight_color"] as? String
             let dark = (c["dark"] as? Bool) ?? false
             return measurementPalette(cfg, highlight: highlight, dark: dark).roles
+        }
+    }
+
+    private func runMeasurementLinear(_ f: Fixture, _ h: Harness) {
+        guard let cases = pickerCases(f) else { return }
+        func num(_ v: Any?) -> Double { (v as? Double) ?? (v as? Int).map(Double.init) ?? 0 }
+        h.state["results"] = cases.map { c -> Any in
+            let u = (c["unit"] as? [String: Any]) ?? [:]
+            let unit = MeasurementUnit(id: "u", label: "u", min: num(u["min"]), max: num(u["max"]), step: num(u["step"]),
+                                       decimals: Int(num(u["decimals"])), factor: 1, offset: 0)
+            switch c["op"] as? String {
+            case "value_at": return measurementLinearValue(num(c["fraction"]), unit)
+            case "fraction_of": return measurementLinearFraction(num(c["value"]), unit)
+            case "sizes":
+                let s = measurementLinearSizes((c["field_config"] as? [String: Any]) ?? [:])
+                return ["height": s.height, "track_width": s.trackWidth, "thumb_size": s.thumbSize]
+            default:
+                XCTFail("[\(f.id)] unknown op \(String(describing: c["op"]))")
+                return NSNull()
+            }
         }
     }
 }
