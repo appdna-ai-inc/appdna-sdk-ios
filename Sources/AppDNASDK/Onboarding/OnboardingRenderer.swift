@@ -1725,6 +1725,9 @@ struct OnboardingStepRouter: View {
     @State private var pipelineMemo = OnboardingStepPipelineMemo()
     /// Memo of the step's Google credit (`GoogleCreditMemo`).
     @State private var googleCreditMemo = GoogleCreditMemo()
+    /// The step's `add_widget` attempts (`WidgetAddAttempt`): the how-to sheet, the detection reads and
+    /// the one advance per attempt.
+    @StateObject private var widgetAttempt = WidgetAddAttempt()
 
     init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
@@ -1860,6 +1863,9 @@ struct OnboardingStepRouter: View {
                             pending: livePending, fire: handleInteract
                         ))
                         .environment(\.locationAdvanceSettlement, locationSettlement)
+                        // The step's `add_widget` channel, for buttons at any depth. Nil
+                        // everywhere else (Screens, every sheet), where the button simply advances.
+                        .environment(\.appdnaWidgetAction, WidgetActionChannel { block in tapAddWidget(block) })
                 } else {
                     legacyStepView
                 }
@@ -1912,6 +1918,24 @@ struct OnboardingStepRouter: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        // The `add_widget` how-to, over the step. Done ends the attempt (and advances); Close and a
+        // swipe return to the step. While Done's detection read is in flight the swipe is off.
+        .sheet(item: $widgetAttempt.sheet, onDismiss: { widgetAttempt.sheetDidDismiss() }) { howto in
+            BlockSheetView(
+                blocks: howto.blocks,
+                loc: { loc($0, $1) },
+                onDone: { widgetAttempt.doneTapped() },
+                onClose: { widgetAttempt.closeTapped() },
+                showsGoogleCredit: { _ in howtoShowsGoogleCredit(howto.blocks) }
+            )
+            .interactiveDismissDisabled(widgetAttempt.phase == .checking)
+        }
+        // Back from the Home Screen with the how-to open: look for the new widget.
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            widgetAttempt.appDidBecomeActive()
+        }
+        // The step went away mid-attempt: no status, no event.
+        .onDisappear { widgetAttempt.discard() }
         .entryAnimation(effectiveConfig.animation?.entry_animation, durationMs: effectiveConfig.animation?.entry_duration_ms)
         // A scoped Select whose rendered options no longer contain the selection
         // drops it (inputValues, the view's state, SelectedOptionStore).
@@ -2143,6 +2167,41 @@ struct OnboardingStepRouter: View {
     private var canAdvance: Bool {
         let r = resolvedStep
         return RequiredFieldGate.evaluate(blocks: r.blocks, inputValues: inputValues, rawResolvedIds: r.rawResolvedIds).canAdvance
+    }
+
+    // MARK: - Add widget
+
+    /// An `add_widget` button on this step was tapped. The attempt is handed this presentation and
+    /// the step's own gate, toast, tracker and advance, then decides (`WidgetAddAttempt`).
+    private func tapAddWidget(_ block: ContentBlock) {
+        let tracker = eventTracker
+        widgetAttempt.configure(presentation: presentation, hooks: WidgetAddAttempt.StepHooks(
+            flowId: flowId,
+            stepId: step.id,
+            // The SAME gate the advance runs, after the same prune — so a refused tap starts nothing.
+            gate: {
+                clearVanishedSelections()
+                return canAdvance
+            },
+            onGateRefused: {
+                OnboardingPressedButton.shared.clear()
+                withAnimation { showValidationToast = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+                    withAnimation { showValidationToast = false }
+                }
+            },
+            track: { name, props in tracker?.track(event: name, properties: props) },
+            // One advance per attempt, through the ordinary advance: `widget_status` is merged last,
+            // so `next_step_rules` branch on it like any other answer.
+            advance: { status in advanceCollectingStepData(extra: [WidgetStatus.answerKey: status.rawValue]) }
+        ))
+        widgetAttempt.tap(block)
+    }
+
+    /// Whether the how-to's own text shows a Google answer's content (the sheet then credits Google).
+    private func howtoShowsGoogleCredit(_ blocks: [ContentBlock]) -> Bool {
+        guard let encoded = GoogleCredit.encodeToJSON(blocks) else { return false }
+        return GoogleCredit.shows(sources: [encoded], answers: googleCreditAnswers)
     }
 
     // MARK: - Element interaction

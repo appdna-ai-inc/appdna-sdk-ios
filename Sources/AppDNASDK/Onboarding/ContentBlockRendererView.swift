@@ -365,6 +365,10 @@ struct ContentBlockRendererView: View {
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
+    /// The onboarding step's `add_widget` channel (nil on Screens / SDUI and inside every sheet). When
+    /// set, an `add_widget` button hands it the decoded block; when nil, the button takes the ordinary
+    /// action path, which advances and keeps the step's answers.
+    @SwiftUI.Environment(\.appdnaWidgetAction) private var widgetAction: WidgetActionChannel?
     /// What is drawn behind these blocks, and the appearance: the ink of unstyled text (`UnstyledInk`).
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
@@ -1230,6 +1234,11 @@ struct ContentBlockRendererView: View {
                 } else {
                     onInteract(block.id, "refresh", block.action_value)
                 }
+            } else if block.action == WidgetActionChannel.actionName, let widgetAction {
+                // The channel gets the block itself: its how-to blocks and id ride with it, so a child
+                // button at any depth — with or without an authored id — reaches the step's attempt.
+                OnboardingPressedButton.shared.record(block.id, action: WidgetActionChannel.actionName)
+                widgetAction.tap(block)
             } else {
                 OnboardingPressedButton.shared.record(block.id, action: block.action ?? "next")
                 onAction(block.action ?? "next", block.action_value)

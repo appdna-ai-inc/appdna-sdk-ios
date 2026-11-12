@@ -23,7 +23,8 @@ import SwiftUI
 ///
 /// An option's `sheet_blocks` are a modal ABOVE the step, so the step's walk skips them and each sheet
 /// walks its own, drawing the credit inside the sheet; a sheet resolves its `step` root against its
-/// own inputs, as the sheet renderer does.
+/// own inputs, as the sheet renderer does. An `add_widget` button's how-to sheets
+/// (`howto_blocks_ios` / `howto_blocks_android`) are skipped the same way and credit inside the how-to.
 ///
 /// The `selected` root reads the options the user picked on earlier steps. A picked option's record
 /// names each key whose text was a Google answer's content (`SelectedOptionStore.googleKeys(of:)`), so
@@ -122,7 +123,7 @@ enum GoogleCredit {
     /// encode per change of what the step draws, not one per body pass.
     static var sourcesBuilt = 0
 
-    /// The step's credit: its own walk, `sheet_blocks` skipped.
+    /// The step's credit: its own walk, `sheet_blocks` / `howto_blocks_ios` / `howto_blocks_android` skipped.
     static func shows(sources: [Any], answers: Answers) -> Bool {
         guard answers.holdAGoogleAnswer else { return false }
         return sources.contains { walkSource($0, answers) }
@@ -295,13 +296,14 @@ enum GoogleCredit {
 
     // MARK: - The walk
 
-    /// Every string in `value`, `sheet_blocks` skipped. Exposed so the fixture runner drives this,
+    /// Every string in `value`, sheets skipped (`sheet_blocks`, and an `add_widget` button's
+    /// `howto_blocks_ios` / `howto_blocks_android`: the how-to sheet decides its own credit). Exposed so the fixture runner drives this,
     /// not a copy.
     static func walk(_ value: Any, _ answers: Answers) -> Bool {
         if let s = value as? String { return tokensCredit(s, answers) }
         if let d = value as? [String: Any] {
             for (key, child) in d {
-                if key == "sheet_blocks" { continue }
+                if key == "sheet_blocks" || key == "howto_blocks_ios" || key == "howto_blocks_android" { continue }
                 if key == "bindings", bindingsCredit(child, answers) { return true }
                 if walk(child, answers) { return true }
             }

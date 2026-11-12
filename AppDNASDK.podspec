@@ -58,5 +58,6 @@ experiments, paywalls, onboarding flows, surveys, web entitlements, and deferred
   # alongside them. It is the same mechanism every Firebase pod uses, and for the same reason.
   s.static_framework = true
 
-  s.frameworks = 'UIKit', 'StoreKit', 'Foundation'
+  # WidgetKit: the `add_widget` button reads the app's placed widgets (WidgetCenter) to detect one being added.
+  s.frameworks = 'UIKit', 'StoreKit', 'Foundation', 'WidgetKit'
 end

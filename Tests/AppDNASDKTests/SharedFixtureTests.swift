@@ -112,6 +112,9 @@ final class SharedFixtureTests: XCTestCase {
 
     struct Expect: Decodable {
         let events: [ExpectedEvent]?
+        /// Instead of `events` where the platforms legitimately emit different sequences for the same
+        /// behaviour (add_widget_attempt: Android pins, iOS teaches). This runner reads `ios`.
+        let events_by_platform: [String: [ExpectedEvent]]?
         let delegate_calls: [ExpectedDelegateCall]?
         let state_after: AnyJSON?
         let errors: [ExpectedError]?
@@ -516,6 +519,7 @@ final class SharedFixtureTests: XCTestCase {
         case "host_data_scenario":             await runHostDataScenario(fixture, harness)
         // The core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
+        case "add_widget_attempt":             runAddWidgetAttempt(fixture, harness)
         default:
             // The new kinds are driven from one file per area, each returning `true` for
             // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift,
@@ -682,7 +686,7 @@ final class SharedFixtureTests: XCTestCase {
     /// Reshape the fixture's step document into the shape the SDK's decoder expects (`step_id` → `id`;
     /// a single-step fixture's flat body IS the step's `config`), then let the SDK decode it. Mirrors
     /// Android's `flowFromSetup()`.
-    private func onboardingFlow(_ f: Fixture) -> OnboardingFlowConfig? {
+    func onboardingFlow(_ f: Fixture) -> OnboardingFlowConfig? {
         guard let cfg = f.setup.config?.objectValue else { return nil }
         let flat = cfg.mapValues { $0.foundation }
 
@@ -746,7 +750,7 @@ final class SharedFixtureTests: XCTestCase {
         return decode(stepDicts + stubs) ?? flow
     }
 
-    private func sessionResponses(_ f: Fixture) -> [String: Any] {
+    func sessionResponses(_ f: Fixture) -> [String: Any] {
         (f.setup.session_data?.objectValue?["responses"]?.objectValue ?? [:]).mapValues { $0.foundation }
     }
 
@@ -762,7 +766,7 @@ final class SharedFixtureTests: XCTestCase {
     // `onboarding_hook_completed` emission — but the event's `result` discriminator comes from the
     // SDK's own StepAdvanceResultNaming, so a rename there breaks these fixtures, which is the point.
 
-    private func applyAdvance(
+    func applyAdvance(
         _ f: Fixture,
         _ h: Harness,
         flow: OnboardingFlowConfig,
@@ -2610,7 +2614,7 @@ final class SharedFixtureTests: XCTestCase {
         let prefix = "[\(f.id)]"
 
         // Events — every one produced by the real EventTracker, captured through `eventSink`.
-        let expectedEvents = f.expect.events ?? []
+        let expectedEvents = f.expect.events_by_platform?["ios"] ?? f.expect.events ?? []
         XCTAssertEqual(
             h.events.count, expectedEvents.count,
             "\(prefix) event count — expected \(expectedEvents.map(\.name)), got \(h.events.map(\.event_name))"

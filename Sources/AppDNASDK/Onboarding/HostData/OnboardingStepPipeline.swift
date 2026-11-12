@@ -477,7 +477,8 @@ enum OnboardingStepPipeline {
     /// removed from `inputValues[field_id]` (and, by the caller, the view's selected state and
     /// `SelectedOptionStore`). Never on a pending, Option-Set or out-of-scope block.
     /// Every block of the step at any container depth (`children` / `stack_children`), parents
-    /// first — NOT an option's `sheet_blocks` (a sheet's inputs are its own, never the step's).
+    /// first — NOT an option's `sheet_blocks`, nor an `add_widget` button's `howto_blocks_ios` /
+    /// `howto_blocks_android` (a sheet's inputs are its own, never the step's).
     static func allStepBlocks(_ blocks: [ContentBlock]) -> [ContentBlock] {
         var out: [ContentBlock] = []
         func walk(_ bs: [ContentBlock]) {
@@ -556,8 +557,8 @@ enum OnboardingStepPipeline {
     }
 
     /// `block` with every option named in `keys` (block id → option id → its Google keys) given those
-    /// keys, at every depth a resolver records them: the block, its `children` / `stack_children`, and
-    /// its options' sheets. A pick records an option's keys with it, so a nested Select credits like a
+    /// keys, at every depth a resolver records them: the block, its `children` / `stack_children`, its
+    /// options' sheets and its how-to sheets (`howto_blocks_ios` / `howto_blocks_android`). A pick records an option's keys with it, so a nested Select credits like a
     /// top-level one. An option `keys` does not name keeps its own.
     static func stampGoogleKeys(_ block: ContentBlock, _ keys: [String: [String: [String: String]]]) -> ContentBlock {
         var b = block
@@ -577,6 +578,9 @@ enum OnboardingStepPipeline {
         }
         b.children = b.children?.map { stampGoogleKeys($0, keys) }
         b.stack_children = b.stack_children?.map { stampGoogleKeys($0, keys) }
+        // An `add_widget` button's how-to sheets, like an option's `sheet_blocks`.
+        b.howto_blocks_ios = b.howto_blocks_ios?.map { stampGoogleKeys($0, keys) }
+        b.howto_blocks_android = b.howto_blocks_android?.map { stampGoogleKeys($0, keys) }
         return b
     }
 
@@ -598,6 +602,8 @@ enum OnboardingStepPipeline {
             }
             b.children?.forEach(visit)
             b.stack_children?.forEach(visit)
+            b.howto_blocks_ios?.forEach(visit)
+            b.howto_blocks_android?.forEach(visit)
         }
         visit(block)
         return out

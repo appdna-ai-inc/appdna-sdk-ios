@@ -155,6 +155,9 @@ enum HostDataResolver {
     static let optionBearingTypes: Set<String> = ["input_select", "input_chips", "input_segmented"]
     /// Keys whose array elements are content blocks.
     static let blockListKeys: [String] = ["children", "stack_children"]
+    /// An `add_widget` button's how-to sheets. Walked like an option's `sheet_blocks`: a sheet above the
+    /// step, whose blocks are not the step's (a `step` token is deferred to the sheet's own inputs).
+    static let howtoBlockKeys: [String] = ["howto_blocks_ios", "howto_blocks_android"]
     static let repeatDefaultMax = 20
     static let repeatHardMax = 50
 
@@ -740,13 +743,20 @@ enum HostDataResolver {
 
     // MARK: Block tree walking / id stamping / skip rule
 
-    /// Visit every block object (the block, children, stack_children, option sheet_blocks).
+    /// Visit every block object (the block, children, stack_children, option sheet_blocks, and an
+    /// `add_widget` button's howto_blocks_ios / howto_blocks_android).
     static func forEachBlock(_ block: HDObj, _ path: String, inSheet: Bool = false, _ visit: (HDObj, String, Bool) -> Void) {
         visit(block, path, inSheet)
         for key in blockListKeys {
             guard let list = block.d[key]?.arr else { continue }
             for (j, child) in list.enumerated() {
                 if let c = child.obj { forEachBlock(c, "\(path)/\(key)/\(j)", inSheet: inSheet, visit) }
+            }
+        }
+        for key in howtoBlockKeys {
+            guard let list = block.d[key]?.arr else { continue }
+            for (j, child) in list.enumerated() {
+                if let c = child.obj { forEachBlock(c, "\(path)/\(key)/\(j)", inSheet: true, visit) }
             }
         }
         if let opts = block.d["field_options"]?.arr {
@@ -1405,6 +1415,12 @@ private final class RawPass {
                     continue
                 }
                 if key == "sheet_blocks", case .type("InputOption") = owner {
+                    for sb in list { if let so = sb.obj { walkBlock(so, scope, inSheet: true) } }
+                    continue
+                }
+                // An `add_widget` button's how-to sheets (howto_blocks_ios / howto_blocks_android):
+                // walked as sheet blocks, exactly like an option's `sheet_blocks`.
+                if o === env.block && H.howtoBlockKeys.contains(key) {
                     for sb in list { if let so = sb.obj { walkBlock(so, scope, inSheet: true) } }
                     continue
                 }

@@ -3437,7 +3437,9 @@ private extension View {
 
 // MARK: - the option bottom sheet
 
-/// Presents an option's `sheet_blocks` through the ordinary content-block renderer.
+/// Presents an option's `sheet_blocks` through the ordinary content-block renderer, on the engine it
+/// shares with the `add_widget` how-to (`BlockSheetView`; `howto_blocks_ios` on iOS,
+/// `howto_blocks_android` on Android).
 ///
 /// One engine, two authoring presets: the console seeds a chooser set (slider / toggle /
 /// preview / CTA) or a detail set (badge / heading / media / CTA), and the author edits from
@@ -3457,77 +3459,47 @@ struct OptionBottomSheetView: View {
     /// The block whose option opened the sheet: with the option's id, it finds the sheet's SOURCE in
     /// the step, which the sheet's Google credit is decided from.
     var blockId: String? = nil
-
-    @State private var sheetToggles: [String: Bool] = [:]
-    @State private var sheetInputs: [String: Any]
+    /// The sheet's inputs when it opens — empty in production; a render test seeds a field's answer.
+    private let inputs: [String: Any]
     /// The step's credit context. The sheet is a modal above the step, so it draws its own credit.
     @SwiftUI.Environment(\.googleCreditSheetContext) private var creditContext
 
     /// What the sheet draws behind its content: the system sheet background (no fill of its own).
-    static let backdrop: GoogleMapsAttribution.Backdrop = .plain(hex: nil)
-    @SwiftUI.Environment(\.appdnaDeviceColorScheme) private var deviceScheme
-    @SwiftUI.Environment(\.colorScheme) private var currentScheme
+    static let backdrop: GoogleMapsAttribution.Backdrop = BlockSheetView.backdrop
 
-    /// `inputs`: the sheet's own inputs when it opens — empty in production; a render test seeds a
-    /// field's answer.
     init(option: InputOption, onDismiss: @escaping () -> Void, rawResolved: Bool = false, blockId: String? = nil,
          inputs: [String: Any] = [:]) {
         self.option = option
         self.onDismiss = onDismiss
         self.rawResolved = rawResolved
         self.blockId = blockId
-        _sheetInputs = State(initialValue: inputs)
+        self.inputs = inputs
     }
 
-    /// Whether the sheet's own blocks template a Google answer — their `step` root read against the
-    /// sheet's own inputs.
-    private var showsGoogleCredit: Bool {
-        creditContext?.shows(
-            blockId: blockId, optionId: option.id,
-            presentedSheetBlocks: option.sheet_blocks ?? [], sheetInputs: sheetInputs
-        ) ?? false
-    }
-
+    /// The engine is `BlockSheetView`: Done (`next` / `continue`) and Close (`dismiss`) both close an
+    /// option sheet — the flow continues underneath, where the option is already selected — and every
+    /// other action inside it does nothing.
     var body: some View {
-        VStack(spacing: 0) {
-            // Drag handle — the affordance in the reporter's recording.
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 5)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-
-            ScrollView {
-                ContentBlockRendererView(
-                    blocks: option.sheet_blocks ?? [],
-                    onAction: { action, _ in
-                        // The CTA closes the sheet; the flow continues underneath, where the
-                        // option is already selected.
-                        if action == "next" || action == "continue" || action == "dismiss" { onDismiss() }
-                    },
-                    toggleValues: $sheetToggles,
-                    inputValues: $sheetInputs
-                )
-                .environment(\.appdnaRawResolved, rawResolved)
-                // A sheet has its own inputs and no interaction channel. SwiftUI
-                // environment reaches `.sheet` content, so the step's channel is cut off explicitly:
-                // a `refresh_step` button in `sheet_blocks` fires nothing (REFRESH_STEP_CANNOT_FIRE).
-                .environment(\.appdnaStepInteraction, nil)
-                // The sheet is filled with the system background, whatever the step underneath
-                // draws: a Google logo inside the sheet picks its variant from the sheet.
-                .environment(\.googleAttributionBackdrop, Self.backdrop)
-                .environment(\.colorScheme, deviceScheme ?? currentScheme)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 24)
+        let context = creditContext
+        let blockId = blockId
+        let option = option
+        let sheetBlocks = option.sheet_blocks ?? []
+        BlockSheetView(
+            blocks: sheetBlocks,
+            loc: nil,
+            onDone: onDismiss,
+            onClose: onDismiss,
+            rawResolved: rawResolved,
+            inputs: inputs,
+            // Whether the sheet's own blocks template a Google answer — their `step` root read
+            // against the sheet's own inputs.
+            showsGoogleCredit: { sheetInputs in
+                context?.shows(
+                    blockId: blockId, optionId: option.id,
+                    presentedSheetBlocks: sheetBlocks, sheetInputs: sheetInputs
+                ) ?? false
             }
-            // Google's attribution inside the sheet, the container its text is drawn in.
-            if showsGoogleCredit {
-                GoogleMapsTextAttribution(backdrop: Self.backdrop)
-                    .padding(.bottom, 12)
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.hidden)
+        )
     }
 }
 
