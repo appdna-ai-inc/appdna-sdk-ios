@@ -678,6 +678,9 @@ enum BlockKeyTypes {
         "agreement": [
             "agreement_text": "string",
         ],
+        "button": [
+            "cta_dependencies": "any",
+        ],
         "input_select": [
             "advance_confirm": "bool",
             "advance_confirm_no": "string",

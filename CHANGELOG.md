@@ -14,6 +14,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A button can depend on other elements on its screen.** `field_config.cta_dependencies` lists
+  `{ block_id, condition }` entries (`answered`, `all_selected`, `min_selected` with `count`, `correct`, `equals` with
+  `value`). Until every one holds the button is inactive (a tap does nothing) and draws in `cta_disabled_bg_color`, or its
+  own colour faded; then it draws in `cta_enabled_bg_color` and acts. An entry naming an element not on the step holds.
 - **A Select that advances on the pick can ask first.** `field_config.advance_confirm: true` beside `auto_advance` opens
   a dialog (`advance_confirm_text`, default "Are you sure?") before the step moves on; its confirm button
   (`advance_confirm_yes`, default "Yes") advances, and its cancel button (`advance_confirm_no`, default "No") stays with

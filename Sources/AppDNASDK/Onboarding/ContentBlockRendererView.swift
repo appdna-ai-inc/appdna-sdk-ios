@@ -1130,10 +1130,20 @@ struct ContentBlockRendererView: View {
         // button background off whether the step's required fields (incl. a consent checkbox) are satisfied.
         // Reuses the SAME RequiredFieldGate the advance gate uses (over `blocks` + live `inputValues`), so the
         // CTA recolors reactively as the user toggles consent. Both nil → plain `bg_color` (non-breaking).
+        // `cta_dependencies`: the button is inactive (a tap does nothing) until every named condition on the step holds,
+        // drawn in `cta_disabled_bg_color`, or its own colour faded when none is set.
+        let hasDependencies = CtaDependencies.has(block)
+        let dependenciesMet = !hasDependencies
+            || CtaDependencies.met(button: block, blocks: gateBlocks ?? blocks, inputValues: inputValues)
         let fillHex: String = {
             let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            if hasDependencies {
+                let gateMet = (enabledHex == nil && disabledHex == nil)
+                    || RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
+                return dependenciesMet && gateMet ? (enabledHex ?? fallback) : (disabledHex ?? fallback)
+            }
             guard enabledHex != nil || disabledHex != nil else { return fallback }
             // The step's ONE layered list (every zone), markers honoured.
             let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
@@ -1162,7 +1172,12 @@ struct ContentBlockRendererView: View {
             textColor: block.text_color, styleColor: block.style?.color, variant: btnVariant, fillHex: fillHex)
         let labelColor = Color(hex: labelHex)
 
+        let fadesInactive = hasDependencies && !dependenciesMet
+            && (block.field_config?["cta_disabled_bg_color"]?.value as? String) == nil
+
         return Button {
+            // Inactive until its dependencies hold: the tap is not an action.
+            guard dependenciesMet else { return }
             if let onTapOverride {
                 onTapOverride()
             } else if isRefresh {
@@ -1271,7 +1286,8 @@ struct ContentBlockRendererView: View {
         .applyPressedStyle(block.pressed_style)
         // The loading button is not tappable: no pressed-style feedback, no tap.
         .allowsHitTesting(!isLoading)
-        .accessibilityValue(isLoading ? Text("Loading") : Text(""))
+        .opacity(fadesInactive ? CtaDependencies.inactiveOpacity : 1)
+        .accessibilityValue(isLoading ? Text("Loading") : Text(dependenciesMet ? "" : "Inactive"))
     }
 
     // MARK: - Sound Button (Device QA — s20/s22)

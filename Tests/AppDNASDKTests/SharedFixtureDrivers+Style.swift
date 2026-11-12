@@ -45,6 +45,7 @@ extension SharedFixtureTests {
         case "resolve_select_advance_on_pick": runSelectAdvanceOnPick(f, h)
         case "resolve_select_answer_feedback": runSelectAnswerFeedback(f, h)
         case "resolve_select_advance_confirm": runSelectAdvanceConfirm(f, h)
+        case "resolve_cta_dependencies": runCtaDependencies(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -1127,6 +1128,31 @@ extension SharedFixtureTests {
             }
             guard let delay = StepAutoAdvance.delaySeconds(for: step) else { return NSNull() }
             return delay
+        }
+    }
+
+    // MARK: resolve_cta_dependencies
+
+    /// Whether a button's dependencies hold, through the REAL `ContentBlock` decode and the real policy.
+    private func runCtaDependencies(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_cta_dependencies needs action.cases")
+            return
+        }
+        func decode(_ raw: Any?) -> ContentBlock? {
+            guard let raw = raw as? [String: Any], let data = try? JSONSerialization.data(withJSONObject: raw) else { return nil }
+            return try? JSONDecoder().decode(ContentBlock.self, from: data)
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.objectValue?["value"]?.foundation as? [String: Any],
+                  let button = decode(v["button"]),
+                  let rawBlocks = v["blocks"] as? [Any] else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let blocks = rawBlocks.compactMap(decode)
+            XCTAssertEqual(blocks.count, rawBlocks.count, "[\(f.id)] every block decodes")
+            return CtaDependencies.met(button: button, blocks: blocks, inputValues: v["input_values"] as? [String: Any] ?? [:])
         }
     }
 
