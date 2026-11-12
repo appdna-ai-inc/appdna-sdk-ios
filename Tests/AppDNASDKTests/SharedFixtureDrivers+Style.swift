@@ -47,6 +47,7 @@ extension SharedFixtureTests {
         case "resolve_select_advance_confirm": runSelectAdvanceConfirm(f, h)
         case "resolve_cta_dependencies": runCtaDependencies(f, h)
         case "resolve_block_bleed": runBlockBleed(f, h)
+        case "resolve_animated_image": runAnimatedImage(f, h)
         case "resolve_store_price": runStorePrice(f, h)
         case "resolve_plan_savings": runPlanSavings(f, h)
         case "parse_blocks_leniently": runLenientBlocks(f, h)
@@ -1249,6 +1250,37 @@ extension SharedFixtureTests {
                 stepInset: num("step_inset"), edgeTop: num("edge_top"), edgeBottom: num("edge_bottom")
             )
             return [r.top, r.right, r.bottom, r.left]
+        }
+    }
+
+    // MARK: resolve_animated_image
+
+    /// An animated_image strip's direction, speed, tile length and loop offset, through the REAL
+    /// `ContentBlock` decode and the real marquee functions.
+    private func runAnimatedImage(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_animated_image needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            guard let v = c.foundation as? [String: Any],
+                  let fc = v["field_config"] as? [String: Any],
+                  let natural = v["natural_size"] as? [NSNumber], let blockSize = v["block_size"] as? [NSNumber],
+                  let data = try? JSONSerialization.data(withJSONObject: ["id": "anim", "type": "animated_image", "field_config": fc]),
+                  let block = try? JSONDecoder().decode(ContentBlock.self, from: data) else {
+                XCTFail("[\(f.id)] a case did not decode")
+                return NSNull()
+            }
+            let cfg = block.field_config?.mapValues { $0.value }
+            let d = AnimatedImageMarquee.direction(cfg?["scroll_direction"])
+            let s = AnimatedImageMarquee.speed(cfg?["scroll_speed"])
+            let tile = AnimatedImageMarquee.tileLength(
+                direction: d,
+                naturalSize: CGSize(width: natural[0].doubleValue, height: natural[1].doubleValue),
+                blockSize: CGSize(width: blockSize[0].doubleValue, height: blockSize[1].doubleValue)
+            )
+            let off = AnimatedImageMarquee.offset(direction: d, speed: s, tileLength: tile, elapsed: (v["elapsed_seconds"] as? NSNumber)?.doubleValue ?? 0)
+            return [d, s, (tile * 1000).rounded() / 1000, off] as [Any]
         }
     }
 

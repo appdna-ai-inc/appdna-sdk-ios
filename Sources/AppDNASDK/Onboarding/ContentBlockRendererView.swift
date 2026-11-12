@@ -566,6 +566,7 @@ struct ContentBlockRendererView: View {
         case .text: return AnyView(textBlock(block))
         case .image: return AnyView(imageBlock(block))
         case .media_gallery: return AnyView(mediaGalleryBlock(block))
+        case .animated_image: return AnyView(AnimatedImageBlockView(block: block))
         case .section_background: return AnyView(sectionBackgroundBlock(block))
         case .carousel: return AnyView(CarouselBlockView(block: block, onAction: onAction, toggleValues: $toggleValues, inputValues: $inputValues,
                                                          // Onboarding passes the step's layered list; Screens pass nil, so a page

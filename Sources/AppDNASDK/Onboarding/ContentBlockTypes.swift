@@ -22,6 +22,8 @@ public enum ContentBlockType: String, Codable {
     case pricing_card
     // Media gallery (horizontal row of image tiles)
     case media_gallery
+    /// One long image scrolling in a seamless loop (left / right / up / down).
+    case animated_image
     // EPIC-4b — section background (vertical color zones behind overlaid content)
     case section_background
     // Swipeable carousel (paged content + dot indicator)
