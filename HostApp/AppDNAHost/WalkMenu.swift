@@ -83,6 +83,13 @@ enum WalkMenu {
         case "track":
             AppDNA.track(event: item.value)
             log.note("track(\(item.value))")
+        case "identify":
+            AppDNA.identify(userId: item.value)
+            log.note("identify(\(item.value))")
+        case "consent":
+            let on = item.value == "true"
+            AppDNA.setConsent(analytics: on)
+            log.note("setConsent(analytics: \(on))")
         case "push":
             Task {
                 let granted = await AppDNA.registerForPush()
