@@ -498,14 +498,13 @@ struct FormInputDateBlock: View {
         // Android (ContentBlockRenderer.kt:7780-7784) + preview: "field" → tap-to-open compact,
         // "inline" → graphical (only for variants that include a date component; time-only has no
         // graphical style so it falls through to picker_variant).
-        let variant: String = {
-            if block.picker_presentation == "field" {
-                return "compact"
-            } else if block.picker_presentation == "inline" && components.contains(.date) {
-                return "graphical"
-            }
-            return (block.field_config?["picker_variant"]?.value as? String) ?? "compact"
-        }()
+        // The console's "Picker Variant" decides for an inline field too; it used to be overridden by the
+        // calendar whenever the presentation was `inline`, the default (DatePickerStyle.formField).
+        let variant: String = DatePickerStyle.formField(
+            presentation: block.picker_presentation,
+            variant: block.field_config?["picker_variant"]?.value as? String,
+            hasDate: components.contains(.date)
+        )
         // SPEC — honor time_format ("12h"/"24h") + time_text_size on the time
         // picker. The console writes both to input_time/input_datetime which
         // route here (not to DateWheelPickerBlockView). Locale en_GB forces 24h

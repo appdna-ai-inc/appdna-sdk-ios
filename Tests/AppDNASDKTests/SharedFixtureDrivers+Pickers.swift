@@ -7,6 +7,8 @@
 //                                `MeasurementWheelBlockView` draws every colour from.
 //   resolve_measurement_linear   REAL: `measurementLinearValue`, `measurementLinearFraction` and
 //                                `measurementLinearSizes`, which the `linear` slider calls.
+//   resolve_date_picker_style    REAL: `DatePickerStyle.standalone` / `.formField`.
+//   resolve_date_range           REAL: `DateRangeSelection.tapping` / `.answer`.
 //
 // © 2026 AppDNA AI, Inc.
 
@@ -22,6 +24,8 @@ extension SharedFixtureTests {
         switch f.action.kind {
         case "resolve_measurement_palette": runMeasurementPalette(f, h)
         case "resolve_measurement_linear": runMeasurementLinear(f, h)
+        case "resolve_date_picker_style": runDatePickerStyle(f, h)
+        case "resolve_date_range": runDateRange(f, h)
         default: return false
         }
         return true
@@ -62,6 +66,29 @@ extension SharedFixtureTests {
                 XCTFail("[\(f.id)] unknown op \(String(describing: c["op"]))")
                 return NSNull()
             }
+        }
+    }
+
+    /// REAL: `DatePickerStyle.standalone` / `.formField`, which the Date Picker and the Date field draw from.
+    private func runDatePickerStyle(_ f: Fixture, _ h: Harness) {
+        guard let cases = pickerCases(f) else { return }
+        h.state["results"] = cases.map { c -> Any in
+            if (c["surface"] as? String) == "form" {
+                return DatePickerStyle.formField(presentation: c["presentation"] as? String, variant: c["variant"] as? String,
+                                                 hasDate: (c["has_date"] as? Bool) ?? true)
+            }
+            return DatePickerStyle.standalone(mode: c["mode"] as? String, variant: c["variant"] as? String,
+                                              selection: c["selection"] as? String)
+        }
+    }
+
+    /// REAL: `DateRangeSelection.tapping` and `.answer`, which the range calendar calls on every tap.
+    private func runDateRange(_ f: Fixture, _ h: Harness) {
+        guard let cases = pickerCases(f) else { return }
+        h.state["results"] = cases.map { c -> Any in
+            var sel = DateRangeSelection(start: nil, end: nil)
+            for t in (c["taps"] as? [String]) ?? [] { sel = sel.tapping(t) }
+            return sel.answer(fieldId: (c["field_id"] as? String) ?? "f").mapValues { $0 ?? NSNull() }
         }
     }
 }
