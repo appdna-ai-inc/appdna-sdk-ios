@@ -360,6 +360,13 @@ final class WidgetAddAttempt: ObservableObject {
     // MARK: Internals
 
     /// The new widget, if any: the first of `after − before`, by id so the choice is deterministic.
+    ///
+    /// 🔴 WHAT THIS CAN SEE IS LIMITED BY WIDGETKIT, measured on the iOS 26.2 simulator: the
+    /// configurations read reports ONE entry per widget kind and family, however many of that size
+    /// are on the Home Screen (eleven small widgets of one kind read as `n=1`), and `WidgetInfo`
+    /// compares by value. So a widget is detected when its kind-and-size is new to the user (the
+    /// first small one: detected 1.25 s after returning), and a second widget of a size already
+    /// placed is invisible to any app — it reads `not_added`.
     static func firstAdded(before: Set<WidgetInstance>, after: Set<WidgetInstance>) -> WidgetInstance? {
         after.subtracting(before).sorted { $0.id < $1.id }.first
     }
