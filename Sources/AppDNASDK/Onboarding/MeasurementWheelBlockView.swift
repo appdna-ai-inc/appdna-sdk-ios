@@ -303,32 +303,42 @@ let measurementPaletteKeys = [
 
 /// One rule for every platform: an authored, non-blank string wins; otherwise the pinned default.
 func measurementPalette(_ cfg: [String: Any], highlight: String?, dark: Bool) -> MeasurementPalette {
-    func s(_ k: String) -> String? {
+    let c = MeasurementPaletteSource(cfg: cfg, highlight: highlight)
+    // Every default is written as the fallback of the key that overrides it, so each colour on screen is authorable.
+    let value = c.key("needle_color") ?? c.highlight ?? "#6366F1"
+    let tick = c.key("tick_color") ?? (dark ? "#475569" : "#CBD5E1")
+    return MeasurementPalette(
+        value: value,
+        unit: c.key("unit_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        label: c.key("label_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        toggleActive: c.key("toggle_active_color") ?? c.highlight ?? "#6366F1",
+        toggleActiveText: c.key("toggle_active_text_color") ?? "#FFFFFF",
+        toggleText: c.key("toggle_text_color") ?? (dark ? "#94A3B8" : "#64748B"),
+        tick: tick,
+        track: c.key("track_color") ?? (dark ? "#334155" : "#E2E8F0"),
+        band: c.key("band_color"),
+        bandText: c.key("band_text_color") ?? value,
+        rowText: c.key("row_text_color") ?? tick,
+        thumb: c.key("thumb_color") ?? value
+    )
+}
+
+/// The authored strings the palette reads: a key's value, or the block's `highlight_color`, trimmed; blank = unset.
+private struct MeasurementPaletteSource {
+    let cfg: [String: Any]
+    let highlight: String?
+
+    init(cfg: [String: Any], highlight: String?) {
+        self.cfg = cfg
+        let h = highlight?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.highlight = (h?.isEmpty ?? true) ? nil : h
+    }
+
+    func key(_ k: String) -> String? {
         guard let v = cfg[k] as? String else { return nil }
         let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
         return t.isEmpty ? nil : t
     }
-    let accent: String = {
-        if let h = highlight?.trimmingCharacters(in: .whitespacesAndNewlines), !h.isEmpty { return h }
-        return "#6366F1"
-    }()
-    let muted = dark ? "#94A3B8" : "#64748B"
-    let value = s("needle_color") ?? accent
-    let tick = s("tick_color") ?? (dark ? "#475569" : "#CBD5E1")
-    return MeasurementPalette(
-        value: value,
-        unit: s("unit_color") ?? muted,
-        label: s("label_color") ?? muted,
-        toggleActive: s("toggle_active_color") ?? accent,
-        toggleActiveText: s("toggle_active_text_color") ?? "#FFFFFF",
-        toggleText: s("toggle_text_color") ?? muted,
-        tick: tick,
-        track: s("track_color") ?? (dark ? "#334155" : "#E2E8F0"),
-        band: s("band_color"),
-        bandText: s("band_text_color") ?? value,
-        rowText: s("row_text_color") ?? tick,
-        thumb: s("thumb_color") ?? value
-    )
 }
 
 // MARK: - Measurement view
