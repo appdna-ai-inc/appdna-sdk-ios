@@ -31,7 +31,7 @@ final class TextStyleMergeTests: XCTestCase {
         font: .title.bold(), size: 28, weight: 700, family: "Synthetic Serif", alignment: "center")
 
     func testAColourOnlyStyleKeepsTheElementsSizeWeightAndFamily() throws {
-        let t = StyleEngine.resolveTypography(try style(#"{ "color": "#111827" }"#), defaults: titleDefault)
+        let t = StyleEngine.resolveTypography(try style(##"{ "color": "#111827" }"##), defaults: titleDefault)
         XCTAssertEqual(t.size, 28, "a colour-only style replaced the element's size")
         XCTAssertEqual(t.weight, 700, "a colour-only style replaced the element's weight")
         XCTAssertEqual(t.family, "Synthetic Serif", "a colour-only style replaced the element's family")
@@ -42,7 +42,7 @@ final class TextStyleMergeTests: XCTestCase {
     }
 
     func testASizeOnlyStyleKeepsTheElementsWeight() throws {
-        let t = StyleEngine.resolveTypography(try style(#"{ "font_size": 20 }"#), defaults: titleDefault)
+        let t = StyleEngine.resolveTypography(try style(##"{ "font_size": 20 }"##), defaults: titleDefault)
         XCTAssertEqual(t.size, 20, "the authored size must win")
         XCTAssertEqual(t.weight, 700, "a size-only style replaced the element's weight")
         XCTAssertEqual(t.family, "Synthetic Serif")
@@ -51,14 +51,14 @@ final class TextStyleMergeTests: XCTestCase {
     }
 
     func testAWeightOnlyStyleKeepsTheElementsSize() throws {
-        let t = StyleEngine.resolveTypography(try style(#"{ "font_weight": 400 }"#), defaults: titleDefault)
+        let t = StyleEngine.resolveTypography(try style(##"{ "font_weight": 400 }"##), defaults: titleDefault)
         XCTAssertEqual(t.size, 28, "a weight-only style replaced the element's size")
         XCTAssertEqual(t.weight, 400, "the authored weight must win")
         XCTAssertFalse(t.keepsDefaultFont)
     }
 
     func testAFamilyOnlyStyleKeepsTheElementsSizeAndWeight() throws {
-        let t = StyleEngine.resolveTypography(try style(#"{ "font_family": "Synthetic Sans" }"#), defaults: titleDefault)
+        let t = StyleEngine.resolveTypography(try style(##"{ "font_family": "Synthetic Sans" }"##), defaults: titleDefault)
         XCTAssertEqual(t.family, "Synthetic Sans")
         XCTAssertEqual(t.size, 28)
         XCTAssertEqual(t.weight, 700)
@@ -81,7 +81,7 @@ final class TextStyleMergeTests: XCTestCase {
     /// `line_height` is a multiplier of the RESOLVED size: authored without a size, it scales the
     /// element's own size (Android: `line_height * (config.font_size ?: base.fontSize)`).
     func testALineHeightWithoutASizeScalesTheElementsSize() throws {
-        let t = StyleEngine.resolveTypography(try style(#"{ "line_height": 1.5 }"#), defaults: titleDefault)
+        let t = StyleEngine.resolveTypography(try style(##"{ "line_height": 1.5 }"##), defaults: titleDefault)
         XCTAssertEqual(t.lineSpacing, 14, accuracy: 0.0001)
         XCTAssertTrue(t.keepsDefaultFont)
     }
@@ -89,12 +89,12 @@ final class TextStyleMergeTests: XCTestCase {
     /// The legacy overload (`applyTextStyle(_:)`, used by onboarding and surveys) must resolve
     /// exactly what it always did: system 16pt regular, leading.
     func testTheLegacyDefaultsResolveWhatThePlainOverloadAlwaysDrew() throws {
-        let colourOnly = StyleEngine.resolveTypography(try style(#"{ "color": "#111827" }"#), defaults: .legacy)
+        let colourOnly = StyleEngine.resolveTypography(try style(##"{ "color": "#111827" }"##), defaults: .legacy)
         XCTAssertEqual(colourOnly, ResolvedTextTypography(
             family: nil, size: 16, weight: 400, alignment: nil, lineSpacing: 0, keepsDefaultFont: true))
         XCTAssertNil(TextStyleDefaults.legacy.font,
                      "the legacy default must fall through to FontResolver(nil, 16, 400), not a named Font")
-        let lh = StyleEngine.resolveTypography(try style(#"{ "line_height": 2 }"#), defaults: .legacy)
+        let lh = StyleEngine.resolveTypography(try style(##"{ "line_height": 2 }"##), defaults: .legacy)
         XCTAssertEqual(lh.lineSpacing, 16, accuracy: 0.0001, "legacy line spacing is (lh - 1) * 16")
     }
 

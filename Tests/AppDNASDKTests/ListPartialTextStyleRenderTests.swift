@@ -48,10 +48,10 @@ final class ListPartialTextStyleRenderTests: XCTestCase {
     }
 
     func testAColourOnlyListStyleKeepsThe17ptDefault() throws {
-        _ = try darkInk(#"{ "color": "#111111" }"#) // warm-up render
-        let colourOnly = try darkInk(#"{ "color": "#111111" }"#)
-        let explicit17 = try darkInk(#"{ "color": "#111111", "font_size": 17 }"#)
-        let legacy16 = try darkInk(#"{ "color": "#111111", "font_size": 16 }"#)
+        _ = try darkInk(##"{ "color": "#111111" }"##) // warm-up render
+        let colourOnly = try darkInk(##"{ "color": "#111111" }"##)
+        let explicit17 = try darkInk(##"{ "color": "#111111", "font_size": 17 }"##)
+        let legacy16 = try darkInk(##"{ "color": "#111111", "font_size": 16 }"##)
         NSLog("[1805-list] colourOnly=\(colourOnly) explicit17=\(explicit17) legacy16=\(legacy16)")
         XCTAssertNotEqual(explicit17, legacy16, "harness control: a one-point size change must be visible")
         XCTAssertEqual(colourOnly, explicit17, "a colour-only list style must keep the item's 17pt default")

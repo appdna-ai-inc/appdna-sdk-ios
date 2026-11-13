@@ -46,7 +46,7 @@ final class PartialTextStyleRenderTests: XCTestCase {
     /// pixel-comparable with later ones (see `SocialProofRenderTests.setUp`). Thrown away.
     override func setUp() async throws {
         try await super.setUp()
-        _ = try? renderPNG(try config(sections: #"{ "type": "header", "config": { "title": "Warm up" } }"#))
+        _ = try? renderPNG(try config(sections: ##"{ "type": "header", "config": { "title": "Warm up" } }"##))
     }
 
     private func config(sections: String) throws -> PaywallConfig {
@@ -123,9 +123,9 @@ final class PartialTextStyleRenderTests: XCTestCase {
 
     func testAColourOnlyHeaderTitleKeepsTheLargeBoldDefault() throws {
         let unstyledImage = try renderImage(try header(nil))
-        let colourOnlyImage = try renderImage(try header(#"{ "color": "#111827" }"#))
+        let colourOnlyImage = try renderImage(try header(##"{ "color": "#111827" }"##))
         // The control: same colour, the body-size regular typography the defect produced.
-        let bodySizeImage = try renderImage(try header(#"{ "color": "#111827", "font_size": 16, "font_weight": 400 }"#))
+        let bodySizeImage = try renderImage(try header(##"{ "color": "#111827", "font_size": 16, "font_weight": 400 }"##))
 
         let unstyledInk = try darkInk(unstyledImage)
         let colourOnlyInk = try darkInk(colourOnlyImage)
@@ -160,8 +160,8 @@ final class PartialTextStyleRenderTests: XCTestCase {
 
     func testAColourOnlyGuaranteeTitleKeepsItsDefault() throws {
         let unstyled = try renderPNG(try guarantee(nil))
-        let colourOnly = try renderPNG(try guarantee(#"{ "color": "#111827" }"#))
-        let reweighted = try renderPNG(try guarantee(#"{ "color": "#111827", "font_size": 15, "font_weight": 400 }"#))
+        let colourOnly = try renderPNG(try guarantee(##"{ "color": "#111827" }"##))
+        let reweighted = try renderPNG(try guarantee(##"{ "color": "#111827", "font_size": 15, "font_weight": 400 }"##))
 
         XCTAssertNotEqual(unstyled, reweighted,
                           "THE CONTROL FAILED: a regular-weight guarantee title renders the same as the semibold default")
@@ -179,8 +179,8 @@ final class PartialTextStyleRenderTests: XCTestCase {
 
     func testAColourOnlyFeatureRowKeepsItsDefault() throws {
         let unstyled = try renderPNG(try features(nil))
-        let colourOnly = try renderPNG(try features(#"{ "color": "#111827" }"#))
-        let resized = try renderPNG(try features(#"{ "color": "#111827", "font_size": 13 }"#))
+        let colourOnly = try renderPNG(try features(##"{ "color": "#111827" }"##))
+        let resized = try renderPNG(try features(##"{ "color": "#111827", "font_size": 13 }"##))
 
         XCTAssertNotEqual(unstyled, resized,
                           "THE CONTROL FAILED: a 13pt feature row renders the same as the body default")
@@ -198,8 +198,8 @@ final class PartialTextStyleRenderTests: XCTestCase {
 
     func testAColourOnlyCTALabelKeepsItsDefault() throws {
         let unstyled = try renderPNG(try cta(nil))
-        let colourOnly = try renderPNG(try cta(#"{ "color": "#FFFFFF" }"#))
-        let resized = try renderPNG(try cta(#"{ "color": "#FFFFFF", "font_size": 12 }"#))
+        let colourOnly = try renderPNG(try cta(##"{ "color": "#FFFFFF" }"##))
+        let resized = try renderPNG(try cta(##"{ "color": "#FFFFFF", "font_size": 12 }"##))
 
         XCTAssertNotEqual(unstyled, resized,
                           "THE CONTROL FAILED: a 12pt CTA label renders the same as the 17pt semibold default")
