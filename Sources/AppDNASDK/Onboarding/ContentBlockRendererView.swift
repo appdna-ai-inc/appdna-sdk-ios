@@ -1913,9 +1913,14 @@ struct ContentBlockRendererView: View {
                 HStack(spacing: 10) {
                     listMarker(style: block.list_style ?? "bullet", index: index, checkColor: block.check_color, ink: ink)
                     // Localize each list item using block id + index key
-                    Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
-                        .foregroundColor(block.style?.color.map { Color(hex: $0) } ?? ink)
-                        .applyTextStyle(block.style)
+                    let itemText = Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
+                    if let style = block.style {
+                        // #1805 — MERGED over the item's own 17pt body default, as Android merges over its
+                        // 17sp base: a colour-only style used to redraw the item at the legacy 16pt.
+                        itemText.applyTextStyle(style, defaults: TextStyleDefaults(size: 17, weight: 400, color: ink))
+                    } else {
+                        itemText.foregroundColor(ink)
+                    }
                 }
             }
         }
