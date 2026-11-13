@@ -55,10 +55,6 @@ enum A11yAutomation {
         return true
     }
 
-    /// Sets the switch the way another process on the simulator would. Test-only: the red control in
-    /// `HostedStepAutomationTests`.
-    static func setForTesting(_ on: Bool) { setter?(on ? 1 : 0) }
-
     /// Kept for the call sites that turn it on before hosting their own view. Re-asserts on every access.
     static var enabled: Bool { ensure() }
 }
@@ -89,16 +85,22 @@ enum A11yTree {
     static func hasALabel(_ elements: [NSObject]) -> Bool { elements.contains { $0.accessibilityLabel != nil } }
 
     /// The tree under `roots`, read the way a test means to read it: the accessibility runtime is re-asserted first,
-    /// and when `ready` does not hold — by default, no label at all, the shape of the switch having been turned off
-    /// underneath the test by another process — it is re-asserted and re-read for up to `timeout` while SwiftUI
-    /// publishes the tree again. Returns the last read either way; the caller's assertion judges it.
+    /// and when `ready` does not hold — by default, no label at all — it is re-read for up to `timeout` while SwiftUI
+    /// publishes the tree. Returns the last read either way; the caller's assertion judges it.
+    ///
+    /// Why the wait: on a shared simulator, a full-suite run once read EMPTY trees (`labels []`) in tests that pass
+    /// alone. That has not been reproduced: not by turning the accessibility automation switch off in-process (the
+    /// tree still published its labels), not with another XCUITest runner snapshotting the same simulator, not under
+    /// heavy CPU load. So each read that is not ready prints `A11Y-NOT-READY` with the state that could explain it.
     static func read(_ roots: [NSObject], maxDepth: Int = 60, timeout: TimeInterval = 2,
                      until ready: ([NSObject]) -> Bool = A11yTree.hasALabel) -> [NSObject] {
         if A11yAutomation.isOn == false { A11yAutomation.timesFoundOff += 1 }
         A11yAutomation.ensure()
         var out = raw(roots, maxDepth: maxDepth)
         guard !ready(out) else { return out }
-        let end = Date().addingTimeInterval(timeout)
+        let first = state(roots, out)
+        let start = Date()
+        let end = start.addingTimeInterval(timeout)
         while Date() < end {
             if A11yAutomation.isOn == false { A11yAutomation.timesFoundOff += 1 }
             A11yAutomation.ensure()
@@ -106,15 +108,30 @@ enum A11yTree {
             out = raw(roots, maxDepth: maxDepth)
             if ready(out) { break }
         }
+        // Every read that was not ready, with the state that could explain it — read by a person looking at a run on
+        // a busy simulator, where another process can take the switch, the key window or the foreground.
+        print("A11Y-NOT-READY first[\(first)] then[\(state(roots, out))] recovered=\(ready(out)) "
+            + "after=\(Int(Date().timeIntervalSince(start) * 1000))ms")
         return out
     }
 
-    /// Names the cause when a read came back with no label, so it does not read as a render regression; "" otherwise.
-    static func diagnosis(_ elements: [NSObject]) -> String {
+    /// The state of the read: the switch, the hosting window (key, hidden), its scene, the app, and the tree's size.
+    static func state(_ roots: [NSObject], _ elements: [NSObject]) -> String {
+        let window = (roots.first as? UIView)?.window
+        let scene = window?.windowScene.map { "\($0.activationState.rawValue)" } ?? "none"
+        return "switch=\(A11yAutomation.isOn.map { $0 ? "on" : "OFF" } ?? "?") key=\(window?.isKeyWindow ?? false) "
+            + "hidden=\(window?.isHidden ?? true) inWindow=\(window != nil) scene=\(scene) "
+            + "app=\(UIApplication.shared.applicationState.rawValue) elements=\(elements.count) "
+            + "labels=\(elements.filter { $0.accessibilityLabel != nil }.count)"
+    }
+
+    /// Says so when a read came back with no label, with the state of the read, so an empty tree does not read as a
+    /// render regression; "" otherwise.
+    static func diagnosis(_ elements: [NSObject], roots: [NSObject] = []) -> String {
         guard !hasALabel(elements) else { return "" }
-        return " — the accessibility tree is EMPTY: the simulator-wide accessibility automation switch is "
-            + "\(A11yAutomation.isOn.map { $0 ? "on" : "OFF" } ?? "unreachable") and was found off "
-            + "\(A11yAutomation.timesFoundOff) time(s) in this process; another process on the simulator turns it off"
+        return " — the accessibility tree has NO label (\(state(roots, elements)); the switch was found off "
+            + "\(A11yAutomation.timesFoundOff) time(s) in this process). A render that passes alone and reads empty here "
+            + "is the hosting environment, not the view: see the A11Y-NOT-READY lines in the log"
     }
 }
 
@@ -154,19 +171,15 @@ final class HostedStep {
 
     /// Every accessibility element under the host, depth first.
     ///
-    /// Re-asserts the accessibility runtime first, and when the tree comes back with no label at all —
-    /// the shape of the switch having been turned off underneath the test by another process —
-    /// waits, bounded, for SwiftUI to publish it again. A hosted step always draws some text, so a tree
+    /// Re-asserts the accessibility runtime first, and when the tree comes back with no label at all,
+    /// waits, bounded, for SwiftUI to publish it. A hosted step always draws some text, so a tree
     /// with no label is never the answer a test means to read.
     func elements() -> [NSObject] { A11yTree.read([host.view]) }
-
-    /// The tree as it is published right now, with no re-assert and no wait — the red control's view.
-    func rawElements() -> [NSObject] { A11yTree.raw([host.view]) }
 
     func labels() -> [String] { elements().compactMap(\.accessibilityLabel) }
 
     /// Names the cause when the tree is empty, so it does not read as a render regression.
-    func treeDiagnosis() -> String { A11yTree.diagnosis(elements()) }
+    func treeDiagnosis() -> String { A11yTree.diagnosis(elements(), roots: [host.view]) }
 
     func has(label: String) -> Bool { labels().contains(label) }
 
