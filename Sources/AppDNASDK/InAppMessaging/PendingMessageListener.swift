@@ -38,6 +38,9 @@ final class PendingMessageListener {
     typealias Present = (_ deliveryId: String, _ config: MessageConfig, _ onShown: @escaping (Bool) -> Void, _ onClosed: @escaping () -> Void) -> Void
     /// Runs `block` after `seconds` — the retry of a delivery that could not be drawn yet.
     typealias Schedule = (_ seconds: Double, _ block: @escaping () -> Void) -> Void
+    /// Calls `block` each time the app (one of its scenes) becomes active; the closure it returns stops that. The
+    /// default observes `UIApplication.didBecomeActiveNotification` and `UIScene.didActivateNotification`.
+    typealias ObserveActivation = (_ block: @escaping () -> Void) -> (() -> Void)
 
     /// The ids whose deliveries the device shows: the anon id, then the user id when it is set and different.
     static func listenIds(anonId: String?, userId: String?) -> [String] {
@@ -49,6 +52,12 @@ final class PendingMessageListener {
 
     /// How many times a delivery that could not be drawn (no window yet, at a cold launch) is retried.
     static let maxPresentAttempts = 5
+
+    /// #1782 — a delivery that is still undrawn when its retries run out (the app was launched in the BACKGROUND —
+    /// a content-available push, a background task — so there is no window, and the retries last seconds) waits
+    /// here, and is drawn the next time the app becomes active. Without this it waited for the process to die: the
+    /// listener hands a document over once, so the same process never saw it again, however often the user opened
+    /// the app.
 
     private struct Pending {
         let key: String
@@ -78,12 +87,16 @@ final class PendingMessageListener {
     /// landed) is never drawn twice.
     private var presented: Set<String> = []
     private var attempts: [String: Int] = [:]
+    /// Deliveries whose retries ran out with no window to draw in, in arrival order (#1782).
+    private var parked: [Pending] = []
+    private var stopActivation: (() -> Void)?
 
     init(
         eventTracker: EventTracker?,
         subscribe: Subscribe? = nil,
         present: Present? = nil,
-        schedule: Schedule? = nil
+        schedule: Schedule? = nil,
+        observeActivation: ObserveActivation? = nil
     ) {
         self.eventTracker = eventTracker
         self.subscribe = subscribe ?? PendingMessageListener.firestoreSubscribe
@@ -93,6 +106,37 @@ final class PendingMessageListener {
             )
         }
         self.schedule = schedule ?? { seconds, block in DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: block) }
+        let observe = observeActivation ?? PendingMessageListener.observeAppActivation
+        self.stopActivation = observe({ [weak self] in self?.presentParked() })
+    }
+
+    /// Both notifications: an app with scenes posts the scene one per scene and the app one once; an app without
+    /// scenes posts only the app one. A second call finds nothing parked, so a delivery is not drawn twice.
+    private static func observeAppActivation(_ block: @escaping () -> Void) -> (() -> Void) {
+        let center = NotificationCenter.default
+        let tokens = [UIApplication.didBecomeActiveNotification, UIScene.didActivateNotification].map {
+            center.addObserver(forName: $0, object: nil, queue: .main) { _ in block() }
+        }
+        return { tokens.forEach { center.removeObserver($0) } }
+    }
+
+    /// The app became active: every parked delivery that is still listened on and not expired gets a fresh round of
+    /// attempts, in arrival order.
+    private func presentParked() {
+        let now = Date()
+        lock.lock()
+        let due = parked.filter { subscriptions[$0.ownerKey] != nil && !presented.contains($0.key) }
+        parked.removeAll()
+        for p in due { attempts[p.key] = 0 }
+        lock.unlock()
+        for p in due {
+            guard Self.decodeDelivery(data: p.delivery.data, now: now) != nil else {
+                Log.debug("PendingMessageListener: \(p.delivery.id) expired while waiting for a window — dropped")
+                continue
+            }
+            Log.debug("PendingMessageListener: app active — presenting \(p.delivery.id), parked with no window")
+            retry(p)
+        }
     }
 
     /// Listen on exactly `listenIds(anonId:userId:)` under this org and app: a listener still wanted is kept as it is,
@@ -105,6 +149,7 @@ final class PendingMessageListener {
         let removed = subscriptions.filter { !wantedKeys.contains($0.key) }
         for key in removed.keys { subscriptions.removeValue(forKey: key) }
         waiting.removeAll { !wantedKeys.contains($0.ownerKey) }
+        parked.removeAll { !wantedKeys.contains($0.ownerKey) }
         let toOpen = wanted.filter { subscriptions[$0.key] == nil }
         // Registered before the listener opens: its first snapshot (the deliveries already waiting) may arrive at once.
         var placeholders: [String: Token] = [:]
@@ -144,11 +189,15 @@ final class PendingMessageListener {
         let all = Array(subscriptions.values)
         subscriptions.removeAll()
         waiting.removeAll()
+        parked.removeAll()
         lock.unlock()
         for sub in all { sub.remove?() }
     }
 
-    deinit { stopObserving() }
+    deinit {
+        stopActivation?()
+        stopObserving()
+    }
 
     // MARK: - Private
 
@@ -209,6 +258,13 @@ final class PendingMessageListener {
                 self.lock.unlock()
                 if n < Self.maxPresentAttempts {
                     self.schedule(Double(n)) { [weak self] in self?.retry(p) }
+                } else {
+                    // #1782 — no window for the whole retry window (a background launch): drawn when the app is next
+                    // active. The document stays unconsumed meanwhile, so a cold launch still draws it too.
+                    self.lock.lock()
+                    if !self.parked.contains(where: { $0.key == p.key }) { self.parked.append(p) }
+                    self.lock.unlock()
+                    Log.debug("PendingMessageListener: no window after \(n) attempts — \(p.delivery.id) waits for the app to be active")
                 }
                 self.presentNext()
             }
@@ -223,6 +279,7 @@ final class PendingMessageListener {
         lock.lock()
         let live = subscriptions[p.ownerKey] != nil && !presented.contains(p.key)
             && presentingKey != p.key && !waiting.contains(where: { $0.key == p.key })
+            && !parked.contains(where: { $0.key == p.key })
         lock.unlock()
         if live { enqueue(p) }
     }

@@ -24,6 +24,8 @@ final class PendingFollowRig {
     private(set) var presented: [String] = []
     private var onScreen: (owner: String, close: () -> Void)?
     private var retries: [() -> Void] = []
+    /// What the listener runs when the app becomes active (#1782).
+    private var onActive: (() -> Void)?
 
     private func delivery(_ index: Int) -> PendingMessageListener.Delivery {
         let d = docs[index]
@@ -46,7 +48,8 @@ final class PendingFollowRig {
             self.onScreen = (owner, onClosed)
             onShown(true)
         },
-        schedule: { [unowned self] _, block in self.retries.append(block) }
+        schedule: { [unowned self] _, block in self.retries.append(block) },
+        observeActivation: { [unowned self] block in self.onActive = block; return { [weak self] in self?.onActive = nil } }
     )
 
     private func ownerOf(_ deliveryId: String) -> String { docs.last(where: { $0.id == deliveryId })?.owner ?? "?" }
@@ -75,6 +78,9 @@ final class PendingFollowRig {
         r.forEach { $0() }
     }
 
+    /// The app (a scene of it) becomes active.
+    func appActive() { onActive?() }
+
     var unconsumed: [String] { docs.filter { !$0.consumed }.map { "\($0.owner)/\($0.id)" }.sorted() }
 }
 
@@ -101,6 +107,7 @@ extension SharedFixtureTests {
                 listening.append(rig.listener.observedKeys.map { String($0.dropFirst(prefix.count)) })
             case "close": rig.close()
             case "run_retries": rig.runRetries()
+            case "app_active": rig.appActive()
             default: return nil
             }
         }
