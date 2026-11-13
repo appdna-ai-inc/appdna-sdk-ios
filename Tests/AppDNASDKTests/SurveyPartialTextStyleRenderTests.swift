@@ -4,7 +4,7 @@ import UIKit
 @testable import AppDNASDK
 
 /*
- #1805, the survey half — RENDERED through the real `SurveyContainerView`. A `question_text_style` that
+ The survey half of a partial text style — RENDERED through the real `SurveyContainerView`. A `question_text_style` that
  sets only a colour must leave the question drawn as an unstyled one is drawn.
 
  What it measured on iOS before the fix: the question TITLE is masked (each question view gives its title

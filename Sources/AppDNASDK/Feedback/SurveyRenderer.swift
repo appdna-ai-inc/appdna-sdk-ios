@@ -137,7 +137,7 @@ struct SurveyContainerView: View {
         }
     }
 
-    /// #1805 — what an unstyled question draws (the theme font, else the 17pt body), so a partial
+    /// What an unstyled question draws (the theme font, else the 17pt body), so a partial
     /// `question_text_style` is MERGED over it, as Android merges over its theme-sized base. The
     /// legacy overload resolved every unset field to 16pt and so shrank the option labels (which
     /// carry no font of their own) whenever a style set only a colour.
@@ -146,7 +146,7 @@ struct SurveyContainerView: View {
         let override: Color? = style?.color == nil ? textColor : nil
         // Unstyled: unchanged, the theme colour only.
         guard style != nil else { return AnyView(view.applyTextStyle(nil, colorOverride: override)) }
-        // #1805 — merged over the question's own defaults, not the legacy 16pt.
+        // Merged over the question's own defaults, not the legacy 16pt.
         return view.applyTextStyle(style, defaults: questionTextDefaults, colorOverride: override)
     }
 
