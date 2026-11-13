@@ -67,6 +67,19 @@ enum WalkMenu {
         case "flow":
             let shown = AppDNA.presentOnboarding(flowId: item.value)
             log.note("presentOnboarding(\(item.title)) → \(shown ? "presented" : "NOT presented (flow not found)")")
+        case "default_flow":
+            // No id: the app's default onboarding flow (a pinned default first, then the newest published).
+            let shown = AppDNA.presentOnboarding()
+            log.note("presentOnboarding() default → \(shown ? "presented" : "NOT presented (no default flow)")")
+        case "flow_placement":
+            let shown = AppDNA.presentOnboarding(placement: item.value)
+            log.note("presentOnboarding(placement: \(item.value)) → \(shown ? "presented" : "NOT presented")")
+        case "survey_placement":
+            let shown = AppDNA.surveys.present(placement: item.value)
+            log.note("surveys.present(placement: \(item.value)) → \(shown ? "presented" : "NOT presented")")
+        case "refresh":
+            AppDNA.forceRefreshConfig()
+            log.note("forceRefreshConfig()")
         case "placement":
             guard let vc = topViewController() else { log.note("no view controller to present from"); return }
             let shown = AppDNA.presentPaywall(placement: item.value, from: vc)
