@@ -46,7 +46,7 @@ class SurfaceInkTestCase: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(settle))
 
         var frames: [String: CGRect] = [:]
-        // #1780: read through `A11yTree`, which re-asserts the simulator-wide accessibility switch and waits for
+        // Read through `A11yTree`, which re-asserts the simulator-wide accessibility switch and waits for
         // every element when another process has turned it off.
         let tree = A11yTree.read([host.view]) { els in Set(elements).isSubset(of: Set(els.compactMap(\.accessibilityLabel))) }
         for o in tree { if let l = o.accessibilityLabel, elements.contains(l), frames[l] == nil { frames[l] = o.accessibilityFrame } }

@@ -24,7 +24,7 @@ final class PendingFollowRig {
     private(set) var presented: [String] = []
     private var onScreen: (owner: String, close: () -> Void)?
     private var retries: [() -> Void] = []
-    /// What the listener runs when the app becomes active (#1782).
+    /// What the listener runs when the app becomes active.
     private var onActive: (() -> Void)?
 
     private func delivery(_ index: Int) -> PendingMessageListener.Delivery {

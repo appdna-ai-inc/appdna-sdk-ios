@@ -28,8 +28,8 @@ import UIKit
 /// 🔴 The switch is SIMULATOR-WIDE, not per process: it is `AutomationEnabled` in the simulator's
 /// `com.apple.Accessibility` domain. Another process on the same simulator — an XCUITest runner opening
 /// or closing its session — can turn it off in the middle of a test, and SwiftUI then stops publishing
-/// the tree: every label read comes back `[]` and a render test fails as "no button for Continue"
-/// (#1780). Turning it on once per process was not enough, so it is re-asserted before every read
+/// the tree: every label read comes back `[]` and a render test fails as "no button for Continue".
+/// Turning it on once per process was not enough, so it is re-asserted before every read
 /// (`HostedStep.elements()`), and `enabled` re-asserts on every access.
 enum A11yAutomation {
     private typealias SetEnabled = @convention(c) (Int32) -> Void
@@ -63,7 +63,7 @@ enum A11yAutomation {
     static var enabled: Bool { ensure() }
 }
 
-/// The one walk every render test reads a hosted view's accessibility tree with (#1780). Called on the main thread,
+/// The one walk every render test reads a hosted view's accessibility tree with. Called on the main thread,
 /// like every render test; not isolated, so a test class that is not `@MainActor` can call it as it walked before.
 enum A11yTree {
     /// Every accessibility element under `roots`, depth first, each once — the tree as it is published right now,
@@ -114,7 +114,7 @@ enum A11yTree {
         guard !hasALabel(elements) else { return "" }
         return " — the accessibility tree is EMPTY: the simulator-wide accessibility automation switch is "
             + "\(A11yAutomation.isOn.map { $0 ? "on" : "OFF" } ?? "unreachable") and was found off "
-            + "\(A11yAutomation.timesFoundOff) time(s) in this process; another process on the simulator turns it off (#1780)"
+            + "\(A11yAutomation.timesFoundOff) time(s) in this process; another process on the simulator turns it off"
     }
 }
 
@@ -155,7 +155,7 @@ final class HostedStep {
     /// Every accessibility element under the host, depth first.
     ///
     /// Re-asserts the accessibility runtime first, and when the tree comes back with no label at all —
-    /// the shape of the switch having been turned off underneath the test by another process (#1780) —
+    /// the shape of the switch having been turned off underneath the test by another process —
     /// waits, bounded, for SwiftUI to publish it again. A hosted step always draws some text, so a tree
     /// with no label is never the answer a test means to read.
     func elements() -> [NSObject] { A11yTree.read([host.view]) }
@@ -165,7 +165,7 @@ final class HostedStep {
 
     func labels() -> [String] { elements().compactMap(\.accessibilityLabel) }
 
-    /// Names the cause when the tree is empty, so it does not read as a render regression (#1780).
+    /// Names the cause when the tree is empty, so it does not read as a render regression.
     func treeDiagnosis() -> String { A11yTree.diagnosis(elements()) }
 
     func has(label: String) -> Bool { labels().contains(label) }

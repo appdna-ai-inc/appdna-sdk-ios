@@ -128,7 +128,7 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
         func spin(_ s: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(s)) }
 
         func elements() -> [NSObject] {
-            // #1780: through `A11yTree`, which recovers the tree when another process turns automation off.
+            // Through `A11yTree`, which recovers the tree when another process turns automation off.
             A11yTree.read([host.view] + [host.presentedViewController?.view].compactMap { $0 })
         }
 

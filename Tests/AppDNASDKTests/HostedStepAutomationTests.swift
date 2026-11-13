@@ -1,6 +1,6 @@
 // HostedStepAutomationTests.swift
 //
-// #1780: the render tests that read a hosted view's accessibility tree saw an EMPTY tree when another
+// The render tests that read a hosted view's accessibility tree saw an EMPTY tree when another
 // process on the same simulator turned the simulator-wide accessibility automation switch off in the
 // middle of a test. `HostedStep` now re-asserts the switch before every read and waits, bounded, for
 // the tree to come back.
@@ -50,7 +50,7 @@ final class HostedStepAutomationTests: XCTestCase {
 
         // Control: the symptom reproduces — read raw, the tree is empty of labels.
         let raw = hosted.rawElements().compactMap(\.accessibilityLabel)
-        XCTAssertEqual(raw, [], "control: with the switch off the tree publishes no label (the #1780 symptom)")
+        XCTAssertEqual(raw, [], "control: with the switch off the tree publishes no label (the symptom)")
 
         // The fix: HostedStep turns it back on and reads the tree.
         XCTAssertTrue(hosted.has(label: "Continue"), "HostedStep reads the tree again; \(hosted.labels())\(hosted.treeDiagnosis())")

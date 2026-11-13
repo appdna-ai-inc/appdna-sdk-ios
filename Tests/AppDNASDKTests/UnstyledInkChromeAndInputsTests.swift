@@ -75,7 +75,7 @@ final class UnstyledInkChromeAndInputsTests: XCTestCase {
 
         /// Accessibility elements as (label, frame, isButton).
         func elements() -> [(String, CGRect, Bool)] {
-            // #1780: through `A11yTree`, which recovers the tree when another process turns automation off.
+            // Through `A11yTree`, which recovers the tree when another process turns automation off.
             A11yTree.read([host.view]).compactMap { o in
                 o.accessibilityLabel.map { ($0, o.accessibilityFrame, o.accessibilityTraits.contains(.button)) }
             }

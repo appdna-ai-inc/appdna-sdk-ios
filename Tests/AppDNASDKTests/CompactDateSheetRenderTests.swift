@@ -99,7 +99,7 @@ final class CompactDateSheetRenderTests: XCTestCase {
         return find(presented.rootView, 0)
     }
 
-    /// #1780: through `A11yTree`, which recovers the tree when another process turns automation off.
+    /// Through `A11yTree`, which recovers the tree when another process turns automation off.
     private static func elements(_ root: UIView) -> [NSObject] { A11yTree.read([root]) }
 
     func testAnUnstyledFieldOnALightStepHandsAPhoneInDarkADarkSheet() throws {
