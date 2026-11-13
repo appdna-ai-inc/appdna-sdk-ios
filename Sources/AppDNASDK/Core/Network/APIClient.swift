@@ -46,30 +46,38 @@ final class APIClient {
     /// HTTP statuses that look like 4xx but must be retried, never latched as permanent.
     static let transientStatusCodes: Set<Int> = [408, 429]
 
-    /// Set to true when event upload gets a *permanent* 4xx (retrying won't help).
+    /// Set to true when the server refuses an event batch's content (retrying won't help).
     ///
     /// 429 (rate limited) and 408 (request timeout) are explicitly NOT permanent —
     /// they are the expected responses under load, and treating them as permanent
     /// halted all uploads until app restart. Android has always retried them.
     private(set) var eventUploadPermanentlyFailed = false
 
-    /// Whether the LAST event upload was rejected permanently (a genuine 4xx) — per request, unlike the
-    /// `eventUploadPermanentlyFailed` latch, which a transient failure leaves set. An upload owner decides
-    /// whether to drop the batch it just sent from this: a network error or a 429 after an earlier 401 must
-    /// not drop a batch the server never judged.
+    /// Whether the LAST event upload's batch was refused for its content (`EventUploadDisposition.dropPermanent`) —
+    /// per request, unlike the `eventUploadPermanentlyFailed` latch, which a transient failure leaves set. An upload
+    /// owner drops the batch it just sent only on this: a network error, a 401 or a proxy's page must not drop a
+    /// batch the server never judged.
     private(set) var lastEventUploadRejectedPermanently = false
 
-    /// Whether the LAST event upload's rejection also pauses uploads (`rejectionPausesUploads`) — per request.
+    /// Whether the LAST event upload's answer pauses uploads (`rejectionPausesUploads`) — per request. The batch is
+    /// kept: a 401 / 403 is never a refusal of the batch.
     private(set) var lastEventUploadRejectionPausesUploads = false
 
-    /// Whether a permanent rejection with this status pauses every upload path until the next foreground or
-    /// `AppDNA.flush()`: 401 / 403 — the API key is wrong or revoked, so every later batch would be rejected (and
-    /// dropped as a loss) the same way. Any other permanent 4xx (400, 404, 413 …) is about the batch: it is
-    /// dropped and uploads go on. The in-process queue and the background uploader both apply it; Android
-    /// `ApiClient.rejectionPausesUploads`, same table (fixture `permanent_4xx_dropped`, `rejection_pauses`).
+    /// Whether a refused event upload with this status pauses every upload path until the next foreground or
+    /// `AppDNA.flush()`: 401 / 403 — the API key is wrong or revoked (or a tunnel or proxy refuses the device), so
+    /// every later batch would be refused the same way, and retrying on a timer only drains the battery. The batch is
+    /// KEPT (`eventUploadDisposition(for:body:)` retries a 401 / 403) and sent once uploads resume. The in-process
+    /// queue and the background uploader both apply it; Android `ApiClient.rejectionPausesUploads`, same table
+    /// (fixture `permanent_4xx_dropped`, `rejection_runs`).
     static func rejectionPausesUploads(_ statusCode: Int) -> Bool {
         statusCode == 401 || statusCode == 403
     }
+
+    /// The statuses with which the ingest route refuses a batch's CONTENT: 400 (the body is not valid JSON, or fails
+    /// the batch schema), 413 (too large, or a compressed body that does not decode) and 422 (reserved for a content
+    /// refusal; the route does not answer it today). A batch is dropped only on one of these, and only when the body
+    /// is the route's own error (`isIngestErrorBody`).
+    static let batchRejectionStatusCodes: Set<Int> = [400, 413, 422]
 
     /// Seconds the server asked us to wait, parsed from a `Retry-After` header on
     /// the last 429/503. Consumed (and cleared) by `EventQueue` when scheduling its
@@ -268,11 +276,10 @@ final class APIClient {
 
             let (responseData, response) = try await session.data(for: urlRequest)
             guard let httpResponse = response as? HTTPURLResponse else { return false }
-            let body = String(data: responseData.prefix(500), encoding: .utf8) ?? "no body"
             return applyEventUploadStatus(
                 httpResponse.statusCode,
                 retryAfterHeader: httpResponse.value(forHTTPHeaderField: "Retry-After"),
-                body: body
+                body: responseData
             )
         } catch {
             Log.error("Event upload network error: \(error.localizedDescription). Will retry.")
@@ -280,7 +287,7 @@ final class APIClient {
         }
     }
 
-    /// What an event-upload HTTP status means, independent of any network.
+    /// What an upload's HTTP answer means, independent of any network.
     ///
     /// A PURE seam. `permanent_4xx_dropped` and `rate_limited_429_retried` assert
     /// this table on iOS and Android against the same fixture, so the two SDKs cannot drift on the
@@ -289,13 +296,46 @@ final class APIClient {
     enum EventUploadDisposition {
         /// 2xx — the batch landed. Clears the latch.
         case success
-        /// Retry with backoff: 408, 429, every 5xx, and anything else unexpected.
+        /// Keep the batch and retry: 401, 403, 404, 408, 409, 429, every 5xx, and any answer that is not the ingest
+        /// route's refusal of the batch.
         case retryTransient
-        /// A genuine permanent 4xx (400/401/403/404 …). Drop the batch and LATCH: retrying a bad
-        /// API key forever would only drain the battery.
+        /// The server refused this batch's content (400 / 413 / 422 in the ingest route's error shape). Drop the
+        /// batch, counted, and LATCH.
         case dropPermanent
     }
 
+    /// What an event-upload answer means. The pure classifier the shared `permanent_4xx_dropped` fixture asserts on
+    /// both platforms; Android `ApiClient.eventUploadDispositionFor`, same table.
+    ///
+    /// - 2xx → `.success`.
+    /// - 400 / 413 / 422 whose body is the ingest route's error → `.dropPermanent`: the server judged this batch,
+    ///   and sending it again would be refused the same way.
+    /// - anything else → `.retryTransient`, the batch kept: 401 / 403 (a key problem — every batch would be refused
+    ///   alike, so uploads pause, see `rejectionPausesUploads`), 404 (a wrong route or base URL), 408, 409, 429,
+    ///   5xx, and every status whose body is not the route's — a tunnel, captive portal, proxy or load-balancer page.
+    ///   None of those says anything about the batch, and each used to delete it.
+    static func eventUploadDisposition(for statusCode: Int, body: Data) -> EventUploadDisposition {
+        if (200..<300).contains(statusCode) { return .success }
+        if batchRejectionStatusCodes.contains(statusCode) && isIngestErrorBody(body) { return .dropPermanent }
+        return .retryTransient
+    }
+
+    /// Whether a body is the error the ingest route answers with (`withErrorHandler`):
+    /// `{"error":{"code":"<non-empty string>","message":"<string>", …}}`. An HTML page, an empty body, `{}`, a string
+    /// `error`, or JSON of any other shape is not.
+    static func isIngestErrorBody(_ body: Data) -> Bool {
+        guard !body.isEmpty,
+              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let error = object["error"] as? [String: Any],
+              let code = error["code"] as? String, !code.isEmpty,
+              error["message"] is String
+        else { return false }
+        return true
+    }
+
+    /// The STATUS-ONLY table the consent signal (`postConsentOnce`) uses. Event uploads do not: they use
+    /// `eventUploadDisposition(for:body:)`, which also reads the body, because an event batch is data the device
+    /// holds and dropping it on a status that is not about it loses that data for good.
     static func disposition(for statusCode: Int) -> EventUploadDisposition {
         if (200..<300).contains(statusCode) { return .success }
         if transientStatusCodes.contains(statusCode) { return .retryTransient }
@@ -315,21 +355,19 @@ final class APIClient {
     ///
     /// - Returns: true when the batch was accepted.
     @discardableResult
-    func applyEventUploadStatus(_ statusCode: Int, retryAfterHeader: String?, body: String = "no body") -> Bool {
-        lastEventUploadRejectedPermanently = Self.disposition(for: statusCode) == .dropPermanent
-        lastEventUploadRejectionPausesUploads = lastEventUploadRejectedPermanently && Self.rejectionPausesUploads(statusCode)
-        switch Self.disposition(for: statusCode) {
+    func applyEventUploadStatus(_ statusCode: Int, retryAfterHeader: String?, body: Data = Data()) -> Bool {
+        let disposition = Self.eventUploadDisposition(for: statusCode, body: body)
+        lastEventUploadRejectedPermanently = disposition == .dropPermanent
+        lastEventUploadRejectionPausesUploads = disposition == .retryTransient && Self.rejectionPausesUploads(statusCode)
+        let bodyText = String(data: body.prefix(500), encoding: .utf8) ?? "no body"
+        switch disposition {
         case .success:
             eventUploadPermanentlyFailed = false
             retryAfterSeconds = nil
             return true
 
         case .dropPermanent:
-            if statusCode == 401 {
-                Log.error("Event upload rejected: HTTP 401 — Invalid API key. Check your key in Console → Settings → SDK. Retrying won't help.")
-            } else {
-                Log.error("Event upload rejected: HTTP \(statusCode) — \(body). Retrying won't help.")
-            }
+            Log.error("Event upload refused: HTTP \(statusCode) — the server refused this batch's content: \(bodyText). Retrying won't help.")
             eventUploadPermanentlyFailed = true
             return false
 
@@ -341,8 +379,10 @@ final class APIClient {
             let hint = retryAfterSeconds.map { " Retry-After: \($0)s." } ?? ""
             if Self.transientStatusCodes.contains(statusCode) {
                 Log.warning("Event upload throttled: HTTP \(statusCode).\(hint) Will retry.")
+            } else if lastEventUploadRejectionPausesUploads {
+                Log.error("Event upload refused: HTTP \(statusCode) — check your key in Console → Settings → SDK, or a proxy in the way. The events are kept and sent once uploads are accepted again.")
             } else {
-                Log.warning("Event upload failed: HTTP \(statusCode) — \(body).\(hint) Will retry.")
+                Log.warning("Event upload failed: HTTP \(statusCode) — \(bodyText).\(hint) Events kept; will retry.")
             }
             return false
         }

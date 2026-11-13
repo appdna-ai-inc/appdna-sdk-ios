@@ -51,6 +51,8 @@ final class ResilienceFixtureTests: XCTestCase {
         let age_ms: Int64?
         let stale: Bool?
         let disposition: String?
+        /// contract=permanent_failure: the response body ("" when absent) — it decides as much as the status.
+        let body: String?
         // contract=flush_pause_gate
         let trigger: String?
         let clears_pause: Bool?
@@ -79,7 +81,7 @@ final class ResilienceFixtureTests: XCTestCase {
         let expected: Double?
 
         private enum CodingKeys: String, CodingKey {
-            case status, transient, header, seconds, age_ms, stale, disposition, trigger, clears_pause
+            case status, transient, header, seconds, age_ms, stale, disposition, body, trigger, clears_pause
             case attempt_index, backoff_ms, online, triggered, attempts_made, triggers, failure_status, retry_after_s, recovery
             case configure_failure_status, trigger_during_attempt
             case mark, query, resolved
@@ -93,6 +95,7 @@ final class ResilienceFixtureTests: XCTestCase {
             age_ms = try c.decodeIfPresent(Int64.self, forKey: .age_ms)
             stale = try c.decodeIfPresent(Bool.self, forKey: .stale)
             disposition = try c.decodeIfPresent(String.self, forKey: .disposition)
+            body = try c.decodeIfPresent(String.self, forKey: .body)
             trigger = try c.decodeIfPresent(String.self, forKey: .trigger)
             clears_pause = try c.decodeIfPresent(Bool.self, forKey: .clears_pause)
             attempt_index = try c.decodeIfPresent(Int.self, forKey: .attempt_index)
@@ -131,6 +134,7 @@ final class ResilienceFixtureTests: XCTestCase {
     /// One step of the `permanent_failure` latch sequence. ORDER is the assertion.
     private struct LatchStep: Decodable {
         let status: Int
+        let body: String?
         let permanently_failed: Bool
     }
 
@@ -171,10 +175,15 @@ final class ResilienceFixtureTests: XCTestCase {
         let rows: [Row]
         struct Row: Decodable {
             let status: Int
+            let body: String
             let pauses_uploads: Bool
             let background_requests: Int
             let pending_after: Int
             let background_reschedules: Bool
+            /// Events each path counts in `DroppedEventsCounter` — the refused batch, or nothing.
+            let dropped: Int
+            /// Events left after ONE flush of the in-process queue.
+            let queue_pending_after: Int
         }
     }
 
@@ -283,13 +292,14 @@ final class ResilienceFixtureTests: XCTestCase {
                     guard let status = c.status, let want = c.disposition else {
                         return XCTFail("[\(f.id)] permanent_failure case needs `status` and `disposition`")
                     }
+                    let body = c.body ?? ""
                     let actual: String
-                    switch APIClient.disposition(for: status) {
+                    switch APIClient.eventUploadDisposition(for: status, body: Data(body.utf8)) {
                     case .success: actual = "success"
                     case .retryTransient: actual = "retry_transient"
                     case .dropPermanent: actual = "drop_permanent"
                     }
-                    XCTAssertEqual(actual, want, "[\(f.id)] HTTP \(status) disposition")
+                    XCTAssertEqual(actual, want, "[\(f.id)] HTTP \(status) \(body.prefix(40)) disposition")
                 }
 
                 guard let latch = f.resilience.latch else {
@@ -303,7 +313,7 @@ final class ResilienceFixtureTests: XCTestCase {
                     "[\(f.id)] a fresh client must not start latched"
                 )
                 for step in latch {
-                    client.applyEventUploadStatus(step.status, retryAfterHeader: nil)
+                    client.applyEventUploadStatus(step.status, retryAfterHeader: nil, body: Data((step.body ?? "").utf8))
                     XCTAssertEqual(
                         client.eventUploadPermanentlyFailed, step.permanently_failed,
                         "[\(f.id)] after HTTP \(step.status), eventUploadPermanentlyFailed"
@@ -610,17 +620,22 @@ final class ResilienceFixtureTests: XCTestCase {
             XCTAssertEqual(APIClient.rejectionPausesUploads(row.status), row.pauses_uploads,
                            "[\(id)] does HTTP \(row.status) pause uploads?")
             let status = row.status
-            let server = try XCTUnwrap(LoopbackHTTPServer { label in
-                label.contains("/ingest/events") ? .init(status: status, headers: [:], body: "{}") : .init(status: 200, headers: [:], body: "{}")
+            let body = row.body
+            let label = "HTTP \(status) \(body.prefix(30))"
+            let server = try XCTUnwrap(LoopbackHTTPServer { path in
+                path.contains("/ingest/events") ? .init(status: status, headers: [:], body: body) : .init(status: 200, headers: [:], body: "{}")
             }, "could not open a local socket")
             defer { server.stop() }
             APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? server.baseURL : nil }
             APIBaseURL.gateForTesting = { true }
             func ingests() -> Int { server.requests.filter { $0.contains("/ingest/events") }.count }
+            let accepted = (200..<300).contains(status)
+            let refused = row.dropped > 0
 
             // The background run.
             UploadPauseGate.setForTesting(false)
             EventUploadCoordinator.clearResolvedForTesting()
+            _ = DroppedEventsCounter.getAndReset()
             let store = EventStore(fileName: "reject-run-\(UUID().uuidString).json")
             defer { store.clearAll() }
             store.save(events: EventStoreBacklogTests.backlog(runs.backlog))
@@ -628,14 +643,15 @@ final class ResilienceFixtureTests: XCTestCase {
             let uploader = BackgroundUploader(apiClient: client, eventStore: store)
             let rescheduled = Counter()
             let outcome = Self.runBlocking { await uploader.runUpload(paused: false, reschedule: { rescheduled.bump() }) }
-            let accepted = (200..<300).contains(status)
-            XCTAssertEqual(outcome, accepted ? .uploaded : .droppedRejected, "[\(id)] HTTP \(status): background outcome")
-            XCTAssertEqual(ingests(), row.background_requests, "[\(id)] HTTP \(status): event uploads in one background run")
-            XCTAssertEqual(store.pendingCount, row.pending_after, "[\(id)] HTTP \(status): events left after the run")
-            XCTAssertEqual(rescheduled.value > 0, row.background_reschedules, "[\(id)] HTTP \(status): another run scheduled?")
-            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] HTTP \(status): background run paused uploads?")
+            XCTAssertEqual(outcome, accepted ? .uploaded : refused ? .droppedRejected : .failed, "[\(id)] \(label): background outcome")
+            XCTAssertEqual(ingests(), row.background_requests, "[\(id)] \(label): event uploads in one background run")
+            XCTAssertEqual(store.pendingCount, row.pending_after, "[\(id)] \(label): events left after the run")
+            XCTAssertEqual(DroppedEventsCounter.peek(), row.dropped, "[\(id)] \(label): events the background run counted as dropped")
+            XCTAssertEqual(rescheduled.value > 0, row.background_reschedules, "[\(id)] \(label): another run scheduled?")
+            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] \(label): background run paused uploads?")
 
             // One flush of the in-process queue (a new queue claims — clears — the gate).
+            _ = DroppedEventsCounter.getAndReset()
             let qStore = EventStore(fileName: "reject-queue-\(UUID().uuidString).json")
             defer { qStore.clearAll() }
             qStore.save(events: EventStoreBacklogTests.backlog(runs.backlog))
@@ -644,14 +660,25 @@ final class ResilienceFixtureTests: XCTestCase {
             let q = EventQueue(apiClient: APIClient(apiKey: "adn_test_placeholder", environment: .sandbox),
                                eventStore: qStore, eventTracker: tracker, batchSizeCap: nil, flushInterval: 3600)
             XCTAssertFalse(UploadPauseGate.isPaused, "[\(id)] a new queue starts unpaused")
+            let before = ingests()
             q.flushClearingPause()
+            // Resolved when the batch left the store, a failed cycle was counted, or (a kept batch) a retry was scheduled.
             let deadline = Date().addingTimeInterval(10)
-            while Date() < deadline && qStore.pendingCount > runs.backlog - runs.batch { Thread.sleep(forTimeInterval: 0.02) }
-            while Date() < deadline && !accepted && q.consecutiveFailuresForTesting == 0 { Thread.sleep(forTimeInterval: 0.02) }
-            XCTAssertEqual(qStore.pendingCount, runs.backlog - runs.batch, "[\(id)] HTTP \(status): the queue's flush resolves one batch")
-            XCTAssertEqual(q.consecutiveFailuresForTesting, row.pauses_uploads ? 5 : accepted ? 0 : 1,
-                           "[\(id)] HTTP \(status): failed cycles counted (5 = paused)")
-            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] HTTP \(status): queue paused uploads?")
+            while Date() < deadline && !(ingests() > before
+                    && (qStore.pendingCount < runs.backlog || q.consecutiveFailuresForTesting > 0 || q.retryCountForTesting > 0)) {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            while Date() < deadline && !accepted && refused && q.consecutiveFailuresForTesting == 0 { Thread.sleep(forTimeInterval: 0.02) }
+            XCTAssertEqual(qStore.pendingCount, row.queue_pending_after, "[\(id)] \(label): events left after the queue's flush")
+            XCTAssertEqual(DroppedEventsCounter.peek(), row.dropped, "[\(id)] \(label): events the queue counted as dropped")
+            // A kept, unpaused batch is on its backoff: a retry is scheduled and no failed cycle is counted yet
+            // (Android's one-cycle harness has no retries left, so it counts the cycle — same table, same events).
+            XCTAssertEqual(q.consecutiveFailuresForTesting, row.pauses_uploads ? 5 : (accepted || !refused) ? 0 : 1,
+                           "[\(id)] \(label): failed cycles counted (5 = paused)")
+            if !accepted && !refused && !row.pauses_uploads {
+                XCTAssertEqual(q.retryCountForTesting, 1, "[\(id)] \(label): a kept batch is retried")
+            }
+            XCTAssertEqual(UploadPauseGate.isPaused, row.pauses_uploads, "[\(id)] \(label): queue paused uploads?")
             withExtendedLifetime((q, client)) {}
         }
     }

@@ -129,7 +129,7 @@ final class BackgroundUploader {
         case noNetwork
         /// A batch was sent and accepted.
         case uploaded
-        /// The server rejected the batch permanently (a genuine 4xx): it was dropped and counted.
+        /// The server refused the batch's content (400 / 413 / 422 in the ingest route's error shape): it was dropped and counted.
         case droppedRejected
         /// A batch could not be built or sent.
         case failed
@@ -222,7 +222,8 @@ final class BackgroundUploader {
                 continue
             }
             if apiClient.lastEventUploadRejectedPermanently {
-                // A permanent 4xx (400 malformed / 401 bad key) fails the same way every time. Kept, this batch —
+                // The ingest route refused this batch's content (400 / 413 / 422 in its own error shape): it fails the
+                // same way every time. Kept, this batch —
                 // always the oldest — was sent again by every later run and blocked every event behind it until
                 // the 7-day horizon pruned it. Drop it and count the loss, exactly as the in-process queue does
                 // (`EventQueue`'s permanent-failure branch): each normal event +1, a carried
@@ -240,17 +241,21 @@ final class BackgroundUploader {
                 eventStore.removeSent(eventIds: eventIds)
                 EventUploadCoordinator.markResolved(eventIds)
                 retryCount = 0
-                Log.error("Background upload rejected permanently — dropped a batch of \(batch.count) events (loss metric +\(loss))")
-                // The run ends here. A 401 / 403 rejects every batch the same way: uploads pause — the in-process
-                // queue's rule — until the next foreground or `AppDNA.flush()`, and no run is scheduled. Any other
-                // rejection was about this batch: the next run sends the events behind it.
-                if apiClient.lastEventUploadRejectionPausesUploads {
-                    UploadPauseGate.pauseFromBackgroundUpload()
-                    Log.error("Background upload: the API key was rejected — uploads paused until the next foreground / AppDNA.flush()")
-                } else if eventStore.pendingCount > 0 {
+                Log.error("Background upload refused — dropped a batch of \(batch.count) events (loss metric +\(loss))")
+                // The run ends here. The refusal was about this batch: the next run sends the events behind it.
+                if eventStore.pendingCount > 0 {
                     reschedule()
                 }
                 return .droppedRejected
+            }
+            if apiClient.lastEventUploadRejectionPausesUploads {
+                // A 401 / 403 refuses every batch the same way (a key problem, or a tunnel or proxy in the way): the
+                // batch is KEPT, uploads pause — the in-process queue's rule — until the next foreground or
+                // `AppDNA.flush()`, and no run is scheduled. Android `EventUploadWorker`, same rule.
+                retryCount = 0
+                UploadPauseGate.pauseFromBackgroundUpload()
+                Log.error("Background upload refused — events kept; uploads paused until the next foreground / AppDNA.flush()")
+                return .failed
             }
             retryCount += 1
             if retryCount < maxRetries {

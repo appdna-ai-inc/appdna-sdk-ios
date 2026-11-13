@@ -42,8 +42,8 @@ final class UploadPauseGatePersistenceTests: XCTestCase {
         super.tearDown()
     }
 
-    private func serve(status: Int, headers: [String: String]) throws -> LoopbackHTTPServer {
-        let srv = try XCTUnwrap(LoopbackHTTPServer { _ in .init(status: status, headers: headers, body: "{}") },
+    private func serve(status: Int, headers: [String: String], body: String = "{}") throws -> LoopbackHTTPServer {
+        let srv = try XCTUnwrap(LoopbackHTTPServer { _ in .init(status: status, headers: headers, body: body) },
                                 "could not open a local socket")
         APIBaseURL.infoPlistReaderForTesting = { $0 == APIBaseURL.infoPlistKey ? srv.baseURL : nil }
         APIBaseURL.gateForTesting = { true }
@@ -93,8 +93,8 @@ final class UploadPauseGatePersistenceTests: XCTestCase {
     }
 
     func testFiveFailedPermanentCyclesPersistThePause() throws {
-        // A permanent 4xx drops its batch and counts toward the pause: each cycle needs a new event.
-        _ = try serve(status: 400, headers: [:])
+        // A refused batch (the ingest route's 400) is dropped and counts toward the pause: each cycle needs a new event.
+        _ = try serve(status: 400, headers: [:], body: EventQueueWindowAndUploaderTests.refusal)
         let queue = makeQueue()
         for _ in 1...4 { failOneCycle(queue, enqueue: true) }
         XCTAssertFalse(UploadPauseGate.isPaused)

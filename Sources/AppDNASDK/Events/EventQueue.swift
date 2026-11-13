@@ -432,6 +432,8 @@ final class EventQueue {
 
     /// Test reader: failed upload cycles in a row (the queue pauses at `maxConsecutiveFailures`).
     var consecutiveFailuresForTesting: Int { queue.sync { consecutiveFailures } }
+    /// Test reader: retries scheduled for the current batch (a kept batch's backoff).
+    var retryCountForTesting: Int { queue.sync { retryCount } }
 
     /// Test reader: the events in the in-memory window (after the load queued by `init`).
     var inMemoryCountForTesting: Int { queue.sync { pendingEvents.count } }
@@ -579,14 +581,15 @@ final class EventQueue {
                     self.consecutiveFailures = 0
                     Log.debug("Flush successful: \(batch.count) events delivered")
                 } else if self.apiClient.lastEventUploadRejectedPermanently {
-                    // 🔴 DROP THE POISON BATCH — don't just pause. A permanent 4xx (400 malformed /
-                    // 401 bad key, NOT 408/429) fails identically forever, and `flush()` always takes
+                    // 🔴 DROP THE POISON BATCH — don't just pause. The ingest route refused this batch's
+                    // CONTENT (400 / 413 / 422 in its own error shape): it fails identically forever, and `flush()` always takes
                     // the OLDEST `batchSize` events (`prefix`, above). Pausing WITHOUT removing this
                     // batch leaves it at the head of `pendingEvents`; the pause latch resets each new
                     // session, so it re-POSTs, 4xxs, and re-pauses forever — head-of-line-blocking
                     // EVERY later event until the 7-day disk horizon evicts it. Android drops it (see
-                    // EventQueue.kt ClientError branch); iOS must too. The whole batch is a real loss
-                    // (a 401 drops valid events, a 400 malformed ones), so count it into the
+                    // EventQueue.kt ClientError branch); iOS must too. A 401 / 403 / 404 or a page from a
+                    // tunnel or proxy never lands here — those say nothing about the batch and keep it (below).
+                    // The whole batch is a real loss, so count it into the
                     // server-visible dropped counter — each normal event +1, plus any carried
                     // `_sdk_events_dropped` meta count — so nothing vanishes silently.
                     var loss = 0
@@ -606,16 +609,9 @@ final class EventQueue {
                     // single 400 (one malformed event) must NOT pause the whole queue for the
                     // session — that stalled every subsequent HEALTHY event until foreground.
                     // Android increments here (bumpFailureCounter → pause only at 5); iOS now
-                    // matches, so it pauses only on SUSTAINED failure (e.g. a persistent 401),
+                    // matches, so it pauses only on SUSTAINED failure,
                     // and a lone bad batch self-heals on the next successful flush.
-                    // A 401 / 403 (`APIClient.rejectionPausesUploads`) is about the key, not the batch: every later
-                    // batch would be rejected and dropped the same way, so uploads pause now (the background
-                    // uploader too, through the gate) until the next foreground or `AppDNA.flush()`.
-                    if self.apiClient.lastEventUploadRejectionPausesUploads {
-                        self.consecutiveFailures = max(self.consecutiveFailures + 1, self.maxConsecutiveFailures)
-                    } else {
-                        self.consecutiveFailures += 1
-                    }
+                    self.consecutiveFailures += 1
                     self.retryCount = 0
                     if self.consecutiveFailures >= self.maxConsecutiveFailures {
                         UploadPauseGate.set(true, owner: self.pauseOwner)
@@ -623,6 +619,16 @@ final class EventQueue {
                     } else {
                         Log.error("Dropping batch of \(batch.count) events after permanent 4xx (retry won't help); continuing with next batch.")
                     }
+                } else if self.apiClient.lastEventUploadRejectionPausesUploads {
+                    // A 401 / 403 (`APIClient.rejectionPausesUploads`) is about the key — or a tunnel or proxy in the
+                    // way — not the batch: every batch would be refused alike, so retrying on a timer only drains the
+                    // battery. The batch is KEPT (memory and disk), and uploads pause now (the background uploader
+                    // too, through the gate) until the next foreground or `AppDNA.flush()`. Android `EventQueue`,
+                    // same rule.
+                    self.consecutiveFailures = max(self.consecutiveFailures + 1, self.maxConsecutiveFailures)
+                    self.retryCount = 0
+                    UploadPauseGate.set(true, owner: self.pauseOwner)
+                    Log.error("Event upload refused; \(batch.count) events kept — uploads paused until next foreground / AppDNA.flush().")
                 } else {
                     if self.retryCount < self.maxRetries {
                         // A server-supplied Retry-After wins over our backoff schedule.

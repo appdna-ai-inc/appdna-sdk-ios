@@ -15,6 +15,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A queued event batch is deleted only when the server refuses its content.** An event upload answered 401, 403,
+  404 or with any other 4xx (except 408 and 429) used to delete its batch from memory and disk and count it as dropped,
+  so an outage behind a tunnel or proxy that answered 401 lost every event queued during it. Now a batch is dropped,
+  and counted, only on a 400, 413 or 422 that carries the AppDNA API's JSON error body. A 401 or 403 keeps the events
+  and pauses uploads until the next foreground or `AppDNA.flush()`; a 404, 409, or an answer that is not the API's own
+  (an HTML page from a tunnel, captive portal, proxy or load balancer, whatever its status) keeps them and retries.
+
 - **A paywall `text_style` that sets only some fields keeps the element's own typography.** A style that set only a
   colour (as the server's contrast pass writes) replaced the element's default font with the 16pt body font, so a
   header title drew at body size. A style now changes only the fields it sets, at every paywall text element, as on
