@@ -1,6 +1,6 @@
 // PendingMessageNoWindowTests.swift
 //
-// #1782 — a journey in-app message that arrives while the app has no window to draw in: a background launch (a
+// A journey in-app message that arrives while the app has no window to draw in: a background launch (a
 // content-available push, a background task) configures the SDK with no foreground scene. These tests drive the REAL
 // `PendingMessageListener` with its REAL presenter — `presentOnTopViewController`, which looks for a key window in the
 // connected scenes — so the no-window branch that `PendingMessageFollowTests` only reaches through a fake presenter
@@ -128,16 +128,32 @@ final class PendingMessageNoWindowTests: XCTestCase {
             // attempts through the real presenter starts (its first retry is scheduled at 1 s), and the delivery
             // stays unconsumed for the next activation or the next cold launch.
             XCTAssertTrue(wait(2) { d.scheduled.count > retries },
-                          "becoming active re-presents a delivery whose retries ran out (#1782); scheduled \(d.scheduled)")
+                          "becoming active re-presents a delivery whose retries ran out; scheduled \(d.scheduled)")
             XCTAssertEqual(d.scheduled.last, 1, "a fresh round: attempt 1 again, not attempt \(retries + 1); \(d.scheduled)")
             XCTAssertEqual(d.consumed, 0, "still no window, so still not drawn or consumed")
             print("[1782] scene-less host: scheduled \(d.scheduled) consumed \(d.consumed) — \(hostState())")
         } else {
             XCTAssertTrue(wait(3) { d.consumed == 1 },
-                          "drawn when the app becomes active, in the same process (#1782); consumed \(d.consumed), scheduled \(d.scheduled)")
+                          "drawn when the app becomes active, in the same process; consumed \(d.consumed), scheduled \(d.scheduled)")
             spin(0.5)
             XCTAssertEqual(d.consumed, 1, "drawn and consumed once, though two activation notifications were posted")
             print("[1782] host with a scene: drawn on activation, scheduled \(d.scheduled) — \(hostState())")
         }
+    }
+
+    /// A background launch connects a scene in the BACKGROUND, with a key window nobody can see. Drawing there marked
+    /// the delivery consumed and counted it shown before the user opened the app, so it is not somewhere to draw:
+    /// only a foreground scene is, an active one first.
+    func testOnlyAForegroundSceneIsSomewhereToDraw() {
+        XCTAssertNil(PendingMessageListener.drawableSceneIndex([]), "no scene: nowhere to draw")
+        XCTAssertNil(PendingMessageListener.drawableSceneIndex([.background]),
+                     "a background launch's scene is not somewhere to draw")
+        XCTAssertNil(PendingMessageListener.drawableSceneIndex([.unattached, .background]))
+        XCTAssertEqual(PendingMessageListener.drawableSceneIndex([.foregroundInactive]), 0,
+                       "a scene coming to the foreground counts")
+        XCTAssertEqual(PendingMessageListener.drawableSceneIndex([.background, .foregroundActive]), 1,
+                       "the foreground scene, not the first one")
+        XCTAssertEqual(PendingMessageListener.drawableSceneIndex([.foregroundInactive, .foregroundActive]), 1,
+                       "an active scene before an inactive one")
     }
 }

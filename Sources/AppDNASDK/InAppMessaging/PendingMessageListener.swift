@@ -53,7 +53,7 @@ final class PendingMessageListener {
     /// How many times a delivery that could not be drawn (no window yet, at a cold launch) is retried.
     static let maxPresentAttempts = 5
 
-    /// #1782 — a delivery that is still undrawn when its retries run out (the app was launched in the BACKGROUND —
+    /// A delivery that is still undrawn when its retries run out (the app was launched in the BACKGROUND —
     /// a content-available push, a background task — so there is no window, and the retries last seconds) waits
     /// here, and is drawn the next time the app becomes active. Without this it waited for the process to die: the
     /// listener hands a document over once, so the same process never saw it again, however often the user opened
@@ -87,7 +87,7 @@ final class PendingMessageListener {
     /// landed) is never drawn twice.
     private var presented: Set<String> = []
     private var attempts: [String: Int] = [:]
-    /// Deliveries whose retries ran out with no window to draw in, in arrival order (#1782).
+    /// Deliveries whose retries ran out with no window to draw in, in arrival order.
     private var parked: [Pending] = []
     private var stopActivation: (() -> Void)?
 
@@ -259,7 +259,7 @@ final class PendingMessageListener {
                 if n < Self.maxPresentAttempts {
                     self.schedule(Double(n)) { [weak self] in self?.retry(p) }
                 } else {
-                    // #1782 — no window for the whole retry window (a background launch): drawn when the app is next
+                    // No window for the whole retry window (a background launch): drawn when the app is next
                     // active. The document stays unconsumed meanwhile, so a cold launch still draws it too.
                     self.lock.lock()
                     if !self.parked.contains(where: { $0.key == p.key }) { self.parked.append(p) }
@@ -396,6 +396,15 @@ final class PendingMessageListener {
         }
     }
 
+    /// Which connected scene a delivery may be drawn in: an active one first, then one that is in the foreground but
+    /// not yet active. A scene in the BACKGROUND does not count. A background launch (a silent push, a fetch)
+    /// connects one with a key window, but nobody can see it. Drawing there would mark the delivery consumed and
+    /// count it shown while the user is not looking, and if the OS ends the process before the app is opened the
+    /// message is lost. So that case is "no window yet": the delivery is retried, then parked until the app is active.
+    static func drawableSceneIndex(_ states: [UIScene.ActivationState]) -> Int? {
+        states.firstIndex(of: .foregroundActive) ?? states.firstIndex(of: .foregroundInactive)
+    }
+
     /// Present the SwiftUI `MessageRenderer` view for this delivery.
     /// Mirrors the present-on-top-VC pattern from `MessageManager.present`
     /// so journey-delivered messages get identical UX to config-driven
@@ -409,11 +418,10 @@ final class PendingMessageListener {
         onClosed: @escaping () -> Void
     ) {
         DispatchQueue.main.async {
-            guard let windowScene = UIApplication.shared.connectedScenes
-                .compactMap({ $0 as? UIWindowScene })
-                .first,
-                  let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-                Log.warning("PendingMessageListener: no root view controller — cannot present \(messageId) yet")
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            guard let index = drawableSceneIndex(scenes.map(\.activationState)),
+                  let rootVC = scenes[index].windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+                Log.warning("PendingMessageListener: no foreground window — cannot present \(messageId) yet")
                 onShown(false)
                 return
             }
