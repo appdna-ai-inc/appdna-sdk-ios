@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  A SIMULATOR delivery-confirmation walk only: passed as CODE_SIGN_ENTITLEMENTS (with APPDNA_APP_GROUP) on that build,
+  so the host app can register a sandbox APNs token on the simulator, and it and its Notification Service Extension share the App Group the extension hands confirmed deliveries
+  over through. A stock build is signed exactly as before.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.ai.appdna.appdnaSdkExample</string>
+	</array>
+</dict>
+</plist>

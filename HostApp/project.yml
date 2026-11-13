@@ -92,6 +92,10 @@ targets:
         # takes the later duplicate key, so a second block would have silently discarded the bundle
         # identifier above — and the build would have succeeded, under the wrong id.
         STOREKIT_CONFIGURATION: AppDNAHost/Products.storekit
+        # Empty in a stock build. A simulator walk that needs the App Group the Notification Service Extension hands
+        # deliveries over through sets APPDNA_WALK_ENTITLEMENTS (scoped to this target and the extension, never to
+        # the package targets a command-line CODE_SIGN_ENTITLEMENTS would also hit).
+        CODE_SIGN_ENTITLEMENTS: "$(APPDNA_WALK_ENTITLEMENTS)"
     dependencies:
       - package: AppDNASDK
         product: AppDNASDK
@@ -122,6 +126,7 @@ targets:
         SKIP_INSTALL: YES
         # The extension links only the extension-safe library, as the docs give.
         APPLICATION_EXTENSION_API_ONLY: YES
+        CODE_SIGN_ENTITLEMENTS: "$(APPDNA_WALK_ENTITLEMENTS)"
     dependencies:
       - package: AppDNASDK
         product: AppDNANotificationExtension
