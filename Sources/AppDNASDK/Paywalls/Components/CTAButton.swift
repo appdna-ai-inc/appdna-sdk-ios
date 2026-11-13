@@ -7,6 +7,18 @@ func resolveCTAFontWeight(_ raw: String?) -> Font.Weight {
     resolvePaywallFontWeight(raw, default: .semibold)
 }
 
+/// `resolvePaywallFontWeight`'s CSS-number twin (same spellings, same fallback rule), for an
+/// element default a partial `text_style` merges over (#1800).
+func paywallFontWeightValue(_ raw: String?, default fallback: Int) -> Int {
+    switch raw?.lowercased() {
+    case "normal", "regular": return 400
+    case "medium": return 500
+    case "semibold": return 600
+    case "bold": return 700
+    default: return fallback
+    }
+}
+
 /// The same mapping with an explicit fallback.
 ///
 /// The fallback is a PARAMETER because the countdown needs two of them: its label has
@@ -159,8 +171,14 @@ struct CTAButton: View {
                         .tint(.white)
                 }
                 if let ts = buttonTextStyle {
+                    // Merged over the unstyled label below (#1800): a colour-only button style
+                    // keeps the authored/17pt semibold label.
                     Text(isPurchasing ? "Processing..." : displayText)
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: .system(size: ctaFontSize ?? 17, weight: resolveCTAFontWeight(ctaFontWeight)),
+                            size: Double(ctaFontSize ?? 17),
+                            weight: paywallFontWeightValue(ctaFontWeight, default: 600),
+                            color: buttonTextColor))
                 } else {
                     Text(isPurchasing ? "Processing..." : displayText)
                         .font(.system(size: ctaFontSize ?? 17, weight: resolveCTAFontWeight(ctaFontWeight)))
@@ -230,7 +248,9 @@ struct CTAButton: View {
                         .contentShape(Rectangle())
                 } else if let ts = restoreTextStyle {
                     Text(text)
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: directFont, size: Double(restoreFontSize ?? 15), weight: 400,
+                            color: restoreDefaultColor))
                         .padding(.vertical, 6)
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())
@@ -312,7 +332,9 @@ struct RestoreLinkView: View {
                         .contentShape(Rectangle())
                 } else if let ts = style {
                     Text(text)
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: directFont, size: Double(fontSize ?? 15), weight: 400,
+                            color: PaywallTextDefaults.readable(on: backgroundHex).opacity(0.6)))
                         .padding(.vertical, 6)
                         .padding(.horizontal, 12)
                         .contentShape(Rectangle())

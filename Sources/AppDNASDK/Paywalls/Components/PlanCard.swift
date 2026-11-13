@@ -198,7 +198,10 @@ struct PlanCard: View {
                             Group {
                                 if let ts = planNameTextStyle {
                                     Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
-                                        .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                        // Merged over the unstyled `.headline` name (#1800).
+                                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                            font: .headline, size: 17, weight: 600, color: effectiveTextColor),
+                                            colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
                                 } else {
                                     Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
                                         .font(.headline)
@@ -229,7 +232,10 @@ struct PlanCard: View {
                             Group {
                                 if let ts = trialTextStyle {
                                     Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
-                                        .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
+                                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                            font: .caption, size: 12, weight: 400,
+                                            color: isSelected ? effectiveTextColor : Color(hex: paywallAccentHex ?? (AppDNA.brandAccentHex ?? "#6366F1"))),
+                                            colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
                                 } else {
                                     Text(loc?("plan.\(planIndex).trial", trial) ?? trial)
                                         .font(.caption)
@@ -277,7 +283,10 @@ struct PlanCard: View {
                                         Group {
                                             if let ts = featureTextStyle {
                                                 Text(feat)
-                                                    .applyTextStyle(ts, colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : nil)
+                                                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                                        font: .caption2, size: 11, weight: 400,
+                                                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)),
+                                                        colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor.opacity(0.85) : nil)
                                             } else {
                                                 Text(feat)
                                                     .font(.caption2)
@@ -432,7 +441,11 @@ struct PlanCard: View {
         if let period = plan.displayPeriod, !period.isEmpty {
             Group {
                 if let ts = periodTextStyle {
-                    Text(loc?("plan.\(planIndex).period", period) ?? period).applyTextStyle(ts)
+                    Text(loc?("plan.\(planIndex).period", period) ?? period)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: .caption, size: 12, weight: 400,
+                            color: isSelected && selectedTextColor != nil
+                                ? effectiveTextColor.opacity(0.7) : PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                 } else {
                     Text(loc?("plan.\(planIndex).period", period) ?? period)
                         .font(.caption)
@@ -450,7 +463,9 @@ struct PlanCard: View {
             if let ts = priceTextStyle {
                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                     // The override goes INTO the style call: chained after it, it never reached the text.
-                    .applyTextStyle(ts, colorOverride: planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
+                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                        font: .subheadline.bold(), size: 15, weight: 700, color: effectiveTextColor),
+                        colorOverride: planPriceColor ?? (isSelected && selectedTextColor != nil ? effectiveTextColor : nil))
             } else {
                 Text(loc?("plan.\(planIndex).price", plan.displayPrice) ?? plan.displayPrice)
                     .font(.subheadline.bold())
@@ -595,7 +610,10 @@ struct PlanCard: View {
                     }
                 }
                 if let ts = badgeTextStyle {
-                    Text(text).applyTextStyle(ts)
+                    // Merged over whichever unstyled badge font applies below (#1800).
+                    Text(text).applyTextStyle(ts, defaults: TextStyleDefaults(
+                        font: cardStyle.badgeFontSize.map { Font.system(size: $0, weight: .bold) } ?? .caption2.bold(),
+                        size: Double(cardStyle.badgeFontSize ?? 11), weight: 700, color: badgeFg))
                 } else if let size = cardStyle.badgeFontSize {
                     // Flat badge_font_size authored in the console. Falls back
                     // to .caption2 (11pt) when unset.

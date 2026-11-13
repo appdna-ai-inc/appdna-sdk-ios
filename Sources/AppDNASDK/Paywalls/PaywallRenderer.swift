@@ -1227,8 +1227,11 @@ struct PaywallRenderer: View {
                 if let badge = data?.guaranteeText ?? data?.text {
                     let badgeTs = style?.elements?["badge"]?.textStyle
                     if let ts = badgeTs {
+                        // Each styled branch here is MERGED over its unstyled twin (#1800).
                         Text(loc("guarantee.badge", badge))
-                            .applyTextStyle(ts)
+                            .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                font: .caption.weight(.semibold), size: 12, weight: 600,
+                                color: Color(hex: data?.accentColor ?? "#22C55E")))
                             .padding(.horizontal, 12)
                             .padding(.vertical, 4)
                             .background(Color(hex: data?.accentColor ?? "#22C55E").opacity(0.15))
@@ -1248,7 +1251,10 @@ struct PaywallRenderer: View {
                 if let title = data?.title {
                     let titleTs = style?.elements?["title"]?.textStyle
                     if let ts = titleTs {
-                        Text(loc("guarantee.title", title)).applyTextStyle(ts)
+                        Text(loc("guarantee.title", title))
+                            .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                font: .subheadline.weight(.semibold), size: 15, weight: 600,
+                                color: PaywallTextDefaults.readable(on: pageBackgroundHex)))
                     } else {
                         Text(loc("guarantee.title", title))
                             .font(.subheadline.weight(.semibold))
@@ -1261,7 +1267,9 @@ struct PaywallRenderer: View {
                     let textTs = style?.elements?["text"]?.textStyle ?? style?.elements?["description"]?.textStyle
                     if let ts = textTs {
                         Text(loc("guarantee.description", desc))
-                            .applyTextStyle(ts)
+                            .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                font: .caption, size: 12, weight: 400, alignment: "center",
+                                color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                             .multilineTextAlignment(.center)
                     } else {
                         Text(loc("guarantee.description", desc))
@@ -1289,7 +1297,9 @@ struct PaywallRenderer: View {
         case "trial_badge":
             if let ts = style?.elements?["value"]?.textStyle {
                 return AnyView(Text(loc("social_proof.trial_badge", data?.text ?? "Free Trial"))
-                    .applyTextStyle(ts)
+                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                        font: .caption.weight(.semibold), size: 12, weight: 600,
+                        color: Color(hex: paywallAccentHex)))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     .background(Color(hex: paywallAccentHex).opacity(0.15))
@@ -1340,8 +1350,12 @@ struct PaywallRenderer: View {
 
             Group {
                 if let ts = quoteTextStyle {
+                    // Merged over the unstyled quote below (#1800); the italic travels in the font.
                     Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: (layout == "minimal" ? Font.caption : Font.body).italic(),
+                            size: layout == "minimal" ? 12 : 17, weight: 400, alignment: "center",
+                            color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                 } else {
                     Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
                         .italic()
@@ -1377,7 +1391,9 @@ struct PaywallRenderer: View {
                         Group { if let name = data?.authorName {
                             let interpolatedName = loc("testimonial.author_name", name)
                             if let ts = authorNameTextStyle {
-                                Text(interpolatedName).applyTextStyle(ts)
+                                Text(interpolatedName).applyTextStyle(ts, defaults: TextStyleDefaults(
+                                    font: .subheadline.weight(.semibold), size: 15, weight: 600,
+                                    color: PaywallTextDefaults.readable(on: pageBackgroundHex)))
                             } else {
                                 Text(interpolatedName).font(.subheadline.weight(.semibold)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
                             }
@@ -1386,7 +1402,9 @@ struct PaywallRenderer: View {
                         Group { if let role = data?.authorRole {
                             let interpolatedRole = loc("testimonial.author_role", role)
                             if let ts = authorRoleTextStyle {
-                                Text(interpolatedRole).applyTextStyle(ts)
+                                Text(interpolatedRole).applyTextStyle(ts, defaults: TextStyleDefaults(
+                                    font: .caption, size: 12, weight: 400,
+                                    color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                             } else {
                                 Text(interpolatedRole).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
                             }
@@ -1400,7 +1418,9 @@ struct PaywallRenderer: View {
                 // console has one control, and a host sees whichever layout it authored.
                 Group {
                     if let ts = authorNameTextStyle {
-                        Text("— \(loc("testimonial.author_name", name))").applyTextStyle(ts)
+                        Text("— \(loc("testimonial.author_name", name))").applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: .caption.weight(.medium), size: 12, weight: 500,
+                            color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                     } else {
                         Text("— \(loc("testimonial.author_name", name))")
                             .font(.caption.weight(.medium)).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
@@ -1590,7 +1610,10 @@ struct PaywallRenderer: View {
                 Group {
                     if let ts = textElementStyle {
                         Text(parseMarkdownLinks(text))
-                            .applyTextStyle(ts)
+                            .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                font: .system(size: size), size: Double(size), weight: 400,
+                                alignment: data?.alignment == "left" ? "left" : (data?.alignment == "right" ? "right" : "center"),
+                                color: textColor))
                             .multilineTextAlignment(textAlignment)
                             .tint(linkColor)
                     } else {
@@ -2060,7 +2083,9 @@ struct PaywallRenderer: View {
                     Group { if let label = item.label ?? item.title {
                         let ts = style?.elements?["title"]?.textStyle
                         if let ts = ts {
-                            Text(label).applyTextStyle(ts)
+                            Text(label).applyTextStyle(ts, defaults: TextStyleDefaults(
+                                font: .caption.weight(.medium), size: 12, weight: 500, alignment: "center",
+                                color: PaywallTextDefaults.readable(on: pageBackgroundHex)))
                         } else {
                             Text(label)
                                 .font(.caption.weight(.medium))
@@ -2073,7 +2098,9 @@ struct PaywallRenderer: View {
                     Group { if let desc = item.description ?? item.subtitle {
                         let ds = style?.elements?["description"]?.textStyle
                         if let ds = ds {
-                            Text(desc).applyTextStyle(ds)
+                            Text(desc).applyTextStyle(ds, defaults: TextStyleDefaults(
+                                font: .caption2, size: 11, weight: 400, alignment: "center",
+                                color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                         } else {
                             Text(desc)
                                 .font(.caption2)

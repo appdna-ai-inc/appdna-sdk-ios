@@ -165,7 +165,11 @@ struct FeatureList: View {
     private func itemText(_ text: String) -> some View {
         Group {
             if let ts = itemTextStyle {
-                Text(text).applyTextStyle(ts)
+                // Merged over the unstyled `.body` row (#1800), so a colour-only style (or the
+                // Content-tab `item_text_color`, which arrives here as one) keeps the row's size.
+                Text(text).applyTextStyle(ts, defaults: TextStyleDefaults(
+                    font: .body, size: 17, weight: 400,
+                    color: PaywallTextDefaults.readable(on: pageBackgroundHex)))
             } else if let hex = itemTextColorOverride, !hex.isEmpty {
                 Text(text).font(.body).foregroundColor(Color(hex: hex))
             } else {

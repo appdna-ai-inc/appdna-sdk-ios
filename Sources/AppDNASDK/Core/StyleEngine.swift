@@ -241,17 +241,45 @@ extension View {
     ///   has to be applied HERE: the style's colour (`.primary` when it sets none) is applied
     ///   closest to the text, so a `.foregroundColor` chained after this call never reaches it.
     func applyTextStyle(_ style: TextStyleConfig?, colorOverride: Color? = nil) -> some View {
-        guard let s = style else {
+        guard style != nil else {
             if let colorOverride { return AnyView(self.foregroundColor(colorOverride)) }
             return AnyView(self)
         }
-        let font = FontResolver.font(family: s.font_family, size: s.font_size, weight: s.font_weight)
+        // `.legacy` resolves every unset field to exactly what this function always drew
+        // (system 16pt regular, leading, `.primary`), so every caller that names no element
+        // default renders byte-for-byte as before.
+        return applyTextStyle(style, defaults: .legacy, colorOverride: colorOverride)
+    }
+
+    /**
+     A `text_style` MERGED over the element's own default typography (#1800).
+
+     A style that sets only some fields changes only those fields. The server's contrast pass
+     writes `text_style: {"color": "#111827"}` onto generated paywalls, and the plain overload above
+     treated that as a whole new typography — system 16pt regular — so a header title drew at body
+     size the moment it gained a colour. Android has always merged a partial style over the
+     element's base `TextStyle` (`StyleEngine.applyTextStyle(base, config)`), so the same paywall
+     drew a large bold title there and a body-size one here.
+
+     The per-field arithmetic lives in `StyleEngine.resolveTypography`, so the unit tests drive
+     the same resolution this view applies.
+
+     - Parameter defaults: what the element draws with when its style does not say — the same
+       font, colour and alignment its unstyled branch uses.
+     */
+    func applyTextStyle(_ style: TextStyleConfig?, defaults: TextStyleDefaults, colorOverride: Color? = nil) -> AnyView {
+        let t = StyleEngine.resolveTypography(style, defaults: defaults)
+        let font: Font = (t.keepsDefaultFont ? defaults.font : nil)
+            ?? FontResolver.font(family: t.family, size: t.size, weight: t.weight)
+        let authoredInk: Color? = style?.color.map { Color(hex: $0) }
+        let ink: Color = colorOverride ?? authoredInk ?? defaults.color ?? Color.primary
         let base = self
             .font(font)
-            .foregroundColor(colorOverride ?? s.color.map { Color(hex: $0) } ?? .primary)
-            .multilineTextAlignment(textAlignment(s.alignment))
-            .lineSpacing(lineSpacing(s.line_height, s.font_size))
-            .opacity(s.opacity ?? 1.0)
+            .foregroundColor(ink)
+            .multilineTextAlignment(textAlignment(t.alignment))
+            .lineSpacing(t.lineSpacing)
+            .opacity(style?.opacity ?? 1.0)
+        guard let s = style else { return AnyView(base) }
 
         let kerned: AnyView = {
             if #available(iOS 16.0, *), let spacing = s.letter_spacing, spacing != 0 {
@@ -274,11 +302,17 @@ extension View {
      dance, and the one that did NOT repeat it correctly is how the testimonial ended up with a
      hardcoded `.white.opacity(0.8)` that vanished on a light page, one line below
      where the same defect had been fixed for the review count. One helper, so the fallback is written once and is visibly a fallback.
+
+     The authored branch MERGES over the same default (#1800): `size`/`weight` are `font`'s numeric
+     twins, and `alignment` is what the caller's own `.multilineTextAlignment` gives the unstyled
+     text, so a colour-only style keeps the element's size, weight and alignment.
      */
-    func applyTextStyleOrDefault(_ style: TextStyleConfig?, font: Font, color: Color) -> some View {
+    func applyTextStyleOrDefault(_ style: TextStyleConfig?, font: Font, color: Color,
+                                 size: Double, weight: Int = 400, alignment: String? = nil) -> some View {
         Group {
             if let style {
-                self.applyTextStyle(style)
+                self.applyTextStyle(style, defaults: TextStyleDefaults(
+                    font: font, size: size, weight: weight, alignment: alignment, color: color))
             } else {
                 self.font(font).foregroundColor(color)
             }
@@ -466,6 +500,77 @@ extension StyleEngine {
             radius: Double(s.blur ?? 0) / 2,
             dx: Double(s.x ?? 0),
             dy: Double(s.y ?? 0)
+        )
+    }
+}
+
+/**
+ The typography an element draws with when its `text_style` does not say (#1800).
+
+ `size` and `weight` are the numeric twins of `font` at the default content size, used only when
+ the style sets SOME font field: a size-only style keeps the element's weight, a weight-only style
+ keeps its size, exactly as Android's `base.copy(fontSize = config.font_size ?: base.fontSize, …)`.
+ When the style sets no font field at all, `font` itself is drawn, so a colour-only style is
+ pixel-identical to the element's unstyled typography (Dynamic Type included).
+ */
+struct TextStyleDefaults {
+    /// The element's own font, drawn unchanged when the style sets no font field.
+    let font: Font?
+    /// Points; the size `font` resolves to at the default content size category.
+    let size: Double
+    /// CSS-style weight (400 regular, 600 semibold, 700 bold).
+    let weight: Int
+    let family: String?
+    /// "left" | "center" | "right", as `TextStyleConfig.alignment` spells it. nil = leading.
+    let alignment: String?
+    /// The element's own text colour, used when the style sets none and nothing overrides it.
+    let color: Color?
+
+    init(font: Font? = nil, size: Double, weight: Int = 400, family: String? = nil,
+         alignment: String? = nil, color: Color? = nil) {
+        self.font = font
+        self.size = size
+        self.weight = weight
+        self.family = family
+        self.alignment = alignment
+        self.color = color
+    }
+
+    /// What the plain `applyTextStyle(_:)` has always resolved an unset field to: system 16pt
+    /// regular, leading, `.primary`. Callers that name no element default keep exactly that.
+    static var legacy: TextStyleDefaults { TextStyleDefaults(size: 16, weight: 400) }
+}
+
+/// The per-field result of merging a `text_style` over an element default. Font-free so a
+/// unit test can compare it.
+struct ResolvedTextTypography: Equatable {
+    let family: String?
+    let size: Double
+    let weight: Int
+    let alignment: String?
+    let lineSpacing: CGFloat
+    /// True when the style set no font field, so the element's own `Font` is drawn unchanged.
+    let keepsDefaultFont: Bool
+}
+
+extension StyleEngine {
+    /**
+     Merge a (possibly partial) `text_style` over an element's default typography, field by field.
+
+     Mirrors Android's `StyleEngine.applyTextStyle(base, config)`: every field the style sets wins,
+     every field it leaves unset keeps the element default. `line_height` is a multiplier of the
+     RESOLVED size, so a line height authored without a size scales the element's own size.
+     */
+    static func resolveTypography(_ style: TextStyleConfig?, defaults: TextStyleDefaults) -> ResolvedTextTypography {
+        let size = style?.font_size ?? defaults.size
+        let lineSpacing: CGFloat = style?.line_height.map { (CGFloat($0) - 1.0) * CGFloat(size) } ?? 0
+        return ResolvedTextTypography(
+            family: style?.font_family ?? defaults.family,
+            size: size,
+            weight: style?.font_weight ?? defaults.weight,
+            alignment: style?.alignment ?? defaults.alignment,
+            lineSpacing: lineSpacing,
+            keepsDefaultFont: style?.font_family == nil && style?.font_size == nil && style?.font_weight == nil
         )
     }
 }

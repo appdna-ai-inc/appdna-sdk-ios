@@ -72,8 +72,12 @@ struct HeaderSection: View {
             // The title's authored container style, applied to the whole branch.
             Group { if let title = data?.title {
                 if let ts = titleTextStyle {
+                    // MERGED over the unstyled branch below (#1800): a colour-only style — what the
+                    // server's contrast pass writes — keeps the large bold centred title.
                     Text(loc?("section-header.title", title) ?? title)
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: .title.bold(), size: 28, weight: 700, alignment: "center",
+                            color: PaywallTextDefaults.readable(on: backgroundHex)))
                 } else {
                     Text(loc?("section-header.title", title) ?? title)
                         .font(.title.bold())
@@ -88,7 +92,9 @@ struct HeaderSection: View {
             Group { if let subtitle = data?.subtitle {
                 if let ts = subtitleTextStyle {
                     Text(loc?("section-header.subtitle", subtitle) ?? subtitle)
-                        .applyTextStyle(ts)
+                        .applyTextStyle(ts, defaults: TextStyleDefaults(
+                            font: .body, size: 17, weight: 400, alignment: "center",
+                            color: Color(hex: "#6B7280")))
                 } else {
                     Text(loc?("section-header.subtitle", subtitle) ?? subtitle)
                         .font(.body)

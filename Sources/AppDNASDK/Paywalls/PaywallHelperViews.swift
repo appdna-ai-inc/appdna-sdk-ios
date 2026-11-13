@@ -295,8 +295,13 @@ struct CountdownTimerView: View {
     private func timeUnit(_ value: Int, label: String) -> some View {
         VStack(spacing: 2) {
             if let ts = valueTextStyle {
+                // Merged over the unstyled digit below (#1800).
                 Text(String(format: "%02d", value))
-                    .applyTextStyle(ts)
+                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                        font: .system(size: digitFontSize ?? 22, weight: resolvePaywallFontWeight(digitFontWeight, default: .bold)).monospacedDigit(),
+                        size: Double(digitFontSize ?? 22),
+                        weight: paywallFontWeightValue(digitFontWeight, default: 700),
+                        color: digitInk))
                     .monospacedDigit()
             } else {
                 Text(String(format: "%02d", value))
@@ -607,7 +612,9 @@ struct ReviewsCarouselView: View {
                         Group {
                             if let ts = textStyle {
                                 Text("\u{201C}\(review.text ?? "")\u{201D}")
-                                    .applyTextStyle(ts)
+                                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                        font: .subheadline.italic(), size: 15, weight: 400, alignment: "center",
+                                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                                     .multilineTextAlignment(.center)
                             } else {
                                 Text("\u{201C}\(review.text ?? "")\u{201D}")
@@ -652,7 +659,9 @@ struct ReviewsCarouselView: View {
 
                             Group {
                                 if let as_ = authorStyle {
-                                    Text(review.author ?? "").applyTextStyle(as_)
+                                    Text(review.author ?? "").applyTextStyle(as_, defaults: TextStyleDefaults(
+                                        font: .caption.weight(.medium), size: 12, weight: 500,
+                                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                                 } else {
                                     Text(review.author ?? "")
                                         .font(.caption.weight(.medium))

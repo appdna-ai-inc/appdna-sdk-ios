@@ -34,7 +34,8 @@ struct SocialProof: View {
                     .applyTextStyleOrDefault(
                         sectionStyle?.elements?["text"]?.textStyle,
                         font: .caption,
-                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8)
+                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8),
+                        size: 12, alignment: "center"
                     )
                     .multilineTextAlignment(.center)
                     .applyElementStyle(sectionStyle?.elements?["text"]?.container)
@@ -54,7 +55,9 @@ struct SocialProof: View {
                         Group {
                             if let ts = valueTextStyle {
                                 Text("(\(formatCount(count)))")
-                                    .applyTextStyle(ts)
+                                    .applyTextStyle(ts, defaults: TextStyleDefaults(
+                                        font: .caption, size: 12, weight: 400,
+                                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)))
                             } else {
                                 Text("(\(formatCount(count)))")
                                     .font(.caption)
@@ -80,7 +83,8 @@ struct SocialProof: View {
                     .applyTextStyleOrDefault(
                         sectionStyle?.elements?["testimonial"]?.textStyle,
                         font: .subheadline.italic(),
-                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8)
+                        color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.8),
+                        size: 15, alignment: "center"
                     )
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
@@ -99,7 +103,8 @@ struct SocialProof: View {
                         .applyTextStyleOrDefault(
                             sectionStyle?.elements?["author_name"]?.textStyle,
                             font: .caption,
-                            color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.6)
+                            color: PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.6),
+                            size: 12
                         )
                         .applyElementStyle(sectionStyle?.elements?["author_name"]?.container)
                 }
