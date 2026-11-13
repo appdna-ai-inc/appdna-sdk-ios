@@ -165,7 +165,7 @@ struct FeatureList: View {
     private func itemText(_ text: String) -> some View {
         Group {
             if let ts = itemTextStyle {
-                // Merged over the unstyled `.body` row (#1800), so a colour-only style (or the
+                // Merged over the unstyled `.body` row, so a colour-only style (or the
                 // Content-tab `item_text_color`, which arrives here as one) keeps the row's size.
                 Text(text).applyTextStyle(ts, defaults: TextStyleDefaults(
                     font: .body, size: 17, weight: 400,

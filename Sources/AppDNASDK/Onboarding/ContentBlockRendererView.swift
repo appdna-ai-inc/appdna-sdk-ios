@@ -1238,7 +1238,7 @@ struct ContentBlockRendererView: View {
                 OnboardingPressedButton.shared.record(block.id, action: WidgetActionChannel.actionName)
                 widgetAction.tap(block)
             } else if block.action == ShareAction.actionName {
-                // `share` (#1797) is dispatched HERE, where the block is: its payload is two fields
+                // `share` is dispatched HERE, where the block is: its payload is two fields
                 // (`share_text`, `share_url`) that `onAction`'s (action, value) pair cannot carry.
                 // The text goes through `loc` exactly as the label does — the same translation lookup
                 // and `{{…}}` interpolation. The tap never reaches `onAction`: a share does not
@@ -1915,7 +1915,7 @@ struct ContentBlockRendererView: View {
                     // Localize each list item using block id + index key
                     let itemText = Text(loc?("block.\(block.id).item.\(index)", item) ?? item)
                     if let style = block.style {
-                        // #1805 — MERGED over the item's own 17pt body default, as Android merges over its
+                        // MERGED over the item's own 17pt body default, as Android merges over its
                         // 17sp base: a colour-only style used to redraw the item at the legacy 16pt.
                         itemText.applyTextStyle(style, defaults: TextStyleDefaults(size: 17, weight: 400, color: ink))
                     } else {

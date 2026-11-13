@@ -367,7 +367,7 @@ internal class ScreenManager {
             }
 
         case .share(let text):
-            // The shared share helper (#1797): trimmed, blank → nothing, iPad popover anchored.
+            // The shared share helper: trimmed, blank → nothing, iPad popover anchored.
             DispatchQueue.main.async {
                 ShareAction.perform(text: text, url: nil)
             }

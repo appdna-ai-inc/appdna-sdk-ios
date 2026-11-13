@@ -251,7 +251,7 @@ public struct MessageDismissPolicy: Equatable {
 /// - a bare string: a type, or a link to open as a deep link when it carries `://`.
 /// Android's `MessageConfigParser.parseCTAAction` follows the same rule.
 ///
-/// `{ "type": "share", "text": "…", "url": "…" }` (#1797) opens the share sheet once the message has
+/// `{ "type": "share", "text": "…", "url": "…" }` opens the share sheet once the message has
 /// dismissed: `text` is what is shared, `url` the optional link. Both blank → the tap only dismisses.
 public struct CTAAction: Codable {
     public let type: CTAActionType?
@@ -449,7 +449,7 @@ public struct TriggerCondition: Codable {
     }
 }
 
-/// The share a message CTA tap performs (#1797), shared by both message presenters
+/// The share a message CTA tap performs, shared by both message presenters
 /// (`MessageManager` and `PendingMessageListener`) so they cannot drift.
 enum MessageCTAShare {
     /// The payload to share once the message has dismissed, or nil: not a `share` CTA, or a `share`

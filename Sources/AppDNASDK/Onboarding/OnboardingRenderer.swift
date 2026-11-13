@@ -2380,7 +2380,7 @@ struct OnboardingStepRouter: View {
              */
             ReviewPromptManager.shared.openStoreListing(appStoreId: actionValue)
         case ShareAction.actionName:
-            // `share` (#1797) is presented at the tap site (`ContentBlockRendererView.buttonBlock`),
+            // `share` is presented at the tap site (`ContentBlockRendererView.buttonBlock`),
             // which has the block's `share_text` / `share_url`; a button tap never forwards it here.
             // This arm exists so that anything else emitting "share" can never reach `default`,
             // which ADVANCES. A share never advances, calls no host hook and tracks no event.

@@ -1312,7 +1312,7 @@ public struct ContentBlock: Codable, Identifiable {
     public let variant: String?
     public let action: String?     // next, skip, link, permission
     public let action_value: String?  // URL for link, permission type for permission
-    /// `action: "share"` (#1797): the text and optional link the share sheet carries. Both are
+    /// `action: "share"`: the text and optional link the share sheet carries. Both are
     /// trimmed by `ShareAction.payload`; both blank means nothing is shared and the tap is a no-op.
     public let share_text: String?
     public let share_url: String?

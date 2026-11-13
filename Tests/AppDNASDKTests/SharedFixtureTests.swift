@@ -1006,7 +1006,7 @@ final class SharedFixtureTests: XCTestCase {
                          responses: routeResponses, result: .proceed, hookRan: false)
             h.state["pending_completion_route"] = PendingCompletionRoute.shared.take() ?? NSNull()
 
-        // (d4) share CTA (#1797) — opens the share sheet and STAYS. Drives the REAL
+        // (d4) share CTA — opens the share sheet and STAYS. Drives the REAL
         // `ShareAction.authoredText(of:)` + `ShareAction.payload(text:url:)` the button's tap site
         // (`ContentBlockRendererView.buttonBlock`) runs, so a runner that passed the raw, untrimmed
         // field would fail the trimmed expectation. No advance machine runs: the step is unchanged,

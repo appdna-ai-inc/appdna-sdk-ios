@@ -438,7 +438,7 @@ final class PendingMessageListener {
                         "source": "pending_messages",
                     ])
                     handleCTAAction(config.content?.cta_action)
-                    // A `share` CTA (#1797) opens the share sheet once the message is gone.
+                    // A `share` CTA opens the share sheet once the message is gone.
                     let share = MessageCTAShare.payload(config.content?.cta_action)
                     topVC.dismiss(animated: true) {
                         if let share { ShareAction.present(share) }

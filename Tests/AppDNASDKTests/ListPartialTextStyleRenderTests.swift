@@ -4,7 +4,7 @@ import UIKit
 @testable import AppDNASDK
 
 /*
- #1805 — RENDERED through the real `ContentBlockRendererView`: a `list` whose `style` sets only a colour keeps
+ — RENDERED through the real `ContentBlockRendererView`: a `list` whose `style` sets only a colour keeps
  the item's own 17pt default, as Android merges over its 17sp base. Before the fix a colour-only style redrew
  every item at the legacy 16pt.
 

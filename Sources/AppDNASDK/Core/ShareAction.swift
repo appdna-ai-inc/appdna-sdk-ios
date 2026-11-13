@@ -6,7 +6,7 @@ struct SharePayload: Equatable {
     let url: String?
 }
 
-/// The `share` action (#1797): open the system share sheet with authored text and an optional link.
+/// The `share` action: open the system share sheet with authored text and an optional link.
 ///
 /// ONE helper for every surface that can author a share: an onboarding button (top-level, or a child
 /// of Multi-buttons / Row / Stack — all drawn by `ContentBlockRendererView.buttonBlock`), an in-app
@@ -35,7 +35,7 @@ enum ShareAction {
     /// The text a `share` content-block button carries, before translation and interpolation.
     ///
     /// `share_text`; but a block with NEITHER `share_text` nor `share_url` shares its `action_value`:
-    /// that is the shape a Screens content-block button authored `share` in before #1797
+    /// that is the shape a Screens content-block button authored `share` in before this action existed
     /// (`GenericSections`' `.share(text: actionValue)`), and the button tap site now handles every
     /// `share` button first, so dropping it would silently break those screens.
     static func authoredText(of block: ContentBlock) -> String? {

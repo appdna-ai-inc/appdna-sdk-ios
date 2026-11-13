@@ -1,6 +1,6 @@
 // PartialTextStyleRenderTests.swift
 //
-// #1800 — RENDERED: a colour-only `text_style` keeps the element's default typography.
+// RENDERED: a colour-only `text_style` keeps the element's default typography.
 //
 // The defect, as it reached a device: a generated paywall's header carried
 // `style.elements.title.text_style = {"color": "#111827"}` (the server's contrast pass), and iOS drew
@@ -144,10 +144,10 @@ final class PartialTextStyleRenderTests: XCTestCase {
         // The fix: a colour-only style is the unstyled title, pixel for pixel.
         XCTAssertEqual(
             colourOnlyImage.pngData(), unstyledImage.pngData(),
-            "a colour-only text_style changed the header title's typography (#1800) — it must keep "
+            "a colour-only text_style changed the header title's typography — it must keep "
             + "the large bold centred default and change only the colour")
         XCTAssertEqual(colourOnlyInk, unstyledInk,
-                       "the colour-only title's ink differs from the default title's (#1800)")
+                       "the colour-only title's ink differs from the default title's")
     }
 
     // MARK: - guarantee title (`.subheadline` semibold)
@@ -166,7 +166,7 @@ final class PartialTextStyleRenderTests: XCTestCase {
         XCTAssertNotEqual(unstyled, reweighted,
                           "THE CONTROL FAILED: a regular-weight guarantee title renders the same as the semibold default")
         XCTAssertEqual(colourOnly, unstyled,
-                       "a colour-only text_style changed the guarantee title's typography (#1800)")
+                       "a colour-only text_style changed the guarantee title's typography")
     }
 
     // MARK: - feature row (`.body`)
@@ -185,7 +185,7 @@ final class PartialTextStyleRenderTests: XCTestCase {
         XCTAssertNotEqual(unstyled, resized,
                           "THE CONTROL FAILED: a 13pt feature row renders the same as the body default")
         XCTAssertEqual(colourOnly, unstyled,
-                       "a colour-only text_style changed the feature row's typography (#1800)")
+                       "a colour-only text_style changed the feature row's typography")
     }
 
     // MARK: - CTA label (17pt semibold, white on the accent)
@@ -204,6 +204,6 @@ final class PartialTextStyleRenderTests: XCTestCase {
         XCTAssertNotEqual(unstyled, resized,
                           "THE CONTROL FAILED: a 12pt CTA label renders the same as the 17pt semibold default")
         XCTAssertEqual(colourOnly, unstyled,
-                       "a colour-only text_style changed the CTA label's typography (#1800)")
+                       "a colour-only text_style changed the CTA label's typography")
     }
 }

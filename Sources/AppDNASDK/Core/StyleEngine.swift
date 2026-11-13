@@ -252,7 +252,7 @@ extension View {
     }
 
     /**
-     A `text_style` MERGED over the element's own default typography (#1800).
+     A `text_style` MERGED over the element's own default typography.
 
      A style that sets only some fields changes only those fields. The server's contrast pass
      writes `text_style: {"color": "#111827"}` onto generated paywalls, and the plain overload above
@@ -303,7 +303,7 @@ extension View {
      hardcoded `.white.opacity(0.8)` that vanished on a light page, one line below
      where the same defect had been fixed for the review count. One helper, so the fallback is written once and is visibly a fallback.
 
-     The authored branch MERGES over the same default (#1800): `size`/`weight` are `font`'s numeric
+     The authored branch MERGES over the same default: `size`/`weight` are `font`'s numeric
      twins, and `alignment` is what the caller's own `.multilineTextAlignment` gives the unstyled
      text, so a colour-only style keeps the element's size, weight and alignment.
      */
@@ -505,7 +505,7 @@ extension StyleEngine {
 }
 
 /**
- The typography an element draws with when its `text_style` does not say (#1800).
+ The typography an element draws with when its `text_style` does not say.
 
  `size` and `weight` are the numeric twins of `font` at the default content size, used only when
  the style sets SOME font field: a size-only style keeps the element's weight, a weight-only style

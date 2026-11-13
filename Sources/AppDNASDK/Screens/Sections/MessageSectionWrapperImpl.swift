@@ -45,7 +45,7 @@ enum MessageSectionWrapperImpl {
                 case .open_url:
                     if let url = action.url { context.onAction(.openWebview(url: url)) }
                 case .share:
-                    // #1797: share and stay on the screen. Nothing to share → the CTA's dismiss
+                    // share and stay on the screen. Nothing to share → the CTA's dismiss
                     // behaviour, exactly as the in-app message surfaces treat a blank share.
                     if let payload = action.sharePayload {
                         ShareAction.present(payload)

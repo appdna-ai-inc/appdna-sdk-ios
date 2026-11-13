@@ -1,6 +1,6 @@
 // ShareActionTests.swift
 //
-// #1797 — the `share` action, on every surface that can author it:
+// the `share` action, on every surface that can author it:
 //
 //   - the pure rules (`ShareAction.payload`, `ShareAction.activityItems`);
 //   - an onboarding `button` and a Multi-buttons CHILD button, tapped through the accessibility tree
@@ -94,7 +94,7 @@ final class ShareActionPayloadTests: XCTestCase {
         XCTAssertEqual(ShareAction.authoredText(of: block), "Synthetic text")
     }
 
-    /// A Screens content-block button authored `share` before #1797 carried its text in
+    /// A Screens content-block button authored `share` before this action existed carried its text in
     /// `action_value`; with neither new field it still shares that.
     func testLegacyActionValueIsTheTextOnlyWithNeitherField() throws {
         let legacy = try JSONDecoder().decode(ContentBlock.self, from: Data(

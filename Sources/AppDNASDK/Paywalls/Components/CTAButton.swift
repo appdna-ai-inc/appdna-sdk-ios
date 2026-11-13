@@ -8,7 +8,7 @@ func resolveCTAFontWeight(_ raw: String?) -> Font.Weight {
 }
 
 /// `resolvePaywallFontWeight`'s CSS-number twin (same spellings, same fallback rule), for an
-/// element default a partial `text_style` merges over (#1800).
+/// element default a partial `text_style` merges over.
 func paywallFontWeightValue(_ raw: String?, default fallback: Int) -> Int {
     switch raw?.lowercased() {
     case "normal", "regular": return 400
@@ -171,7 +171,7 @@ struct CTAButton: View {
                         .tint(.white)
                 }
                 if let ts = buttonTextStyle {
-                    // Merged over the unstyled label below (#1800): a colour-only button style
+                    // Merged over the unstyled label below: a colour-only button style
                     // keeps the authored/17pt semibold label.
                     Text(isPurchasing ? "Processing..." : displayText)
                         .applyTextStyle(ts, defaults: TextStyleDefaults(

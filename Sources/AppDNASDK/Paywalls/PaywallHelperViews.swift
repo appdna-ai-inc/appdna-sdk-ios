@@ -295,7 +295,7 @@ struct CountdownTimerView: View {
     private func timeUnit(_ value: Int, label: String) -> some View {
         VStack(spacing: 2) {
             if let ts = valueTextStyle {
-                // Merged over the unstyled digit below (#1800).
+                // Merged over the unstyled digit below.
                 Text(String(format: "%02d", value))
                     .applyTextStyle(ts, defaults: TextStyleDefaults(
                         font: .system(size: digitFontSize ?? 22, weight: resolvePaywallFontWeight(digitFontWeight, default: .bold)).monospacedDigit(),

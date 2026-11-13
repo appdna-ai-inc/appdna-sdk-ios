@@ -72,7 +72,7 @@ struct HeaderSection: View {
             // The title's authored container style, applied to the whole branch.
             Group { if let title = data?.title {
                 if let ts = titleTextStyle {
-                    // MERGED over the unstyled branch below (#1800): a colour-only style — what the
+                    // MERGED over the unstyled branch below: a colour-only style — what the
                     // server's contrast pass writes — keeps the large bold centred title.
                     Text(loc?("section-header.title", title) ?? title)
                         .applyTextStyle(ts, defaults: TextStyleDefaults(

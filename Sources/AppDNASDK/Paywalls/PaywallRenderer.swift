@@ -898,7 +898,7 @@ struct PaywallRenderer: View {
         performButtonAction(action, url: url, shareText: nil, default: defaultAction)
     }
 
-    /// `performButtonAction` with the `share` text an extra button carries (#1797). Only an extra
+    /// `performButtonAction` with the `share` text an extra button carries. Only an extra
     /// button can author one; the CTA and restore link reach `share` with a link alone.
     private func performButtonAction(_ action: String?, url: String?, shareText: String?, default defaultAction: String) {
         let resolved = action ?? defaultAction
@@ -914,7 +914,7 @@ struct PaywallRenderer: View {
             }
         case "purchase":
             handleCTATap()
-        // Share (#1797): the system share sheet over the paywall, which stays. No event and no host
+        // Share: the system share sheet over the paywall, which stays. No event and no host
         // callback — Android cannot report whether a share completed. Blank → nothing, logged.
         case ShareAction.actionName:
             ShareAction.perform(text: shareText, url: url)
@@ -1227,7 +1227,7 @@ struct PaywallRenderer: View {
                 if let badge = data?.guaranteeText ?? data?.text {
                     let badgeTs = style?.elements?["badge"]?.textStyle
                     if let ts = badgeTs {
-                        // Each styled branch here is MERGED over its unstyled twin (#1800).
+                        // Each styled branch here is MERGED over its unstyled twin.
                         Text(loc("guarantee.badge", badge))
                             .applyTextStyle(ts, defaults: TextStyleDefaults(
                                 font: .caption.weight(.semibold), size: 12, weight: 600,
@@ -1350,7 +1350,7 @@ struct PaywallRenderer: View {
 
             Group {
                 if let ts = quoteTextStyle {
-                    // Merged over the unstyled quote below (#1800); the italic travels in the font.
+                    // Merged over the unstyled quote below; the italic travels in the font.
                     Text(loc("testimonial.quote", data?.quote ?? data?.testimonial ?? ""))
                         .applyTextStyle(ts, defaults: TextStyleDefaults(
                             font: (layout == "minimal" ? Font.caption : Font.body).italic(),

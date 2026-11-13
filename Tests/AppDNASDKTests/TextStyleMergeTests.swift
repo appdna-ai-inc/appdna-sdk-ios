@@ -1,6 +1,6 @@
 // TextStyleMergeTests.swift
 //
-// #1800 — A PARTIAL `text_style` CHANGES ONLY THE FIELDS IT SETS.
+// A PARTIAL `text_style` CHANGES ONLY THE FIELDS IT SETS.
 //
 // The server's contrast pass writes `text_style: {"color": "#111827"}` onto generated paywalls. iOS
 // treated any text_style as a whole typography and resolved every unset font field to system 16pt

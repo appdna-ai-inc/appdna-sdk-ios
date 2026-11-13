@@ -1131,7 +1131,7 @@ struct PaywallExtraButton: Codable, Identifiable {
     let action: String?
     /// The link for `link`; for `share`, the optional link shared with `share_text`.
     let url: String?
-    /// The text a `share` button (#1797) shares. Nil for every other action.
+    /// The text a `share` button shares. Nil for every other action.
     let share_text: String?
     let bg_color: String?
     let text_color: String?

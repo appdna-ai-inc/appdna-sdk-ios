@@ -198,7 +198,7 @@ struct PlanCard: View {
                             Group {
                                 if let ts = planNameTextStyle {
                                     Text(loc?("plan.\(planIndex).name", plan.displayName) ?? plan.displayName)
-                                        // Merged over the unstyled `.headline` name (#1800).
+                                        // Merged over the unstyled `.headline` name.
                                         .applyTextStyle(ts, defaults: TextStyleDefaults(
                                             font: .headline, size: 17, weight: 600, color: effectiveTextColor),
                                             colorOverride: isSelected && selectedTextColor != nil ? effectiveTextColor : nil)
@@ -610,7 +610,7 @@ struct PlanCard: View {
                     }
                 }
                 if let ts = badgeTextStyle {
-                    // Merged over whichever unstyled badge font applies below (#1800).
+                    // Merged over whichever unstyled badge font applies below.
                     Text(text).applyTextStyle(ts, defaults: TextStyleDefaults(
                         font: cardStyle.badgeFontSize.map { Font.system(size: $0, weight: .bold) } ?? .caption2.bold(),
                         size: Double(cardStyle.badgeFontSize ?? 11), weight: 700, color: badgeFg))
