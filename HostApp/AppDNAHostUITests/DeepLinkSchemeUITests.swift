@@ -5,17 +5,25 @@ import XCTest
 /// host mirrors into `host.lastEvents`. THE CONTROL: a URL the host never received is not there.
 final class DeepLinkSchemeUITests: XCTestCase {
     func testASampleSchemeURLReachesTheDeepLinkHandler() throws {
-        // `XCUIApplication.open(_:)` is iOS 16.4+, and the host (like the SDK) targets iOS 16.0: the
-        // call is gated so the UI-test target compiles at the host's own deployment target.
-        guard #available(iOS 16.4, *) else {
-            throw XCTSkip("XCUIApplication.open(_:) needs iOS 16.4; this simulator is older")
-        }
         let app = XCUIApplication()
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 15))
+        /*
+         `XCUIApplication.open` hands the URL to the app through XCTest without asking LaunchServices,
+         so it reaches `onOpenURL` even when the build declares no scheme at all. The OS only
+         routes `appdnasample://` from a CTA, a push or Safari when `CFBundleURLTypes` declares it, and
+         `URLSafety.hostSchemes` reads the same key — so the declaration is asserted directly.
+         */
+        let schemes = app.staticTexts["host.urlSchemes"]
+        XCTAssertTrue(schemes.waitForExistence(timeout: 5))
+        XCTAssertTrue(schemes.label.contains("appdnasample"),
+                      "the host must declare the appdnasample scheme in CFBundleURLTypes; got '\(schemes.label)'")
+
         let events = app.staticTexts["host.lastEvents"]
         XCTAssertFalse((events.label).contains("deeplink:appdnasample://demo/offer"), "control: not there before the open")
 
+        // `XCUIApplication.open(_:)` exists from iOS 16.4; the host deploys to 16.0.
+        guard #available(iOS 16.4, *) else { throw XCTSkip("XCUIApplication.open needs iOS 16.4") }
         app.open(URL(string: "appdnasample://demo/offer?src=walk")!)
         let reached = NSPredicate(format: "label CONTAINS %@", "deeplink:appdnasample://demo/offer")
         expectation(for: reached, evaluatedWith: events)

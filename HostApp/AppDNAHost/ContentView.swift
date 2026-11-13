@@ -106,6 +106,12 @@ struct ContentView: View {
         locationReadback = parts.joined(separator: " | ")
     }
 
+    static var declaredURLSchemes: String {
+        let types = Bundle.main.infoDictionary?["CFBundleURLTypes"] as? [[String: Any]] ?? []
+        let schemes = types.flatMap { ($0["CFBundleURLSchemes"] as? [String]) ?? [] }
+        return "schemes:" + schemes.joined(separator: ",")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("AppDNA SDK Host")
@@ -127,6 +133,13 @@ struct ContentView: View {
                 .accessibilityIdentifier("host.storeProducts")
             Text(events.joined)
                 .accessibilityIdentifier("host.lastEvents")
+                .opacity(0)
+                .frame(height: 0)
+            // The URL schemes this build DECLARES (`CFBundleURLTypes`), the same input
+            // `URLSafety.hostSchemes` reads. `XCUIApplication.open` delivers a URL without
+            // consulting them, so the deep-link UI test asserts on this instead.
+            Text(Self.declaredURLSchemes)
+                .accessibilityIdentifier("host.urlSchemes")
                 .opacity(0)
                 .frame(height: 0)
 
