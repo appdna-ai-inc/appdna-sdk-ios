@@ -32,6 +32,8 @@ extension SharedFixtureTests {
         case "decode_pending_delivery": runDecodePendingDelivery(f, h)
         // The ids the journey in-app message listener follows (SharedFixtureDrivers+PendingFollow.swift).
         case "follow_pending_messages": runFollowPendingMessages(f, h)
+        // A config-driven message triggered with no foreground scene (SharedFixtureDrivers+HoldConfigMessages.swift).
+        case "hold_config_messages": await runHoldConfigMessages(f, h)
         case "resolve_message_dismiss": runResolveMessageDismiss(f, h)
         // Paywall image alt text (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)

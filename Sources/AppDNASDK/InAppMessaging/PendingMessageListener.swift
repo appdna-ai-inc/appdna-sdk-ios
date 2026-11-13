@@ -112,7 +112,8 @@ final class PendingMessageListener {
 
     /// Both notifications: an app with scenes posts the scene one per scene and the app one once; an app without
     /// scenes posts only the app one. A second call finds nothing parked, so a delivery is not drawn twice.
-    private static func observeAppActivation(_ block: @escaping () -> Void) -> (() -> Void) {
+    /// Also the default for `MessageManager`'s held config-driven messages.
+    static func observeAppActivation(_ block: @escaping () -> Void) -> (() -> Void) {
         let center = NotificationCenter.default
         let tokens = [UIApplication.didBecomeActiveNotification, UIScene.didActivateNotification].map {
             center.addObserver(forName: $0, object: nil, queue: .main) { _ in block() }

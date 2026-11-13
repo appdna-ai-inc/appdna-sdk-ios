@@ -2,7 +2,40 @@ import Foundation
 import UIKit
 import SwiftUI
 
+/// Where a config-driven in-app message is drawn. The default draws over the top view controller of a FOREGROUND
+/// scene; a test passes its own.
+struct MessageSurface {
+    /// The view controller to present on, or nil when no foreground scene has a key window — a background launch (a
+    /// content-available push, a background fetch) connects a scene in the BACKGROUND, and nobody can see it.
+    var host: () -> UIViewController?
+    /// Puts the message's hosting controller on screen over `host`.
+    var show: (_ messageId: String, _ host: UIViewController, _ content: UIViewController) -> Void
+    /// Takes the message down from `host`, then runs `done`.
+    var close: (_ host: UIViewController, _ done: @escaping () -> Void) -> Void
+    /// Runs `block` each time the app (one of its scenes) becomes active; the closure it returns stops that.
+    var observeActivation: (_ block: @escaping () -> Void) -> (() -> Void)
+
+    static var live: MessageSurface { MessageSurface(
+        host: {
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            guard let index = PendingMessageListener.drawableSceneIndex(scenes.map(\.activationState)),
+                  let root = scenes[index].windows.first(where: { $0.isKeyWindow })?.rootViewController else { return nil }
+            var top = root
+            while let presented = top.presentedViewController { top = presented }
+            return top
+        },
+        show: { _, host, content in host.present(content, animated: true) },
+        close: { host, done in host.dismiss(animated: true, completion: done) },
+        observeActivation: PendingMessageListener.observeAppActivation
+    ) }
+}
+
 /// Manages in-app message trigger evaluation, frequency tracking, and presentation.
+///
+/// A message triggered while the app has no foreground scene (a background launch) is HELD — not drawn, not counted
+/// shown, its frequency not used up — and drawn the next time the app becomes active in the same process, if it is
+/// still published, still inside its date window and still allowed by its frequency. A held message is held once
+/// (a second trigger does not queue a second copy), and drawing it takes it off the hold, so it is drawn at most once.
 final class MessageManager {
     private let remoteConfigManager: RemoteConfigManager
     private let eventTracker: EventTracker
@@ -11,9 +44,23 @@ final class MessageManager {
     private let experimentManager: ExperimentManager?
     private let frequencyTracker = MessageFrequencyTracker()
     private var isPresenting = false
+    private let surface: MessageSurface
 
-    /// When true, suppresses display of in-app messages.
-    var suppressDisplay = false
+    /// A message triggered with no foreground scene to draw in, waiting for the app to become active.
+    private struct Held { let messageId: String; let triggerEvent: String }
+    /// In trigger order. Read and written on the main queue.
+    private var held: [Held] = []
+    private var stopActivation: (() -> Void)?
+    /// Closes the message on screen as its dismiss control does — the test seam behind a fixture's `close`.
+    private var dismissOnScreen: (() -> Void)?
+
+    /// When true, suppresses display of in-app messages. Turning it off draws a held message if the app is active.
+    var suppressDisplay = false {
+        didSet {
+            guard oldValue, !suppressDisplay else { return }
+            DispatchQueue.main.async { [weak self] in self?.releaseHeld() }
+        }
+    }
 
     // Date-only fallback for hand-authored / legacy configs. UTC midnight to match Android's
     // `parseWindowDate` fallback, so a bare `yyyy-MM-dd` window opens on the same instant on both
@@ -42,12 +89,17 @@ final class MessageManager {
     init(
         remoteConfigManager: RemoteConfigManager,
         eventTracker: EventTracker,
-        experimentManager: ExperimentManager? = nil
+        experimentManager: ExperimentManager? = nil,
+        surface: MessageSurface = .live
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.eventTracker = eventTracker
         self.experimentManager = experimentManager
+        self.surface = surface
+        self.stopActivation = surface.observeActivation({ [weak self] in self?.releaseHeld() })
     }
+
+    deinit { stopActivation?() }
 
     /// Evaluate all active messages against an event. Called internally after every track() call.
     func onEvent(eventName: String, properties: [String: Any]?) {
@@ -132,9 +184,52 @@ final class MessageManager {
         frequencyTracker.resetSession()
     }
 
+    // MARK: - Held messages
+
+    /// The ids of the held messages, in trigger order (tests).
+    var heldMessageIds: [String] { held.map(\.messageId) }
+
+    /// No foreground scene: keep the message for the next activation. Nothing is recorded — it was not seen.
+    private func hold(_ messageId: String, triggerEvent: String, atFront: Bool = false) {
+        guard !held.contains(where: { $0.messageId == messageId }) else {
+            Log.debug("[Messages] \(messageId) already held — not queued twice")
+            return
+        }
+        let h = Held(messageId: messageId, triggerEvent: triggerEvent)
+        if atFront { held.insert(h, at: 0) } else { held.append(h) }
+        Log.debug("[Messages] No foreground scene — holding \(messageId) until the app is active")
+    }
+
+    /// The app became active, or a message was closed: draw the first held message that may still be shown. One at a
+    /// time; the next is drawn when that one closes. Each is re-read from the current config, so a message
+    /// unpublished, out of its date window, or used up by its frequency while it waited is dropped.
+    func releaseHeld() {
+        guard !isPresenting, !suppressDisplay, !held.isEmpty, surface.host() != nil else { return }
+        let active = remoteConfigManager.getActiveMessages()
+        while !held.isEmpty {
+            let h = held.removeFirst()
+            guard let config = active[h.messageId],
+                  frequencyTracker.canShow(
+                      messageId: h.messageId,
+                      frequency: config.trigger_rules?.frequency ?? .once,
+                      maxDisplays: config.trigger_rules?.max_displays
+                  ),
+                  checkDateRange(config) else {
+                Log.debug("[Messages] Held \(h.messageId) is no longer showable — dropped")
+                continue
+            }
+            Log.debug("[Messages] App active — presenting held \(h.messageId)")
+            present(messageId: h.messageId, activeConfig: config, triggerEvent: h.triggerEvent, fromHold: true)
+            return
+        }
+    }
+
+    /// Closes the message on screen through its own dismiss path (tests).
+    func dismissOnScreenForTesting() { dismissOnScreen?() }
+
     // MARK: - Presentation
 
-    private func present(messageId: String, activeConfig: MessageConfig, triggerEvent: String) {
+    private func present(messageId: String, activeConfig: MessageConfig, triggerEvent: String, fromHold: Bool = false) {
         // The three synchronous suppression rules (already-presenting, SDK
         // runtime-locked, host `shouldShowMessage` veto), consulted BEFORE any analytics tracking or
         // view construction so a suppressed message produces no `in_app_message_shown` event. The
@@ -145,7 +240,19 @@ final class MessageManager {
             isPresenting: isPresenting,
             runtimeLocked: AppDNA.runtimeLock != nil,
             delegate: AppDNA.inAppMessages.delegate
-        ) else { return }
+        ) else {
+            // A held message that lost the race to one now on screen: back on the hold, first.
+            if fromHold, isPresenting { hold(messageId, triggerEvent: triggerEvent, atFront: true) }
+            return
+        }
+
+        // No foreground scene (a background launch): held AFTER the gate above, so a message the host vetoes is
+        // dropped as before, and BEFORE the experiment resolution (which records an exposure) and the async veto. The
+        // gate is asked again when it is drawn.
+        guard surface.host() != nil else {
+            hold(messageId, triggerEvent: triggerEvent, atFront: fromHold)
+            return
+        }
 
         // Experiment-aware presentation, attached inside the
         // candidate/present path (not a host present() call). A running in-app-
@@ -172,34 +279,34 @@ final class MessageManager {
                     Log.debug("In-app message \(messageId) suppressed by host asyncShouldShowMessage veto")
                     return
                 }
-                self?.presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent)
+                self?.presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold)
             }
             return
         }
 
-        presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent)
+        presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold)
     }
 
     /// The presentation remainder, extracted so the D10 async wrapper-veto can
     /// gate it behind an awaited decision. `config` is the experiment-resolved
     /// config computed by `present(...)`. Runs on the main queue.
-    private func presentBody(messageId: String, config: MessageConfig, triggerEvent: String) {
-        guard !isPresenting else { return }
-
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first,
-              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
-            Log.warning("No root view controller available for in-app message")
+    private func presentBody(messageId: String, config: MessageConfig, triggerEvent: String, fromHold: Bool = false) {
+        guard !isPresenting else {
+            // A held message that lost the race to another (an async veto answered late): back on the hold, first.
+            if fromHold { hold(messageId, triggerEvent: triggerEvent, atFront: true) }
             return
         }
 
-        // Find topmost presented VC
-        var topVC = rootVC
-        while let presented = topVC.presentedViewController {
-            topVC = presented
+        // Only a FOREGROUND scene is somewhere to draw. `connectedScenes.first` was any scene, and a background launch
+        // connects one in the background with a key window: the message was drawn where nobody could see it, counted
+        // shown, and a `once` message was used up.
+        guard let topVC = surface.host() else {
+            hold(messageId, triggerEvent: triggerEvent, atFront: fromHold)
+            return
         }
 
+        // Drawn now: a held copy of the same message is this one, so it is not drawn again on the next activation.
+        held.removeAll { $0.messageId == messageId }
         isPresenting = true
         frequencyTracker.recordShown(messageId: messageId, frequency: config.trigger_rules?.frequency ?? .once)
 
@@ -236,31 +343,34 @@ final class MessageManager {
                 self?.handleCTAAction(config.content?.cta_action)
                 // A `share` CTA opens the share sheet once the message is gone, from the
                 // screen underneath; a blank share is a plain dismiss.
-                let share = MessageCTAShare.payload(config.content?.cta_action)
-                topVC.dismiss(animated: true) {
-                    self?.isPresenting = false
-                    if let share { ShareAction.present(share) }
-                    DispatchQueue.main.async {
-                        AppDNA.inAppMessages.delegate?.onMessageDismissed(messageId: messageId)
-                    }
-                }
+                self?.closeOnScreen(topVC, messageId: messageId, share: MessageCTAShare.payload(config.content?.cta_action))
             },
             onDismiss: { [weak self] in
                 self?.eventTracker.track(event: "in_app_message_dismissed", properties: [
                     "message_id": messageId,
                 ])
-                topVC.dismiss(animated: true) {
-                    self?.isPresenting = false
-                    // Fire onMessageDismissed.
-                    DispatchQueue.main.async {
-                        AppDNA.inAppMessages.delegate?.onMessageDismissed(messageId: messageId)
-                    }
-                }
+                self?.closeOnScreen(topVC, messageId: messageId)
             }
         )
 
+        dismissOnScreen = messageView.onDismiss
         let hostingVC = MessageHosting.makeHost(rootView: messageView, config: config)
-        topVC.present(hostingVC, animated: true)
+        surface.show(messageId, topVC, hostingVC)
+    }
+
+    private func closeOnScreen(_ host: UIViewController, messageId: String, share: SharePayload? = nil) {
+        dismissOnScreen = nil
+        surface.close(host) { [weak self] in
+            self?.isPresenting = false
+            if let share { ShareAction.present(share) }
+            // Fire onMessageDismissed.
+            DispatchQueue.main.async {
+                AppDNA.inAppMessages.delegate?.onMessageDismissed(messageId: messageId)
+            }
+            // The next held message, if one is waiting — not over a share sheet just opened; it waits for the next
+            // activation instead.
+            if share == nil { self?.releaseHeld() }
+        }
     }
 
     // MARK: - Condition evaluation
