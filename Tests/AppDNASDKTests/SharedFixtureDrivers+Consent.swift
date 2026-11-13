@@ -203,6 +203,8 @@ final class ConsentStubServer: @unchecked Sendable {
                 let r = replies[min(idx, replies.count - 1)]
                 if (r["network_failure"] as? Bool) == true { return }
                 status = (r["status"] as? Int) ?? 202
+                // The reply's body: it decides as much as the status (a 400 is a refusal only in the route's error shape).
+                if let b = r["body"] as? String { payload = b }
                 headers = (r["headers"] as? [String: String]) ?? [:]
                 // A per-request delay: the request is held for `delay_ms` of real time before it is applied and answered.
                 if let d = (r["delay_ms"] as? NSNumber)?.doubleValue, d > 0 { Thread.sleep(forTimeInterval: d / 1000) }

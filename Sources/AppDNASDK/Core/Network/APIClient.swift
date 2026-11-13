@@ -235,17 +235,19 @@ final class APIClient {
 
     /// the consent signal (`POST /api/v1/ingest/consent`), ONE network attempt (URLSession never
     /// re-sends a POST on its own). The sender owns the retry policy (the consent state table). Classified by
-    /// `disposition(for:)`, the same table the event upload uses (`permanent_4xx_dropped`).
+    /// `eventUploadDisposition(for:body:)`, the table the event upload uses (`permanent_4xx_dropped`): the signal is
+    /// dropped only when the consent route refuses its content (400 / 413 / 422 in the route's error shape); a 401 /
+    /// 403 / 404 or a page from a tunnel or proxy is transient, so the signal is retried rather than lost.
     func postConsentOnce(body: [String: Any]) async -> ConsentPostOutcome {
         do {
             let request = try postRequest(path: ConsentSignalSender.path, body: body)
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .transient(retryAfterSeconds: nil) }
-            switch Self.disposition(for: http.statusCode) {
+            switch Self.eventUploadDisposition(for: http.statusCode, body: data) {
             case .success:
                 return .success
             case .dropPermanent:
-                Log.warning("Consent signal rejected (HTTP \(http.statusCode)): dropped until the next launch.")
+                Log.warning("Consent signal refused (HTTP \(http.statusCode)): dropped until the next launch.")
                 return .drop
             case .retryTransient:
                 let ra = Self.parseRetryAfter(http.value(forHTTPHeaderField: "Retry-After")).map { Int64($0.rounded(.up)) }
@@ -331,17 +333,6 @@ final class APIClient {
               error["message"] is String
         else { return false }
         return true
-    }
-
-    /// The STATUS-ONLY table the consent signal (`postConsentOnce`) uses. Event uploads do not: they use
-    /// `eventUploadDisposition(for:body:)`, which also reads the body, because an event batch is data the device
-    /// holds and dropping it on a status that is not about it loses that data for good.
-    static func disposition(for statusCode: Int) -> EventUploadDisposition {
-        if (200..<300).contains(statusCode) { return .success }
-        if transientStatusCodes.contains(statusCode) { return .retryTransient }
-        if (400..<500).contains(statusCode) { return .dropPermanent }
-        // 5xx, and any status nobody expected — the server may recover, so retry.
-        return .retryTransient
     }
 
     /// Apply an event-upload status to `eventUploadPermanentlyFailed` and the `Retry-After` hint.

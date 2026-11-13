@@ -12,8 +12,8 @@ import XCTest
    - transient_status  → `APIClient.transientStatusCodes`  (Android: ApiClient.TRANSIENT_STATUS_CODES)
    - retry_after       → `APIClient.parseRetryAfter`       (Android: ApiClient.parseRetryAfter)
    - stale_horizon     → `EventStore.isStale`              (Android: EventDatabase.isStale)
-   - permanent_failure → `APIClient.disposition(for:)` + `APIClient.applyEventUploadStatus`
-                                                           (Android: ApiClient.dispositionFor)
+   - permanent_failure → `APIClient.eventUploadDisposition(for:body:)` + `APIClient.applyEventUploadStatus`
+                                                           (Android: ApiClient.eventUploadDispositionFor)
    - backoff           → `EventQueue.jittered` / `.retryBaseDelays` / `.maxRetries`
                                                            (Android: EventQueue.jittered / RETRY_DELAYS_MS / MAX_RETRIES)
    - flush_cost_bounded → `EventStore.decodedLinesForTesting` over prune / `loadOldest` / `removeSent`

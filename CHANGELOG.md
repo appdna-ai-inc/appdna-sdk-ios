@@ -20,7 +20,8 @@ the project uses [Semantic Versioning](https://semver.org/).
   so an outage behind a tunnel or proxy that answered 401 lost every event queued during it. Now a batch is dropped,
   and counted, only on a 400, 413 or 422 that carries the AppDNA API's JSON error body. A 401 or 403 keeps the events
   and pauses uploads until the next foreground or `AppDNA.flush()`; a 404, 409, or an answer that is not the API's own
-  (an HTML page from a tunnel, captive portal, proxy or load balancer, whatever its status) keeps them and retries.
+  (an HTML page from a tunnel, captive portal, proxy or load balancer, whatever its status) keeps them and retries. The consent signal follows the same rule: a 401 / 403 / 404 or a
+  proxy's page is retried instead of dropping the signal until the next launch.
 
 - **A paywall `text_style` that sets only some fields keeps the element's own typography.** A style that set only a
   colour (as the server's contrast pass writes) replaced the element's default font with the 16pt body font, so a
