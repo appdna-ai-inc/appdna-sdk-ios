@@ -181,6 +181,17 @@ open class NotificationService: UNNotificationServiceExtension {
                 completion(nil)
                 return
             }
+            // Only a successful response whose body is media is attached. An error page (an expired signed URL's
+            // 403, a 404, a proxy's HTML) attaches nothing, and the push shows as text.
+            if let http = response as? HTTPURLResponse {
+                let mime = http.mimeType?.lowercased() ?? ""
+                let isMedia = mime.isEmpty || mime.hasPrefix("image/") || mime.hasPrefix("video/")
+                    || mime == "application/octet-stream" || mime == "binary/octet-stream"
+                guard (200...299).contains(http.statusCode), isMedia else {
+                    completion(nil)
+                    return
+                }
+            }
 
             // Determine file extension from MIME type or URL
             let ext: String

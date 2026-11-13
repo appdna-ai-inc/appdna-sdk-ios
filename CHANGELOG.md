@@ -15,6 +15,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A push image URL that answers an error no longer shows as a broken attachment.** The Notification Service
+  Extension attached whatever body the image download returned, so an expired link's 403 page or a 404 was attached as
+  the image. Only a successful response whose body is an image or video is attached now; otherwise the push shows as
+  text, as on Android. Redirects are still followed.
+
 - **A queued event batch is deleted only when the server refuses its content.** An event upload answered 401, 403,
   404 or with any other 4xx (except 408 and 429) used to delete its batch from memory and disk and count it as dropped,
   so an outage behind a tunnel or proxy that answered 401 lost every event queued during it. Now a batch is dropped,
