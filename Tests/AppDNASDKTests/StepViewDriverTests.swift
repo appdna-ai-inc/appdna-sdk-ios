@@ -24,14 +24,98 @@ import UIKit
 
 /// Turns on the accessibility runtime so SwiftUI publishes its element tree to a hosted view, as the
 /// accessibility-snapshot tools do; the tree is otherwise empty in a unit test.
+///
+/// 🔴 The switch is SIMULATOR-WIDE, not per process: it is `AutomationEnabled` in the simulator's
+/// `com.apple.Accessibility` domain. Another process on the same simulator — an XCUITest runner opening
+/// or closing its session — can turn it off in the middle of a test, and SwiftUI then stops publishing
+/// the tree: every label read comes back `[]` and a render test fails as "no button for Continue"
+/// (#1780). Turning it on once per process was not enough, so it is re-asserted before every read
+/// (`HostedStep.elements()`), and `enabled` re-asserts on every access.
 enum A11yAutomation {
-    static let enabled: Bool = {
-        guard let h = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW),
-              let sym = dlsym(h, "_AXSSetAutomationEnabled") else { return false }
-        typealias SetEnabled = @convention(c) (Int32) -> Void
-        unsafeBitCast(sym, to: SetEnabled.self)(1)
+    private typealias SetEnabled = @convention(c) (Int32) -> Void
+    private typealias GetEnabled = @convention(c) () -> UInt8
+    private static let lib = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW)
+    private static let setter: SetEnabled? = lib.flatMap { dlsym($0, "_AXSSetAutomationEnabled") }
+        .map { unsafeBitCast($0, to: SetEnabled.self) }
+    private static let getter: GetEnabled? = lib.flatMap { dlsym($0, "_AXSAutomationEnabled") }
+        .map { unsafeBitCast($0, to: GetEnabled.self) }
+
+    /// How often a read found the switch OFF and turned it back on, in this process — named in the
+    /// failure message, so an empty tree reads as what it is rather than as a render regression.
+    static var timesFoundOff = 0
+
+    /// The switch as this process sees it; nil when the runtime cannot be reached.
+    static var isOn: Bool? { getter.map { $0() != 0 } }
+
+    /// Turns the switch on (again). Returns false only when the runtime cannot be reached.
+    @discardableResult
+    static func ensure() -> Bool {
+        guard let setter else { return false }
+        setter(1)
         return true
-    }()
+    }
+
+    /// Sets the switch the way another process on the simulator would. Test-only: the red control in
+    /// `HostedStepAutomationTests`.
+    static func setForTesting(_ on: Bool) { setter?(on ? 1 : 0) }
+
+    /// Kept for the call sites that turn it on before hosting their own view. Re-asserts on every access.
+    static var enabled: Bool { ensure() }
+}
+
+/// The one walk every render test reads a hosted view's accessibility tree with (#1780). Called on the main thread,
+/// like every render test; not isolated, so a test class that is not `@MainActor` can call it as it walked before.
+enum A11yTree {
+    /// Every accessibility element under `roots`, depth first, each once — the tree as it is published right now,
+    /// with no re-assert and no wait.
+    static func raw(_ roots: [NSObject], maxDepth: Int = 60) -> [NSObject] {
+        var out: [NSObject] = []
+        var seen = Set<ObjectIdentifier>()
+        func walk(_ o: NSObject, _ depth: Int) {
+            guard depth < maxDepth, seen.insert(ObjectIdentifier(o)).inserted else { return }
+            out.append(o)
+            let n = o.accessibilityElementCount()
+            if n != NSNotFound, n > 0 {
+                for i in 0..<n { if let e = o.accessibilityElement(at: i) as? NSObject { walk(e, depth + 1) } }
+            }
+            for e in o.accessibilityElements ?? [] { if let e = e as? NSObject { walk(e, depth + 1) } }
+            if let v = o as? UIView { for s in v.subviews { walk(s, depth + 1) } }
+        }
+        roots.forEach { walk($0, 0) }
+        return out
+    }
+
+    /// A tree with at least one label — what every hosted step publishes when the runtime is on.
+    static func hasALabel(_ elements: [NSObject]) -> Bool { elements.contains { $0.accessibilityLabel != nil } }
+
+    /// The tree under `roots`, read the way a test means to read it: the accessibility runtime is re-asserted first,
+    /// and when `ready` does not hold — by default, no label at all, the shape of the switch having been turned off
+    /// underneath the test by another process — it is re-asserted and re-read for up to `timeout` while SwiftUI
+    /// publishes the tree again. Returns the last read either way; the caller's assertion judges it.
+    static func read(_ roots: [NSObject], maxDepth: Int = 60, timeout: TimeInterval = 2,
+                     until ready: ([NSObject]) -> Bool = A11yTree.hasALabel) -> [NSObject] {
+        if A11yAutomation.isOn == false { A11yAutomation.timesFoundOff += 1 }
+        A11yAutomation.ensure()
+        var out = raw(roots, maxDepth: maxDepth)
+        guard !ready(out) else { return out }
+        let end = Date().addingTimeInterval(timeout)
+        while Date() < end {
+            if A11yAutomation.isOn == false { A11yAutomation.timesFoundOff += 1 }
+            A11yAutomation.ensure()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            out = raw(roots, maxDepth: maxDepth)
+            if ready(out) { break }
+        }
+        return out
+    }
+
+    /// Names the cause when a read came back with no label, so it does not read as a render regression; "" otherwise.
+    static func diagnosis(_ elements: [NSObject]) -> String {
+        guard !hasALabel(elements) else { return "" }
+        return " — the accessibility tree is EMPTY: the simulator-wide accessibility automation switch is "
+            + "\(A11yAutomation.isOn.map { $0 ? "on" : "OFF" } ?? "unreachable") and was found off "
+            + "\(A11yAutomation.timesFoundOff) time(s) in this process; another process on the simulator turns it off (#1780)"
+    }
 }
 
 @MainActor
@@ -69,24 +153,20 @@ final class HostedStep {
     }
 
     /// Every accessibility element under the host, depth first.
-    func elements() -> [NSObject] {
-        var out: [NSObject] = []
-        var seen = Set<ObjectIdentifier>()
-        func walk(_ o: NSObject, _ depth: Int) {
-            guard depth < 60, seen.insert(ObjectIdentifier(o)).inserted else { return }
-            out.append(o)
-            let n = o.accessibilityElementCount()
-            if n != NSNotFound, n > 0 {
-                for i in 0..<n { if let e = o.accessibilityElement(at: i) as? NSObject { walk(e, depth + 1) } }
-            }
-            for e in o.accessibilityElements ?? [] { if let e = e as? NSObject { walk(e, depth + 1) } }
-            if let v = o as? UIView { for s in v.subviews { walk(s, depth + 1) } }
-        }
-        walk(host.view, 0)
-        return out
-    }
+    ///
+    /// Re-asserts the accessibility runtime first, and when the tree comes back with no label at all —
+    /// the shape of the switch having been turned off underneath the test by another process (#1780) —
+    /// waits, bounded, for SwiftUI to publish it again. A hosted step always draws some text, so a tree
+    /// with no label is never the answer a test means to read.
+    func elements() -> [NSObject] { A11yTree.read([host.view]) }
+
+    /// The tree as it is published right now, with no re-assert and no wait — the red control's view.
+    func rawElements() -> [NSObject] { A11yTree.raw([host.view]) }
 
     func labels() -> [String] { elements().compactMap(\.accessibilityLabel) }
+
+    /// Names the cause when the tree is empty, so it does not read as a render regression (#1780).
+    func treeDiagnosis() -> String { A11yTree.diagnosis(elements()) }
 
     func has(label: String) -> Bool { labels().contains(label) }
 
@@ -97,7 +177,7 @@ final class HostedStep {
             guard let l = e.accessibilityLabel, match(l) else { return false }
             return e.accessibilityTraits.contains(.button)
         }) else {
-            XCTFail("no button for \(what); labels: \(labels())")
+            XCTFail("no button for \(what); labels: \(labels())\(treeDiagnosis())")
             return false
         }
         let ok = e.accessibilityActivate()

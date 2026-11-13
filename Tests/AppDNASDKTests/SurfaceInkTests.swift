@@ -46,16 +46,11 @@ class SurfaceInkTestCase: XCTestCase {
         RunLoop.current.run(until: Date().addingTimeInterval(settle))
 
         var frames: [String: CGRect] = [:]
-        func walk(_ o: NSObject, _ depth: Int) {
-            guard depth < 60 else { return }
-            if let l = o.accessibilityLabel, elements.contains(l), frames[l] == nil { frames[l] = o.accessibilityFrame }
-            let n = o.accessibilityElementCount()
-            if n != NSNotFound, n > 0 { for i in 0..<n { if let e = o.accessibilityElement(at: i) as? NSObject { walk(e, depth + 1) } } }
-            for e in o.accessibilityElements ?? [] { if let e = e as? NSObject { walk(e, depth + 1) } }
-            if let v = o as? UIView { for s in v.subviews { walk(s, depth + 1) } }
-        }
-        walk(host.view, 0)
-        XCTAssertEqual(Set(frames.keys), Set(elements), "control: the harness finds every element's frame")
+        // #1780: read through `A11yTree`, which re-asserts the simulator-wide accessibility switch and waits for
+        // every element when another process has turned it off.
+        let tree = A11yTree.read([host.view]) { els in Set(elements).isSubset(of: Set(els.compactMap(\.accessibilityLabel))) }
+        for o in tree { if let l = o.accessibilityLabel, elements.contains(l), frames[l] == nil { frames[l] = o.accessibilityFrame } }
+        XCTAssertEqual(Set(frames.keys), Set(elements), "control: the harness finds every element's frame\(A11yTree.diagnosis(tree))")
         lastFrames = frames
         lastWindow = window
 

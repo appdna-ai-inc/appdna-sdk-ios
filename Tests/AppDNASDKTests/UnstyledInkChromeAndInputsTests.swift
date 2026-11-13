@@ -75,17 +75,10 @@ final class UnstyledInkChromeAndInputsTests: XCTestCase {
 
         /// Accessibility elements as (label, frame, isButton).
         func elements() -> [(String, CGRect, Bool)] {
-            var out: [(String, CGRect, Bool)] = []
-            func walk(_ o: NSObject, _ depth: Int) {
-                guard depth < 60 else { return }
-                if let l = o.accessibilityLabel { out.append((l, o.accessibilityFrame, o.accessibilityTraits.contains(.button))) }
-                let n = o.accessibilityElementCount()
-                if n != NSNotFound, n > 0 { for i in 0..<n { if let e = o.accessibilityElement(at: i) as? NSObject { walk(e, depth + 1) } } }
-                for e in o.accessibilityElements ?? [] { if let e = e as? NSObject { walk(e, depth + 1) } }
-                if let v = o as? UIView { for s in v.subviews { walk(s, depth + 1) } }
+            // #1780: through `A11yTree`, which recovers the tree when another process turns automation off.
+            A11yTree.read([host.view]).compactMap { o in
+                o.accessibilityLabel.map { ($0, o.accessibilityFrame, o.accessibilityTraits.contains(.button)) }
             }
-            walk(host.view, 0)
-            return out
         }
 
         /// Light and dark pixel counts inside `frame`.

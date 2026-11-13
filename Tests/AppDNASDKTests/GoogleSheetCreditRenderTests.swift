@@ -69,7 +69,7 @@ final class GoogleSheetCreditRenderTests: XCTestCase {
         let drawn = host(live)
         defer { drawn.close() }
         XCTAssertTrue(drawn.wait { self.credits(drawn) == 1 },
-                      "the sheet draws its own credit for the pick that opened it; labels \(drawn.labels())")
+                      "the sheet draws its own credit for the pick that opened it; labels \(drawn.labels())\(drawn.treeDiagnosis())")
 
         let stale = host(frozen)
         defer { stale.close() }

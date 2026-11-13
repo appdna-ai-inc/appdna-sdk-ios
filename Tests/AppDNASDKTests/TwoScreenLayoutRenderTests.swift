@@ -128,21 +128,8 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
         func spin(_ s: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(s)) }
 
         func elements() -> [NSObject] {
-            var out: [NSObject] = []
-            var seen = Set<ObjectIdentifier>()
-            func walk(_ o: NSObject, _ depth: Int) {
-                guard depth < 60, seen.insert(ObjectIdentifier(o)).inserted else { return }
-                out.append(o)
-                let n = o.accessibilityElementCount()
-                if n != NSNotFound, n > 0 {
-                    for i in 0..<n { if let e = o.accessibilityElement(at: i) as? NSObject { walk(e, depth + 1) } }
-                }
-                for e in o.accessibilityElements ?? [] { if let e = e as? NSObject { walk(e, depth + 1) } }
-                if let v = o as? UIView { for s in v.subviews { walk(s, depth + 1) } }
-            }
-            walk(host.view, 0)
-            if let presented = host.presentedViewController?.view { walk(presented, 0) }
-            return out
+            // #1780: through `A11yTree`, which recovers the tree when another process turns automation off.
+            A11yTree.read([host.view] + [host.presentedViewController?.view].compactMap { $0 })
         }
 
         func labels() -> [String] { elements().compactMap(\.accessibilityLabel) }
