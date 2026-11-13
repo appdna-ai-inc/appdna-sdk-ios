@@ -122,17 +122,38 @@ struct SurveyContainerView: View {
     private var themeFont: Font? {
         let fontFamily = theme?.font_family
         let size = theme?.question_font_size
-        let weight: Int? = {
-            switch theme?.font_weight {
-            case "medium": return 500
-            case "semibold": return 600
-            case "bold": return 700
-            case "normal": return 400
-            default: return nil
-            }
-        }()
+        let weight = themeWeight
         if fontFamily == nil && size == nil && weight == nil { return nil }
         return FontResolver.font(family: fontFamily, size: size, weight: weight)
+    }
+
+    private var themeWeight: Int? {
+        switch theme?.font_weight {
+        case "medium": return 500
+        case "semibold": return 600
+        case "bold": return 700
+        case "normal": return 400
+        default: return nil
+        }
+    }
+
+    /// #1805 — what an unstyled question draws (the theme font, else the 17pt body), so a partial
+    /// `question_text_style` is MERGED over it, as Android merges over its theme-sized base. The
+    /// legacy overload resolved every unset field to 16pt and so shrank the option labels (which
+    /// carry no font of their own) whenever a style set only a colour.
+    private func styledQuestion<V: View>(_ view: V) -> AnyView {
+        let style = config.appearance?.question_text_style
+        let override: Color? = style?.color == nil ? textColor : nil
+        // Unstyled: unchanged, the theme colour only.
+        guard style != nil else { return AnyView(view.applyTextStyle(nil, colorOverride: override)) }
+        // #1805 — merged over the question's own defaults, not the legacy 16pt.
+        return view.applyTextStyle(style, defaults: questionTextDefaults, colorOverride: override)
+    }
+
+    private var questionTextDefaults: TextStyleDefaults {
+        TextStyleDefaults(font: themeFont ?? .body, size: theme?.question_font_size ?? 17,
+                          weight: themeWeight ?? 400, family: theme?.font_family,
+                          alignment: theme?.text_align, color: textColor)
     }
 
     /// Text alignment honored when theme declares it.
@@ -209,13 +230,10 @@ struct SurveyContainerView: View {
                     // Current question: apply style engine + theme font
                     // Honor theme.text_align.
                     if currentQuestionIndex < visibleQuestions.count {
-                        questionView(for: visibleQuestions[currentQuestionIndex])
-                            // The theme's text colour reaches the question unless the style authors
-                            // its own: chained after the style, it lost to the `.primary` a colourless
-                            // style applies closest to the text.
-                            .applyTextStyle(
-                                config.appearance?.question_text_style,
-                                colorOverride: config.appearance?.question_text_style?.color == nil ? textColor : nil)
+                        // The theme's text colour reaches the question unless the style authors
+                        // its own: chained after the style, it lost to the `.primary` a colourless
+                        // style applies closest to the text.
+                        styledQuestion(questionView(for: visibleQuestions[currentQuestionIndex]))
                             .font(themeFont)
                             .foregroundColor(textColor)
                             .multilineTextAlignment(themeTextAlignment)

@@ -29,6 +29,11 @@ the project uses [Semantic Versioning](https://semver.org/).
   Android; a style without a colour keeps the element's default colour, and one without an alignment keeps its
   alignment.
 
+- **An onboarding list's or a survey's colour-only text style keeps the default size.** A list `style` or a
+  survey `question_text_style` that set only a colour redrew the list items, and a survey's answer options, at 16pt
+  instead of the 17pt body size, and the survey theme's font and size were lost. A style now changes only the fields
+  it sets there too.
+
 - **A journey's in-app message delivered during a background launch is shown when the user opens the app.** When the app was running in the background with no window (woken by a push or a background task), the SDK tried to show a message a journey sent for about 10 seconds, then stopped. The message stayed unshown until the app was next launched from cold. It is now shown the next time the app becomes active, unless it has expired, and it is still shown only once.
 
 - **A journey's in-app message is no longer drawn while the app is in the background.** A background launch (a silent push, a background fetch) can connect a scene with a window while the app is not on screen. The SDK drew a waiting message there at once, marked it shown and counted `in_app_message_shown` while the user was not looking; if the system then ended the app before the user opened it, the message was never seen and not sent again. Only a scene in the foreground is used now. A message that arrives during a background launch is shown when the user opens the app, as on Android.
