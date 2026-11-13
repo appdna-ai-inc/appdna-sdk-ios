@@ -1,8 +1,9 @@
 import Foundation
 import UserNotifications
 
-/// UNNotificationServiceExtension for rich push content: downloads the image attachment and registers
-/// the push's action-button category before the notification is shown (without it, buttons of a button
+/// UNNotificationServiceExtension for AppDNA pushes: confirms delivery to AppDNA (the only way iOS lets a
+/// push that arrives while the app is not running be counted as delivered), downloads the image attachment and
+/// registers the push's action-button category before the notification is shown (without it, buttons of a button
 /// set the app has not seen yet do not appear). Add a Notification Service Extension target whose
 /// principal class subclasses this one, and link the extension-safe `AppDNANotificationExtension` library
 /// (SwiftPM product / CocoaPods pod) to it — not `AppDNASDK`, which uses API unavailable in an app
@@ -22,6 +23,23 @@ open class NotificationService: UNNotificationServiceExtension {
     /// Test seam: loads the image attachment (default: `downloadAttachment`).
     var attachmentLoader: ((URL, @escaping (UNNotificationAttachment?) -> Void) -> Void)?
 
+    /// Test seam: sends the delivery receipt and calls back when it is done, whatever the outcome
+    /// (default: `URLSession.shared`).
+    var receiptSender: ((URLRequest, @escaping () -> Void) -> Void)?
+
+    /// Whether this extension confirms delivery to AppDNA. On by default: iOS draws a push to an app that is
+    /// not running without running any app code, so this extension is the only code that can report that the push
+    /// arrived. Override to return `false` to opt out; AppDNA then counts that device's pushes as sent, never delivered.
+    open var reportsDelivery: Bool { true }
+
+    /// Where the extension hands its confirmed deliveries to the app for the `push_delivered` event: the App Group
+    /// named under `AppDNAAppGroup` in the extension's Info.plist. Nil (no App Group): nothing is handed over, and only
+    /// the server-side delivery from the receipt is counted. (Test seam: replace the provider.)
+    var deliveryHandoff: () -> PushDeliveryHandoff? = { PushDeliveryHandoff(bundle: .main) }
+
+    /// The delivery receipt allows this long before the content is handed back without waiting for it.
+    static let receiptTimeout: TimeInterval = 8
+
     override open func didReceive(
         _ request: UNNotificationRequest,
         withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
@@ -37,10 +55,33 @@ open class NotificationService: UNNotificationServiceExtension {
         stateLock.unlock()
         let userInfo = content.userInfo
 
+        // The app's SDK tracks `push_delivered` for this delivery when it next runs (App Group hand-off; nothing without one).
+        if reportsDelivery, (userInfo["appdna"] as? String) == "1",
+           let deliveryId = userInfo["delivery_id"] as? String, !deliveryId.isEmpty {
+            deliveryHandoff()?.record(pushId: userInfo["push_id"] as? String ?? "", deliveryId: deliveryId)
+        }
+
+        // With a receipt to send, the content is handed back once BOTH the content work (category + attachment) and the
+        // receipt are done — the extension may be suspended as soon as the handler is called, so a receipt still in
+        // flight then could be lost. `serviceExtensionTimeWillExpire` still hands the best attempt back if either runs
+        // long. Without one, the content is handed back the moment it is ready, as before.
+        let contentDone: () -> Void
+        if reportsDelivery, let receipt = Self.deliveryReceiptRequest(from: userInfo) {
+            let work = DispatchGroup()
+            work.enter() // the content
+            work.enter() // the receipt
+            work.notify(queue: .global(qos: .userInitiated)) { self.deliver() }
+            let send = receiptSender ?? Self.sendReceipt
+            send(receipt) { work.leave() }
+            contentDone = { work.leave() }
+        } else {
+            contentDone = { self.deliver() }
+        }
+
         // Register the action buttons' category BEFORE the notification is shown:
         // iOS displays buttons only for a category that is already registered, and this extension is the
         // one place that runs before display while the app is not running. The server marks every push
-        // with buttons `mutable-content`, so this runs for them.
+        // `mutable-content`, so this runs for every AppDNA push.
         Self.registerActionCategory(from: userInfo, slot: SystemNotificationCenterSlot()) {
             if let category = PushActionCategories.category(from: userInfo) {
                 self.updateBestAttempt { $0.categoryIdentifier = category.identifier }
@@ -56,10 +97,10 @@ open class NotificationService: UNNotificationServiceExtension {
                     if let attachment = attachment {
                         self.updateBestAttempt { $0.attachments = [attachment] }
                     }
-                    self.deliver()
+                    contentDone()
                 }
             } else {
-                self.deliver()
+                contentDone()
             }
         }
     }
@@ -101,6 +142,32 @@ open class NotificationService: UNNotificationServiceExtension {
         PushActionCategories.register(from: userInfo, slot: slot) {
             slot.getCategories { _ in completion() }
         }
+    }
+
+    /// the delivery receipt the push carries, as a request, or nil when there is none to send.
+    ///
+    /// Every AppDNA push is `mutable-content`, so this extension runs for it while the app is not running, and the push
+    /// carries what the extension needs to confirm delivery without the SDK's configuration (no API key, no app group):
+    /// `receipt_url` and `receipt_sig`, a signature over `delivery_id` that only the AppDNA server can produce. Nil for a
+    /// push that is not AppDNA's (no `appdna: "1"`), one from a server that sends no receipt, and any URL that is not
+    /// HTTPS.
+    public static func deliveryReceiptRequest(from userInfo: [AnyHashable: Any]) -> URLRequest? {
+        guard (userInfo["appdna"] as? String) == "1",
+              let deliveryId = userInfo["delivery_id"] as? String, !deliveryId.isEmpty,
+              let sig = userInfo["receipt_sig"] as? String, !sig.isEmpty,
+              let urlString = userInfo["receipt_url"] as? String,
+              let url = URL(string: urlString), url.scheme?.lowercased() == "https", url.host != nil,
+              let body = try? JSONSerialization.data(withJSONObject: ["delivery_id": deliveryId, "receipt_sig": sig], options: [.sortedKeys])
+        else { return nil }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: receiptTimeout)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+        return request
+    }
+
+    private static func sendReceipt(_ request: URLRequest, done: @escaping () -> Void) {
+        URLSession.shared.dataTask(with: request) { _, _, _ in done() }.resume()
     }
 
     override open func serviceExtensionTimeWillExpire() {

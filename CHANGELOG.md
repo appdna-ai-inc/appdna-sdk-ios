@@ -45,6 +45,15 @@ the project uses [Semantic Versioning](https://semver.org/).
   (`cta_action: { type: "share", text, url }`; the message closes, then the sheet opens) and on a paywall extra
   button (`action: "share"`, `share_text`, `url`; the paywall stays). Text and link are trimmed; with neither,
   nothing opens. No event is tracked, because Android cannot report whether a share was completed.
+- **Push deliveries are confirmed by the device, also while the app is closed.** The Notification Service
+  Extension (`AppDNANotificationExtension.NotificationService`) now confirms every AppDNA push to AppDNA: the push
+  carries a signed receipt (`receipt_url`, `receipt_sig`), which the extension posts over HTTPS before it hands the
+  notification back (at most 8 s). The server sends every push `mutable-content: 1`, so the extension runs for a plain
+  push too. With an App Group named under `AppDNAAppGroup` in the Info.plist of the app and the extension, the
+  extension also hands each delivery to the app, which tracks `push_delivered` for it once when it next runs.
+  `reportsDelivery` (override to `false`) opts out. Without the extension, a push that arrives while the app is closed
+  is counted as sent, not delivered.
+
 
 - **A step that advances by itself can show a countdown.** `auto_advance_indicator` on the step (beside `auto_advance_seconds`): `show` (default false), `style` (`text`, `bar`, `both`), `text` (`{seconds}` = whole seconds left), `text_color`, `font_size`, `bar_color`, `track_color`, `bar_height`, `position` (`top`, `bottom`). Off by default, so published flows are unchanged.
 

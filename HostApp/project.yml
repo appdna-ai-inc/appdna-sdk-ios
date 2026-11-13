@@ -44,6 +44,9 @@ targets:
         # never committed — this directory is mirrored to the public SDK repo.
         AppDNAHostApiKey: "$(APPDNA_HOST_API_KEY)"
         AppDNAWalkMenu: "$(APPDNA_WALK_MENU)"
+        # the App Group the extension hands its confirmed deliveries over through (`push_delivered`). Empty in a
+        # stock build (no hand-off); a walk build supplies it with the matching application-groups entitlement.
+        AppDNAAppGroup: "$(APPDNA_APP_GROUP)"
         # A synthetic sample scheme (the Android sample's `appdnasample`), so a custom-scheme in-app CTA
         # or push deep link is an allowed deep link back into this host (`URLSafety.hostSchemes`) and
         # reaches `AppDNA.deepLinks.handleURL` through `onOpenURL`.
@@ -94,6 +97,34 @@ targets:
         product: AppDNASDK
       # The synthetic widget the `add_widget` walk teaches and detects, embedded in PlugIns.
       - target: AppDNAHostWidget
+      # the Notification Service Extension a real app adds: it confirms delivery while the app is not running.
+      - target: AppDNAHostNotificationService
+  AppDNAHostNotificationService:
+    type: app-extension
+    platform: iOS
+    sources: [AppDNAHostNotificationService]
+    info:
+      path: AppDNAHostNotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: NotificationService
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        AppDNAAppGroup: "$(APPDNA_APP_GROUP)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.NotificationService
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1"
+        SKIP_INSTALL: YES
+        # The extension links only the extension-safe library, as the docs give.
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - package: AppDNASDK
+        product: AppDNANotificationExtension
   # A minimal synthetic WidgetKit extension (`AppDNAHostWidget/SampleWidget.swift`). The SDK's
   # `WidgetHostProbe` finds it by its extension point in the app's PlugIns.
   AppDNAHostWidget:

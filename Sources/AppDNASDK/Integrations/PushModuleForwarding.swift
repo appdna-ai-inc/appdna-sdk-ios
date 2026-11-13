@@ -179,6 +179,11 @@ final class PushGate {
         configured = true
         shutDown = false
         scheduleDrainLocked()
+        // the deliveries the extension confirmed while the app was not running, tracked now and on each activation.
+        DispatchQueue.main.async {
+            PushDeliveryHandoffDrain.installOnce()
+            PushDeliveryHandoffDrain.drain()
+        }
     }
 
     /// `shutdown()`: the proxy becomes pass-through for AppDNA pushes until the next configure. The
@@ -312,6 +317,9 @@ extension AppDNA.PushModule {
         }
         let pushId = PushMarker.pushId(userInfo)
         manager?.trackDelivered(pushId: pushId, deliveryId: PushMarker.deliveryId(userInfo))
+        // the extension may have handed this delivery over too (it runs for every AppDNA push): tracked here,
+        // so it is not tracked again from the hand-off.
+        PushDeliveryHandoffDrain.discard(deliveryId: PushMarker.deliveryId(userInfo))
         // Fold push_id into the 30-min window so subsequent events carry context.push_id (mirrors
         // Android's PushSessionContext.recordPushReceived on delivery).
         PushSessionContext.recordPushReceived(pushId)

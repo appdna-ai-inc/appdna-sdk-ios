@@ -5,6 +5,7 @@
 // REAL SDK symbol (see the header of SharedFixtureTests.swift).
 //
 //   classify_push       REAL: `AppDNA.pushModule.isAppDNAMessage` — the B2 marker rule.
+//   extension_receipt   REAL: the Notification Service Extension's delivery receipt.
 //   notification_proxy  REAL: `ProxyCore.willPresent` / `.didReceive` (the proxy's behaviour on plain
 //                       values — `UNNotification` cannot be built in a test; the delegate methods are
 //                       thin adapters onto exactly these), the push gate / launch buffer and
@@ -83,6 +84,9 @@ extension SharedFixtureTests {
         case "notification_proxy":
             await runNotificationProxy(f, h)
             return true
+        case "extension_receipt":
+            runExtensionReceipt(f, h)
+            return true
         default:
             return false
         }
@@ -130,6 +134,44 @@ extension SharedFixtureTests {
         }
         let userInfo: [AnyHashable: Any] = payloadJSON.mapValues { $0.foundation }
         h.state["is_appdna"] = AppDNA.pushModule.isAppDNAMessage(userInfo)    // REAL
+    }
+
+    /// the REAL Notification Service Extension: `deliveryReceiptRequest(from:)` and `didReceive` with a recording
+    /// receipt sender. Records the receipt the extension sends ({url, method, body as JSON}, or null) and whether the
+    /// content was handed back exactly once. Negative control inside the driver: the same payload WITHOUT the AppDNA
+    /// marker must produce no request, so a driver that cannot see a request would fail every positive fixture.
+    private func runExtensionReceipt(_ f: Fixture, _ h: Harness) {
+        guard let payloadJSON = f.action.raw["payload"]?.objectValue else {
+            return XCTFail("[\(f.id)] extension_receipt needs action.payload")
+        }
+        let userInfo: [AnyHashable: Any] = payloadJSON.mapValues { $0.foundation }
+        var foreign = userInfo
+        foreign["appdna"] = nil
+        XCTAssertNil(AppDNANotificationExtension.NotificationService.deliveryReceiptRequest(from: foreign),
+                     "[\(f.id)] a push without the AppDNA marker never sends a receipt")
+
+        let service = AppDNANotificationExtension.NotificationService()
+        var sent: [URLRequest] = []
+        service.receiptSender = { request, done in sent.append(request); done() }
+        let handedBack = expectation(description: "[\(f.id)] content handed back")
+        handedBack.assertForOverFulfill = true
+        var handed = 0
+        let content = UNMutableNotificationContent()
+        content.userInfo = userInfo
+        service.didReceive(UNNotificationRequest(identifier: "fixture-\(f.id)", content: content, trigger: nil)) { _ in
+            handed += 1
+            handedBack.fulfill()
+        }
+        wait(for: [handedBack], timeout: 5)
+
+        if let request = sent.first {
+            let body = request.httpBody.flatMap { try? JSONSerialization.jsonObject(with: $0) } ?? NSNull()
+            h.state["receipt_request"] = ["url": request.url?.absoluteString ?? "", "method": request.httpMethod ?? "", "body": body]
+        } else {
+            h.state["receipt_request"] = NSNull()
+        }
+        XCTAssertLessThanOrEqual(sent.count, 1, "[\(f.id)] one receipt per push")
+        h.state["content_handed_back"] = handed == 1
     }
 
     @MainActor
