@@ -234,8 +234,12 @@ final class MessageManager {
                     AppDNA.inAppMessages.delegate?.onMessageAction(messageId: messageId, action: ctaActionType, data: ctaData)
                 }
                 self?.handleCTAAction(config.content?.cta_action)
+                // A `share` CTA (#1797) opens the share sheet once the message is gone, from the
+                // screen underneath; a blank share is a plain dismiss.
+                let share = MessageCTAShare.payload(config.content?.cta_action)
                 topVC.dismiss(animated: true) {
                     self?.isPresenting = false
+                    if let share { ShareAction.present(share) }
                     DispatchQueue.main.async {
                         AppDNA.inAppMessages.delegate?.onMessageDismissed(messageId: messageId)
                     }

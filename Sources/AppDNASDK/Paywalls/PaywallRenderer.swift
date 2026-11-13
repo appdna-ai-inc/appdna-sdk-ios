@@ -859,7 +859,11 @@ struct PaywallRenderer: View {
     private func extraButtonsView(_ buttons: [PaywallExtraButton]) -> some View {
         ForEach(buttons) { button in
             Button {
-                performButtonAction(button.action, url: button.url, default: "dismiss")
+                performButtonAction(
+                    button.action, url: button.url,
+                    shareText: button.share_text.map { loc("cta.extra.\(button.id).share_text", $0) },
+                    default: "dismiss"
+                )
             } label: {
                 let size = CGFloat(button.font_size ?? 16)
                 if (button.style ?? "filled") == "text" {
@@ -891,6 +895,12 @@ struct PaywallRenderer: View {
     /// back to the caller's default, which keeps an unauthored CTA purchasing and an unauthored
     /// restore link restoring.
     private func performButtonAction(_ action: String?, url: String?, default defaultAction: String) {
+        performButtonAction(action, url: url, shareText: nil, default: defaultAction)
+    }
+
+    /// `performButtonAction` with the `share` text an extra button carries (#1797). Only an extra
+    /// button can author one; the CTA and restore link reach `share` with a link alone.
+    private func performButtonAction(_ action: String?, url: String?, shareText: String?, default defaultAction: String) {
         let resolved = action ?? defaultAction
         switch resolved {
         case "restore":
@@ -904,6 +914,10 @@ struct PaywallRenderer: View {
             }
         case "purchase":
             handleCTATap()
+        // Share (#1797): the system share sheet over the paywall, which stays. No event and no host
+        // callback — Android cannot report whether a share completed. Blank → nothing, logged.
+        case ShareAction.actionName:
+            ShareAction.perform(text: shareText, url: url)
         // AN AUTHORED ACTION THIS SDK DOES NOT KNOW. The default arm still purchases,
         // because that is what every unauthored CTA has always done and changing it would break
         // paywalls that rely on it — but the host is told, which is the whole point of `.custom`:

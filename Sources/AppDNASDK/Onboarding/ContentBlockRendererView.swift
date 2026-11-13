@@ -1237,6 +1237,17 @@ struct ContentBlockRendererView: View {
                 // button at any depth — with or without an authored id — reaches the step's attempt.
                 OnboardingPressedButton.shared.record(block.id, action: WidgetActionChannel.actionName)
                 widgetAction.tap(block)
+            } else if block.action == ShareAction.actionName {
+                // `share` (#1797) is dispatched HERE, where the block is: its payload is two fields
+                // (`share_text`, `share_url`) that `onAction`'s (action, value) pair cannot carry.
+                // The text goes through `loc` exactly as the label does — the same translation lookup
+                // and `{{…}}` interpolation. The tap never reaches `onAction`: a share does not
+                // advance, calls no host hook and tracks no event (Android cannot report whether a
+                // share completed). This one site covers every button — top-level, and every child
+                // of Multi-buttons / Row / Stack, all of which render through `buttonBlock`.
+                let rawShareText = ShareAction.authoredText(of: block) ?? ""
+                let shareText = loc?("block.\(block.id).share_text", rawShareText) ?? rawShareText
+                ShareAction.perform(text: shareText, url: block.share_url)
             } else {
                 OnboardingPressedButton.shared.record(block.id, action: block.action ?? "next")
                 onAction(block.action ?? "next", block.action_value)

@@ -1126,10 +1126,13 @@ struct PaywallCTA: Codable {
 /// An extra button in the CTA section, beyond the CTA and the restore link.
 struct PaywallExtraButton: Codable, Identifiable {
     let text: String?
-    /// purchase | restore | dismiss | link. `dismiss` leaves the paywall, which returns the user to
-    /// the previous screen — there is deliberately no separate `back`.
+    /// purchase | restore | dismiss | link | share. `dismiss` leaves the paywall, which returns the
+    /// user to the previous screen — there is deliberately no separate `back`.
     let action: String?
+    /// The link for `link`; for `share`, the optional link shared with `share_text`.
     let url: String?
+    /// The text a `share` button (#1797) shares. Nil for every other action.
+    let share_text: String?
     let bg_color: String?
     let text_color: String?
     let font_size: Double?

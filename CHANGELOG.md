@@ -33,6 +33,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Share button action.** A button can now open the phone's share sheet (iOS `UIActivityViewController`, Android an
+  `ACTION_SEND` chooser) with text and an optional link set in the console: on an onboarding button or a
+  Multi-buttons child (`action: "share"`, `share_text`, `share_url`; the step stays), on an in-app message CTA
+  (`cta_action: { type: "share", text, url }`; the message closes, then the sheet opens) and on a paywall extra
+  button (`action: "share"`, `share_text`, `url`; the paywall stays). Text and link are trimmed; with neither,
+  nothing opens. No event is tracked, because Android cannot report whether a share was completed.
+
 - **A step that advances by itself can show a countdown.** `auto_advance_indicator` on the step (beside `auto_advance_seconds`): `show` (default false), `style` (`text`, `bar`, `both`), `text` (`{seconds}` = whole seconds left), `text_color`, `font_size`, `bar_color`, `track_color`, `bar_height`, `position` (`top`, `bottom`). Off by default, so published flows are unchanged.
 
 - **An "Add widget" button action.** An onboarding button (top level, or a Multi-buttons or Row child) with `action: "add_widget"` helps the user put the app's own widget on the Home Screen. iOS lets no app add a widget, so the button opens the how-to the author wrote (`howto_blocks_ios`, ordinary content blocks) in a bottom sheet over the step. The step advances when the how-to's Done button is tapped, or by itself when the user comes back from the Home Screen with a new widget placed; closing the sheet any other way returns to the step. The outcome is written into the step's answers as `widget_status`, so `next_step_rules` can branch on it: `added` when a widget of a new kind and size appeared; `not_added` when the user had none of the app's widgets before and none appeared; `unknown` when they already had one and nothing new appeared (WidgetKit reports one entry per widget kind and size, so a second widget of a size already placed cannot be seen), or when the widgets could not be read; `unavailable` when the app ships no WidgetKit extension. New events: `widget_add_tapped`, `widget_howto_shown`, `widget_howto_dismissed`, `widget_added`, `widget_not_added`, `widget_add_unknown`, `widget_add_unavailable`. The SDK now links WidgetKit. Inside a how-to, and inside an option's bottom sheet, a button acts only as Done (`next` / `continue`) or Close (`dismiss`); any other action there does nothing.

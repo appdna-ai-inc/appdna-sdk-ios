@@ -2379,6 +2379,12 @@ struct OnboardingStepRouter: View {
              bundle. No auto-advance, for the same reason `link` does not: the user leaves the app.
              */
             ReviewPromptManager.shared.openStoreListing(appStoreId: actionValue)
+        case ShareAction.actionName:
+            // `share` (#1797) is presented at the tap site (`ContentBlockRendererView.buttonBlock`),
+            // which has the block's `share_text` / `share_url`; a button tap never forwards it here.
+            // This arm exists so that anything else emitting "share" can never reach `default`,
+            // which ADVANCES. A share never advances, calls no host hook and tracks no event.
+            break
         case PendingCompletionRoute.actionName:
             // Record the destination and advance exactly like `next` — same required-field gate,
             // same step data, same next-step rules. `OnboardingCompletion` opens it once the flow

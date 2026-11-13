@@ -1006,6 +1006,27 @@ final class SharedFixtureTests: XCTestCase {
                          responses: routeResponses, result: .proceed, hookRan: false)
             h.state["pending_completion_route"] = PendingCompletionRoute.shared.take() ?? NSNull()
 
+        // (d4) share CTA (#1797) — opens the share sheet and STAYS. Drives the REAL
+        // `ShareAction.authoredText(of:)` + `ShareAction.payload(text:url:)` the button's tap site
+        // (`ContentBlockRendererView.buttonBlock`) runs, so a runner that passed the raw, untrimmed
+        // field would fail the trimmed expectation. No advance machine runs: the step is unchanged,
+        // and nothing is emitted — no event, no host onAction.
+        case ShareAction.actionName:
+            let buttonId = action["button_id"]?.stringValue ?? ""
+            guard let block = (step.config.content_blocks ?? []).first(where: { $0.id == buttonId }) else {
+                return XCTFail("[\(f.id)] no content block '\(buttonId)' on step '\(step.id)'")
+            }
+            if let payload = ShareAction.payload(text: ShareAction.authoredText(of: block), url: block.share_url) {
+                h.state["share_sheet"] = [
+                    "text": SharedFixtureTests.orNull(payload.text),
+                    "url": SharedFixtureTests.orNull(payload.url),
+                ] as [String: Any]
+            } else {
+                h.state["share_sheet"] = NSNull()
+            }
+            h.state["current_step_index"] = currentIndex
+            h.state["current_step_id"] = step.id
+
         default:
             XCTFail("[\(f.id)] no iOS driver for button action='\(buttonAction)'.")
         }

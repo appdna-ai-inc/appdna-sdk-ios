@@ -250,14 +250,20 @@ public struct MessageDismissPolicy: Equatable {
 /// - type `url`, which is `open_url`;
 /// - a bare string: a type, or a link to open as a deep link when it carries `://`.
 /// Android's `MessageConfigParser.parseCTAAction` follows the same rule.
+///
+/// `{ "type": "share", "text": "…", "url": "…" }` (#1797) opens the share sheet once the message has
+/// dismissed: `text` is what is shared, `url` the optional link. Both blank → the tap only dismisses.
 public struct CTAAction: Codable {
     public let type: CTAActionType?
     public let url: String?
+    /// The text a `share` CTA shares. Nil for every other type.
+    public let text: String?
 
     public enum CTAActionType: String, Codable {
         case dismiss
         case deep_link
         case open_url
+        case share
         case unknown
 
         public init(from decoder: Decoder) throws {
@@ -273,12 +279,13 @@ public struct CTAAction: Codable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case type, url, value
+        case type, url, value, text
     }
 
-    public init(type: CTAActionType?, url: String?) {
+    public init(type: CTAActionType?, url: String?, text: String? = nil) {
         self.type = type
         self.url = url
+        self.text = text
     }
 
     public init(from decoder: Decoder) throws {
@@ -298,7 +305,14 @@ public struct CTAAction: Codable {
             let t = v.trimmingCharacters(in: .whitespacesAndNewlines)
             return t.isEmpty ? nil : t
         }
-        self.init(type: type ?? nil, url: link(.url) ?? link(.value))
+        let text = (try? c.decodeIfPresent(String.self, forKey: .text)) ?? nil
+        self.init(type: type ?? nil, url: link(.url) ?? link(.value), text: text)
+    }
+
+    /// What a tap shares: a `share` CTA with text or a link, else nil (the tap only dismisses).
+    var sharePayload: SharePayload? {
+        guard type == .share else { return nil }
+        return ShareAction.payload(text: text, url: url)
     }
 
     /// The link a tap opens: a `deep_link` / `open_url` with a link, else nil (the tap only dismisses).
@@ -313,6 +327,7 @@ public struct CTAAction: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(type, forKey: .type)
         try c.encodeIfPresent(url, forKey: .url)
+        try c.encodeIfPresent(text, forKey: .text)
     }
 }
 
@@ -431,5 +446,20 @@ public struct TriggerCondition: Codable {
             if let s = value as? String { return Double(s) }
             return nil
         }
+    }
+}
+
+/// The share a message CTA tap performs (#1797), shared by both message presenters
+/// (`MessageManager` and `PendingMessageListener`) so they cannot drift.
+enum MessageCTAShare {
+    /// The payload to share once the message has dismissed, or nil: not a `share` CTA, or a `share`
+    /// with nothing in it — which logs an authoring warning and is a plain dismiss.
+    static func payload(_ action: CTAAction?) -> SharePayload? {
+        guard let action, action.type == .share else { return nil }
+        guard let payload = action.sharePayload else {
+            Log.warning("A message CTA is a share with no text and no link; it only dismisses.")
+            return nil
+        }
+        return payload
     }
 }

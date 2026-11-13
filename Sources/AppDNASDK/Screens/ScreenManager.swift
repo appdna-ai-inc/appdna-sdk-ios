@@ -367,9 +367,9 @@ internal class ScreenManager {
             }
 
         case .share(let text):
+            // The shared share helper (#1797): trimmed, blank → nothing, iPad popover anchored.
             DispatchQueue.main.async {
-                let vc = UIActivityViewController(activityItems: [text], applicationActivities: nil)
-                UIApplication.shared.topViewController?.present(vc, animated: true)
+                ShareAction.perform(text: text, url: nil)
             }
 
         case .deepLink(let url):
