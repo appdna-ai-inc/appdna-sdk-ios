@@ -114,6 +114,43 @@ final class WalkAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         TrackedEventLog.shared.note("APNs registration failed: \(error.localizedDescription)")
     }
+
+    /*
+     A content-available (silent) push, which can LAUNCH the host in the background with no foreground scene.
+     An app that syncs on a silent push keeps this window open while it works, and iOS lets it run for up to
+     about 30 s. Without this method the host was suspended as soon as it launched, so the SDK did not finish
+     its bootstrap until the user opened the app, and a walk could not reproduce a background launch.
+
+     A walk names the window in the payload, `"walk_hold_seconds": 25`, or for every background launch with
+     `-appdnaWalkHoldSeconds 25` (a launch argument, or the app's defaults domain). Without either the host
+     completes at once, as a stock app with nothing to fetch does. NSLog, not print, so the unified log shows
+     what ran while there was no console.
+
+     🔴 Both methods. On the SIMULATOR, `simctl push` with `content-available` to a TERMINATED app launches
+     it as a background FETCH (`SBBackgroundFetchTask`), so it is `performFetchWithCompletionHandler` that
+     runs, not the remote-notification method. Measured 2026-11-13.
+    */
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        holdBackgroundWindow(application, "silent push", (userInfo["walk_hold_seconds"] as? NSNumber)?.doubleValue,
+                             completionHandler)
+    }
+
+    func application(_ application: UIApplication,
+                     performFetchWithCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        holdBackgroundWindow(application, "background fetch", nil, completionHandler)
+    }
+
+    private func holdBackgroundWindow(_ application: UIApplication, _ what: String, _ seconds: Double?,
+                                      _ completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        let hold = min(seconds ?? Launch.arg("appdnaWalkHoldSeconds").flatMap(Double.init) ?? 0, 28)
+        let scenes = application.connectedScenes.map { "\($0.activationState.rawValue)" }.joined(separator: ",")
+        NSLog("AppDNA-E2E \(what) applicationState=\(application.applicationState.rawValue) scenes=[\(scenes)] hold=\(hold)s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + hold) {
+            NSLog("AppDNA-E2E \(what) window closed applicationState=\(application.applicationState.rawValue)")
+            completionHandler(.noData)
+        }
+    }
 }
 
 struct WalkMenuView: View {

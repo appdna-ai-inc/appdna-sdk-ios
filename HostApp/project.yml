@@ -50,6 +50,17 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: ai.appdna.sample
             CFBundleURLSchemes: [appdnasample]
+        # A content-available push may LAUNCH the host in the background (no foreground scene), the
+        # way a real app is woken by a silent push. The SDK configures there with no window to draw
+        # in, so a walk can exercise what it does with a journey message that arrives meanwhile and
+        # is drawn when the user next opens the app.
+        #
+        # 🔴 BOTH modes. `simctl push` with `content-available` to a TERMINATED app asks SpringBoard
+        # for a launch with `event_type = background_fetch`, so with `remote-notification` alone the
+        # simulator refuses it: "Unable to launch … because this app doesn't declare the proper
+        # UIBackgroundMode" (FBSOpenApplicationErrorDomain 5, "Disabled"), and the app never starts.
+        # Measured 2026-11-13.
+        UIBackgroundModes: [remote-notification, fetch]
     settings:
       base:
         # The Firebase project already has an iOS app registered for exactly this purpose

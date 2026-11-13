@@ -67,7 +67,22 @@ enum Launch {
      */
     static var locationFieldId: String? { arg("appdnaLocationField") }
 
+    /*
+     `-appdnaStdoutFile <name>` (a launch argument, or the app's defaults domain): stdout goes to
+     Documents/<name>, line-buffered. The SDK logs with `print`, and an app the OS launches in the BACKGROUND
+     (a silent push, a fetch) has no console, so without this nothing it logged there can be read.
+    */
+    static func redirectStdoutIfAsked() {
+        guard let name = arg("appdnaStdoutFile"),
+              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let path = docs.appendingPathComponent(name).path
+        guard freopen(path, "a", stdout) != nil else { return }
+        setvbuf(stdout, nil, _IOLBF, 0)
+        print("AppDNA-E2E stdout → \(path) at \(Date())")
+    }
+
     static func configureSDK() {
+        redirectStdoutIfAsked()
         // An absent key still configures: the SDK then fails its bootstrap loudly, which is a
         // better state to debug than an app that quietly did nothing at launch.
         let key = arg("appdnaApiKey") ?? WalkMenu.bundledApiKey ?? "appdna_sandbox_demo_key"
