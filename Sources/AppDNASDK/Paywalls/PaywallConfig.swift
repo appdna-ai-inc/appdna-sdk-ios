@@ -1461,10 +1461,13 @@ public struct PostPurchaseFailureConfig: Codable {
     public let allow_dismiss: Bool?
 
     /// What a failed purchase does: the authored action, else the error banner, so a failure is never silent.
-    /// A cancel and a pending purchase are not failures, and stay as authored. Android `PostPurchaseFailureConfig.effective`.
+    /// A cancel and a pending purchase are not failures, and stay as authored. Nor is a provider hand-off
+    /// (`providerNotAvailable`: the host's provider owns purchases and buys from `onPaywallPurchaseFailed`), so it
+    /// shows nothing unless `on_failure` is authored. Android `PostPurchaseFailureConfig.effective`; shared fixture
+    /// `billing/paywall_failure_default_by_error_type`.
     static func effective(authored: PostPurchaseFailureConfig?, errorType: String) -> PostPurchaseFailureConfig? {
         if let authored { return authored }
-        if errorType == "userCancelled" || errorType == "pending" { return nil }
+        if errorType == "userCancelled" || errorType == "pending" || errorType == "providerNotAvailable" { return nil }
         return PostPurchaseFailureConfig(action: "show_error", message: nil, retry_text: nil, allow_dismiss: nil)
     }
 }

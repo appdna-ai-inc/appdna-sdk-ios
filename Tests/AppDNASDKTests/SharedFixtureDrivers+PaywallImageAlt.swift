@@ -85,6 +85,24 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_post_purchase_failure REAL: `PostPurchaseFailureConfig.effective`, the config `PaywallManager` routes a
+    // failed purchase with. Each case: an `error_type` and an optional authored `on_failure`; the result is its action.
+    func runPostPurchaseFailure(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_post_purchase_failure needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            let authored = o["authored"]?.objectValue.map {
+                PostPurchaseFailureConfig(action: $0["action"]?.stringValue ?? "", message: $0["message"]?.stringValue,
+                                          retry_text: $0["retry_text"]?.stringValue, allow_dismiss: nil)
+            }
+            let r = PostPurchaseFailureConfig.effective(authored: authored, errorType: o["error_type"]?.stringValue ?? "")
+            return r.map { $0.action as Any } ?? NSNull()
+        }
+    }
+
     func runDateWheel(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_date_wheel needs action.cases")
