@@ -71,7 +71,7 @@ final class NotificationServiceAttachmentRedirectTests: XCTestCase {
         service.didReceive(UNNotificationRequest(identifier: "r", content: content, trigger: nil)) { c in
             handed = c; back.fulfill()
         }
-        wait(for: [back], timeout: 10)
+        wait(for: [back], timeout: 25)
         return handed
     }
 
@@ -93,6 +93,28 @@ final class NotificationServiceAttachmentRedirectTests: XCTestCase {
         let content = try XCTUnwrap(deliver(imageURL: "https://console.push-image.test/api/v1/public/asset/bucket/assets/push/obj.png"))
         XCTAssertEqual(AttachmentRedirectStubProtocol.requested.count, 2)
         XCTAssertEqual(content.attachments.count, 0, "an error page is never attached as the image")
+        XCTAssertEqual(content.title, "T")
+    }
+
+    /// The same two cases over the REAL network, against URLs the walk supplies at run time (`TEST_RUNNER_APPDNA_LIVE_*`
+    /// on the `xcodebuild test` line; skipped when absent, so the suite never depends on the network). The OK URL is a
+    /// stored-form image URL that answers 302 to a signed URL and then a PNG: it is the control that shows this harness
+    /// CAN attach a live image. The error URL answers a real storage 403 with an XML body: nothing may be attached.
+    private func liveURL(_ key: String) throws -> String {
+        guard let url = ProcessInfo.processInfo.environment[key], !url.isEmpty else {
+            throw XCTSkip("\(key) not set — a live walk passes it as TEST_RUNNER_\(key)")
+        }
+        return url
+    }
+
+    func testALiveStoredFormImageUrlIsAttached() throws {
+        let content = try XCTUnwrap(deliver(imageURL: try liveURL("APPDNA_LIVE_OK_IMAGE_URL")))
+        XCTAssertEqual(content.attachments.count, 1, "a live image behind the stored form's redirect is attached")
+    }
+
+    func testALiveErrorResponseIsNeverAttached() throws {
+        let content = try XCTUnwrap(deliver(imageURL: try liveURL("APPDNA_LIVE_ERROR_IMAGE_URL")))
+        XCTAssertEqual(content.attachments.count, 0, "a live error response is never attached as the image")
         XCTAssertEqual(content.title, "T")
     }
 }
