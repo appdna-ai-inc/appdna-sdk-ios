@@ -1,6 +1,8 @@
 import Foundation
 import UIKit
+#if SWIFT_PACKAGE
 @_spi(AppDNAInternal) import AppDNANotificationExtension
+#endif
 
 /// tracks `push_delivered` for the deliveries the host's Notification Service Extension confirmed while the app
 /// was not running (see `PushDeliveryHandoff`). Runs at the push configured point and each time the app becomes active.
