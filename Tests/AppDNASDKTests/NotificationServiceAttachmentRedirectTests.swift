@@ -108,12 +108,14 @@ final class NotificationServiceAttachmentRedirectTests: XCTestCase {
     }
 
     func testALiveStoredFormImageUrlIsAttached() throws {
-        let content = try XCTUnwrap(deliver(imageURL: try liveURL("APPDNA_LIVE_OK_IMAGE_URL")))
+        let url = try liveURL("APPDNA_LIVE_OK_IMAGE_URL")  // skips before anything is asserted
+        let content = try XCTUnwrap(deliver(imageURL: url))
         XCTAssertEqual(content.attachments.count, 1, "a live image behind the stored form's redirect is attached")
     }
 
     func testALiveErrorResponseIsNeverAttached() throws {
-        let content = try XCTUnwrap(deliver(imageURL: try liveURL("APPDNA_LIVE_ERROR_IMAGE_URL")))
+        let url = try liveURL("APPDNA_LIVE_ERROR_IMAGE_URL")  // skips before anything is asserted
+        let content = try XCTUnwrap(deliver(imageURL: url))
         XCTAssertEqual(content.attachments.count, 0, "a live error response is never attached as the image")
         XCTAssertEqual(content.title, "T")
     }
