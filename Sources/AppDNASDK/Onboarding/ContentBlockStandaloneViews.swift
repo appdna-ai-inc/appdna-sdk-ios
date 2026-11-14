@@ -1336,10 +1336,25 @@ struct DateWheelPickerBlockView: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
 
-    @State private var selectedDate: Date = {
-        let cal = Calendar.current
-        return cal.date(bySettingHour: 12, minute: 0, second: 0, of: Date()) ?? Date()
-    }()
+    @State private var selectedDate: Date
+
+    init(block: ContentBlock, inputValues: Binding<[String: Any]>) {
+        self.block = block
+        self._inputValues = inputValues
+        // Nothing saved and nothing authored: the wheel opens on noon today, in the zone it draws in. Noon in the
+        // phone's zone drawn in the app's (UTC by default) opened a date-and-time wheel on 20:00 in California.
+        let mode = Self.answerMode(of: block)
+        _selectedDate = State(initialValue: Self.unsetOpening(now: Date(), zone: mode == "time" || mode == "datetime" ? AnswerTime.zone : .current))
+    }
+
+    /// Where a wheel with no saved answer and no `default_date_value` opens: today at 12:00 in `zone`. Android opens
+    /// on the same wall time (`DateWheelModel.unsetOpening`); the console preview shows it. Nothing is stored until the
+    /// wheel is moved.
+    static func unsetOpening(now: Date, zone: TimeZone) -> Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        return calendar.date(bySettingHour: 12, minute: 0, second: 0, of: now) ?? now
+    }
     @State private var showPicker = false
     @State private var showDateToast = false
     /// The range calendar's picked days (`selection_mode: "range"`).
@@ -1623,7 +1638,9 @@ struct DateWheelPickerBlockView: View {
     private var isYearMode: Bool { block.picker_mode == "year" }
 
     /// The shape the answer takes, `year`, `date`, `time` or `datetime`: the columns the body draws.
-    private var answerMode: String {
+    private var answerMode: String { Self.answerMode(of: block) }
+
+    static func answerMode(of block: ContentBlock) -> String {
         switch block.picker_mode {
         case "year": return "year"
         case "datetime", "date_time": return "datetime"

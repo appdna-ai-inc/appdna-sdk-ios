@@ -37,6 +37,14 @@ final class DateWheelTimeZoneRenderTests: XCTestCase {
         XCTAssertEqual(DateWheelTestHost.wheel("Minute", in: view)?.accessibilityValue, "03")
     }
 
+    func testAWheelWithNoDefaultOpensAtNoonInTheAppZoneAndStoresNothing() throws {
+        // A zone unlike the simulator's: noon taken in the phone's zone and drawn in the app's opened on another hour.
+        let (answer, view) = try stored(["picker_mode": "datetime", "time_format": "24h"], zone: "Asia/Tokyo")
+        XCTAssertEqual(DateWheelTestHost.wheel("Hour", in: view)?.accessibilityValue, "12")
+        XCTAssertEqual(DateWheelTestHost.wheel("Minute", in: view)?.accessibilityValue, "00")
+        XCTAssertNil(answer, "an untouched optional wheel stores nothing")
+    }
+
     func testTheControlADateStaysACalendarDate() throws {
         let (answer, _) = try stored(["picker_mode": "date", "default_date_value": "2000-06-15"], zone: "Pacific/Tongatapu")
         XCTAssertEqual(answer, "2000-06-15")

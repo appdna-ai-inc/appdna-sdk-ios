@@ -8,6 +8,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A date-and-time or time wheel with no default opens at 12:00 on both platforms.** With nothing saved and no
+  `default_date_value`, the wheel opens on today at noon in the app's time zone. iOS meant noon but took it in the
+  phone's zone and drew it in the app's, so it could open on another hour (20:00 for a phone in California with
+  the default UTC app zone); Android opened at 00:00. Nothing is stored until the wheel is moved, as before.
+
 - **An image with no description is decorative, and screen readers skip it.** An onboarding image block, a
   paywall image section or a screen image section whose Alt text is blank or unset is now hidden from VoiceOver
   (it was announced as "Image", or with no description); one with Alt text is read as that text, as an image. An
