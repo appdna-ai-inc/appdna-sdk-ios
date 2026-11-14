@@ -29,6 +29,14 @@ func multiButtonRowPlan(childCount: Int, perRow: Int) -> [Int] {
 /// `buttonFillsWidth`.
 func buttonFillsWidth(_ elementWidth: String?) -> Bool { elementWidth != "auto" }
 
+/// Whether a `list` fills its row: any authored width except `auto`. Unset keeps the list hugging its rows, as
+/// it always has; a width means the author sized the list, and its card has to cover that size.
+func listFillsWidth(_ elementWidth: String?) -> Bool {
+    guard let size = SizeValue.parse(elementWidth) else { return false }
+    if case .auto_ = size { return false }
+    return true
+}
+
 /// The width of a button's AUTHORED border, in points.
 ///
 /// Pure because the bug was a hardcoded constant nobody could see: all three surfaces stroked a
@@ -1924,6 +1932,10 @@ struct ContentBlockRendererView: View {
                 }
             }
         }
+        // A list with a width fills it BEFORE its card is drawn. The card is `block_style`, applied around this
+        // content, so a hugging VStack drew a card only as wide as its longest row whatever `element_width` said.
+        // The outer sizing frame decides how wide the fill is, as it does for every block.
+        .frame(maxWidth: listFillsWidth(block.element_width) ? .infinity : nil, alignment: .leading)
         }
     }
 
