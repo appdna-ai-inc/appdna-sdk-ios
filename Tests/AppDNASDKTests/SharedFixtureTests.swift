@@ -672,6 +672,24 @@ final class SharedFixtureTests: XCTestCase {
             selected: (session["selected"]?.objectValue ?? [:]).mapValues { $0.foundation },
             flowOptions: (session["flow_options"]?.objectValue ?? [:]).mapValues { $0.foundation }
         )
+        // `relaunch`: the answers and the flow's options go through the REAL stores, the stores are reloaded from their
+        // persisted copies as a cold start loads them (picks are in memory and do not survive), and the context is the
+        // engine's own `buildContext` — what a paywall or message drawn on a later launch reads.
+        if f.action.raw["relaunch"]?.boolValue == true {
+            SelectedOptionStore.shared.resetForTesting()
+            SessionDataStore.shared.setOnboardingResponses(responses)
+            SelectedOptionStore.shared.seedFlowOptionsForTesting((session["flow_options"]?.objectValue ?? [:]).mapValues { $0.foundation })
+            for (fieldId, payload) in (session["selected"]?.objectValue ?? [:]) {
+                SelectedOptionStore.shared.seedForTesting(fieldId: fieldId, value: payload.foundation)
+            }
+            SessionDataStore.shared.reloadFromDisk()
+            SelectedOptionStore.shared.dropPicksForTesting()
+            let surface = ctx.surface
+            ctx = TemplateEngine.shared.buildContext(surface: surface)
+            defer { SessionDataStore.shared.clearAll(); SelectedOptionStore.shared.resetForTesting() }
+            h.state["interpolated"] = TemplateEngine.shared.interpolate(template, context: ctx)
+            return
+        }
         h.state["interpolated"] = TemplateEngine.shared.interpolate(
             template, context: ctx, key: f.action.raw["key"]?.stringValue,
             isOption: f.action.raw["is_option"]?.boolValue ?? false

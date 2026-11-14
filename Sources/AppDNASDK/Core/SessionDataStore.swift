@@ -14,6 +14,7 @@ final class SessionDataStore {
         static let onboardingResponses = "appdna.session.onboarding_responses"
         static let computedData = "appdna.session.computed_data"
         static let sessionData = "appdna.session.session_data"
+        static let flowOptionRecords = "appdna.session.flow_option_records"
     }
 
     // Cap to prevent unbounded growth
@@ -24,6 +25,21 @@ final class SessionDataStore {
     private var _onboardingResponses: [String: [String: Any]] = [:]
     private var _computedData: [String: Any] = [:]
     private var _sessionData: [String: Any] = [:]
+    private var _flowOptionRecords: [String: Any] = [:]
+
+    /// The last presented flow's option labels (`SelectedOptionStore.optionRecords`), kept beside the answers they
+    /// label: an answer persisted above outlives the process, and a paywall or message drawing it on a later launch
+    /// needs the label too, or it draws the stored option id.
+    var flowOptionRecords: [String: Any] {
+        queue.sync { _flowOptionRecords }
+    }
+
+    func setFlowOptionRecords(_ records: [String: Any]) {
+        queue.sync {
+            _flowOptionRecords = records
+            persistDict(_flowOptionRecords, key: Keys.flowOptionRecords)
+        }
+    }
 
     /// Thread-safe read of onboarding responses.
     var onboardingResponses: [String: [String: Any]] {
@@ -45,6 +61,7 @@ final class SessionDataStore {
         _onboardingResponses = loadDict(key: Keys.onboardingResponses) as? [String: [String: Any]] ?? [:]
         _computedData = loadDict(key: Keys.computedData) ?? [:]
         _sessionData = loadDict(key: Keys.sessionData) ?? [:]
+        _flowOptionRecords = loadDict(key: Keys.flowOptionRecords) ?? [:]
     }
 
     // MARK: - Onboarding Responses
@@ -107,6 +124,7 @@ final class SessionDataStore {
             _onboardingResponses = loadDict(key: Keys.onboardingResponses) as? [String: [String: Any]] ?? [:]
             _computedData = loadDict(key: Keys.computedData) ?? [:]
             _sessionData = loadDict(key: Keys.sessionData) ?? [:]
+            _flowOptionRecords = loadDict(key: Keys.flowOptionRecords) ?? [:]
         }
     }
 
@@ -118,6 +136,8 @@ final class SessionDataStore {
             defaults.removeObject(forKey: Keys.onboardingResponses)
             defaults.removeObject(forKey: Keys.computedData)
             defaults.removeObject(forKey: Keys.sessionData)
+            _flowOptionRecords = [:]
+            defaults.removeObject(forKey: Keys.flowOptionRecords)
         }
     }
 

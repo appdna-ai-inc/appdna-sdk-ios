@@ -56,4 +56,15 @@ final class FlowOptionRecordsTests: XCTestCase {
         XCTAssertEqual(SelectedOptionStore.drawnAnswer(atPath: "responses.q1.pick", answer: "a", selected: selected), "Alpha first")
         XCTAssertEqual(SelectedOptionStore.drawnAnswer(atPath: "responses.q2.pick", answer: "a", selected: selected), "Alpha second")
     }
+
+    /// The flow's option records outlive the process with the answers they label: a cold start re-reads them.
+    func testTheFlowsOptionRecordsSurviveARelaunch() throws {
+        let store = SelectedOptionStore.shared
+        store.resetForTesting()
+        defer { store.resetForTesting(); SessionDataStore.shared.clearAll() }
+        store.setFlowOptions(try flow())
+        SessionDataStore.shared.reloadFromDisk()
+        store.dropPicksForTesting()
+        XCTAssertEqual(SelectedOptionStore.drawnAnswer(field: "goal", answer: "lose_weight", selected: store.drawingRecords), "Lose weight")
+    }
 }

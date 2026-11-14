@@ -38,20 +38,22 @@ final class SelectedOptionStore: @unchecked Sendable {
 
     /// The presented flow's own options as `{ value, label }` records, by field id and by `<step id>/<field id>`
     /// (`scopedKey`). An answer with no recorded pick (a resumed flow, a default, a host patch) still draws its label
-    /// from these.
-    private var flowOptionRecords: [String: Any] = [:]
+    /// from these. Kept in `SessionDataStore`, beside the answers they label, so a later launch can draw them too.
+    private var flowOptionRecords: [String: Any] { SessionDataStore.shared.flowOptionRecords }
 
     /// Keep this flow's option list. Replaces the previous flow's: only the flow on screen has answers to draw.
     func setFlowOptions(_ flow: OnboardingFlowConfig) {
-        let records = Self.optionRecords(of: flow)
-        queue.async(flags: .barrier) { self.flowOptionRecords = records }
+        SessionDataStore.shared.setFlowOptionRecords(Self.optionRecords(of: flow))
     }
 
     /// The flow's option records, for the raw pass (`flow_options`).
-    var flowOptions: [String: Any] { queue.sync { flowOptionRecords } }
+    var flowOptions: [String: Any] { flowOptionRecords }
 
     /// What a drawn answer looks up: each field's picked records, then the flow's own options.
-    var drawingRecords: [String: Any] { queue.sync { Self.drawingRecords(selected: storage, flowOptions: flowOptionRecords) } }
+    var drawingRecords: [String: Any] {
+        let options = flowOptionRecords
+        return queue.sync { Self.drawingRecords(selected: storage, flowOptions: options) }
+    }
 
     /// The key a step's own option list is kept under: two steps may answer the same field id with different
     /// options under the same values, and an answer's label is its own step's.
@@ -125,12 +127,19 @@ final class SelectedOptionStore: @unchecked Sendable {
     }
 
     func resetForTesting() {
-        queue.sync(flags: .barrier) { storage.removeAll(); flowOptionRecords.removeAll() }
+        queue.sync(flags: .barrier) { storage.removeAll() }
+        SessionDataStore.shared.setFlowOptionRecords([:])
+    }
+
+    /// Test seam: what a relaunch leaves of this store. Picks are in memory and go with the process; the flow's
+    /// option records are re-read from `SessionDataStore`'s persisted copy.
+    func dropPicksForTesting() {
+        queue.sync(flags: .barrier) { storage.removeAll() }
     }
 
     /// Test seam: the flow's option list in its stored shape, without building a whole flow.
     func seedFlowOptionsForTesting(_ records: [String: Any]) {
-        queue.sync(flags: .barrier) { flowOptionRecords = records }
+        SessionDataStore.shared.setFlowOptionRecords(records)
     }
 
     /// Flatten an option into something a dot path can walk.
