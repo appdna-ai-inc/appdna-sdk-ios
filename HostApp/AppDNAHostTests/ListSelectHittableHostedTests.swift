@@ -1,6 +1,6 @@
 // ListSelectHittableHostedTests.swift
 //
-// #1827 — a list-style Select's options were NOT HITTABLE to XCUITest (and so to anything that drives the
+// A list-style Select's options were NOT HITTABLE to XCUITest (and so to anything that drives the
 // accessibility tree: UI tests, VoiceOver touch exploration, the device-walk tooling), although a finger on the
 // same pixels selected them. The cause was the step's scroll-view finder (`appdnaStepScrollContent`): a
 // `UIViewRepresentable` placed as the content's `background`, so SwiftUI hosted it in a UIKit view the size of the
