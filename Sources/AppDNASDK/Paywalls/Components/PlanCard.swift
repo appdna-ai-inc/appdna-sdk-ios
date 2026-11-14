@@ -790,3 +790,21 @@ extension View {
         }
     }
 }
+
+/// The selection circle a plan card draws at its top trailing corner, in the layouts whose cards stack
+/// their content down the middle (mini cards, single hero, carousel cards) and so have no row end for
+/// the circle `PlanCard` draws. The colours are `PlanCard`'s. Android `PlanCard` draws the same.
+struct PlanSelectionCircle: View {
+    let isSelected: Bool
+    let cardStyle: PlanCardStyle
+
+    var body: some View {
+        let selected = Color(hex: cardStyle.selectedTextColor ?? cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let unselected = cardStyle.unselectedBorderColor.map { Color(hex: $0) } ?? Color.gray.opacity(0.3)
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 20))
+            .foregroundColor(isSelected ? selected : unselected)
+            .padding(8)
+            .accessibilityHidden(true)
+    }
+}

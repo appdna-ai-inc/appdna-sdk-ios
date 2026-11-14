@@ -2576,6 +2576,7 @@ struct PaywallRenderer: View {
                             .fill(selectedPlanId == plan.id ? (cardStyle.selectedBgColor.flatMap { Color(hex: $0) } ?? Color.clear) : Color.clear))
                         .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 10)
                             .stroke(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.clear, lineWidth: 2))
+                        .overlay(alignment: .topTrailing) { PlanSelectionCircle(isSelected: selectedPlanId == plan.id, cardStyle: cardStyle) }
                     }
                     .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                     .contentShape(Rectangle())
@@ -2820,6 +2821,7 @@ struct PaywallRenderer: View {
                         .fill(Color.clear))
                     .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 16)
                         .stroke(Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")), lineWidth: 2))
+                    .overlay(alignment: .topTrailing) { PlanSelectionCircle(isSelected: selectedPlanId == plan.id, cardStyle: cardStyle) }
                 }
                 .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])
                 .contentShape(Rectangle())
@@ -2880,6 +2882,7 @@ struct PaywallRenderer: View {
                                 .fill(selectedPlanId == plan.id ? (cardStyle.selectedBgColor.flatMap { Color(hex: $0) } ?? Color.clear) : Color.clear))
                             .overlay(RoundedRectangle(cornerRadius: cardStyle.cardCornerRadius ?? 16)
                                 .stroke(selectedPlanId == plan.id ? Color(hex: cardStyle.selectedBorderColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) : Color.gray.opacity(0.2), lineWidth: selectedPlanId == plan.id ? 2 : 1))
+                            .overlay(alignment: .topTrailing) { PlanSelectionCircle(isSelected: selectedPlanId == plan.id, cardStyle: cardStyle) }
                             .padding(.horizontal, 8)
                         }
                         .accessibilityAddTraits(selectedPlanId == plan.id ? [.isSelected] : [])

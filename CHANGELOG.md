@@ -20,6 +20,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Every card plan layout shows which plan is selected with a circle.** `mini_cards`, `single_hero` and
+  `carousel_cards` drew no selection circle; they now draw a filled check on the selected card and an empty ring on the
+  others, at the card's top trailing corner, as `grid`, `horizontal_scroll` and the vertical stack already did, and as
+  Android draws them.
+
 - **The trial badge, a plan's trial line and its feature checks match the paywall's own colours.** With no colour
   of their own they were drawn in the brand accent, or indigo when none is set, whatever the paywall's theme. They now
   take the paywall's accent: the CTA's authored colour (`cta.style.bg_color`, then `cta.bg_color`), then the brand
