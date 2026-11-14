@@ -3,7 +3,7 @@ import UIKit
 import XCTest
 @testable import AppDNASDK
 
-/// #1656 — the date wheel as VOICEOVER reaches it, in a real key window.
+/// The date wheel as VOICEOVER reaches it, in a real key window.
 ///
 /// The other wheel tests find a column by its class and call its increment directly. VoiceOver does not: it walks the
 /// accessibility tree from the window, stops at the first view that IS an accessibility element, focuses that element and

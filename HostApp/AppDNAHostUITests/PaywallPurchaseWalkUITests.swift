@@ -22,7 +22,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
     private var paywallId: String? { TestCredentials.paywallId.isEmpty ? nil : TestCredentials.paywallId }
     /*
-     #1365 — THE EXPECTED PRODUCT IS A PARAMETER. The fixture paywall defaults to its monthly plan,
+     THE EXPECTED PRODUCT IS A PARAMETER. The fixture paywall defaults to its monthly plan,
      and a paywall that pre-selects ANNUAL (a generated one does) made this walk assert a monthly
      purchase it could never see. `purchasePlanText` taps a plan row first, so the walk can also
      prove that the row a user picks is the product StoreKit is asked for.
