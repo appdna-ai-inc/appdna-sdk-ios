@@ -360,6 +360,10 @@ struct PaywallSectionData: Codable {
     let videoUrl: String?
     let videoThumbnailUrl: String?
     let videoHeight: CGFloat?
+    /// A video section plays muted on its own when true (Android has read it since the section shipped).
+    let videoAutoplay: Bool?
+    /// And loops.
+    let videoLoop: Bool?
     let riveUrl: String?
     let riveStateMachine: String?
 
@@ -607,6 +611,8 @@ struct PaywallSectionData: Codable {
         case videoUrl = "video_url"
         case videoThumbnailUrl = "video_thumbnail_url"
         case videoHeight = "video_height"
+        case videoAutoplay = "video_autoplay"
+        case videoLoop = "video_loop"
         case riveUrl = "rive_url"
         case riveStateMachine = "rive_state_machine"
         case variant
@@ -1467,5 +1473,43 @@ public struct PostPurchaseFailureConfig: Codable {
 enum PaywallImageAccessibility {
     static func label(_ data: PaywallSectionData?) -> String? {
         AuthoredImageAccessibility.label(data?.alt)
+    }
+}
+
+/// What a paywall's animation (`lottie`) and video (`video`, `video_background`) sections play, from the
+/// section's data. One reading for the renderer and the shared fixture `paywall_media_section_playback`. A blank URL is
+/// no section: it draws nothing (the publisher also leaves such a section out).
+enum PaywallMediaSection {
+    static func lottieBlock(_ data: PaywallSectionData?) -> LottieBlock? {
+        guard let url = data?.lottieUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+        return LottieBlock(
+            lottie_url: url,
+            autoplay: true,
+            loop: data?.lottieLoop ?? true,
+            speed: data?.lottieSpeed ?? 1.0,
+            width: nil,
+            height: Double(data?.lottieHeight ?? data?.height ?? 180),
+            alignment: "center",
+            play_on_scroll: nil,
+            play_on_tap: nil
+        )
+    }
+
+    static func videoBlock(_ data: PaywallSectionData?) -> VideoBlock? {
+        guard let url = data?.videoUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+        let autoplay = data?.videoAutoplay ?? false
+        return VideoBlock(
+            video_url: url,
+            video_thumbnail_url: data?.videoThumbnailUrl ?? data?.imageUrl,
+            video_height: Double(data?.videoHeight ?? data?.height ?? 200),
+            video_corner_radius: Double(data?.cornerRadius ?? 12),
+            // The authored `video_autoplay` / `video_loop`, as Android draws them. Unset is tap-to-play, as before.
+            autoplay: autoplay,
+            loop: data?.videoLoop ?? false,
+            muted: true,
+            // An autoplaying section is a moving picture, not a player: no controls.
+            controls: !autoplay,
+            inline_playback: true
+        )
     }
 }

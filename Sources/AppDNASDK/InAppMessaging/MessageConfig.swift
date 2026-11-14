@@ -463,3 +463,41 @@ enum MessageCTAShare {
         return payload
     }
 }
+
+/// The hero an in-app message draws, in the order every view ranks them: a Lottie, then a Rive, then a video,
+/// then the image. A blank URL is no hero (a brief not yet filled), so the next one draws. One reading for ModalView,
+/// FullscreenView and the shared fixture `message_hero_media`.
+enum MessageHeroMedia: Equatable {
+    case lottie(String)
+    case rive(String)
+    case video(String)
+    case image(URL)
+
+    static func of(_ content: MessageContent) -> MessageHeroMedia? {
+        func set(_ v: String?) -> String? {
+            guard let t = v?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { return nil }
+            return t
+        }
+        if let u = set(content.lottie_url) { return .lottie(u) }
+        if let u = set(content.rive_url) { return .rive(u) }
+        if let u = set(content.video_url) { return .video(u) }
+        if let s = set(content.image_url), let u = URL(string: s) { return .image(u) }
+        return nil
+    }
+
+    var kind: String {
+        switch self {
+        case .lottie: return "lottie"
+        case .rive: return "rive"
+        case .video: return "video"
+        case .image: return "image"
+        }
+    }
+
+    var url: String {
+        switch self {
+        case .lottie(let u), .rive(let u), .video(let u): return u
+        case .image(let u): return u.absoluteString
+        }
+    }
+}

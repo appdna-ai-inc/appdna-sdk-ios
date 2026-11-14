@@ -37,6 +37,9 @@ extension SharedFixtureTests {
         case "resolve_message_dismiss": runResolveMessageDismiss(f, h)
         // Paywall image alt text (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
+        // A paywall media section's playback and a message's animation / video hero (SharedFixtureDrivers+MediaHero.swift).
+        case "resolve_paywall_media_section": runPaywallMediaSection(f, h)
+        case "resolve_message_hero_media": runMessageHeroMedia(f, h)
         case "resolve_onboarding_image_alt": runOnboardingImageAlt(f, h)
         case "resolve_screen_image_alt": runScreenImageAlt(f, h)
         case "resolve_option_label_markdown": runOptionLabelMarkdown(f, h)

@@ -1455,18 +1455,7 @@ struct PaywallRenderer: View {
 
     @ViewBuilder
     private func lottieSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
-        if let lottieUrl = data?.lottieUrl {
-            let block = LottieBlock(
-                lottie_url: lottieUrl,
-                autoplay: true,
-                loop: data?.lottieLoop ?? true,
-                speed: data?.lottieSpeed ?? 1.0,
-                width: nil,
-                height: Double(data?.lottieHeight ?? data?.height ?? 180),
-                alignment: "center",
-                play_on_scroll: nil,
-                play_on_tap: nil
-            )
+        if let block = PaywallMediaSection.lottieBlock(data) {
             LottieBlockView(block: block)
                 .applyContainerStyle(style?.container)
         }
@@ -1476,18 +1465,8 @@ struct PaywallRenderer: View {
 
     @ViewBuilder
     private func videoSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
-        if let videoUrl = data?.videoUrl {
-            let block = VideoBlock(
-                video_url: videoUrl,
-                video_thumbnail_url: data?.videoThumbnailUrl ?? data?.imageUrl,
-                video_height: Double(data?.videoHeight ?? data?.height ?? 200),
-                video_corner_radius: Double(data?.cornerRadius ?? 12),
-                autoplay: false,
-                loop: false,
-                muted: true,
-                controls: true,
-                inline_playback: true
-            )
+        // The block, its autoplay and loop come from `PaywallMediaSection` (shared fixture paywall_media_section_playback).
+        if let block = PaywallMediaSection.videoBlock(data) {
             VideoBlockView(block: block)
                 .applyContainerStyle(style?.container)
         }

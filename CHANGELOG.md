@@ -20,6 +20,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A generated message's or paywall's animation and video play on both platforms.** An in-app modal draws a
+  video hero (`video_url`), muted and looping with no controls, as the full-screen message and Android already did;
+  before, it skipped to the image. A paywall `video` / `video_background` section honours `video_autoplay` and
+  `video_loop` (it always waited for a tap) and shows no player controls when it autoplays. A blank `lottie_url`,
+  `rive_url` or `video_url` on a message hero, or a blank URL on a paywall animation or video section, is no media:
+  the next hero draws, or the section draws nothing. Shared fixtures `dto_parsing/message_hero_media` and
+  `paywall_media_section_playback`.
+
 - **When several served experiments name one paywall, flow, message or survey, the same one decides on every launch,
   and on both platforms.** The surface resolver walked the served experiments in dictionary order, which Swift
   randomises per process, so with a served config that had diverged from the rows (an experiment whose removal never

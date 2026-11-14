@@ -29,8 +29,7 @@ struct FullscreenView: View {
 
     /// The message's hero media, if it has one: lottie, then rive, then video, then image.
     private var hasHero: Bool {
-        content.lottie_url != nil || content.rive_url != nil || content.video_url != nil
-            || content.image_url.flatMap(URL.init(string:)) != nil
+        MessageHeroMedia.of(content) != nil
     }
 
     /// Whether there is anything to put beside a hero.
@@ -40,26 +39,23 @@ struct FullscreenView: View {
 
     @ViewBuilder
     private var hero: some View {
-        // Lottie hero (takes priority over image)
-        if let lottieUrl = content.lottie_url {
+        // A Lottie, then a Rive, then a video, then the image (MessageHeroMedia); a blank URL is no hero.
+        switch MessageHeroMedia.of(content) {
+        case .lottie(let lottieUrl):
             LottieBlockView(block: LottieBlock(
                 lottie_url: lottieUrl,
                 autoplay: true, loop: true, speed: 1.0,
                 width: nil, height: 240, alignment: "center",
                 play_on_scroll: nil, play_on_tap: nil
             ))
-        }
-        // Rive hero
-        else if let riveUrl = content.rive_url {
+        case .rive(let riveUrl):
             RiveBlockView(block: RiveBlock(
                 rive_url: riveUrl, artboard: nil,
                 state_machine: content.rive_state_machine,
                 autoplay: true, height: 240, alignment: "center",
                 inputs: nil, trigger_on_step_complete: nil
             ))
-        }
-        // Video hero
-        else if let videoUrl = content.video_url {
+        case .video(let videoUrl):
             VideoBlockView(block: VideoBlock(
                 video_url: videoUrl,
                 video_thumbnail_url: content.video_thumbnail_url ?? content.image_url,
@@ -69,9 +65,7 @@ struct FullscreenView: View {
                 controls: false, inline_playback: true
             ))
             .padding(.horizontal, 24)
-        }
-        // Optional image
-        else if let urlString = content.image_url, let url = URL(string: urlString) {
+        case .image(let url):
             BundledAsyncPhaseImage(url: url) { phase in
                 if case .success(let image) = phase {
                     image
@@ -82,6 +76,8 @@ struct FullscreenView: View {
             }
             // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
             .authoredImageAccessibility(nil)
+        case .none:
+            EmptyView()
         }
     }
 

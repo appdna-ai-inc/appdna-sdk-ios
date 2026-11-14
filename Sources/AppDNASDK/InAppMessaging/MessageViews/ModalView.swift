@@ -60,26 +60,33 @@ struct ModalView: View {
                 }
                 .padding(.trailing, -4)
 
-                // Lottie hero (takes priority over image)
-                if let lottieUrl = content.lottie_url {
+                // Hero: a Lottie, then a Rive, then a video, then the image (MessageHeroMedia).
+                switch MessageHeroMedia.of(content) {
+                case .lottie(let lottieUrl):
                     LottieBlockView(block: LottieBlock(
                         lottie_url: lottieUrl,
                         autoplay: true, loop: true, speed: 1.0,
                         width: nil, height: 160, alignment: "center",
                         play_on_scroll: nil, play_on_tap: nil
                     ))
-                }
-                // Rive hero
-                else if let riveUrl = content.rive_url {
+                case .rive(let riveUrl):
                     RiveBlockView(block: RiveBlock(
                         rive_url: riveUrl, artboard: nil,
                         state_machine: content.rive_state_machine,
                         autoplay: true, height: 160, alignment: "center",
                         inputs: nil, trigger_on_step_complete: nil
                     ))
-                }
-                // Optional image
-                else if let urlString = content.image_url, let url = URL(string: urlString) {
+                case .video(let videoUrl):
+                    // Muted and looping with no controls, as Android's modal and iOS's fullscreen draw it.
+                    VideoBlockView(block: VideoBlock(
+                        video_url: videoUrl,
+                        video_thumbnail_url: content.video_thumbnail_url ?? content.image_url,
+                        video_height: 160,
+                        video_corner_radius: 8,
+                        autoplay: true, loop: true, muted: true,
+                        controls: false, inline_playback: true
+                    ))
+                case .image(let url):
                     BundledAsyncPhaseImage(url: url) { phase in
                         if case .success(let image) = phase {
                             image
@@ -91,6 +98,8 @@ struct ModalView: View {
                     }
                     // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
                     .authoredImageAccessibility(nil)
+                case .none:
+                    EmptyView()
                 }
 
                 // Title: apply text_color
