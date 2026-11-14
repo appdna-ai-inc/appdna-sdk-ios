@@ -36,8 +36,9 @@ final class SelectedOptionStore: @unchecked Sendable {
         queue.async(flags: .barrier) { self.storage.removeValue(forKey: fieldId) }
     }
 
-    /// The presented flow's own options, by field id, as `{ value, label }` records. An answer with no
-    /// recorded pick (a resumed flow, a default, a host patch) still draws its label from these.
+    /// The presented flow's own options as `{ value, label }` records, by field id and by `<step id>/<field id>`
+    /// (`scopedKey`). An answer with no recorded pick (a resumed flow, a default, a host patch) still draws its label
+    /// from these.
     private var flowOptionRecords: [String: Any] = [:]
 
     /// Keep this flow's option list. Replaces the previous flow's: only the flow on screen has answers to draw.
@@ -51,6 +52,19 @@ final class SelectedOptionStore: @unchecked Sendable {
 
     /// What a drawn answer looks up: each field's picked records, then the flow's own options.
     var drawingRecords: [String: Any] { queue.sync { Self.drawingRecords(selected: storage, flowOptions: flowOptionRecords) } }
+
+    /// The key a step's own option list is kept under: two steps may answer the same field id with different
+    /// options under the same values, and an answer's label is its own step's.
+    static func scopedKey(step: String, field: String) -> String { "\(step)/\(field)" }
+
+    /// The record keys an answer at `path` is labelled from, most specific first: `responses.<step>.<field>` reads its
+    /// step's own options before the field's picks and options; any other answer path reads the field's.
+    static func recordKeys(atPath path: String) -> [String] {
+        let parts = path.components(separatedBy: ".")
+        let field = parts.last ?? ""
+        if parts.count == 3, parts[0] == "responses" { return [scopedKey(step: parts[1], field: field), field] }
+        return [field]
+    }
 
     /// Picks first, so a recorded pick wins over the flow's list.
     static func drawingRecords(selected: [String: Any], flowOptions: [String: Any]) -> [String: Any] {
@@ -71,20 +85,25 @@ final class SelectedOptionStore: @unchecked Sendable {
                   let label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !label.contains("{{") else { return }
             out[field, default: []].append(["value": value, "label": label])
         }
-        func walk(_ blocks: [ContentBlock]?) {
-            for block in blocks ?? [] {
-                if block.type.rawValue.hasPrefix("input_") {
-                    for option in block.field_options ?? [] { add(block.field_id, option.resolvedValue, option.label) }
-                }
-                walk(block.children)
-                walk(block.stack_children)
-            }
-        }
         for step in flow.steps {
+            // Each record twice: under the field (any step's answer to it) and under this step's own key.
+            func both(_ field: String?, _ value: String?, _ label: String?) {
+                add(field, value, label)
+                if let field, !field.isEmpty { add(scopedKey(step: step.id, field: field), value, label) }
+            }
+            func walk(_ blocks: [ContentBlock]?) {
+                for block in blocks ?? [] {
+                    if block.type.rawValue.hasPrefix("input_") {
+                        for option in block.field_options ?? [] { both(block.field_id, option.resolvedValue, option.label) }
+                    }
+                    walk(block.children)
+                    walk(block.stack_children)
+                }
+            }
             walk(step.config.content_blocks)
             for field in step.config.fields ?? [] {
                 for option in field.options ?? [] {
-                    add(field.id, option.value.flatMap { TemplateEngine.stringify($0.value) } ?? option.id, option.label)
+                    both(field.id, option.value.flatMap { TemplateEngine.stringify($0.value) } ?? option.id, option.label)
                 }
             }
         }
@@ -153,10 +172,15 @@ final class SelectedOptionStore: @unchecked Sendable {
     /// value: no record for this value anywhere. A multi pick keeps the stored value of any item with no label.
     /// Never for a value that leaves the screen: an option's `value`, a URL, a hook's headers.
     static func drawnAnswer(field: String, answer: Any?, selected: [String: Any]) -> String? {
-        let records: [Any] = {
-            guard let r = selected[field] else { return [] }
+        drawnAnswer(keys: [field], answer: answer, selected: selected)
+    }
+
+    /// `drawnAnswer` reading the records under each of `keys` in turn: the first record holding the stored value wins.
+    static func drawnAnswer(keys: [String], answer: Any?, selected: [String: Any]) -> String? {
+        let records: [Any] = keys.flatMap { key -> [Any] in
+            guard let r = selected[key] else { return [] }
             return (r as? [Any]) ?? [r]
-        }()
+        }
         func labelFor(_ text: String) -> String? {
             for r in records {
                 guard let v = (r as? [String: Any])?["value"], TemplateEngine.stringify(v) == text else { continue }
@@ -181,7 +205,7 @@ final class SelectedOptionStore: @unchecked Sendable {
     /// `drawnAnswer` for a `responses.` or `step.` path, the only roots that name an answer.
     static func drawnAnswer(atPath path: String, answer: Any?, selected: [String: Any]) -> String? {
         guard path.hasPrefix("responses.") || path.hasPrefix("step.") else { return nil }
-        return drawnAnswer(field: path.components(separatedBy: ".").last ?? "", answer: answer, selected: selected)
+        return drawnAnswer(keys: recordKeys(atPath: path), answer: answer, selected: selected)
     }
 
     /// Where a recorded option keeps its Google keys (`InputOption.googleKeys`): key → typed text.

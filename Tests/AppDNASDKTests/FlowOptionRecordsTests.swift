@@ -39,4 +39,21 @@ final class FlowOptionRecordsTests: XCTestCase {
         store.seedForTesting(fieldId: "goal", value: ["value": "lose_weight", "label": "Lose it"])
         XCTAssertEqual(SelectedOptionStore.drawnAnswer(field: "goal", answer: "lose_weight", selected: store.drawingRecords), "Lose it")
     }
+
+    /// Two steps answering one field id with different labels under the same values: each step's own options are kept
+    /// under its scoped key, and an answer path naming the step reads them first.
+    func testEachStepsOptionsAreKeptUnderItsOwnKeyAndAnAnswerReadsItsOwnStepsLabel() throws {
+        let json = """
+        {"id":"f","name":"f","version":1,"steps":[
+          {"id":"q1","type":"form","content_blocks":[{"id":"a","type":"input_select","field_id":"pick","field_options":[{"id":"a","label":"Alpha first"}]}]},
+          {"id":"q2","type":"form","content_blocks":[{"id":"b","type":"input_select","field_id":"pick","field_options":[{"id":"a","label":"Alpha second"}]}]}],"settings":{}}
+        """
+        let records = SelectedOptionStore.optionRecords(of: try JSONDecoder().decode(OnboardingFlowConfig.self, from: Data(json.utf8)))
+        XCTAssertEqual((records["q1/pick"] as? [[String: Any]])?.map { $0["label"] as? String }, ["Alpha first"])
+        XCTAssertEqual((records["q2/pick"] as? [[String: Any]])?.map { $0["label"] as? String }, ["Alpha second"])
+        // The latest tap was on q2; q1's answer still draws q1's label.
+        let selected = SelectedOptionStore.drawingRecords(selected: ["pick": ["value": "a", "label": "Alpha second"]], flowOptions: records)
+        XCTAssertEqual(SelectedOptionStore.drawnAnswer(atPath: "responses.q1.pick", answer: "a", selected: selected), "Alpha first")
+        XCTAssertEqual(SelectedOptionStore.drawnAnswer(atPath: "responses.q2.pick", answer: "a", selected: selected), "Alpha second")
+    }
 }

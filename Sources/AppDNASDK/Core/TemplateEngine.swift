@@ -160,12 +160,12 @@ final class TemplateEngine {
                 let remaining = path.dropFirst("onboarding.".count)
                 let subParts = remaining.split(separator: ".", maxSplits: 1).map(String.init)
                 guard subParts.count >= 2 else { return nil }
-                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap { answerText($0, context, field: subParts[1]) }
+                return (context.onboardingResponses[subParts[0]])?[subParts[1]].flatMap { answerText($0, context, field: subParts[1], step: subParts[0]) }
             }
             let stepId = parts[1]
             let fieldPath = parts[2]
             guard let step = context.onboardingResponses[stepId] else { return nil }
-            if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context, field: fieldPath) }
+            if let exact = step[fieldPath] { return exact is NSNull ? nil : answerText(exact, context, field: fieldPath, step: stepId) }
             // `{{onboarding.<step>.<field>.city}}`: the path is split at most three ways, so a key inside a
             // structured answer (a location selection) arrives as `field.city`. Walk it.
             let keys = fieldPath.split(separator: ".").map(String.init)
@@ -215,8 +215,10 @@ final class TemplateEngine {
     /// `place_id`) is its `raw_query`, and a step or list holding one has it replaced the same way
     /// before it is stringified — so the whole-answer token never prints Google content either. A select
     /// answer drawn here shows what the user picked; `field` is the answer's field id.
-    private func answerText(_ value: Any, _ context: TemplateContext, field: String) -> String? {
-        if let picked = SelectedOptionStore.drawnAnswer(field: field, answer: value, selected: context.selected) { return picked }
+    private func answerText(_ value: Any, _ context: TemplateContext, field: String, step: String? = nil) -> String? {
+        // The answer's own step's options first: two steps can answer one field id with different labels.
+        let keys = step.map { [SelectedOptionStore.scopedKey(step: $0, field: field), field] } ?? [field]
+        if let picked = SelectedOptionStore.drawnAnswer(keys: keys, answer: value, selected: context.selected) { return picked }
         // A drawn time or date-and-time answer, in the app's zone; sent or stored, it stays as stored.
         if context.surface == .onboarding, let s = value as? String, let shown = AnswerTime.display(s, in: AnswerTime.zone) { return shown }
         guard context.surface == .other else { return Self.stringify(value) }

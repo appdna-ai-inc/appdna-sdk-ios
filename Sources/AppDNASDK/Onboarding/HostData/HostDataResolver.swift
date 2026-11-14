@@ -508,7 +508,7 @@ enum HostDataResolver {
         guard path.hasPrefix("responses.") || path.hasPrefix("step."),
               let items = resolveScopePath(path, scope)?.arr, !items.isEmpty else { return nil }
         let field = path.components(separatedBy: ".").last ?? ""
-        let records = (scope.roots["selected"]?.obj?.d[field]?.arr ?? []) + flowOptionRecords(field, scope)
+        let records = stepOptionRecords(path, scope) + (scope.roots["selected"]?.obj?.d[field]?.arr ?? []) + flowOptionRecords(field, scope)
         let texts: [String] = items.compactMap { item in
             guard let value = stringify(item) else { return nil }
             for record in records {
@@ -530,6 +530,10 @@ enum HostDataResolver {
     static func pickedLabel(_ path: String, _ value: HDVal?, _ scope: Scope) -> String? {
         guard path.hasPrefix("responses.") || path.hasPrefix("step."), let value, let stored = stringify(value) else { return nil }
         let field = path.components(separatedBy: ".").last ?? ""
+        // The answer's own step's options first: two steps can answer one field id with different labels.
+        for record in stepOptionRecords(path, scope) {
+            if let v = record.obj?.d["value"], stringify(v) == stored, let label = pickedLabel(of: record) { return label }
+        }
         if let record = scope.roots["selected"]?.obj?.d[field], let v = record.obj?.d["value"], stringify(v) == stored,
            let label = pickedLabel(of: record) { return label }
         for record in flowOptionRecords(field, scope) {
@@ -548,6 +552,14 @@ enum HostDataResolver {
     /// The flow's own options for a field, which label an answer no pick was recorded for.
     private static func flowOptionRecords(_ field: String, _ scope: Scope) -> [HDVal] {
         scope.roots["flow_options"]?.obj?.d[field]?.arr ?? []
+    }
+
+    /// The options of the step a `responses.<step>.<field>` path names (`SelectedOptionStore.scopedKey`); empty for
+    /// any other path. Android `stepOptionRecords`.
+    private static func stepOptionRecords(_ path: String, _ scope: Scope) -> [HDVal] {
+        let keys = SelectedOptionStore.recordKeys(atPath: path)
+        guard keys.count > 1 else { return [] }
+        return flowOptionRecords(keys[0], scope)
     }
 
     static func formatNumber(_ n: Double) -> String? {
