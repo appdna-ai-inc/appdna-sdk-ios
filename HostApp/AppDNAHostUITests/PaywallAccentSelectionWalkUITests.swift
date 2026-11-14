@@ -211,6 +211,81 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
         NSLog("[j4-circle] report: \(report)")
     }
 
+    // MARK: - 5. The horizontal_scroll CTA buys, every time
+
+    /*
+     Two of three full-class runs saw the horizontal_scroll CTA put NO transaction in the ledger, while every other
+     layout bought; a run of grid + horizontal_scroll alone bought. The full class differs in one thing: the failure
+     walk runs first and leaves REFUSED transactions of `premium_monthly`, then grid buys `premium_monthly`, then
+     horizontal_scroll buys `premium_monthly` again. So the hypotheses are separated by the order of purchases, not by
+     the layout:
+       H1 (store state)  the second purchase of a product after refused / cleared ones yields no new transaction;
+                         the SDK still reports purchase_started (and then completed or failed).
+       H2 (the layout)   the CTA tap on horizontal_scroll is dropped or buys nothing whatever came before:
+                         no purchase_started at all.
+     Each leg launches fresh, selects Monthly (the product the failing runs bought), taps the CTA, and records
+     whether the tap reached the SDK (the host's event log, read after the paywall is closed), what StoreKit
+     recorded, and a frame 2 s and 30 s after the tap.
+    */
+    @available(iOS 17.0, *)
+    func testTheHorizontalScrollCtaBuysEveryTime() throws {
+        guard let apiKey, let hs = paywall("horizontal_scroll"), let grid = paywall("grid") else {
+            throw XCTSkip("needs horizontal_scroll= and grid= in TestCredentials")
+        }
+        let session = try storeSession()
+        defer { session.clearTransactions(); session.failTransactionsEnabled = false }
+        // Legs: horizontal_scroll alone ×3; after a refused purchase of the same product; after grid bought it.
+        let legs: [(String, String, String?)] = [
+            ("hs-alone-1", hs, nil), ("hs-alone-2", hs, nil), ("hs-alone-3", hs, nil),
+            ("hs-after-refusal", hs, "refuse"), ("hs-after-grid", hs, "grid"),
+            ("grid-after-grid", grid, "grid"),
+        ]
+        var results: [String] = []
+        for (name, id, before) in legs {
+            session.clearTransactions()
+            if before == "refuse" {
+                session.failTransactionsEnabled = true
+                let pre = try open(id, apiKey: apiKey, name: name + "-pre")
+                try planRow(pre, "Monthly").tap(); sleep(1)
+                try XCTUnwrap(ctaButton(pre)).tap()
+                _ = waitUntil(timeout: 30) { self.defaultBanner(pre).exists }
+                pre.terminate()
+                session.failTransactionsEnabled = false
+            } else if before == "grid" {
+                let pre = try open(grid, apiKey: apiKey, name: name + "-pre")
+                try planRow(pre, "Monthly").tap(); sleep(1)
+                try XCTUnwrap(ctaButton(pre)).tap()
+                _ = waitUntil(timeout: 30) { session.allTransactions().contains { $0.state == .purchased } }
+                pre.terminate()
+                session.clearTransactions()
+            }
+            let app = try open(id, apiKey: apiKey, name: name)
+            let monthly = try planRow(app, "Monthly")
+            monthly.tap()
+            XCTAssertTrue(waitUntil(timeout: 3) { monthly.isSelected }, "[\(name)] Monthly did not take the selection")
+            let cta = try XCTUnwrap(ctaButton(app))
+            let ctaLabel = cta.label
+            let countBefore = session.allTransactions().count
+            cta.tap()
+            sleep(2); shot(app, "hs-\(name)-2s")
+            let bought = waitUntil(timeout: 30) { session.allTransactions().count > countBefore }
+            shot(app, "hs-\(name)-30s")
+            // Close the paywall if it is still up, then read what the SDK reported to the host.
+            let close = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "close")).firstMatch
+            if close.exists { close.tap(); sleep(1) }
+            let events = app.staticTexts["host.lastEvents"]
+            _ = events.waitForExistence(timeout: 5)
+            let log = events.exists ? events.label : "(absent)"
+            let ledger = session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }
+            let line = "\(name): cta='\(ctaLabel)' bought=\(bought) ledger=\(ledger) started=\(log.contains("purchase_started")) completed=\(log.contains("purchase_completed")) failed=\(log.contains("purchase_failed"))"
+            NSLog("[j4-hs] \(line) events=\(log.prefix(400))")
+            results.append(line)
+            app.terminate()
+        }
+        NSLog("[j4-hs] summary:\n\(results.joined(separator: "\n"))")
+        for r in results { XCTAssertTrue(r.contains("bought=true"), "the CTA bought nothing: \(r)") }
+    }
+
     // MARK: - helpers
 
     @available(iOS 17.0, *)
