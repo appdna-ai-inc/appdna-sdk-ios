@@ -223,6 +223,12 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
                          the SDK still reports purchase_started (and then completed or failed).
        H2 (the layout)   the CTA tap on horizontal_scroll is dropped or buys nothing whatever came before:
                          no purchase_started at all.
+       H1' (already owned) `clearTransactions()` had not yet removed the entitlement grid just bought, so the
+                         re-buy returned the EXISTING transaction: StoreKit adds nothing to the ledger, and the SDK
+                         reports `purchase_restored` (item_already_owned), which is what the real App Store does for a
+                         user who already owns the subscription. `restored=true` with no new ledger entry names it.
+     A refused purchase followed by a retry of the same product bought on grid in both failing runs (grid came
+     after the failure walk's refusals), so the decline-then-retry path itself was exercised and worked.
      Each leg launches fresh, selects Monthly (the product the failing runs bought), taps the CTA, and records
      whether the tap reached the SDK (the host's event log, read after the paywall is closed), what StoreKit
      recorded, and a frame 2 s and 30 s after the tap.
@@ -277,7 +283,7 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
             _ = events.waitForExistence(timeout: 5)
             let log = events.exists ? events.label : "(absent)"
             let ledger = session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }
-            let line = "\(name): cta='\(ctaLabel)' bought=\(bought) ledger=\(ledger) started=\(log.contains("purchase_started")) completed=\(log.contains("purchase_completed")) failed=\(log.contains("purchase_failed"))"
+            let line = "\(name): cta='\(ctaLabel)' bought=\(bought) ledger=\(ledger) started=\(log.contains("purchase_started")) completed=\(log.contains("purchase_completed")) failed=\(log.contains("purchase_failed")) restored=\(log.contains("purchase_restored"))"
             NSLog("[j4-hs] \(line) events=\(log.prefix(400))")
             results.append(line)
             app.terminate()
