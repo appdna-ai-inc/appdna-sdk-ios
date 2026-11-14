@@ -29,4 +29,10 @@ enum TestCredentials {
     /// A location flow whose SECOND step's heading interpolates the first step's answer
     /// (`{{responses.<step>.<field>.city}} · …timezone}}`). Empty = that test skips.
     static let templateFlowId = ""
+    /// The product the purchase walk expects StoreKit to record. Empty = `premium_monthly`, the
+    /// fixture paywall's default plan. A paywall that pre-selects another plan names it here.
+    static let purchaseProduct = ""
+    /// Text on the plan row the purchase walk taps BEFORE the CTA (a price such as `4.49`).
+    /// Empty = buy whatever the paywall pre-selects.
+    static let purchasePlanText = ""
 }

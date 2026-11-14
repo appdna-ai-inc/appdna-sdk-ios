@@ -21,6 +21,18 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
 
     private var apiKey: String? { TestCredentials.apiKey.isEmpty ? nil : TestCredentials.apiKey }
     private var paywallId: String? { TestCredentials.paywallId.isEmpty ? nil : TestCredentials.paywallId }
+    /*
+     #1365 — THE EXPECTED PRODUCT IS A PARAMETER. The fixture paywall defaults to its monthly plan,
+     and a paywall that pre-selects ANNUAL (a generated one does) made this walk assert a monthly
+     purchase it could never see. `purchasePlanText` taps a plan row first, so the walk can also
+     prove that the row a user picks is the product StoreKit is asked for.
+     */
+    private var expectedProduct: String {
+        TestCredentials.purchaseProduct.isEmpty ? "premium_monthly" : TestCredentials.purchaseProduct
+    }
+    private var planText: String? {
+        TestCredentials.purchasePlanText.isEmpty ? nil : TestCredentials.purchasePlanText
+    }
 
     func testTheCTABuysThroughRealStoreKit() throws {
         guard #available(iOS 17.0, *) else { throw XCTSkip("SKTestSession needs iOS 17") }
@@ -47,7 +59,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
         app.launchArguments += [
             "-appdnaApiKey", apiKey,
             "-appdnaPaywall", paywallId,
-            "-appdnaProbeStore", "premium_monthly",
+            "-appdnaProbeStore", expectedProduct,
         ]
         app.launch()
 
@@ -95,6 +107,25 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
             if !cta.waitForExistence(timeout: 5) { NSLog("[purchase-walk] paywall not up yet, attempt \(attempt + 1)") }
         }
         XCTAssertTrue(cta.exists, "the paywall never drew its CTA after 12 attempts")
+
+        if let planText {
+            /*
+             The plan row, by text on it (a price), EXCLUDING the CTA: a CTA that restates the plan
+             name would otherwise match first. The selection is read back through the row's
+             `.isSelected` trait before the CTA is pressed, so a tap that never reached `selectPlan`
+             fails here, not as a wrong product in the ledger.
+             */
+            let row = app.buttons.matching(NSPredicate(
+                format: "label CONTAINS[c] %@ AND NOT (label CONTAINS[c] %@)", planText, "Start",
+            )).firstMatch
+            XCTAssertTrue(row.waitForExistence(timeout: 10), "no plan row shows \"\(planText)\"")
+            NSLog("[purchase-walk] tapping the plan row: \(row.label) (selected=\(row.isSelected) before)")
+            row.tap()
+            let deadline = Date().addingTimeInterval(5)
+            while Date() < deadline && !row.isSelected { Thread.sleep(forTimeInterval: 0.25) }
+            NSLog("[purchase-walk] the plan row reports selected=\(row.isSelected); CTA now: \(cta.label)")
+            XCTAssertTrue(row.isSelected, "the plan row did not take the selection")
+        }
         NSLog("[purchase-walk] tapping the CTA: \(cta.label)")
         cta.tap()
 
@@ -115,7 +146,7 @@ final class PaywallPurchaseWalkUITests: XCTestCase {
         }
         NSLog("[purchase-walk] StoreKit recorded: \(bought.map(\.productIdentifier).joined(separator: ", "))")
         XCTAssertEqual(
-            bought.map(\.productIdentifier), ["premium_monthly"],
+            bought.map(\.productIdentifier), [expectedProduct],
             "the CTA did not reach StoreKit — its ledger holds "
                 + "\(bought.map(\.productIdentifier).joined(separator: ", "))",
         )
