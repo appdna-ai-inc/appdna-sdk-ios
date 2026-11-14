@@ -122,7 +122,10 @@ final class ExperimentManager {
     func resolveSurfacePresentation(surfaceType: String, entityId: String) -> SurfaceResolution {
         let allExperiments = remoteConfigManager.getAllExperiments()
 
-        for (experimentId, config) in allExperiments {
+        // A fixed order, the same on Android: when several served experiments name this entity (a served doc
+        // that diverged from the rows), the first eligible one in `servingOrder` decides, not the dictionary's
+        // per-launch hash order.
+        for (experimentId, config) in Self.servingOrder(allExperiments) {
             // Only `running` experiments serve, and only on the requested
             // platform (`resolveConfig` enforces both — reuse it).
             guard config.status == "running" else { continue }
@@ -186,6 +189,20 @@ final class ExperimentManager {
         }
 
         return .renderActive
+    }
+
+    /// The order `resolveSurfacePresentation` tries the served experiments in, identical on iOS and Android:
+    /// the most recently started first (`started_at_ms` descending; one without it sorts last), ties by experiment id
+    /// ascending (UTF-16 code units, Kotlin's `String` order). The server lets only one experiment run per entity, so
+    /// when the served doc holds several, the newest start is the one still running and the older entries are removals
+    /// that never reached the device's copy.
+    static func servingOrder(_ all: [String: ExperimentConfig]) -> [(key: String, value: ExperimentConfig)] {
+        all.sorted { a, b in
+            let sa = a.value.started_at_ms ?? Int64.min
+            let sb = b.value.started_at_ms ?? Int64.min
+            if sa != sb { return sa > sb }
+            return a.key.utf16.lexicographicallyPrecedes(b.key.utf16)
+        }
     }
 
     /// Get all active experiment exposures as (experimentId, variant) tuples.

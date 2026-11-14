@@ -2289,11 +2289,21 @@ final class SharedFixtureTests: XCTestCase {
     // ExperimentVariantDocResolutionTests uses) — the bucketer has its own tests.
 
     private func runPresentSurfaceUnderExperiment(_ f: Fixture, _ h: Harness) {
-        guard let config = f.setup.config?.objectValue,
-              let experimentJSON = config["experiment"],
-              let experimentData = try? JSONSerialization.data(withJSONObject: experimentJSON.foundation),
-              let experiment = try? JSONDecoder().decode(ExperimentConfig.self, from: experimentData) else {
-            return XCTFail("[\(f.id)] setup.config.experiment did not decode as the SDK's ExperimentConfig")
+        // `setup.config.experiment` (one) or `setup.config.experiments` (several in one served doc).
+        guard let config = f.setup.config?.objectValue else {
+            return XCTFail("[\(f.id)] present_surface_under_experiment needs setup.config")
+        }
+        let experimentJSONs: [AnyJSON] = config["experiments"]?.arrayValue ?? (config["experiment"].map { [$0] } ?? [])
+        var experiments: [ExperimentConfig] = []
+        for json in experimentJSONs {
+            guard let data = try? JSONSerialization.data(withJSONObject: json.foundation),
+                  let experiment = try? JSONDecoder().decode(ExperimentConfig.self, from: data) else {
+                return XCTFail("[\(f.id)] setup.config.experiment(s) did not decode as the SDK's ExperimentConfig")
+            }
+            experiments.append(experiment)
+        }
+        guard let experiment = experiments.first else {
+            return XCTFail("[\(f.id)] setup.config.experiment(s) is missing")
         }
 
         // decode_only — assert the served doc's field map through the SDK's own Codable.
@@ -2319,38 +2329,41 @@ final class SharedFixtureTests: XCTestCase {
         }
         let activeEntityId = config["active_entity_id"]?.stringValue ?? entityId
 
-        // Force the bucket the fixture declares.
-        let experimentId = experiment.id ?? ""
-        let assigned = f.setup.experiment_assignments?.objectValue?[experimentId]?.stringValue
-        let forcedVariants = (experiment.variants ?? []).map { v in
-            ExperimentVariant(
-                id: v.id,
-                weight: (v.id == assigned) ? 1.0 : 0.0,
-                payload: v.payload,
-                config_ref: v.config_ref,
-                is_control: v.is_control,
-                variant_doc: v.variant_doc
+        // Force the bucket the fixture declares, per experiment.
+        var served: [String: ExperimentConfig] = [:]
+        for experiment in experiments {
+            let experimentId = experiment.id ?? ""
+            let assigned = f.setup.experiment_assignments?.objectValue?[experimentId]?.stringValue
+            let forcedVariants = (experiment.variants ?? []).map { v in
+                ExperimentVariant(
+                    id: v.id,
+                    weight: (v.id == assigned) ? 1.0 : 0.0,
+                    payload: v.payload,
+                    config_ref: v.config_ref,
+                    is_control: v.is_control,
+                    variant_doc: v.variant_doc
+                )
+            }
+            served[experimentId] = ExperimentConfig(
+                id: experiment.id,
+                name: experiment.name,
+                status: experiment.status,
+                type: experiment.type,
+                salt: experiment.salt,
+                platforms: experiment.platforms,
+                variants: forcedVariants,
+                traffic_allocation: experiment.traffic_allocation,
+                targeting: experiment.targeting,
+                started_at_ms: experiment.started_at_ms
             )
         }
-        let forced = ExperimentConfig(
-            id: experiment.id,
-            name: experiment.name,
-            status: experiment.status,
-            type: experiment.type,
-            salt: experiment.salt,
-            platforms: experiment.platforms,
-            variants: forcedVariants,
-            traffic_allocation: experiment.traffic_allocation,
-            targeting: experiment.targeting,
-            started_at_ms: experiment.started_at_ms
-        )
         if let userId = f.setup.session_data?.objectValue?["user_id"]?.stringValue {
             h.identityManager.identify(userId: userId, traits: [:])
         }
 
         let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixture.\(UUID().uuidString)")
         let rcm = RemoteConfigManager(firestorePath: "orgs/o/apps/a", configCache: cache, configTTL: 3600)
-        rcm._injectExperimentsForTesting([experimentId: forced])
+        rcm._injectExperimentsForTesting(served)
         for (path, doc) in (config["variant_docs"]?.objectValue ?? [:]) {
             if let docConfig = doc.objectValue?["config"]?.objectValue {
                 rcm._injectVariantDocForTesting(path: path, config: docConfig.mapValues { $0.foundation })
