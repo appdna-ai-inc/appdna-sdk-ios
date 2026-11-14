@@ -20,6 +20,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **An onboarding step's options are reachable by UI tests and VoiceOver.** An invisible helper view behind every
+  scrolling onboarding step was the size of the whole step, and the accessibility tree showed it as an empty element
+  over the step's content. Touch was not affected, but XCUITest reported a list Select's options as not hittable,
+  and a test or VoiceOver user exploring by touch could land on the empty element instead of an option. The helper
+  is now a single point, hidden from accessibility.
+
 - **A push image URL that answers an error no longer shows as a broken attachment.** The Notification Service
   Extension attached whatever body the image download returned, so an expired link's 403 page or a 404 was attached as
   the image. Only a successful response whose body is an image or video is attached now; otherwise the push shows as

@@ -453,6 +453,9 @@ struct AppDNAEnclosingScrollViewFinder: UIViewRepresentable {
     func makeUIView(context: Context) -> Probe {
         let p = Probe()
         p.isUserInteractionEnabled = false
+        // Invisible to accessibility as well as to touch (#1827): see `appdnaStepScrollContent`.
+        p.isAccessibilityElement = false
+        p.accessibilityElementsHidden = true
         p.found = found
         return p
     }
@@ -467,8 +470,20 @@ extension View {
     }
 
     /// Placed inside a step's `ScrollView` content: hands the UIKit scroll view to the coordinator.
+    ///
+    /// 🔴 #1827 — the probe is a POINT, not a backdrop. As `background(finder)` it was sized to the whole
+    /// step content, and SwiftUI hosts a representable in a UIKit view of that size. Touch never reached it
+    /// (the probe has interaction off), but the accessibility tree did: XCUITest and VoiceOver saw an empty
+    /// element over the step, ordered above most of its rows, so a list select's options read
+    /// `isHittable == false` and a test tapping them by element landed elsewhere. A 1×1 probe in the
+    /// top-leading corner finds the same scroll view (it walks `superview`), covers nothing, and is hidden.
     func appdnaStepScrollContent(_ coordinator: AppDNAStepScrollCoordinator) -> some View {
-        background(AppDNAEnclosingScrollViewFinder { coordinator.attach($0) })
+        background(alignment: .topLeading) {
+            AppDNAEnclosingScrollViewFinder { coordinator.attach($0) }
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
     }
 }
 
