@@ -64,15 +64,16 @@ final class PlanSelectionCircleRenderTests: XCTestCase {
 
     private let magenta = { (r: Int, g: Int, b: Int) in r > 180 && g < 110 && b > 180 }
 
-    private func plansPaywall(_ style: String) -> String {
-        """
+    private func plansPaywall(_ style: String, selectedText: String? = nil) -> String {
+        let text = selectedText.map { ", \"selected_text_color\": \"\($0)\"" } ?? ""
+        return """
         {
           "id": "render_circle_\(style)",
           "layout": {
             "type": "stack",
             "background": { "type": "color", "value": "#FFFFFF" },
             "sections": [
-              { "id": "p", "type": "plans", "config": { "plan_display_style": "\(style)", "selected_border_color": "#FF00FF",
+              { "id": "p", "type": "plans", "config": { "plan_display_style": "\(style)", "selected_border_color": "#FF00FF"\(text),
                 "plans": [
                   { "id": "plan_a", "product_id": "app.synthetic.annual", "label": "Plan", "price_display": "$1", "is_default": true }
                 ] } }
@@ -103,11 +104,23 @@ final class PlanSelectionCircleRenderTests: XCTestCase {
         return interior
     }
 
-    func testEveryCardLayoutDrawsTheSelectionCircle() throws {
-        for style in ["vertical_stack", "grid", "horizontal_scroll", "mini_cards", "carousel_cards", "single_hero"] {
+    /// The layouts that draw through `PlanCard`: a filled circle inside the selected card's outline.
+    func testThePlanCardLayoutsDrawTheSelectionCircle() throws {
+        for style in ["vertical_stack", "grid", "horizontal_scroll"] {
             let n = interiorMagenta(try render(plansPaywall(style)))
             print("[plan-circle] ios \(style)=\(n)")
             XCTAssertGreaterThan(n, 50, "\(style) drew no selection circle (\(n))")
+        }
+    }
+
+    /// The layouts with their own cards. Their text never takes `selected_text_color`, so with it set to green the
+    /// only green on the page is the circle `PlanSelectionCircle` draws in it. Without the circle the count is 0.
+    func testTheCustomCardLayoutsDrawTheSelectionCircle() throws {
+        let green = { (r: Int, g: Int, b: Int) in r < 90 && g > 150 && b < 90 }
+        for style in ["mini_cards", "carousel_cards", "single_hero"] {
+            let n = count(try render(plansPaywall(style, selectedText: "#00C000")), topFraction: 1.0, green)
+            print("[plan-circle] ios \(style) circle-green=\(n)")
+            XCTAssertGreaterThan(n, 150, "\(style) drew no selection circle (\(n) green pixels)")
         }
     }
 }
