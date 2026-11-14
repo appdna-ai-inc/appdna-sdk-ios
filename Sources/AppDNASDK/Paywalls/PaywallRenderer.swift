@@ -277,7 +277,11 @@ struct PaywallRenderer: View {
     @State private var promoState: PromoState = .idle
 
     /// The paywall's own accent: its CTA's colour when authored, else the brand accent.
-    private var paywallAccentHex: String { config.cta?.authoredBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1") }
+    private var paywallAccentHex: String { PaywallAccent.ctaHex(config.cta) ?? (AppDNA.brandAccentHex ?? "#6366F1") }
+    /// The social-proof trial badge's colour: its own `badge_color`, else the paywall's accent, else the brand accent.
+    private func trialBadgeHex(_ data: PaywallSectionData?) -> String {
+        PaywallAccent.trialBadgeHex(data, cta: config.cta) ?? (AppDNA.brandAccentHex ?? "#6366F1")
+    }
 
     var body: some View {
         // The page's background travels down the hierarchy, so every default text colour is
@@ -286,7 +290,7 @@ struct PaywallRenderer: View {
         // the screens surface once lost its styling.
         content
             .environment(\.paywallBackgroundHex, pageBackgroundHex)
-            .environment(\.paywallAccentHex, config.cta?.authoredBgColor)
+            .environment(\.paywallAccentHex, PaywallAccent.ctaHex(config.cta))
             // The viewport the pinned-zone cap is measured against.
             .background(GeometryReader { geo in
                 Color.clear.onAppear { paywallViewportHeight = geo.size.height }
@@ -1295,22 +1299,24 @@ struct PaywallRenderer: View {
                 data: data,
                 valueTextStyle: style?.elements?["value"]?.textStyle))
         case "trial_badge":
+            // The authored badge colour, else the paywall's accent. Android `trial_badge` is the same chain.
+            let badgeHex = trialBadgeHex(data)
             if let ts = style?.elements?["value"]?.textStyle {
                 return AnyView(Text(loc("social_proof.trial_badge", data?.text ?? "Free Trial"))
                     .applyTextStyle(ts, defaults: TextStyleDefaults(
                         font: .caption.weight(.semibold), size: 12, weight: 600,
-                        color: Color(hex: paywallAccentHex)))
+                        color: Color(hex: badgeHex)))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: paywallAccentHex).opacity(0.15))
+                    .background(Color(hex: badgeHex).opacity(0.15))
                     .clipShape(Capsule()))
             } else {
                 return AnyView(Text(loc("social_proof.trial_badge", data?.text ?? "Free Trial"))
                     .font(.caption.weight(.semibold))
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
-                    .background(Color(hex: paywallAccentHex).opacity(0.15))
-                    .foregroundColor(Color(hex: paywallAccentHex))
+                    .background(Color(hex: badgeHex).opacity(0.15))
+                    .foregroundColor(Color(hex: badgeHex))
                     .clipShape(Capsule()))
             }
         default: // app_rating

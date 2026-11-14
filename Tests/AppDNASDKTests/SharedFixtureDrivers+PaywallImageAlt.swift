@@ -51,6 +51,40 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_paywall_trial_badge_color REAL: `PaywallConfig` decoding of a paywall with one social-proof section
+    // and a cta → `PaywallAccent.trialBadgeHex` (the badge) and `PaywallAccent.ctaHex` (the paywall's accent).
+    func runPaywallTrialBadgeColor(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_paywall_trial_badge_color needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let section = obj["section"]?.foundation as? [String: Any],
+                  let cta = obj["cta"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: [
+                      "id": "pw_badge_\(name)", "cta": cta,
+                      "layout": ["type": "stack", "sections": [["id": "s1", "type": "social_proof", "config": section]]],
+                  ] as [String: Any]) else {
+                XCTFail("[\(f.id)] case \(name): needs section and cta")
+                return NSNull()
+            }
+            let decoded: PaywallConfig
+            do {
+                decoded = try JSONDecoder().decode(PaywallConfig.self, from: data)
+            } catch {
+                XCTFail("[\(f.id)] case \(name): the paywall did not decode: \(error)")
+                return NSNull()
+            }
+            let proof = decoded.sections.first(where: { $0.type == "social_proof" })
+            return [
+                "badge": PaywallAccent.trialBadgeHex(proof?.data, cta: decoded.cta).map { $0 as Any } ?? NSNull(),
+                "accent": PaywallAccent.ctaHex(decoded.cta).map { $0 as Any } ?? NSNull(),
+            ] as [String: Any]
+        }
+    }
+
     func runDateWheel(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_date_wheel needs action.cases")

@@ -379,6 +379,8 @@ struct PaywallSectionData: Codable {
     let onExpireAction: String?    // hide | show_expired_text | auto_advance
     let expiredText: String?
     let accentColor: String?
+    /// social_proof `trial_badge`: the badge's colour (console "Badge Color"). Unset: the paywall's accent.
+    var badgeColor: String? = nil
     let backgroundColor: String?
     let fontSize: CGFloat?
     let alignment: String?
@@ -626,6 +628,7 @@ struct PaywallSectionData: Codable {
         case onExpireAction = "on_expire_action"
         case expiredText = "expired_text"
         case accentColor = "accent_color"
+        case badgeColor = "badge_color"
         case backgroundColor = "background_color"
         case fontSize = "font_size"
         case alignment, color, links, thickness
@@ -1080,7 +1083,7 @@ struct PaywallCTA: Codable {
     /// Resolved bg_color — from style object, direct field, or default
     var resolvedBgColor: String { styleObj?.bg_color ?? bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1") }
     /// The authored background only: the paywall's own accent, for the elements with no colour field of their own.
-    var authoredBgColor: String? { styleObj?.bg_color ?? bg_color }
+    var authoredBgColor: String? { styleObj?.bg_color.flatMap { $0.isEmpty ? nil : $0 } ?? bg_color }
     /// Resolved text_color — from style object, direct field, or default
     var resolvedTextColor: String { styleObj?.text_color ?? text_color ?? "#FFFFFF" }
     /// Resolved corner_radius — from style object, direct field, or default
@@ -1463,6 +1466,22 @@ public struct PostPurchaseFailureConfig: Codable {
         if let authored { return authored }
         if errorType == "userCancelled" || errorType == "pending" { return nil }
         return PostPurchaseFailureConfig(action: "show_error", message: nil, retry_text: nil, allow_dismiss: nil)
+    }
+}
+
+/// The colour of the paywall elements that have no colour field of their own (a plan's trial line and feature
+/// checks), and of the trial badge: the paywall's own accent, which is its CTA's authored colour. Nil means
+/// nothing is authored, and the brand accent applies. ONE rule; Android `PaywallAccent` is the same, and
+/// `packages/sdk-shared-fixtures/dto_parsing/paywall_trial_badge_color.fixture.json` pins both.
+enum PaywallAccent {
+    /// The CTA's authored colour, as its button resolves it: `cta.style.bg_color`, then `cta.bg_color`.
+    static func ctaHex(_ cta: PaywallCTA?) -> String? {
+        cta?.authoredBgColor.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The social-proof trial badge: its own `badge_color` (console "Badge Color"), else the paywall's accent.
+    static func trialBadgeHex(_ data: PaywallSectionData?, cta: PaywallCTA?) -> String? {
+        data?.badgeColor.flatMap { $0.isEmpty ? nil : $0 } ?? ctaHex(cta)
     }
 }
 

@@ -20,6 +20,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The trial badge, a plan's trial line and its feature checks match the paywall's own colours.** With no colour
+  of their own they were drawn in the brand accent, or indigo when none is set, whatever the paywall's theme. They now
+  take the paywall's accent: the CTA's authored colour (`cta.style.bg_color`, then `cta.bg_color`), then the brand
+  accent. The social-proof trial badge also honours its own `badge_color` (the console's "Badge Color"), which was
+  ignored. Shared fixture `dto_parsing/paywall_trial_badge_color`.
+
 - **A failed purchase always tells the user.** A paywall with no `post_purchase.on_failure` showed nothing when a
   purchase failed (a product the store does not have, a declined card, a store outage): the button simply became
   tappable again. It now shows the error banner, "Payment failed. Please try again.", as `show_error` does. A
