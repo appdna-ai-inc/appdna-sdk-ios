@@ -20,6 +20,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A failed purchase always tells the user.** A paywall with no `post_purchase.on_failure` showed nothing when a
+  purchase failed (a product the store does not have, a declined card, a store outage): the button simply became
+  tappable again. It now shows the error banner, "Payment failed. Please try again.", as `show_error` does. A
+  cancelled or pending purchase stays silent. An authored `on_failure` is unchanged.
+
 - **A generated message's or paywall's animation and video play on both platforms.** An in-app modal draws a
   video hero (`video_url`), muted and looping with no controls, as the full-screen message and Android already did;
   before, it skipped to the image. A paywall `video` / `video_background` section honours `video_autoplay` and
