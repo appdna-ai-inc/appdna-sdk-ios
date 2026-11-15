@@ -8,6 +8,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Buying a plan the user already owns completes the paywall, as on Android.** A re-buy of an owned subscription or
+  non-consumable now calls `onPaywallPurchaseCompleted`, so a host that closes its paywall there closes it; before,
+  the paywall stayed open and nothing happened. Revenue is unchanged: it still emits `purchase_restored` (reason
+  `item_already_owned`), not `purchase_completed`, and the billing delegate's `onPurchaseCompleted` stays silent.
+
 - **A date-and-time or time wheel with no default opens at 12:00 on both platforms.** With nothing saved and no
   `default_date_value`, the wheel opens on today at noon in the app's time zone. iOS meant noon but took it in the
   phone's zone and drew it in the app's, so it could open on another hour (20:00 for a phone in California with

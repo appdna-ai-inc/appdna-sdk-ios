@@ -14,7 +14,8 @@
 //   trial_price                REAL: TrialDetection.isFreeTrial + chargedPrice + PurchaseSuccessEvents.properties.
 //   late_purchase              REAL: LatePurchaseProcessor.process (LatePurchaseFilter.decide + the queue
 //                              write + the emit) into a real PurchaseDeliveryQueue.
-//   rebuy_already_owned        REAL: StoreKit2Bridge.isAlreadyOwned + PurchaseSuccessEvents.emitAlreadyOwned.
+//   rebuy_already_owned        REAL: StoreKit2Bridge.isAlreadyOwned + PurchaseSuccessEvents.emitAlreadyOwned +
+//                              PaywallManager.reportPaywallPurchaseCompleted.
 //   decode_verify_reply        REAL: the `/billing/verify` reply decoder (`VerifyReply` + VerifiedPurchase.parse)
 //                              that ReceiptVerifier.verify runs on the server's bytes.
 //   delivery_queue             REAL: PurchaseDeliveryQueue (identity rule, drain) + LatePurchaseProcessor
@@ -387,7 +388,9 @@ extension SharedFixtureTests {
             price: config["price"]?.doubleValue ?? 0,
             currency: config["currency"]?.stringValue ?? "USD",
             tracker: h.tracker,
-            delegate: BillingDelegateSpy(harness: h)
+            delegate: BillingDelegateSpy(harness: h),
+            paywallId: f.action.raw["paywall_id"]?.stringValue ?? "",
+            paywallDelegate: PaywallDelegateSpy(harness: h)
         )
         h.state["already_owned"] = owned
     }
@@ -403,7 +406,9 @@ extension SharedFixtureTests {
         price: Double,
         currency: String,
         tracker: EventTracker,
-        delegate: AppDNABillingDelegate
+        delegate: AppDNABillingDelegate,
+        paywallId: String = "",
+        paywallDelegate: AppDNAPaywallDelegate? = nil
     ) async -> Bool {
         let owned = StoreKit2Bridge.isAlreadyOwned(preCallIds: preCallIds, transactionId: transactionId)   // REAL
         // REAL — the live caller's `onPurchaseCompleted` delivery `StoreKit2Bridge.purchase` makes after
@@ -432,6 +437,12 @@ extension SharedFixtureTests {
             PurchaseSuccessEvents.emitAlreadyOwned(tracker: tracker, paywallId: nil, result: result)
         } else {
             PurchaseSuccessEvents.emit(tracker: tracker, paywallId: nil, result: result)
+        }
+        // REAL — the paywall delegate's success `PaywallManager.handlePurchase` reports for either result.
+        if let paywallDelegate {
+            await MainActor.run {
+                PaywallManager.reportPaywallPurchaseCompleted(paywallId: paywallId, result: result, delegate: paywallDelegate)
+            }
         }
         return owned
     }

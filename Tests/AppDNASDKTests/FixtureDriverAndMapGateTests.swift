@@ -1,7 +1,8 @@
 // FixtureDriverAndMapGateTests.swift
 //
 // iOS fixes without a better home:
-//   - the re-buy fixture driver's positive control (`alreadyOwned == false` delivers exactly once);
+//   - the re-buy fixture driver's positive control (`alreadyOwned == false` delivers exactly once), and the
+//     paywall completion both results report;
 //   - nothing in the SDK posts a notification except through `NotificationCenterSlot`, so a push
 //     fixture's `notification_posted` (read from the slot) means something;
 //   - the interactive map never overrides the user's pan / zoom (`MapCameraGate`).
@@ -23,12 +24,20 @@ final class RebuyDriverPositiveControlTests: XCTestCase {
         }
     }
 
-    private func run(preCall: Set<String>) async -> (owned: Bool, spy: Spy, events: [String]) {
+    private final class PaywallSpy: AppDNAPaywallDelegate {
+        var completed: [String] = []
+        func onPaywallPurchaseCompleted(paywallId: String, productId: String, transaction: TransactionInfo) {
+            completed.append("\(paywallId)|\(productId)")
+        }
+    }
+
+    private func run(preCall: Set<String>) async -> (owned: Bool, spy: Spy, events: [String], paywall: [String]) {
         let keychain = KeychainStore(service: "ai.appdna.sdk.test.rebuy.\(UUID().uuidString)")
         let tracker = EventTracker(identityManager: IdentityManager(keychainStore: keychain))
         var events: [String] = []
         tracker.eventSink = { events.append($0.event_name) }
         let spy = Spy()
+        let paywall = PaywallSpy()
         let owned = await SharedFixtureTests.driveRebuy(
             preCallIds: preCall,
             transactionId: "2000000000000001",
@@ -36,9 +45,11 @@ final class RebuyDriverPositiveControlTests: XCTestCase {
             price: 9.99,
             currency: "USD",
             tracker: tracker,
-            delegate: spy
+            delegate: spy,
+            paywallId: "pw",
+            paywallDelegate: paywall
         )
-        return (owned, spy, events)
+        return (owned, spy, events, paywall.completed)
     }
 
     /// The positive control: a NEW purchase through the same driver delivers exactly one
@@ -49,13 +60,17 @@ final class RebuyDriverPositiveControlTests: XCTestCase {
         XCTAssertFalse(r.owned)
         XCTAssertEqual(r.spy.completed, ["lifetime|2000000000000001"])
         XCTAssertEqual(r.events, ["purchase_completed"])
+        XCTAssertEqual(r.paywall, ["pw|lifetime"])
     }
 
-    func testARebuyDeliversNothingAndBooksNoRevenue() async {
+    /// The billing delegate hears nothing and no revenue is booked — but the paywall's own completion fires, as on
+    /// Android: the user owns the plan, and a host closes its paywall on it.
+    func testARebuyBooksNoRevenueButCompletesThePaywall() async {
         let r = await run(preCall: ["2000000000000001"])
         XCTAssertTrue(r.owned)
         XCTAssertEqual(r.spy.completed, [])
         XCTAssertEqual(r.events, ["purchase_restored"])
+        XCTAssertEqual(r.paywall, ["pw|lifetime"])
     }
 }
 

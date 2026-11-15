@@ -9,6 +9,7 @@
 // `onEventTracked` for their own pipeline. It lives here because the gap it closes is ours: before
 // it, an event that renders nothing could be proven on Android (logcat) and only inferred here.
 import Foundation
+import UIKit
 import AppDNASDK
 
 final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPaywallDelegate, AppDNADeepLinkDelegate, AppDNAOnboardingDelegate {
@@ -57,6 +58,24 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
     func onPaywallAction(paywallId: String, action: PaywallAction) {
         record("action:" + action.rawValue)
         note("paywall action: " + action.rawValue)
+    }
+
+    /*
+     The paywall's own purchase success, mirrored as `paywall_purchase_completed` so a walk can tell it from the
+     tracked `purchase_completed` (revenue) — a re-buy of an owned plan fires this and tracks `purchase_restored`.
+     With `-appdnaCloseOnPurchase YES` the host also closes the paywall here, as the documented integration does
+     when the paywall authors no `post_purchase.on_success`. Off by default, so other walks keep the paywall up.
+     */
+    func onPaywallPurchaseCompleted(paywallId: String, productId: String, transaction: TransactionInfo) {
+        record("paywall_purchase_completed")
+        note("paywall purchase completed: " + productId)
+        guard UserDefaults.standard.bool(forKey: "appdnaCloseOnPurchase") else { return }
+        DispatchQueue.main.async {
+            let root = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.rootViewController
+            var top = root
+            while let next = top?.presentedViewController { top = next }
+            if top !== root { top?.dismiss(animated: true) }
+        }
     }
 
     /// A deep link the SDK delivered (`AppDNA.deepLinks.handleURL`), mirrored so a walk can read it.

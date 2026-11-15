@@ -319,6 +319,55 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
         }
     }
 
+    // MARK: - 6. A re-buy of an owned plan completes the paywall
+
+    /*
+     A user who already owns Monthly taps Buy on it again. StoreKit returns the transaction they already have, so the
+     SDK books no revenue (`purchase_restored`, reason item_already_owned; no `purchase_completed`) — and, as on Android,
+     the paywall's `onPaywallPurchaseCompleted` still fires, so a host that closes its paywall there closes it. The grid
+     paywall authors no `post_purchase.on_success`, so only the host can close it: an open paywall 30 s after the tap
+     means the callback never came (what iOS did before; the first leg, a new purchase, is the harness control).
+    */
+    @available(iOS 17.0, *)
+    func testARebuyOfAnOwnedPlanCompletesThePaywallAndTheHostClosesIt() throws {
+        guard let apiKey, let grid = paywall("grid") else { throw XCTSkip("needs grid= in TestCredentials") }
+        let session = try storeSession()
+        defer { session.clearTransactions() }
+        func tokens(_ app: XCUIApplication) -> [String] {
+            let events = app.staticTexts["host.lastEvents"]
+            _ = events.waitForExistence(timeout: 5)
+            return (events.exists ? events.label : "").split(separator: " ").map(String.init)
+        }
+        var report: [String] = []
+        for leg in ["new-purchase", "rebuy"] {
+            let app = try open(grid, apiKey: apiKey, name: "rebuy-\(leg)", closeOnPurchase: true)
+            try planRow(app, "Monthly").tap(); sleep(1)
+            let before = session.allTransactions().count
+            try XCTUnwrap(ctaButton(app)).tap()
+            sleep(2); shot(app, "rebuy-\(leg)-2s")
+            let closed = waitUntil(timeout: 30) { self.ctaButton(app) == nil }
+            shot(app, "rebuy-\(leg)-after")
+            let t = tokens(app)
+            let ledger = session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }
+            let line = "\(leg): closed=\(closed) paywallCompleted=\(t.contains("paywall_purchase_completed")) "
+                + "completed=\(t.contains("purchase_completed")) restored=\(t.contains("purchase_restored")) "
+                + "newTransactions=\(session.allTransactions().count - before) ledger=\(ledger) events=\(t)"
+            NSLog("[j4-rebuy] \(line)")
+            report.append(line)
+            XCTAssertTrue(t.contains("paywall_purchase_completed"), "[\(leg)] onPaywallPurchaseCompleted did not fire")
+            XCTAssertTrue(closed, "[\(leg)] the paywall is still open 30 s after the purchase")
+            if leg == "rebuy" {
+                XCTAssertTrue(t.contains("purchase_restored"), "[rebuy] no purchase_restored")
+                XCTAssertFalse(t.contains("purchase_completed"), "[rebuy] a re-buy booked revenue")
+                XCTAssertEqual(session.allTransactions().count, before, "[rebuy] StoreKit made a new transaction: not a re-buy")
+            } else {
+                XCTAssertTrue(t.contains("purchase_completed"), "[new-purchase] the harness control bought nothing")
+            }
+            app.terminate()
+        }
+        NSLog("[j4-rebuy] summary:\n\(report.joined(separator: "\n"))")
+    }
+
     // MARK: - helpers
 
     @available(iOS 17.0, *)
@@ -334,9 +383,11 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
     }
 
     /// Launches the host on one paywall, waits for the remote config, and presents it.
-    private func open(_ paywallId: String, apiKey: String, name: String) throws -> XCUIApplication {
+    private func open(_ paywallId: String, apiKey: String, name: String, closeOnPurchase: Bool = false) throws -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-appdnaApiKey", apiKey, "-appdnaPaywall", paywallId]
+        // The host closes the paywall from `onPaywallPurchaseCompleted`, as the documented integration does.
+        if closeOnPurchase { app.launchArguments += ["-appdnaCloseOnPurchase", "YES"] }
         app.launch()
         XCTAssertTrue(app.staticTexts["host.title"].waitForExistence(timeout: 20))
         let events = app.staticTexts["host.lastEvents"]

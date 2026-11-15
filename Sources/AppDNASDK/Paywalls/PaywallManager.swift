@@ -468,8 +468,8 @@ final class PaywallManager {
                 // `subscription_started`, the MTPU-metered event iOS never emitted. Both carry the same
                 // envelope; the rule lives in `PurchaseSuccessEvents` so StoreKit2 / RevenueCat / Adapty
                 // all obey it from the single result they each return. A re-buy of an owned item books
-                // no revenue: one `purchase_restored{reason: item_already_owned}` and no
-                // `onPaywallPurchaseCompleted`.
+                // no revenue: one `purchase_restored{reason: item_already_owned}` and no billing-level
+                // `onPurchaseCompleted` — but the paywall's own completion still fires (below), as on Android.
                 let converted = !result.alreadyOwned
                 if converted {
                     PurchaseSuccessEvents.emit(tracker: eventTracker, paywallId: paywallId, result: result)
@@ -485,18 +485,7 @@ final class PaywallManager {
                 // auto-dismiss must not wait on `/billing/entitlements` (`refreshInBackground`).
                 AppDNA.billing.refreshInBackground()
                 DispatchQueue.main.async { [weak self] in
-                    if converted {
-                        delegate?.onPaywallPurchaseCompleted(
-                            paywallId: paywallId,
-                            productId: result.productId,
-                            transaction: TransactionInfo(
-                                transactionId: result.transactionId,
-                                productId: result.productId,
-                                purchaseDate: Date(),
-                                environment: result.environment ?? StoreKitEnvironment.fallback
-                            )
-                        )
-                    }
+                    Self.reportPaywallPurchaseCompleted(paywallId: paywallId, result: result, delegate: delegate)
                     // Post-purchase success action
                     self?.handlePostPurchaseSuccess(
                         config: config.post_purchase?.on_success,
@@ -842,5 +831,24 @@ enum PurchaseFailedProps {
         if let paywallId { props["paywall_id"] = paywallId }
         if let reason { props["reason"] = reason }
         return BillingEventProps.marked(props)
+    }
+}
+
+extension PaywallManager {
+    /// The paywall delegate's purchase success, for every purchase that leaves the user owning the plan — a re-buy of
+    /// one they already own (`alreadyOwned`) included, as Android does. The user owns it either way, and a host closes
+    /// its paywall on this callback. Revenue is a separate matter: an owned re-buy emits `purchase_restored`, not
+    /// `purchase_completed`, and the billing delegate's `onPurchaseCompleted` stays silent for it.
+    static func reportPaywallPurchaseCompleted(paywallId: String, result: PurchaseResult, delegate: AppDNAPaywallDelegate?) {
+        delegate?.onPaywallPurchaseCompleted(
+            paywallId: paywallId,
+            productId: result.productId,
+            transaction: TransactionInfo(
+                transactionId: result.transactionId,
+                productId: result.productId,
+                purchaseDate: Date(),
+                environment: result.environment ?? StoreKitEnvironment.fallback
+            )
+        )
     }
 }
