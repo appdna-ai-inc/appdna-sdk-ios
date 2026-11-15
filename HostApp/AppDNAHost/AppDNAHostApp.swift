@@ -120,6 +120,7 @@ enum Launch {
         #if DEBUG
         armRootSwapIfAsked()
         seedOnboardingCacheIfAsked()
+        seedPaywallCacheIfAsked()
         probeWidgetsIfAsked()
         #endif
 
@@ -189,6 +190,16 @@ enum Launch {
               let data = try? Data(contentsOf: url) else { return }
         UserDefaults(suiteName: "ai.appdna.sdk.config")?.set(data, forKey: "onboarding")
         NSLog("AppDNA-E2E seeded the onboarding cache from \(name).json")
+    }
+
+    /// The same for paywalls: `-appdnaSeedPaywalls <name>` writes `WalkFlows/<name>.json` (the published shape:
+    /// `{"paywalls": {<id>: <paywall>}}`) into the SDK's paywall cache before `configure`. Debug-only and opt-in.
+    static func seedPaywallCacheIfAsked() {
+        guard let name = arg("appdnaSeedPaywalls"),
+              let url = Bundle.main.url(forResource: name, withExtension: "json"),
+              let data = try? Data(contentsOf: url) else { return }
+        UserDefaults(suiteName: "ai.appdna.sdk.config")?.set(data, forKey: "paywalls")
+        NSLog("AppDNA-E2E seeded the paywall cache from \(name).json")
     }
 
     /*

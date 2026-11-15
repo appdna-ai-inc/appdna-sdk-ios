@@ -1,0 +1,76 @@
+{
+ "paywalls": {
+  "render_walk_pw": {
+   "id": "render_walk_pw",
+   "name": "Render walk paywall",
+   "placement": "render_walk_pw",
+   "background": {
+    "type": "color",
+    "value": "#FFFFFF"
+   },
+   "sections": [
+    {
+     "id": "hdr",
+     "type": "header",
+     "data": {
+      "title": "Icons walk"
+     }
+    },
+    {
+     "id": "grid",
+     "type": "icon_grid",
+     "data": {
+      "columns": 3,
+      "items": [
+       {
+        "icon": "bolt.fill",
+        "label": "Bolt"
+       },
+       {
+        "icon": "gift.fill",
+        "label": "Gift"
+       },
+       {
+        "icon": "crown.fill",
+        "label": "Crown"
+       },
+       {
+        "icon": "sparkles",
+        "label": "Sparkles"
+       },
+       {
+        "icon": "chart.line.uptrend.xyaxis",
+        "label": "Trend"
+       },
+       {
+        "icon": "infinity",
+        "label": "Infinity"
+       }
+      ]
+     }
+    },
+    {
+     "id": "g_default",
+     "type": "guarantee",
+     "data": {
+      "guarantee_text": "Default guarantee badge"
+     }
+    },
+    {
+     "id": "g_shield",
+     "type": "guarantee",
+     "data": {
+      "guarantee_text": "Shield guarantee badge",
+      "icon": "shield.fill"
+     }
+    }
+   ],
+   "cta": {
+    "text": "Continue"
+   },
+   "dismiss": {
+    "type": "x_button"
+   }
+  }
+ }
+}

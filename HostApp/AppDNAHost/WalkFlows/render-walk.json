@@ -1,0 +1,306 @@
+{
+ "flows": {
+  "render_walk_flow": {
+   "id": "render_walk_flow",
+   "name": "Render walk",
+   "version": 1,
+   "status": "active",
+   "settings": {
+    "allow_skip": false,
+    "show_progress": false
+   },
+   "steps": [
+    {
+     "id": "dark_plan",
+     "name": "Dark plan",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "color",
+       "color": "#0B1220"
+      },
+      "content_blocks": [
+       {
+        "id": "dp_h",
+        "type": "heading",
+        "level": 1,
+        "text": "Your plan on a dark step"
+       },
+       {
+        "id": "plan_tl",
+        "type": "timeline",
+        "timeline_items": [
+         {
+          "id": "a",
+          "title": "Week one: start small",
+          "subtitle": "Ten minutes a day",
+          "status": "completed"
+         },
+         {
+          "id": "b",
+          "title": "Week two: build the habit",
+          "subtitle": "Twenty minutes a day",
+          "status": "current"
+         },
+         {
+          "id": "c",
+          "title": "Week three: make it yours",
+          "subtitle": "Your own pace",
+          "status": "upcoming"
+         }
+        ]
+       },
+       {
+        "id": "dp_next",
+        "type": "button",
+        "text": "Next",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "zones",
+     "name": "Zones",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "color",
+       "color": "#FFFFFF"
+      },
+      "content_blocks": [
+       {
+        "id": "z_h",
+        "type": "heading",
+        "level": 2,
+        "text": "Text on the white step"
+       },
+       {
+        "id": "z_sec",
+        "type": "section_background",
+        "height": 200,
+        "field_config": {
+         "background_zones": [
+          {
+           "weight": 1,
+           "color": "#0F172A"
+          }
+         ],
+         "content_arrangement": "center"
+        },
+        "stack_children": [
+         {
+          "id": "z_t",
+          "type": "text",
+          "text": "Text on a dark zone"
+         },
+         {
+          "id": "z_tl",
+          "type": "timeline",
+          "compact": true,
+          "timeline_items": [
+           {
+            "id": "z1",
+            "title": "Timeline in the dark zone",
+            "status": "completed"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "id": "z_row",
+        "type": "row",
+        "row_direction": "vertical",
+        "field_config": {
+         "bg_color": "transparent"
+        },
+        "children": [
+         {
+          "id": "z_rt",
+          "type": "text",
+          "text": "Text in a transparent row"
+         }
+        ]
+       },
+       {
+        "id": "z_row2",
+        "type": "row",
+        "row_direction": "vertical",
+        "field_config": {
+         "bg_color": "#111827"
+        },
+        "children": [
+         {
+          "id": "z_rt2",
+          "type": "text",
+          "text": "Text in a dark row"
+         }
+        ]
+       },
+       {
+        "id": "z_next",
+        "type": "button",
+        "text": "Next",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "pale",
+     "name": "Pale gradient",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "gradient",
+       "gradient": {
+        "type": "linear",
+        "angle": 180,
+        "stops": [
+         {
+          "color": "#F0FDF4",
+          "position": 0
+         },
+         {
+          "color": "#DCFCE7",
+          "position": 100
+         }
+        ]
+       }
+      },
+      "content_blocks": [
+       {
+        "id": "p_h",
+        "type": "heading",
+        "level": 1,
+        "text": "On a pale gradient"
+       },
+       {
+        "id": "p_t",
+        "type": "text",
+        "text": "This unstyled line must be dark"
+       },
+       {
+        "id": "p_next",
+        "type": "button",
+        "text": "Next",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "rate",
+     "name": "Rate",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "color",
+       "color": "#FFFFFF"
+      },
+      "content_blocks": [
+       {
+        "id": "r_h",
+        "type": "heading",
+        "level": 2,
+        "text": "Rate the walk"
+       },
+       {
+        "id": "r_stars",
+        "type": "rating",
+        "max_stars": 5,
+        "field_id": "stars"
+       },
+       {
+        "id": "r_next",
+        "type": "button",
+        "text": "Next",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "pick",
+     "name": "Pick",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "color",
+       "color": "#FFFFFF"
+      },
+      "content_blocks": [
+       {
+        "id": "k_h",
+        "type": "heading",
+        "level": 2,
+        "text": "Pick one, required"
+       },
+       {
+        "id": "k_seg",
+        "type": "input_segmented",
+        "field_id": "size",
+        "field_label": "Size",
+        "field_required": true,
+        "field_options": [
+         {
+          "id": "s",
+          "label": "Small",
+          "value": "small"
+         },
+         {
+          "id": "m",
+          "label": "Medium",
+          "value": "medium"
+         },
+         {
+          "id": "l",
+          "label": "Large",
+          "value": "large"
+         }
+        ]
+       },
+       {
+        "id": "k_next",
+        "type": "button",
+        "text": "Continue",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "name": "Done",
+     "type": "custom",
+     "config": {
+      "background": {
+       "type": "color",
+       "color": "#FFFFFF"
+      },
+      "content_blocks": [
+       {
+        "id": "d_h",
+        "type": "heading",
+        "level": 2,
+        "text": "Walk finished"
+       },
+       {
+        "id": "d_t",
+        "type": "text",
+        "text": "Stars {{responses.rate.stars}} size {{responses.pick.size}}"
+       },
+       {
+        "id": "d_btn",
+        "type": "button",
+        "text": "Finish",
+        "action": "next"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}
