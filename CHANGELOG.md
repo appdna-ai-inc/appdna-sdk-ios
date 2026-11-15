@@ -34,6 +34,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Text inputs are named for VoiceOver and TalkBack.** A text, number, email, phone, URL, password, textarea or
+  location input, as a content block or a form step's field, now carries its label (else its placeholder) as its
+  accessibility name. The label was drawn as a separate text above the field, so a screen reader landed on an unnamed
+  text field, and UI automation could not find the field by name.
+
 - **A required field's asterisk trails its label when the label wraps.** The `*` was drawn beside the label, so a
   label on two lines left it at the edge of the row next to the first line. It is now part of the label's text, on
   content-block fields and on the legacy form step's fields, on both platforms.

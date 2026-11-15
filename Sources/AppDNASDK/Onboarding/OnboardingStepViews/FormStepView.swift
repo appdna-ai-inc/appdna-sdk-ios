@@ -295,6 +295,7 @@ struct FormStepView: View {
             set: { values[field.id] = $0; errors[field.id] = nil }
         )
         return TextField((field.placeholder ?? "").interpolated(), text: binding)
+            .appdnaTextInputName(FieldAccessibility.name(label: field.label.interpolated(), placeholder: field.placeholder?.interpolated()))
             .appdnaFieldChrome(field, focused: focusedFieldId == field.id, hasError: errors[field.id] != nil)
             .focused($focusedFieldId, equals: field.id)
             .keyboardType(keyboardType(for: field))
@@ -307,6 +308,7 @@ struct FormStepView: View {
             set: { values[field.id] = $0; errors[field.id] = nil }
         )
         return TextEditor(text: binding)
+            .appdnaTextInputName(FieldAccessibility.name(label: field.label.interpolated(), placeholder: field.placeholder?.interpolated()))
             .frame(minHeight: 80, maxHeight: 150)
             .appdnaFieldChrome(
                 field,
@@ -333,6 +335,7 @@ struct FormStepView: View {
         )
         return HStack {
             TextField((field.placeholder ?? "0").interpolated(), text: binding)
+                .appdnaTextInputName(FieldAccessibility.name(label: field.label.interpolated(), placeholder: field.placeholder?.interpolated()))
                 .textFieldStyle(.roundedBorder)
                 .keyboardType(.decimalPad)
             if let unit = field.config?.unit {

@@ -210,7 +210,8 @@ struct FormInputTextBlock: View {
                 textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: inkBackdrop, darkAppearance: inkScheme == .dark).text,
                 tintColor: UnstyledInk.cursor(behind: inkBackdrop, darkAppearance: inkScheme == .dark),
                 placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? UnstyledInk.input(behind: inkBackdrop, darkAppearance: inkScheme == .dark).placeholder,
-                isFocused: $isFocused
+                isFocused: $isFocused,
+                accessibilityLabel: FieldAccessibility.name(label: block.field_label, placeholder: placeholder)
             )
             .frame(height: max(24, inputFontSize + 6))
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -262,6 +263,7 @@ struct FormInputTextAreaBlock: View {
 
             ZStack(alignment: .topLeading) {
                 TextEditor(text: $text)
+                    .appdnaTextInputName(FieldAccessibility.name(label: block.field_label, placeholder: block.field_placeholder))
                     .foregroundColor(textColor)
                     .accentColor(onDark ? .white : nil)
                     // The authored field font applies to a textarea as well, which is
@@ -361,7 +363,8 @@ struct FormInputPasswordBlock: View {
                     returnKeyType: .done,
                     font: fieldInputFont(block),
                     textColor: block.field_style?.text_color.map { UIColor(Color(hex: $0)) } ?? unstyled.text,
-                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? unstyled.placeholder
+                    placeholderColor: block.field_style?.placeholder_color.map { UIColor(Color(hex: $0)) } ?? unstyled.placeholder,
+                    accessibilityLabel: FieldAccessibility.name(label: block.field_label, placeholder: placeholder)
                 )
                 .frame(height: max(24, inputFontSize + 6))
 
@@ -3071,7 +3074,8 @@ struct FormInputLocationPlaceholderBlock: View {
                     // the history goes with every text the holder sets, and with a first edit of the
                     // line that already left the user's own text.
                     clearsUndoOnProgrammaticSet: true,
-                    undoHistoryGeneration: searchCompleter.textSets
+                    undoHistoryGeneration: searchCompleter.textSets,
+                    accessibilityLabel: FieldAccessibility.name(label: block.field_label, placeholder: block.field_placeholder ?? "Search location...")
                 )
                 .frame(height: 24)
                 .onChange(of: searchCompleter.text) { newValue in

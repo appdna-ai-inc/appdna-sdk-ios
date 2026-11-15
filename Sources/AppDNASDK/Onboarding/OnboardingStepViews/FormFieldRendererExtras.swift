@@ -37,6 +37,7 @@ struct PasswordFieldView: View {
                 }
             }
             .textFieldStyle(.roundedBorder)
+            .appdnaTextInputName(FieldAccessibility.name(label: field.label.interpolated(), placeholder: field.placeholder?.interpolated()))
 
             Button {
                 isVisible.toggle()
@@ -65,6 +66,7 @@ struct UrlFieldView: View {
             }
         )
         TextField((field.placeholder ?? "https://").interpolated(), text: binding)
+            .appdnaTextInputName(FieldAccessibility.name(label: field.label.interpolated(), placeholder: field.placeholder?.interpolated()))
             .textFieldStyle(.roundedBorder)
             .keyboardType(.URL)
             .autocapitalization(.none)

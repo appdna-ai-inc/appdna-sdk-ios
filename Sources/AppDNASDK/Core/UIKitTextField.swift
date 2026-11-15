@@ -46,6 +46,9 @@ struct UIKitTextField: UIViewRepresentable {
     /// Each change of this value clears the field's undo history, even when the text is unchanged: the
     /// owner says the history holds text it has replaced, which no undo may bring back. nil: never.
     var undoHistoryGeneration: Int? = nil
+    /// What VoiceOver reads for the field: its visible label, else its placeholder (`FieldAccessibility.name`). The
+    /// label is drawn as a separate `Text` above the field, so without this the field itself had no name.
+    var accessibilityLabel: String? = nil
 
     func makeUIView(context: Context) -> UITextField {
         let tf = MarkedTextReportingField(frame: .zero)
@@ -81,6 +84,9 @@ struct UIKitTextField: UIViewRepresentable {
         }
         if tf.keyboardType != keyboardType {
             tf.keyboardType = keyboardType
+        }
+        if let accessibilityLabel, !accessibilityLabel.isEmpty, tf.accessibilityLabel != accessibilityLabel {
+            tf.accessibilityLabel = accessibilityLabel
         }
         if tf.keyboardAppearance != keyboardAppearance {
             tf.keyboardAppearance = keyboardAppearance
@@ -244,5 +250,81 @@ extension UIKeyboardAppearance {
         case "dark":  return .dark
         default:      return .default
         }
+    }
+}
+
+/// The name a text input is read by: its label as the author wrote it, else its placeholder. Trimmed; empty when the
+/// author gave neither. Android's text fields carry the same name (`fieldAccessibilityName`).
+enum FieldAccessibility {
+    static func name(label: String?, placeholder: String?) -> String {
+        for candidate in [label, placeholder] {
+            if let t = candidate?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty { return t }
+        }
+        return ""
+    }
+}
+
+/// Names the UIKit text input a SwiftUI `TextField`, `SecureField` or `TextEditor` draws, for VoiceOver.
+///
+/// SwiftUI's `.accessibilityLabel` does not reach that input: VoiceOver reads the `UITextField` / `UITextView` itself,
+/// and its name stayed empty (read back from the accessibility tree in `TextInputAccessibilityNameTests`). This probe is
+/// placed behind the field, finds the text input it sits over, and names it. It is invisible to touch and to
+/// accessibility, and sized to the field so it finds that field and no other.
+struct AppDNATextInputName: UIViewRepresentable {
+    let name: String
+
+    final class Probe: UIView {
+        var name = ""
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            apply()
+            // The input may be laid out after the probe: name it again once this pass is done.
+            DispatchQueue.main.async { [weak self] in self?.apply() }
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            apply()
+        }
+        func apply() {
+            guard !name.isEmpty, let window else { return }
+            let mine = convert(bounds, to: window)
+            var ancestor = superview
+            for _ in 0..<8 {
+                guard let a = ancestor else { return }
+                if let field = Self.input(in: a, over: mine, window: window) {
+                    if field.accessibilityLabel != name { field.accessibilityLabel = name }
+                    return
+                }
+                ancestor = a.superview
+            }
+        }
+        private static func input(in view: UIView, over area: CGRect, window: UIWindow) -> UIView? {
+            for s in view.subviews {
+                if s is UITextField || s is UITextView, s.convert(s.bounds, to: window).intersects(area) { return s }
+                if let found = input(in: s, over: area, window: window) { return found }
+            }
+            return nil
+        }
+    }
+
+    func makeUIView(context: Context) -> Probe {
+        let p = Probe()
+        p.isUserInteractionEnabled = false
+        p.isAccessibilityElement = false
+        p.accessibilityElementsHidden = true
+        p.name = name
+        return p
+    }
+
+    func updateUIView(_ uiView: Probe, context: Context) {
+        uiView.name = name
+        uiView.apply()
+    }
+}
+
+extension View {
+    /// Names the text input this SwiftUI field draws (`AppDNATextInputName`); nothing when `name` is empty.
+    func appdnaTextInputName(_ name: String) -> some View {
+        background(AppDNATextInputName(name: name))
     }
 }

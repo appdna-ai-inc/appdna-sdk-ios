@@ -207,7 +207,8 @@ struct LocationFieldView: View {
                     // the history goes with every text the holder sets, and with a first edit of the
                     // line that already left the user's own text.
                     clearsUndoOnProgrammaticSet: true,
-                    undoHistoryGeneration: locationSearch.textSets
+                    undoHistoryGeneration: locationSearch.textSets,
+                    accessibilityLabel: FieldAccessibility.name(label: field.label.interpolated(), placeholder: placeholder)
                 )
                 .frame(height: 20)
                 // Every change, programmatic ones included, goes to the holder's
