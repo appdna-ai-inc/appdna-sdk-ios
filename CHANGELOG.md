@@ -42,6 +42,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A badge with no alignment sits at the leading edge, as on Android and in the console preview.** A top-level
+  `badge` block with neither `horizontal_align` nor `vertical_align` was centred in the step's column, with or without
+  an entrance animation, while Android and the console preview put it on the left. It now sits at the leading edge.
+  A badge with an authored `horizontal_align` is placed as before.
+
 - **Every icon the console offers draws.** Material `shopping_cart`, `account_circle` and `done` had no SF Symbol and drew a
   question mark. A Lucide component name (`CheckCircle`) is now read as `check-circle`, so a mapped icon saved in that
   form draws too.

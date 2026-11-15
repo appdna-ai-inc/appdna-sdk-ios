@@ -176,6 +176,26 @@ private struct ContainerWidthPrefKey: PreferenceKey {
 /// Applied OUTSIDE the sizing frame, which is the whole point: `BlockPositionModifier` runs inside
 /// it, where a block already constrained to 300pt has no room left to move. Only wraps when the
 /// block is both width-constrained and names an alignment, so nothing else changes shape.
+/// A top-level badge with neither `horizontal_align` nor `vertical_align` is drawn at the leading edge.
+///
+/// The column is a centring `VStack`, so a badge the author did not place was centred here while Android
+/// (a `Column` that starts its children at the leading edge) and the console preview (`horizontal_align`
+/// unset = `left`) both put it on the left. A block that names either alignment is placed by
+/// `BlockPositionModifier`, as Android places it, and is left alone. Applied outside the block's own
+/// style and its entrance animation, so the badge's fill still hugs its text and the animation is
+/// unchanged.
+struct UnplacedBadgeLeading: ViewModifier {
+    let block: ContentBlock
+
+    func body(content: Content) -> some View {
+        if block.type == .badge && block.horizontal_align == nil && block.vertical_align == nil {
+            content.frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            content
+        }
+    }
+}
+
 struct OuterAlignmentBoxModifier: ViewModifier {
     let elementWidth: String?
     let horizontalAlign: String?
@@ -469,6 +489,9 @@ struct ContentBlockRendererView: View {
                         elementWidth: resolvedBlock.element_width,
                         horizontalAlign: resolvedBlock.horizontal_align
                     ))
+                    // A badge placed nowhere sits at the leading edge, where Android's column puts it and
+                    // where the console preview draws it (`horizontal_align` unset is left there).
+                    .modifier(UnplacedBadgeLeading(block: resolvedBlock))
                     // Sprint 7: Scroll-collapse — ONLY applied to blocks with collapse_on_scroll.
                     // .clipped() and .frame(maxHeight:) must NOT touch non-collapsible blocks
                     // because they clip dropdowns, overlays, and overflow content.

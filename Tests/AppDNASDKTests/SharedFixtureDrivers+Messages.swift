@@ -63,6 +63,8 @@ extension SharedFixtureTests {
         case "resolve_gallery_title_ink": runGalleryTitleInk(f, h)
         case "build_push_token_body": runPushTokenBody(f, h)
         case "resolve_block_container_style": runBlockContainerStyle(f, h)
+        // Where a top-level badge lands across its column (SharedFixtureDrivers+BadgePlacement.swift).
+        case "measure_badge_placement": await runBadgePlacement(f, h)
         // Every tracked event (SDK and host) → message / survey triggers (SharedFixtureDrivers+Triggers.swift).
         case "dispatch_triggers": runDispatchTriggers(f, h)
         default: return false
