@@ -34,8 +34,15 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
 
     // MARK: - 1. A failed purchase is never silent
 
+    /*
+     🔴 NAMED TO RUN LAST (XCTest runs a class's tests in name order). It sets `SKTestSession.failTransactionsEnabled`,
+     and on this simulator setting it back to false does not take: every purchase after it in the same run is recorded
+     by StoreKit as FAILED, whatever the paywall or layout (#1841: 3 runs, every leg after a refusal failed, the grid
+     control included; with the refusal last, every leg before it bought). Run first, it made the next test's
+     horizontal_scroll CTA "buy nothing".
+    */
     @available(iOS 17.0, *)
-    func testAFailedPurchaseWithNoFailureConfigShowsTheBanner() throws {
+    func testZAFailedPurchaseWithNoFailureConfigShowsTheBanner() throws {
         guard let apiKey, let id = paywall("fail") else { throw XCTSkip("no `fail` paywall in TestCredentials") }
         let session = try storeSession()
         defer { session.clearTransactions(); session.failTransactionsEnabled = false }
@@ -234,18 +241,31 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
      recorded, and a frame 2 s and 30 s after the tap.
     */
     @available(iOS 17.0, *)
-    func testTheHorizontalScrollCtaBuysEveryTime() throws {
+    func testTheHorizontalScrollCtaBuysEveryTime() throws { try horizontalScrollLegs(refusalLast: false) }
+
+    /// The same legs with every successful purchase BEFORE the refusal, and one plain purchase right after it.
+    @available(iOS 17.0, *)
+    func testTheHorizontalScrollCtaBuysEveryTimeRefusalLast() throws { try horizontalScrollLegs(refusalLast: true) }
+
+    @available(iOS 17.0, *)
+    private func horizontalScrollLegs(refusalLast: Bool) throws {
+        // A diagnosis, not part of the walk: it refuses a purchase mid-run, which fails every later purchase in the run
+        // (see testZAFailedPurchase…). Runs only when asked for with `diagnose=1`, and on its own.
+        guard paywall("diagnose") == "1" else { throw XCTSkip("the #1841 diagnosis runs only with diagnose=1") }
         guard let apiKey, let hs = paywall("horizontal_scroll"), let grid = paywall("grid") else {
             throw XCTSkip("needs horizontal_scroll= and grid= in TestCredentials")
         }
         let session = try storeSession()
         defer { session.clearTransactions(); session.failTransactionsEnabled = false }
         // Legs: horizontal_scroll alone ×3; after a refused purchase of the same product; after grid bought it.
-        let legs: [(String, String, String?)] = [
-            ("hs-alone-1", hs, nil), ("hs-alone-2", hs, nil), ("hs-alone-3", hs, nil),
-            ("hs-after-refusal", hs, "refuse"), ("hs-after-grid", hs, "grid"),
-            ("grid-after-grid", grid, "grid"),
-        ]
+        // `J4_HS_ORDER=refusal-last` (a launch environment of the UI-test runner is not passed through here, so the
+        // order is the second form of the test below) puts the refused purchase LAST: the legs after it then show
+        // whether a refusal in this SKTestSession is what makes the following purchases fail.
+        let legs: [(String, String, String?)] = refusalLast
+            ? [("hs-alone-1", hs, nil), ("hs-after-grid", hs, "grid"), ("grid-after-grid", grid, "grid"),
+               ("hs-alone-2", hs, nil), ("hs-after-refusal", hs, "refuse"), ("hs-after-the-refusal", hs, nil)]
+            : [("hs-alone-1", hs, nil), ("hs-alone-2", hs, nil), ("hs-alone-3", hs, nil),
+               ("hs-after-refusal", hs, "refuse"), ("hs-after-grid", hs, "grid"), ("grid-after-grid", grid, "grid")]
         var results: [String] = []
         for (name, id, before) in legs {
             session.clearTransactions()
@@ -274,7 +294,9 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
             let countBefore = session.allTransactions().count
             cta.tap()
             sleep(2); shot(app, "hs-\(name)-2s")
-            let bought = waitUntil(timeout: 30) { session.allTransactions().count > countBefore }
+            _ = waitUntil(timeout: 30) { session.allTransactions().count > countBefore }
+            // Bought means StoreKit recorded a PURCHASED transaction, not merely a new (possibly failed) one.
+            let bought = session.allTransactions().dropFirst(countBefore).contains { $0.state == .purchased }
             shot(app, "hs-\(name)-30s")
             // Close the paywall if it is still up, then read what the SDK reported to the host.
             let close = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "close")).firstMatch
@@ -283,13 +305,18 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
             _ = events.waitForExistence(timeout: 5)
             let log = events.exists ? events.label : "(absent)"
             let ledger = session.allTransactions().map { "\($0.productIdentifier):\($0.state.rawValue)" }
-            let line = "\(name): cta='\(ctaLabel)' bought=\(bought) ledger=\(ledger) started=\(log.contains("purchase_started")) completed=\(log.contains("purchase_completed")) failed=\(log.contains("purchase_failed")) restored=\(log.contains("purchase_restored"))"
+            let states = session.allTransactions().map { "\($0.state)" }
+            let line = "\(name): states=\(states) cta='\(ctaLabel)' bought=\(bought) ledger=\(ledger) started=\(log.contains("purchase_started")) completed=\(log.contains("purchase_completed")) failed=\(log.contains("purchase_failed")) restored=\(log.contains("purchase_restored"))"
             NSLog("[j4-hs] \(line) events=\(log.prefix(400))")
             results.append(line)
             app.terminate()
         }
         NSLog("[j4-hs] summary:\n\(results.joined(separator: "\n"))")
-        for r in results { XCTAssertTrue(r.contains("bought=true"), "the CTA bought nothing: \(r)") }
+        // Every leg that runs before a refused purchase in this session must buy; the legs after it are the diagnosis.
+        let firstRefusal = legs.firstIndex { $0.2 == "refuse" } ?? legs.count
+        for (i, r) in results.enumerated() where i < firstRefusal {
+            XCTAssertTrue(r.contains("bought=true"), "the CTA bought nothing: \(r)")
+        }
     }
 
     // MARK: - helpers
