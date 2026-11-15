@@ -36,10 +36,14 @@ final class WalkScriptUITests: XCTestCase {
     private lazy var scriptPath = ProcessInfo.processInfo.environment["WALK_SCRIPT_PATH"] ?? "/tmp/walk-script/script.json"
     private lazy var dir = (scriptPath as NSString).deletingLastPathComponent
     private var logLines: [String] = []
+    /// Each log line carries the seconds since the run started, so a walk can TIME what it sees (a control that
+    /// appears after a delay, a message that closes itself) instead of only recording that it saw it.
+    private let started = Date()
 
     private func log(_ s: String) {
-        logLines.append(s)
-        print("[walk-script] \(s)")
+        let line = String(format: "[%7.2fs] ", Date().timeIntervalSince(started)) + s
+        logLines.append(line)
+        print("[walk-script] \(line)")
         try? logLines.joined(separator: "\n").write(toFile: "\(dir)/walk.log", atomically: true, encoding: .utf8)
     }
 

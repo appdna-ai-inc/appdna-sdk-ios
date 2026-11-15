@@ -52,6 +52,36 @@ final class MessageDismissOperateTests: XCTestCase {
         }
     }
 
+    /// The ✕ ("Close") is gated like the dismiss text, for a screen reader too: while dismissal is off or the delay
+    /// has not passed it is no accessibility element, and activating whatever answers to "Close" does not dismiss.
+    /// A hidden control VoiceOver can still focus and double-tap is the trap it exists to prevent, or a way round it.
+    func testTheHiddenCloseControlIsNoAccessibilityElement() throws {
+        for type in ["modal", "fullscreen", "banner", "tooltip"] {
+            // CONTROL: allowed → the harness sees "Close", and activating it dismisses.
+            let (a, aCalls) = show(try config(type, #", "dismiss_allowed": true"#))
+            XCTAssertTrue(a.has(label: "Close"), "[\(type)] control; labels: \(a.labels())")
+            a.tap("close control") { $0 == "Close" }
+            // A banner and a tooltip slide out first and dismiss 0.3s later.
+            XCTAssertTrue(a.wait(2) { aCalls.dismiss == 1 }, "[\(type)] control: the ✕ dismisses")
+            a.close()
+
+            let (b, bCalls) = show(try config(type, #", "dismiss_allowed": false"#))
+            XCTAssertFalse(b.has(label: "Close"), "[\(type)] not dismissable, yet the ✕ is an accessibility element: \(b.labels())")
+            for e in b.elements() where e.accessibilityLabel == "Close" { _ = e.accessibilityActivate() }
+            b.spin(0.6)
+            XCTAssertEqual(bCalls.dismiss, 0, "[\(type)] not dismissable, yet activating the hidden ✕ dismissed it")
+            b.close()
+
+            let (d, dCalls) = show(try config(type, #", "dismiss_delay": 2"#))
+            XCTAssertFalse(d.has(label: "Close"), "[\(type)] inside the delay, yet the ✕ is an accessibility element: \(d.labels())")
+            for e in d.elements() where e.accessibilityLabel == "Close" { _ = e.accessibilityActivate() }
+            d.spin(0.6)
+            XCTAssertEqual(dCalls.dismiss, 0, "[\(type)] inside the delay, yet activating the hidden ✕ dismissed it")
+            XCTAssertTrue(d.wait(4) { d.has(label: "Close") }, "[\(type)] the ✕ appears after the delay")
+            d.close()
+        }
+    }
+
     func testAuthoredButtonsStayAndWorkWhenNotDismissable() throws {
         for type in ["modal", "fullscreen", "banner", "tooltip"] {
             let (h, calls) = show(try config(type, #", "dismiss_allowed": false"#))
