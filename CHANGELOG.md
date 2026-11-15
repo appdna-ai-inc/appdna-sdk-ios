@@ -25,6 +25,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **`survey_question_answered` is sent once per question, not once per keystroke.** A typed answer is sent when the user
+  moves on with Next or Submit, with the full text (not if it is blank); a tap answer (NPS, choice, rating, …) is sent
+  when it is picked, as before, and an answer the same as the one already sent is not sent again. A typed answer sent
+  one event per character, so per-question analytics counted partial strings as answers.
+
 - **A screen's or survey's unstyled text follows its own background, not the phone's appearance.** A screen with a
   white background drew its unstyled text (and a section's, on the section's own fill) in the phone's appearance, so
   in dark mode it was white on white; a white survey lost its question and its "Yes" label the same way. Default text
