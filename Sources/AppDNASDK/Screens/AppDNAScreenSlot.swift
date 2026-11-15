@@ -92,6 +92,7 @@ public struct AppDNAScreenSlot: View {
         VStack(spacing: CGFloat(config.layout?.spacing ?? 12)) {
             ForEach(config.sections ?? []) { section in
                 SectionRegistry.shared.render(section: section, context: context)
+                    .modifier(ScreenSectionSurface(style: section.style))
                     .applySectionStyle(section.style)
             }
         }

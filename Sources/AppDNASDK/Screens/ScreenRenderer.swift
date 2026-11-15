@@ -7,6 +7,8 @@ internal struct ScreenRenderer: View {
     let config: ScreenConfig
     @ObservedObject var context: ScreenContextHolder
     @SwiftUI.Environment(\.dismiss) private var dismiss
+    /// The phone's appearance, read here before this view overrides it for its own content.
+    @SwiftUI.Environment(\.colorScheme) private var deviceScheme
 
     var body: some View {
         let visibleSections = (config.sections ?? []).filter { section in
@@ -106,6 +108,10 @@ internal struct ScreenRenderer: View {
         }
         // What the screen draws behind its sections, for a Google logo kept beside a location field.
         .environment(\.googleAttributionBackdrop, GoogleMapsAttribution.backdrop(ofScreen: config.background))
+        // Default colours (`.primary`, `.secondary`) and system controls resolve against the screen's authored
+        // background, not the phone's appearance: a light screen keeps dark ink in dark mode, and the reverse.
+        .environment(\.colorScheme, GoogleMapsAttribution.surfaceScheme(
+            on: GoogleMapsAttribution.backdrop(ofScreen: config.background), darkAppearance: deviceScheme == .dark))
     }
 
     // MARK: - Section Rendering
@@ -113,6 +119,7 @@ internal struct ScreenRenderer: View {
     @ViewBuilder
     private func sectionView(_ section: ScreenSection) -> some View {
         let content = SectionRegistry.shared.render(section: section, context: context.sectionContext)
+            .modifier(ScreenSectionSurface(style: section.style))
             .applySectionStyle(section.style)
 
         if let anim = section.entrance_animation, (anim.type ?? "none") != "none" {
@@ -288,6 +295,24 @@ extension View {
         } else {
             EmptyView()
         }
+    }
+}
+
+// MARK: - A section's own surface
+
+/// A Screen section with its own fill resolves its default colours (`.primary`, `.secondary`, system controls) against
+/// that fill; one without keeps what is behind it. The same rule as the screen's background
+/// (`GoogleMapsAttribution.surfaceScheme`), and Android's `SectionRegistry.Render`.
+struct ScreenSectionSurface: ViewModifier {
+    let style: SectionStyle?
+    @SwiftUI.Environment(\.googleAttributionBackdrop) private var behind
+    @SwiftUI.Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        let backdrop = GoogleMapsAttribution.backdrop(ofSection: style, behind: behind)
+        content
+            .environment(\.googleAttributionBackdrop, backdrop)
+            .environment(\.colorScheme, GoogleMapsAttribution.surfaceScheme(on: backdrop, darkAppearance: scheme == .dark))
     }
 }
 

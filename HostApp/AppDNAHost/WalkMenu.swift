@@ -93,6 +93,11 @@ enum WalkMenu {
         case "screen":
             AppDNA.showScreen(item.value) { result in log.note("screen \(item.title) → \(result)") }
             log.note("showScreen(\(item.title))")
+        // The screen document as published (its JSON), shown through the SDK's preview entry: the same renderer and
+        // presenter `showScreen` uses, for a walk while `showScreen` cannot load a published screen by id.
+        case "screen_json":
+            let shown = AppDNA.previewScreen(json: item.value) { result in log.note("screen preview \(item.title) → \(result)") }
+            log.note("previewScreen(\(item.title)) → \(shown ? "presented" : "NOT presented (invalid)")")
         case "track":
             AppDNA.track(event: item.value)
             log.note("track(\(item.value))")

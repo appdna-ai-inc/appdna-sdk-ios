@@ -25,6 +25,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A screen's or survey's unstyled text follows its own background, not the phone's appearance.** A screen with a
+  white background drew its unstyled text (and a section's, on the section's own fill) in the phone's appearance, so
+  in dark mode it was white on white; a white survey lost its question and its "Yes" label the same way. Default text
+  and system controls now resolve against the authored background — dark ink on a light one, light ink on a dark,
+  gradient or image one — and follow the phone only when no background is authored. Authored colours still win.
+
 - **Server-driven screens draw their sections.** The section renderers were registered only in tests, so every
   screen, slot and preview drew its background and close button and nothing else. They are now registered the first
   time a screen renders.

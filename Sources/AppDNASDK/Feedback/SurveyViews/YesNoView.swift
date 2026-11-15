@@ -43,8 +43,8 @@ struct YesNoView: View {
                         .font(.body.weight(.medium))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
-                        .background(selectedValue == "no" ? Color(hex: "#6366F1") : Color.gray.opacity(0.1))
-                        .foregroundColor(selectedValue == "no" ? .white : .primary)
+                        .background(selectedValue == "no" ? accentColor : Color.gray.opacity(0.1))
+                        .foregroundColor(selectedValue == "no" ? buttonTextColor : textColor)
                         .cornerRadius(10)
                 }
                 .accessibilityIdentifier("survey.no")

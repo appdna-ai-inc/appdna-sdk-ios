@@ -103,6 +103,33 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_screen_surface_ink REAL: `ScreenConfig` decoding → `GoogleMapsAttribution.backdrop(ofScreen:)` /
+    // `backdrop(ofSection:behind:)` → `surfaceScheme`, the scheme `ScreenRenderer` and `ScreenSectionSurface` set.
+    func runScreenSurfaceInk(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_screen_surface_ink needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            let name = o["name"]?.stringValue ?? "?"
+            var section: [String: Any] = ["id": "s1", "type": "text_section", "data": ["text": "x"]]
+            if let style = o["section_style"]?.foundation { section["style"] = style }
+            var screen: [String: Any] = ["id": "scr_ink_\(name)", "sections": [section]]
+            if let bg = o["background"]?.foundation { screen["background"] = bg }
+            guard let data = try? JSONSerialization.data(withJSONObject: screen),
+                  let config = try? JSONDecoder().decode(ScreenConfig.self, from: data) else {
+                XCTFail("[\(f.id)] case \(name): the screen did not decode")
+                return NSNull()
+            }
+            let backdrop = GoogleMapsAttribution.backdrop(
+                ofSection: config.sections?.first?.style,
+                behind: GoogleMapsAttribution.backdrop(ofScreen: config.background))
+            let dark = (o["dark_appearance"]?.foundation as? Bool) ?? false
+            return GoogleMapsAttribution.surfaceScheme(on: backdrop, darkAppearance: dark) == .dark ? "light_ink" : "dark_ink"
+        }
+    }
+
     func runDateWheel(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_date_wheel needs action.cases")

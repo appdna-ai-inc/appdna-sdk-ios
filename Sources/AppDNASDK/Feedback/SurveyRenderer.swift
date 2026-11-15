@@ -101,8 +101,12 @@ struct SurveyContainerView: View {
         }
     }
 
+    /// Unstyled text takes its ink from the survey's authored background (a gradient counts as busy), and follows the
+    /// phone only when no background is authored — the shared surface-ink rule (`dto_parsing/screen_surface_ink`).
     private var textColor: Color {
-        Color(hex: theme?.text_color ?? (colorScheme == .dark ? "#FFFFFF" : "#1a1a1a"))
+        let backdrop: GoogleMapsAttribution.Backdrop = theme?.gradient != nil ? .busy : .plain(hex: theme?.background_color)
+        let light = GoogleMapsAttribution.needsLightInk(on: backdrop, darkAppearance: colorScheme == .dark)
+        return Color(hex: theme?.text_color ?? (light ? "#FFFFFF" : "#1a1a1a"))
     }
 
     private var accentColor: Color {

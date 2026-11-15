@@ -46,6 +46,8 @@ extension SharedFixtureTests {
         case "resolve_message_hero_media": runMessageHeroMedia(f, h)
         case "resolve_onboarding_image_alt": runOnboardingImageAlt(f, h)
         case "resolve_screen_image_alt": runScreenImageAlt(f, h)
+        // A screen's default ink (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
+        case "resolve_screen_surface_ink": runScreenSurfaceInk(f, h)
         case "resolve_option_label_markdown": runOptionLabelMarkdown(f, h)
         case "resolve_date_wheel": runDateWheel(f, h)
         case "resolve_container_children": runContainerChildren(f, h)
