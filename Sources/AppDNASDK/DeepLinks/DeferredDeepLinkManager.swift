@@ -45,10 +45,18 @@ final class DeferredDeepLinkManager {
     /// cover the launches a user plausibly makes inside three days while something is wrong with
     /// their connection.
     static let maxFailedAttempts = 4
-    init(orgId: String, appId: String, eventTracker: EventTracker?) {
+
+    /// Where the visitor id copied by the web page is read from: the system pasteboard. Reading
+    /// `UIPasteboard.general.string` is synchronous, and when the pasteboard holds another app's text iOS
+    /// asks the user for permission first and blocks the calling thread until they answer, which in a
+    /// test process (no one to answer) is forever. A test passes its own source.
+    private let pasteboard: PasteboardReading
+
+    init(orgId: String, appId: String, eventTracker: EventTracker?, pasteboard: PasteboardReading = SystemPasteboard()) {
         self.orgId = orgId
         self.appId = appId
         self.eventTracker = eventTracker
+        self.pasteboard = pasteboard
     }
 
     /// Check for a deferred deep link. Should be called after configure() on first launch.
@@ -157,13 +165,13 @@ final class DeferredDeepLinkManager {
     private func checkPasteboard() -> String? {
         // Web pages can copy a visitor ID to pasteboard before redirecting to App Store.
         // Format: "appdna:visitor:{uuid}"
-        guard let content = UIPasteboard.general.string,
+        guard let content = pasteboard.string,
               content.hasPrefix("appdna:visitor:") else {
             return nil
         }
         let visitorId = String(content.dropFirst("appdna:visitor:".count))
         // Clear the pasteboard after reading
-        UIPasteboard.general.string = ""
+        pasteboard.clear()
         Log.debug("DeferredDeepLink: resolved visitor ID from pasteboard")
         return visitorId
     }
@@ -200,4 +208,16 @@ final class DeferredDeepLinkManager {
         UserDefaults.standard.set(attempts, forKey: Self.failedAttemptsKey)
         Log.debug("DeferredDeepLink: attempt \(attempts) of \(Self.maxFailedAttempts) failed (\(reason)) — will retry next launch")
     }
+}
+
+/// The pasteboard the deferred deep link reads its visitor id from.
+protocol PasteboardReading {
+    var string: String? { get }
+    func clear()
+}
+
+/// The system pasteboard.
+struct SystemPasteboard: PasteboardReading {
+    var string: String? { UIPasteboard.general.string }
+    func clear() { UIPasteboard.general.string = "" }
 }

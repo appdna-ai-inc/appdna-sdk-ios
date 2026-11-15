@@ -9,7 +9,12 @@
 // install did not come from a link".
 //
 // 🔴 `AppDNA.firestoreDB` is nil in a unit test, which is exactly the "nothing was asked" branch.
-// So this drives the real manager through the real `UserDefaults` with no mocking at all.
+// So this drives the real manager through the real `UserDefaults`.
+//
+// 🔴 It does NOT read the simulator's pasteboard. `UIPasteboard.general.string` blocks while iOS asks the user to
+// allow a paste whenever the pasteboard holds another process's text, and in a test no one answers: on a shared
+// simulator where a walk had copied text, this test hung the whole suite (sampled: the main thread parked in
+// `-[_UIConcretePasteboard string]` under `checkPasteboard()`). Each check gets an empty pasteboard of its own.
 import XCTest
 @testable import AppDNASDK
 
@@ -33,7 +38,7 @@ final class DeferredDeepLinkRetryTests: XCTestCase {
     /// One check, driven to its completion handler.
     private func check() -> Bool {
         let done = expectation(description: "checkDeferredDeepLink called back")
-        DeferredDeepLinkManager(orgId: "org", appId: "app", eventTracker: nil)
+        DeferredDeepLinkManager(orgId: "org", appId: "app", eventTracker: nil, pasteboard: EmptyPasteboard())
             .checkDeferredDeepLink { _ in done.fulfill() }
         return XCTWaiter.wait(for: [done], timeout: 5) == .completed
     }
@@ -75,4 +80,10 @@ final class DeferredDeepLinkRetryTests: XCTestCase {
             "a check after the flag is set must not reach the fetch at all",
         )
     }
+}
+
+/// A pasteboard with nothing on it, which never asks the user.
+private struct EmptyPasteboard: PasteboardReading {
+    var string: String? { nil }
+    func clear() {}
 }
