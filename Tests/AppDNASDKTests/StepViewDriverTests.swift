@@ -94,7 +94,11 @@ enum A11yTree {
     /// heavy CPU load. So each read that is not ready prints `A11Y-NOT-READY` with the state that could explain it.
     static func read(_ roots: [NSObject], maxDepth: Int = 60, timeout: TimeInterval = 2,
                      until ready: ([NSObject]) -> Bool = A11yTree.hasALabel) -> [NSObject] {
-        if A11yAutomation.isOn == false { A11yAutomation.timesFoundOff += 1 }
+        if A11yAutomation.isOn == false {
+            A11yAutomation.timesFoundOff += 1
+            // Another process turned the simulator-wide switch off: say so every time, so a run's log counts it.
+            print("A11Y-SWITCH-FOUND-OFF before a read (\(A11yAutomation.timesFoundOff) in this process); turned back on")
+        }
         A11yAutomation.ensure()
         var out = raw(roots, maxDepth: maxDepth)
         guard !ready(out) else { return out }
