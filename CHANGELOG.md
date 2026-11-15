@@ -166,6 +166,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Social Login draws Meta's official Facebook mark.** The `facebook` provider drew a bold letter "f". It now draws the
+  Facebook logo from Meta's brand asset pack, unmodified: the blue mark on a light, outlined or minimal button, and the
+  white mark on a dark fill (the default Facebook fill is dark). `icon_style: monochrome_light` gives the white mark and
+  `monochrome_dark` the blue one, because Meta allows the logo only in Facebook Blue or white. It is drawn at 20 points
+  with half a logo's width of clear space to the label. Provenance is in NOTICE.md.
+
 - **A Share button action.** A button can now open the phone's share sheet (iOS `UIActivityViewController`, Android an
   `ACTION_SEND` chooser) with text and an optional link set in the console: on an onboarding button or a
   Multi-buttons child (`action: "share"`, `share_text`, `share_url`; the step stays), on an in-app message CTA
