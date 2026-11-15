@@ -61,6 +61,7 @@ extension SharedFixtureTests {
         case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
         case "resolve_deferred_link_pasteboard": runDeferredLinkPasteboard(f, h)
         case "resolve_facebook_mark_variant": runFacebookMarkVariant(f, h)
+        case "resolve_heading_color_runs": runHeadingColorRuns(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
@@ -573,6 +574,21 @@ extension SharedFixtureTests {
                 backgroundHex: v?["bg"]?.stringValue,
                 iconStyle: v?["icon_style"]?.stringValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_heading_color_runs
+
+    /// WHETHER a heading carries a colour run and is drawn through the markdown parser, through the REAL
+    /// `HeadingColorRuns` the heading renderer calls.
+    private func runHeadingColorRuns(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_heading_color_runs needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            HeadingColorRuns.has(c.objectValue?["value"]?.objectValue?["text"]?.stringValue ?? "")
         }
     }
 

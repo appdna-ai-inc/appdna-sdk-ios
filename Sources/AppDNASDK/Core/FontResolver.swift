@@ -90,6 +90,32 @@ enum FontResolver {
     }
 
     /// Returns a SwiftUI Font from config-supplied text style fields.
+    /// The same font as `font(family:size:weight:)`, as a `UIFont`, for text drawn through UIKit
+    /// (justified text: SwiftUI's `Text` has no justified alignment).
+    static func uiFont(family: String?, size: Double?, weight: Int?) -> UIFont {
+        let resolved = resolve(family)
+        let fontSize = CGFloat(size ?? 16)
+        let w = uiWeight(weight ?? 400)
+        if resolved == ".AppleSystemUIFont" { return .systemFont(ofSize: fontSize, weight: w) }
+        guard let base = UIFont(name: resolved, size: fontSize) else { return .systemFont(ofSize: fontSize, weight: w) }
+        let descriptor = base.fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: w]])
+        return UIFont(descriptor: descriptor, size: fontSize)
+    }
+
+    private static func uiWeight(_ weight: Int) -> UIFont.Weight {
+        switch weight {
+        case ..<150: return .ultraLight
+        case ..<250: return .thin
+        case ..<350: return .light
+        case ..<450: return .regular
+        case ..<550: return .medium
+        case ..<650: return .semibold
+        case ..<750: return .bold
+        case ..<850: return .heavy
+        default: return .black
+        }
+    }
+
     static func font(family: String?, size: Double?, weight: Int?) -> Font {
         let resolved = resolve(family)
         let fontSize = CGFloat(size ?? 16)

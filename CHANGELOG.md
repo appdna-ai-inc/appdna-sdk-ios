@@ -172,6 +172,12 @@ the project uses [Semantic Versioning](https://semver.org/).
   `monochrome_dark` the blue one, because Meta allows the logo only in Facebook Blue or white. It is drawn at 20 points
   with half a logo's width of clear space to the label. Provenance is in NOTICE.md.
 
+- **Part of a heading in its own colour, and Justify for headings and rich text.** A `heading` whose text carries a
+  `[word](color:EE6885)` run draws that word in that colour, as `rich_text` already did; a heading with no such run
+  draws exactly as before. `style.alignment` (heading) and `base_style.alignment` (rich text) accept `justify`, which
+  fills every line but the last edge to edge. On iOS a justified block is drawn through UIKit, keeping its bold,
+  italic, colour runs and links (which still open in the in-app browser).
+
 - **A Share button action.** A button can now open the phone's share sheet (iOS `UIActivityViewController`, Android an
   `ACTION_SEND` chooser) with text and an optional link set in the console: on an onboarding button or a
   Multi-buttons child (`action: "share"`, `share_text`, `share_url`; the step stays), on an in-app message CTA

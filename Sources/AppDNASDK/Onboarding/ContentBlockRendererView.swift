@@ -729,8 +729,37 @@ struct ContentBlockRendererView: View {
         // An authored colour, else the ink `UnstyledInkReader` reads from
         // what is behind the block WHERE IT IS DRAWN (inside a section background, its zones).
         let authoredColor: Color? = (block.style?.color).map { Color(hex: $0) }
+        let shown = loc?("block.\(block.id).text", text) ?? text
+        /*
+         PART OF A HEADING IN ITS OWN COLOUR: `[word](color:HEX)`, the run syntax rich text already
+         draws. Only a heading that CONTAINS a colour run goes through the markdown parser, so
+         every existing heading — whatever `*`, `_` or brackets it holds — draws exactly as before.
+         */
+        let colorRuns = HeadingColorRuns.has(shown)
+        let linkCol = Color(hex: block.link_color ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         return UnstyledInkReader { ink in
-        Text(loc?("block.\(block.id).text", text) ?? text)
+        if JustifiedText.isJustify(alignSource) {
+            // Justify: SwiftUI's Text cannot, so the same string is drawn through UIKit.
+            let uiFont = FontResolver.uiFont(family: block.style?.font_family,
+                                            size: block.style?.font_size ?? Double(fallbackSize),
+                                            weight: block.style?.font_weight ?? 700)
+            JustifiedText(
+                text: colorRuns
+                    ? JustifiedText.nsAttributed(MarkdownText.attributed(shown, linkColor: linkCol, textColor: nil, underlineMarkers: false), base: uiFont)
+                    : NSAttributedString(string: shown),
+                font: uiFont,
+                color: UIColor(authoredColor ?? ink),
+                lineLimit: block.max_lines
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+        Group {
+            if colorRuns {
+                Text(MarkdownText.attributed(shown, linkColor: linkCol, textColor: nil, underlineMarkers: false))
+            } else {
+                Text(shown)
+            }
+        }
             .font(styleFont)
             .foregroundColor(authoredColor ?? ink)
             .applyTextStyleDecorations(block.style)
@@ -740,6 +769,7 @@ struct ContentBlockRendererView: View {
             .lineLimit(block.max_lines)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: frameAlignment)
+        }
         }
     }
 
@@ -2720,6 +2750,20 @@ struct ContentBlockRendererView: View {
                 // Unstyled runs take their ink from what is behind the block (light on a dark step or
                 // fill), as text does; an authored colour is on the runs themselves and wins.
                 UnstyledInkReader { ink in
+                if JustifiedText.isJustify(authored) {
+                    // Justify: SwiftUI's Text cannot, so the same runs are drawn through UIKit, links
+                    // still opening through the step's `openURL`.
+                    let uiFont = FontResolver.uiFont(family: rtStyle?.font_family,
+                                                    size: rtStyle?.font_size ?? (isLegal ? 12 : 17),
+                                                    weight: rtStyle?.font_weight)
+                    JustifiedText(
+                        text: JustifiedText.nsAttributed(attributed, base: uiFont),
+                        font: uiFont,
+                        color: UIColor(isLegal ? ink.opacity(0.6) : ink),
+                        lineLimit: block.max_lines
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
                 Text(attributed)
                     .font(styleFont)
                     .foregroundColor(isLegal ? ink.opacity(0.6) : ink)
@@ -2730,6 +2774,7 @@ struct ContentBlockRendererView: View {
                     // would otherwise override ours when base_style.alignment is unset.
                     .multilineTextAlignment(textAlign)
                     .frame(maxWidth: .infinity, alignment: frameAlign)
+                }
                 }
             } else {
                 // Fallback: render as plain text, stripping markdown tokens

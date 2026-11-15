@@ -1,0 +1,79 @@
+{
+ "flows": {
+  "text_walk_flow": {
+   "id": "text_walk_flow",
+   "name": "Text walk",
+   "version": 1,
+   "status": "active",
+   "settings": {
+    "allow_skip": false,
+    "show_progress": false
+   },
+   "steps": [
+    {
+     "id": "text",
+     "name": "Text",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "h_left",
+        "type": "heading",
+        "text": "Track your [cycle](color:EE6885) with ease every single day",
+        "level": 2,
+        "style": {
+         "font_size": 22,
+         "font_weight": 700
+        }
+       },
+       {
+        "id": "h_just",
+        "type": "heading",
+        "text": "Track your [cycle](color:EE6885) with ease every single day",
+        "level": 2,
+        "style": {
+         "font_size": 22,
+         "font_weight": 700,
+         "alignment": "justify"
+        }
+       },
+       {
+        "id": "rt_left",
+        "type": "rich_text",
+        "markdown_content": "Your daily notes, symptoms and moods sit in one calm place, so the [patterns](color:16A34A) you care about are **easy to see** over weeks and months. Read the [walk link](https://example.com/walk) for more."
+       },
+       {
+        "id": "rt_just",
+        "type": "rich_text",
+        "markdown_content": "Your daily notes, symptoms and moods sit in one calm place, so the [patterns](color:16A34A) you care about are **easy to see** over weeks and months. Read the [walk link](https://example.com/walk) for more.",
+        "base_style": {
+         "alignment": "justify"
+        }
+       },
+       {
+        "id": "t_next",
+        "type": "button",
+        "text": "Continue",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "name": "Done",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "done_h",
+        "type": "heading",
+        "text": "Walk finished"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}
