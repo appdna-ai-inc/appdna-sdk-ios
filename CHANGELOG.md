@@ -34,6 +34,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A chip is as wide as its label, on one line.** `input_chips` laid its chips out on iOS in an adaptive grid where
+  every chip got an equal cell, so a label longer than the cell wrapped inside its chip, sometimes mid-word. Chips now
+  hug their labels and flow onto the next row, as on Android; a label wider than the whole row truncates on one line.
+
 - **`survey_question_answered` is sent once per question, not once per keystroke.** A typed answer is sent when the user
   moves on with Next or Submit, with the full text (not if it is blank); a tap answer (NPS, choice, rating, …) is sent
   when it is picked, as before, and an answer the same as the one already sent is not sent again. A typed answer sent
