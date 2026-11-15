@@ -70,6 +70,30 @@ stays byte-identical to what Google publishes. On Android it must live in `res/`
 NOTHING else: a sidecar file beside it fails `packageDebugResources` with "The file name must end
 with .xml or .png", which is why this note is here rather than next to the asset.
 
+### Facebook logo — `appdna_facebook_mark_primary.png`, `appdna_facebook_mark_secondary.png`
+
+Meta's official **Facebook logo**, shipped UNMODIFIED, in the two expressions Meta publishes. Each
+file is a PNG from Meta's Facebook Brand Asset Pack, renamed only:
+
+| File | Meta's file | MD5 |
+|---|---|---|
+| `appdna_facebook_mark_primary.png` | `Logo/Primary Logo/Facebook_Logo_Primary.png` (Facebook Blue, white "f") | `e4da23704f27c9df07e6c21a13e28bfd` |
+| `appdna_facebook_mark_secondary.png` | `Logo/Secondary Logo/Facebook_Logo_Secondary.png` (white, transparent "f") | `14150615fbf19b940f52520488fe40fb` |
+
+- Source: https://www.meta.com/brand/resources/facebook/logo/ ("Logo pack")
+- Fetched: 2026-11-15 · 2084 × 2084 RGBA PNGs
+- Terms: Meta's brand resources guidelines on that page, and https://www.facebook.com/terms.php
+
+The only place this SDK draws it is the `social_login` block's `facebook` provider. Meta's usage rules
+it follows: the logo appears only in Facebook Blue or white (the primary mark on light surfaces, the
+secondary mark on a Facebook Blue or dark one, never recoloured); it is at least 16px wide (drawn at
+20); it keeps half a logo's width from other content (10 from the label); and it is complete, with no
+outline, shadow or effect. The renderer decodes it at a reduced size, which scales it and does not
+edit it.
+
+🔴 Do not edit the files. Re-download Meta's pack from the URL above if they ever need updating, so
+what ships stays byte-identical to what Meta publishes.
+
 ### Google Maps attribution logo — `appdna_google_maps_logo_*.png`
 
 Google's official **"Google Maps"** attribution logo, shipped UNMODIFIED, in four variants. Each

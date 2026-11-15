@@ -94,6 +94,13 @@ let package = Package(
                  */
                 .copy("Resources/appdna_google_g.png"),
                 /*
+                 * Meta's official Facebook marks for the Social Login `facebook` provider, UNMODIFIED:
+                 * the primary (Facebook Blue) and secondary (white) logo from Meta's logo pack.
+                 * Provenance and terms: `NOTICE.md`, "Facebook logo".
+                 */
+                .copy("Resources/appdna_facebook_mark_primary.png"),
+                .copy("Resources/appdna_facebook_mark_secondary.png"),
+                /*
                  * Google's "Google Maps" attribution logo, UNMODIFIED, in the four variants Google
                  * publishes: plain gray (light surfaces), plain white (dark surfaces), and the two
                  * outlined variants for busy backgrounds. A location dropdown listing Google

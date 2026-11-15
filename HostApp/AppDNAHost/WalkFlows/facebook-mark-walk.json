@@ -1,0 +1,86 @@
+{
+ "flows": {
+  "fb_mark_walk_flow": {
+   "id": "fb_mark_walk_flow",
+   "name": "Facebook mark walk",
+   "version": 1,
+   "status": "active",
+   "settings": {
+    "allow_skip": false,
+    "show_progress": false
+   },
+   "steps": [
+    {
+     "id": "social",
+     "name": "Social",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "fb_head",
+        "type": "heading",
+        "text": "Sign in"
+       },
+       {
+        "id": "fb_filled",
+        "type": "social_login",
+        "button_style": "filled",
+        "providers": [
+         {
+          "type": "facebook",
+          "label": "Facebook default fill"
+         },
+         {
+          "type": "facebook",
+          "label": "Facebook on white",
+          "bg_color": "#FFFFFF",
+          "text_color": "#1C1E21",
+          "border_color": "#DADDE1",
+          "border_width": 1
+         },
+         {
+          "type": "facebook",
+          "label": "Facebook on dark",
+          "bg_color": "#111111",
+          "text_color": "#FFFFFF"
+         }
+        ]
+       },
+       {
+        "id": "fb_outlined",
+        "type": "social_login",
+        "button_style": "outlined",
+        "providers": [
+         {
+          "type": "facebook",
+          "label": "Facebook outlined"
+         }
+        ]
+       },
+       {
+        "id": "fb_next",
+        "type": "button",
+        "text": "Continue",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "name": "Done",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "done_h",
+        "type": "heading",
+        "text": "Walk finished"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

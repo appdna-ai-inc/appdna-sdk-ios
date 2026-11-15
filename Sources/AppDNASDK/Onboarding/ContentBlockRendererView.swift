@@ -2440,11 +2440,27 @@ struct ContentBlockRendererView: View {
                 .font(.body)
                 .foregroundColor(monoColor))
         case "facebook":
-            // Brand-blue "f" is only legible on transparent-background buttons
-            // (outlined/minimal). On a FILLED facebook button the background is
-            // already #1877F2, so a blue glyph would be invisible — use the button
-            // textColor (white) there. A monochrome icon_style override still wins.
-            // Matches Android + console preview.
+            /*
+             * META'S OFFICIAL MARK, not a letter.
+             *
+             * This drew a bold `Text("f")`, and Meta's brand guidelines say "don't use just the 'f'
+             * from our logo". The SDK ships Meta's logo pack files UNMODIFIED (provenance in
+             * NOTICE.md), and `FacebookMark` picks Meta's primary (blue) or secondary (white)
+             * expression for the button's surface — Meta allows no other colour, so a monochrome
+             * style picks between those two rather than recolouring. Drawn at 20pt, above Meta's
+             * 16px digital minimum; the button's `HStack(spacing: 10)` is the half-logo clear space Meta
+             * asks for (`FacebookMark.spacing`).
+             *
+             * The letterform stays as the fallback for a host that strips SPM resources.
+             */
+            let variant = FacebookMark.variant(buttonStyle: btnStyle, backgroundHex: backgroundHex, iconStyle: iconStyle)
+            if let image = FacebookMarkImage.image(variant) {
+                return AnyView(Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: FacebookMark.size, height: FacebookMark.size)
+                    .accessibilityIdentifier("social_login_facebook_mark_\(variant.rawValue)"))
+            }
             let fbColor: Color = monoColor
                 ?? ((btnStyle == "outlined" || btnStyle == "minimal") ? Color(hex: "#1877F2") : buttonTextColor)
             return AnyView(Text("f")

@@ -60,6 +60,7 @@ extension SharedFixtureTests {
         case "resolve_celebration_palette": runCelebrationPalette(f, h)
         case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
         case "resolve_deferred_link_pasteboard": runDeferredLinkPasteboard(f, h)
+        case "resolve_facebook_mark_variant": runFacebookMarkVariant(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
@@ -572,6 +573,25 @@ extension SharedFixtureTests {
                 backgroundHex: v?["bg"]?.stringValue,
                 iconStyle: v?["icon_style"]?.stringValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_facebook_mark_variant
+
+    /// WHICH of Meta's two official marks the facebook provider draws, through the REAL `FacebookMark`.
+    private func runFacebookMarkVariant(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_facebook_mark_variant needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            return FacebookMark.variant(
+                buttonStyle: v?["style"]?.stringValue,
+                backgroundHex: v?["bg"]?.stringValue,
+                iconStyle: v?["icon_style"]?.stringValue,
+            ).rawValue
         }
     }
 
