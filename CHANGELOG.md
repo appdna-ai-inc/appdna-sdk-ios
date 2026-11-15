@@ -20,6 +20,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Server-driven screens draw their sections.** The section renderers were registered only in tests, so every
+  screen, slot and preview drew its background and close button and nothing else. They are now registered the first
+  time a screen renders.
+
 - **The `animated_loading` spinner takes the block's colour.** The spinner of a checklist or circular loader was drawn
   in the system tint, so it could vanish on a light step in dark mode. It now uses `progress_color`, then
   `accent_color`, then the app's brand accent — the same colour Android uses.

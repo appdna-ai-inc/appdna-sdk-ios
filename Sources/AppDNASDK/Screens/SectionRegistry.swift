@@ -19,9 +19,20 @@ internal struct AnySectionRenderer {
 
 /// Central registry mapping section type strings to native renderers.
 /// Unknown types render as empty (no crash). New section types are registered
-/// during SDK init via `registerBuiltInSections()`.
+/// by `registerBuiltInSections()`, which `shared` runs when first touched.
 internal class SectionRegistry {
-    static let shared = SectionRegistry()
+    /// Filled with every built-in and module section renderer the first time it is touched, so a screen can never
+    /// render through an empty registry, whichever entry reaches it first (`previewScreen`, a slot, an interception,
+    /// `showScreen`). Nothing in the SDK used to fill it outside the tests, and every section rendered as nothing.
+    static let shared: SectionRegistry = makeFilled()
+
+    /// A registry holding every built-in and module section renderer — what `shared` is.
+    static func makeFilled() -> SectionRegistry {
+        let registry = SectionRegistry()
+        registry.registerBuiltInSections()
+        registry.registerModuleSections()
+        return registry
+    }
 
     private var renderers: [String: AnySectionRenderer] = [:]
 
@@ -49,7 +60,7 @@ internal class SectionRegistry {
         renderers[type] != nil
     }
 
-    /// Register all built-in section types. Called once during AppDNA.configure().
+    /// Register all built-in section types. `shared` calls it when it is first touched (`makeFilled`).
     func registerBuiltInSections() {
         // Generic sections
         register("content_blocks", renderer: ContentBlocksSectionRenderer.self)
