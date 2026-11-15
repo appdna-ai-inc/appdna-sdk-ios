@@ -131,4 +131,42 @@ final class RenderChainWalkUITests: XCTestCase {
         button(app, "Finish").tap()
         NSLog("[wrender] report:\n\(report.joined(separator: "\n"))")
     }
+
+    /// A screen reader's view of the same flow: every text field is found BY ITS NAME (its label), typed into through
+    /// that name, and the step continued. Before the fix the fields had no name, so `textFields[label]` found nothing.
+    func testTextFieldsAreNamedByTheirLabels() throws {
+        guard XCUIApplication(bundleIdentifier: bundleId).state != .unknown else { throw XCTSkip("the wrender walk build is not installed") }
+        let app = XCUIApplication(bundleIdentifier: bundleId)
+        app.terminate(); app.launch()
+        _ = text(app, "config_fetched", timeout: 25)
+        var shown = false
+        for _ in 0..<4 where !shown {
+            let m = button(app, "Render chain flow")
+            if m.waitForExistence(timeout: 20) { m.tap() }
+            shown = text(app, "Shape your plan", timeout: 10) != nil
+        }
+        XCTAssertTrue(shown, "the flow did not show")
+        let goalName = "What is the one thing you would most like to get better at over the next three months?"
+        let names = app.textFields.allElementsBoundByIndex.map(\.label)
+        log("step 1 text field names: \(names)")
+        XCTAssertEqual(names, [goalName, "Your name"], "each text field is named by its label")
+        let goal = app.textFields[goalName], name = app.textFields["Your name"]
+        XCTAssertTrue(goal.exists && name.exists, "a field cannot be found by its name")
+        goal.tap(); goal.typeText("Swim a full kilometre\n"); sleep(1)
+        app.swipeUp(velocity: .slow); sleep(1)
+        name.tap(); name.typeText("Kim\n"); sleep(1)
+        _ = shot(app, "n1-named-filled")
+        button(app, "Continue").tap()
+        let whyName = "Tell us in a sentence or two why this goal matters to you right now"
+        let why = app.textFields[whyName]
+        XCTAssertTrue(why.waitForExistence(timeout: 15), "the form step's field cannot be found by its name: \(app.textFields.allElementsBoundByIndex.map(\.label))")
+        log("form text field names: \(app.textFields.allElementsBoundByIndex.map(\.label))")
+        why.tap(); why.typeText("It is a quiet hour for me\n"); sleep(1)
+        button(app, "Continue").tap()
+        XCTAssertNotNil(text(app, "What was stored", timeout: 15))
+        for k in ["Goal:", "Why:"] { log("readback \(text(app, k, timeout: 2)?.label ?? "\(k) MISSING")") }
+        _ = shot(app, "n2-readback")
+        button(app, "Finish").tap()
+        NSLog("[wrender] report:\n\(report.joined(separator: "\n"))")
+    }
 }
