@@ -8,6 +8,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The first-launch deferred-link check no longer makes iOS ask "Allow Paste?" for text that is not a link.** It
+  read the pasteboard on every first launch, so a user who had copied anything in another app saw a paste prompt, and
+  the read blocked its thread until they answered. It now reads only when iOS reports, without asking, that the
+  pasteboard holds a web link (`detectPatterns`, `.probableWebURL`), and it reads off the main thread. The visitor id is
+  taken from a link carrying `appdna_visitor` (`https://yourapp.com/install?appdna_visitor=<id>`) and only that link is
+  cleared. The older `appdna:visitor:<id>` text is not a web link to iOS, so iOS no longer reads it; a web page should
+  copy the URL form.
+
 - **Every date picker works in the app's time zone, a date-only one too.** A `date_wheel_picker` or `input_date` in
   `date` mode, its calendar, and a form step's `date` field number their days in the time zone set for the app in the
   console (UTC unless changed), as the time and date-and-time pickers already did. So the day a picker opens on,

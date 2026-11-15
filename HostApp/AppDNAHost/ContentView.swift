@@ -131,6 +131,13 @@ struct ContentView: View {
             Text(storeProbe)
                 .font(.caption2.monospaced())
                 .accessibilityIdentifier("host.storeProducts")
+            if !events.deferredLink.isEmpty {
+                // `-appdnaCheckDeferredLink`: what the first-launch check answered, on screen so a
+                // screenshot of the walk carries it.
+                Text(events.deferredLink)
+                    .font(.caption.monospaced())
+                    .accessibilityIdentifier("host.deferredLink")
+            }
             Text(events.joined)
                 .accessibilityIdentifier("host.lastEvents")
                 .opacity(0)

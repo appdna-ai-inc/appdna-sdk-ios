@@ -59,6 +59,7 @@ extension SharedFixtureTests {
         case "resolve_banner_icon": runBannerIcon(f, h)
         case "resolve_celebration_palette": runCelebrationPalette(f, h)
         case "resolve_google_mark_chip": runGoogleMarkChip(f, h)
+        case "resolve_deferred_link_pasteboard": runDeferredLinkPasteboard(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
@@ -571,6 +572,29 @@ extension SharedFixtureTests {
                 backgroundHex: v?["bg"]?.stringValue,
                 iconStyle: v?["icon_style"]?.stringValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_deferred_link_pasteboard
+
+    /**
+     WHETHER the first-launch deferred-link check may read the pasteboard, and what it takes from it,
+     through the REAL `DeferredLinkPasteboard` the manager calls. "unread" when the gate refuses —
+     the read is what makes iOS show its paste alert — otherwise the visitor id or "none".
+     */
+    private func runDeferredLinkPasteboard(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_deferred_link_pasteboard needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            guard DeferredLinkPasteboard.shouldRead(
+                hasStrings: v?["has_strings"]?.boolValue ?? false,
+                probableWebURL: v?["probable_url"]?.boolValue ?? false,
+            ) else { return "unread" }
+            return DeferredLinkPasteboard.visitorId(from: v?["text"]?.stringValue) ?? "none"
         }
     }
 

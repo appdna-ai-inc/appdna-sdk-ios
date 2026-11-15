@@ -28,6 +28,9 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
     /// The last deep link the SDK handed the host; the walk menu shows it on its own screen.
     @Published var deepLink: WalkDeepLink?
 
+    /// What `checkDeferredDeepLink` answered, when `-appdnaCheckDeferredLink` asked for it.
+    @Published var deferredLink: String = ""
+
     func note(_ line: String) {
         let stamp = Self.clock.string(from: Date())
         DispatchQueue.main.async { [weak self] in

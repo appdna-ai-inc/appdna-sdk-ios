@@ -84,6 +84,8 @@ final class DeferredDeepLinkRetryTests: XCTestCase {
 
 /// A pasteboard with nothing on it, which never asks the user.
 private struct EmptyPasteboard: PasteboardReading {
+    var hasStrings: Bool { false }
+    func detectProbableWebURL(completion: @escaping (Bool) -> Void) { completion(false) }
     var string: String? { nil }
     func clear() {}
 }

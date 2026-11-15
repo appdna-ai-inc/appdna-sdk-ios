@@ -67,14 +67,22 @@ final class DeferredDeepLinkManager {
             return
         }
 
-        // Get visitor ID
-        guard let visitorId = resolveVisitorId() else {
-            Log.debug("DeferredDeepLink: no visitor ID resolved")
-            markLaunched()
-            completion(nil)
-            return
+        // The pasteboard probe answers asynchronously (iOS's pattern detection takes a completion
+        // handler), and the read it may lead to must never run on the main thread.
+        // `self` is held STRONGLY until the probe answers: the check is one short hop, and a weak
+        // capture let a manager nobody else retained vanish mid-check and skip the bookkeeping.
+        resolveVisitorId { visitorId in
+            guard let visitorId else {
+                Log.debug("DeferredDeepLink: no visitor ID resolved")
+                self.markLaunched()
+                completion(nil)
+                return
+            }
+            self.fetchDeferredContext(visitorId: visitorId, completion: completion)
         }
+    }
 
+    private func fetchDeferredContext(visitorId: String, completion: @escaping (DeferredDeepLink?) -> Void) {
         // Check Firestore for deferred context
         // Path: config/deferred_deep_links = document, {visitorId} = subcollection doc
         let path = "orgs/\(orgId)/apps/\(appId)/config/deferred_deep_links/visitors/\(visitorId)"
@@ -147,33 +155,65 @@ final class DeferredDeepLinkManager {
 
     // MARK: - Visitor ID resolution
 
-    private func resolveVisitorId() -> String? {
-        // Strategy 1: Check pasteboard for visitor ID (set by web page before store redirect)
-        if let pasteboardId = checkPasteboard() {
-            return pasteboardId
+    private func resolveVisitorId(completion: @escaping (String?) -> Void) {
+        // Strategy 1: the pasteboard (set by the web page before the store redirect) — read only when
+        // iOS can tell, WITHOUT asking the user, that it holds a web link.
+        checkPasteboard { pasteboardId in
+            if let pasteboardId {
+                completion(pasteboardId)
+                return
+            }
+            // Strategy 2: Check URL scheme launch params
+            if let launchId = self.checkLaunchParams() {
+                completion(launchId)
+                return
+            }
+            // Strategy 3: Use IDFV as fallback fingerprint
+            completion(UIDevice.current.identifierForVendor?.uuidString.lowercased())
         }
-
-        // Strategy 2: Check URL scheme launch params
-        if let launchId = checkLaunchParams() {
-            return launchId
-        }
-
-        // Strategy 3: Use IDFV as fallback fingerprint
-        return UIDevice.current.identifierForVendor?.uuidString.lowercased()
     }
 
-    private func checkPasteboard() -> String? {
-        // Web pages can copy a visitor ID to pasteboard before redirecting to App Store.
-        // Format: "appdna:visitor:{uuid}"
-        guard let content = pasteboard.string,
-              content.hasPrefix("appdna:visitor:") else {
-            return nil
+    /**
+     🔴 READ THE PASTEBOARD ONLY WHEN IT HOLDS A LINK — and never on the main thread.
+
+     This read `UIPasteboard.general.string` on every first launch to look for the visitor id a web
+     page may have copied before the App Store redirect. Reading another app's content makes iOS 16+
+     show "<App> would like to paste from <other app>" and BLOCKS the reading thread until the user
+     answers — so every first launch of every host app whose user had copied anything anywhere showed
+     a paste-permission alert, for a feature almost no install uses.
+
+     The order now is: `hasStrings` (no prompt) → `detectPatterns(for: [.probableWebURL])` (no
+     prompt) → the read, only when both say yes → `DeferredLinkPasteboard.visitorId(from:)`, which
+     accepts only our own marker. Arbitrary text never reaches the read. A copied web link still can
+     — iOS cannot tell OUR link from any other without reading it — and that read happens on a
+     background queue, never the main thread.
+     */
+    private func checkPasteboard(completion: @escaping (String?) -> Void) {
+        let pasteboard = self.pasteboard
+        let finish: (String?) -> Void = { id in
+            DeferredLinkPasteboard.workQueue.async { completion(id) }
         }
-        let visitorId = String(content.dropFirst("appdna:visitor:".count))
-        // Clear the pasteboard after reading
-        pasteboard.clear()
-        Log.debug("DeferredDeepLink: resolved visitor ID from pasteboard")
-        return visitorId
+        guard pasteboard.hasStrings else {
+            finish(nil)
+            return
+        }
+        pasteboard.detectProbableWebURL { isProbableURL in
+            DeferredLinkPasteboard.workQueue.async {
+                guard DeferredLinkPasteboard.shouldRead(hasStrings: true, probableWebURL: isProbableURL) else {
+                    Log.debug("DeferredDeepLink: pasteboard holds no link — not read, so iOS asks the user nothing")
+                    completion(nil)
+                    return
+                }
+                guard let visitorId = DeferredLinkPasteboard.visitorId(from: pasteboard.string) else {
+                    completion(nil)
+                    return
+                }
+                // Clear only OUR marker: someone else's link is left exactly where they put it.
+                pasteboard.clear()
+                Log.debug("DeferredDeepLink: resolved visitor ID from pasteboard")
+                completion(visitorId)
+            }
+        }
     }
 
     private func checkLaunchParams() -> String? {
@@ -211,13 +251,72 @@ final class DeferredDeepLinkManager {
 }
 
 /// The pasteboard the deferred deep link reads its visitor id from.
+///
+/// `hasStrings` and `detectProbableWebURL` are the two questions iOS answers WITHOUT a paste prompt;
+/// `string` is the one that prompts when another app put the content there.
 protocol PasteboardReading {
+    var hasStrings: Bool { get }
+    func detectProbableWebURL(completion: @escaping (Bool) -> Void)
     var string: String? { get }
     func clear()
 }
 
 /// The system pasteboard.
 struct SystemPasteboard: PasteboardReading {
+    var hasStrings: Bool { UIPasteboard.general.hasStrings }
+
+    func detectProbableWebURL(completion: @escaping (Bool) -> Void) {
+        UIPasteboard.general.detectPatterns(for: [.probableWebURL]) { result in
+            switch result {
+            case .success(let patterns): completion(patterns.contains(.probableWebURL))
+            case .failure: completion(false)
+            }
+        }
+    }
+
     var string: String? { UIPasteboard.general.string }
     func clear() { UIPasteboard.general.string = "" }
+}
+
+/**
+ WHETHER the deferred deep link may read the pasteboard, and what it accepts from it.
+
+ Pure, so the rule is pinned by the shared `deferred_link_pasteboard` fixture on both platforms.
+
+ - The read happens only when the pasteboard holds text AND the system classifies it as a web link
+   without reading it (`detectPatterns` on iOS, `ClipDescription` classification on Android 12+).
+ - Accepted content: a URL carrying an `appdna_visitor` query item (the same key the Android Install
+   Referrer carries), or the legacy `appdna:visitor:<id>` marker. Anything else is someone else's
+   and is neither used nor cleared.
+ */
+enum DeferredLinkPasteboard {
+    static let legacyPrefix = "appdna:visitor:"
+    static let queryItem = "appdna_visitor"
+
+    /// Where the probe's continuation and the read run: never the main thread.
+    static let workQueue = DispatchQueue(label: "ai.appdna.sdk.ddl-pasteboard", qos: .utility)
+
+    static func shouldRead(hasStrings: Bool, probableWebURL: Bool) -> Bool {
+        hasStrings && probableWebURL
+    }
+
+    static func visitorId(from text: String?) -> String? {
+        guard let raw = text?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return nil }
+        if raw.hasPrefix(legacyPrefix) {
+            let id = String(raw.dropFirst(legacyPrefix.count))
+            return isVisitorIdShaped(id) ? id : nil
+        }
+        guard let comps = URLComponents(string: raw),
+              let scheme = comps.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let id = comps.queryItems?.first(where: { $0.name == queryItem })?.value,
+              isVisitorIdShaped(id) else { return nil }
+        return id
+    }
+
+    /// A visitor id is an opaque token: letters, digits, `-` and `_`, 1–128 characters. Anything
+    /// else is not ours, and must not become a Firestore document path segment.
+    static func isVisitorIdShaped(_ id: String) -> Bool {
+        guard (1...128).contains(id.count) else { return false }
+        return id.unicodeScalars.allSatisfy { ($0.isASCII && CharacterSet.alphanumerics.contains($0)) || $0 == "-" || $0 == "_" }
+    }
 }

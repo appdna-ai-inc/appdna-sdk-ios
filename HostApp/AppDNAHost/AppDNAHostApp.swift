@@ -20,6 +20,8 @@
 //     -appdnaIdentify <user id>      identify after configure (a consent walk)
 //     -appdnaConsent true|false      setConsent after configure (a consent walk)
 //     -appdnaIdentifyAt tick|ready   when: right after configure, on the same tick, or in onReady (default)
+//     -appdnaCheckDeferredLink 1     call checkDeferredDeepLink in onReady and show its answer (host.deferredLink)
+//     -appdnaResetFirstLaunch 1      forget the SDK's first-launch flag first, so that check runs again
 //
 // Auto-present exists because the simulator exposes no tap verb to this environment — no `simctl`
 // verb, no `idb`, and `osascript` is blocked. A UI TEST can tap (it runs inside the simulator), and
@@ -81,12 +83,33 @@ enum Launch {
         print("AppDNA-E2E stdout → \(path) at \(Date())")
     }
 
+    /// `-appdnaCheckDeferredLink`: the first-launch deferred-link check a host makes, answered on screen.
+    static func deferredLinkCheckIfAsked() {
+        guard arg("appdnaCheckDeferredLink") != nil else { return }
+        AppDNA.onReady {
+            let started = Date()
+            AppDNA.checkDeferredDeepLink { link in
+                let ms = Int(Date().timeIntervalSince(started) * 1000)
+                let text = link.map { "deferred link → \($0.screen) visitor=\($0.visitorId)" } ?? "deferred link → none"
+                NSLog("AppDNA-E2E \(text) after \(ms)ms")
+                DispatchQueue.main.async { TrackedEventLog.shared.deferredLink = text }
+            }
+        }
+    }
+
     static func configureSDK() {
         redirectStdoutIfAsked()
         // An absent key still configures: the SDK then fails its bootstrap loudly, which is a
         // better state to debug than an app that quietly did nothing at launch.
         let key = arg("appdnaApiKey") ?? WalkMenu.bundledApiKey ?? "appdna_sandbox_demo_key"
+        #if DEBUG
+        if arg("appdnaResetFirstLaunch") != nil {
+            UserDefaults.standard.removeObject(forKey: "ai.appdna.sdk.first_launch_completed")
+            UserDefaults.standard.removeObject(forKey: "ai.appdna.sdk.ddl_failed_attempts")
+        }
+        #endif
         AppDNA.configure(apiKey: key, environment: .sandbox)
+        deferredLinkCheckIfAsked()
         /*
          `-appdnaLogLevel info` (or debug). The SDK defaults to `.warning`, so every `Log.info` is
          SUPPRESSED — including the lines that say which branch a decision took. That cost a cycle
