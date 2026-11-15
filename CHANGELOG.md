@@ -178,6 +178,11 @@ the project uses [Semantic Versioning](https://semver.org/).
   fills every line but the last edge to edge. On iOS a justified block is drawn through UIKit, keeping its bold,
   italic, colour runs and links (which still open in the in-app browser).
 
+- **One Agreement element can hold up to five consents.** With `field_config.consents`, each consent has its own
+  text, colours and `required`, drawn one under another. Each answer is stored as its own boolean under
+  `<field_id>.<consent_id>`, so rules and `{{responses.*}}` read a consent like any other answer, and each required
+  consent gates the CTA until it is checked. An Agreement without `consents` is unchanged.
+
 - **A Share button action.** A button can now open the phone's share sheet (iOS `UIActivityViewController`, Android an
   `ACTION_SEND` chooser) with text and an optional link set in the console: on an onboarding button or a
   Multi-buttons child (`action: "share"`, `share_text`, `share_url`; the step stays), on an in-app message CTA

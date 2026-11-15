@@ -2424,6 +2424,48 @@ struct FormInputToggleBlock: View {
     }
 }
 
+/// One consent of an Agreement that holds several: its own checkbox, copy and colours (each falling back to the
+/// block's), its answer stored as a Bool under `<field_id>.<consent_id>`.
+struct ConsentRow: View {
+    let block: ContentBlock
+    let consent: AgreementConsents.Consent
+    @Binding var inputValues: [String: Any]
+    @State private var isChecked = false
+
+    private func cfg(_ key: String) -> String? { block.field_config?[key]?.value as? String }
+
+    var body: some View {
+        let key = AgreementConsents.key(fieldId: block.field_id ?? block.id, consentId: consent.id)
+        let checkboxColor = Color(hex: consent.checkboxColor ?? cfg("checkbox_color") ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let borderColor = Color(hex: consent.checkboxBorderColor ?? cfg("checkbox_border_color") ?? "#C7C7CC")
+        let checkmarkColor = Color(hex: cfg("checkmark_color") ?? "#FFFFFF")
+        let textColor = Color(hex: consent.textColor ?? cfg("text_color") ?? "#8E8E93")
+        let linkColor = Color(hex: consent.linkColor ?? cfg("link_color") ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6).fill(isChecked ? checkboxColor : Color.clear)
+                RoundedRectangle(cornerRadius: 6).stroke(isChecked ? checkboxColor : borderColor, lineWidth: 1.5)
+                if isChecked {
+                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundColor(checkmarkColor)
+                }
+            }
+            .frame(width: 22, height: 22)
+            .contentShape(Rectangle())
+            .onTapGesture { isChecked.toggle() }
+            .accessibilityRepresentation { Toggle(consent.text, isOn: $isChecked) }
+            .accessibilityIdentifier("agreement.consent.\(consent.id)")
+            Text(MarkdownText.attributed(consent.text, linkColor: linkColor, textColor: textColor, underlineMarkers: false))
+                .font(.footnote)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onChange(of: isChecked) { inputValues[key] = $0 }
+        .onAppear {
+            if let saved = inputValues[key] as? Bool { isChecked = saved }
+            else { isChecked = consent.defaultChecked; inputValues[key] = isChecked }
+        }
+    }
+}
+
 /// Device QA (2026-08-04, s1) — standalone consent / agreement element: a tappable checkbox +
 /// a rich label whose `[terms](url)` / `[privacy](url)` markdown links open natively (SwiftUI
 /// `Text(AttributedString)` renders `.link` runs tappable). Persists a Bool to `inputValues[field_id]`;
@@ -2437,6 +2479,22 @@ struct AgreementBlock: View {
     @State private var isChecked: Bool = false
 
     var body: some View {
+        let consents = AgreementConsents.parse(block.field_config?["consents"]?.value)
+        if consents.isEmpty {
+            singleConsent
+        } else {
+            // Up to five consents, one under another, each its own checkbox, copy, colours and Required.
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(consents, id: \.id) { consent in
+                    ConsentRow(block: block, consent: consent, inputValues: $inputValues)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var singleConsent: some View {
         let fieldId = block.field_id ?? block.id
         let checkboxColor = Color(hex: (block.field_config?["checkbox_color"]?.value as? String) ?? (AppDNA.brandAccentHex ?? "#6366F1"))
         let borderColor = Color(hex: (block.field_config?["checkbox_border_color"]?.value as? String) ?? "#C7C7CC")

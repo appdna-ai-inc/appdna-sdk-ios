@@ -2738,8 +2738,20 @@ enum RequiredFieldGate {
             if count < minimum { return (false, fieldId) }
         }
 
+        // An Agreement holding several consents: each REQUIRED consent must be checked, under its own flat key
+        // (`<field_id>.<consent_id>`). Its block-level `field_required` belongs to the single-consent shape, so
+        // the loop below skips such a block — nothing is ever stored under the bare field id.
+        for block in blocks where block.type == .agreement {
+            let consents = AgreementConsents.parse(block.field_config?["consents"]?.value)
+            guard !consents.isEmpty else { continue }
+            if let missing = AgreementConsents.firstMissing(fieldId: block.field_id ?? block.id, consents: consents, values: inputValues) {
+                return (false, missing)
+            }
+        }
+
         for block in blocks where block.field_required == true {
             if block.type == .summary_screen { continue } // see above — per-stat, never block-level
+            if block.type == .agreement, !AgreementConsents.parse(block.field_config?["consents"]?.value).isEmpty { continue }
             // A required host-data-scoped Select that renders 0 options is satisfied.
             if marker(block) == "empty_in_scope" { continue }
             let fieldId = block.field_id ?? block.id

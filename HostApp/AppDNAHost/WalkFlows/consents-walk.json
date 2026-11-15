@@ -1,0 +1,84 @@
+{
+ "flows": {
+  "consents_walk_flow": {
+   "id": "consents_walk_flow",
+   "name": "Consents walk",
+   "version": 1,
+   "status": "active",
+   "settings": {
+    "allow_skip": false,
+    "show_progress": false
+   },
+   "steps": [
+    {
+     "id": "consent",
+     "name": "Consent",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "c_head",
+        "type": "heading",
+        "text": "Before you start"
+       },
+       {
+        "id": "c_agree",
+        "type": "agreement",
+        "field_id": "agree",
+        "field_required": true,
+        "field_config": {
+         "agreement_text": "I accept the [Terms](https://example.com/terms)",
+         "consents": [
+          {
+           "id": "terms",
+           "text": "I accept the [Terms](https://example.com/terms)",
+           "required": true
+          },
+          {
+           "id": "news",
+           "text": "Send me product news",
+           "required": false,
+           "text_color": "#16A34A"
+          },
+          {
+           "id": "age",
+           "text": "I am over 16",
+           "required": true,
+           "checkbox_color": "#EE6885"
+          }
+         ]
+        }
+       },
+       {
+        "id": "c_next",
+        "type": "button",
+        "text": "Continue",
+        "action": "next"
+       }
+      ]
+     }
+    },
+    {
+     "id": "done",
+     "name": "Done",
+     "type": "custom",
+     "config": {
+      "content_blocks": [
+       {
+        "id": "done_h",
+        "type": "heading",
+        "text": "Walk finished"
+       },
+       {
+        "id": "done_b",
+        "type": "button",
+        "text": "Finish",
+        "action": "next"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

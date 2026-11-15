@@ -62,6 +62,7 @@ extension SharedFixtureTests {
         case "resolve_deferred_link_pasteboard": runDeferredLinkPasteboard(f, h)
         case "resolve_facebook_mark_variant": runFacebookMarkVariant(f, h)
         case "resolve_heading_color_runs": runHeadingColorRuns(f, h)
+        case "resolve_agreement_consents": runAgreementConsents(f, h)
         case "resolve_survey_sentiment": runSurveySentiment(f, h)
         case "resolve_likert_bounds": runLikertBounds(f, h)
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
@@ -574,6 +575,26 @@ extension SharedFixtureTests {
                 backgroundHex: v?["bg"]?.stringValue,
                 iconStyle: v?["icon_style"]?.stringValue,
             )
+        }
+    }
+
+
+    // MARK: resolve_agreement_consents
+
+    /// WHICH consents an Agreement holds and WHETHER the CTA may advance, through the REAL `AgreementConsents`
+    /// both the Agreement block and the required-field gate call.
+    private func runAgreementConsents(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_agreement_consents needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let v = c.objectValue?["value"]?.objectValue
+            let fieldId = v?["field_id"]?.stringValue ?? "agree"
+            let consents = AgreementConsents.parse(v?["consents"]?.foundation)
+            let values = (v?["values"]?.foundation as? [String: Any]) ?? [:]
+            let verdict = AgreementConsents.firstMissing(fieldId: fieldId, consents: consents, values: values).map { "blocked:\($0)" } ?? "advance"
+            return consents.map(\.id).joined(separator: ",") + "|" + verdict
         }
     }
 
