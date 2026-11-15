@@ -37,7 +37,7 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
     /*
      🔴 NAMED TO RUN LAST (XCTest runs a class's tests in name order). It sets `SKTestSession.failTransactionsEnabled`,
      and on this simulator setting it back to false does not take: every purchase after it in the same run is recorded
-     by StoreKit as FAILED, whatever the paywall or layout (#1841: 3 runs, every leg after a refusal failed, the grid
+     by StoreKit as FAILED, whatever the paywall or layout (measured over 3 runs: every leg after a refusal failed, the grid
      control included; with the refusal last, every leg before it bought). Run first, it made the next test's
      horizontal_scroll CTA "buy nothing".
     */
@@ -251,7 +251,7 @@ final class PaywallAccentSelectionWalkUITests: XCTestCase {
     private func horizontalScrollLegs(refusalLast: Bool) throws {
         // A diagnosis, not part of the walk: it refuses a purchase mid-run, which fails every later purchase in the run
         // (see testZAFailedPurchase…). Runs only when asked for with `diagnose=1`, and on its own.
-        guard paywall("diagnose") == "1" else { throw XCTSkip("the #1841 diagnosis runs only with diagnose=1") }
+        guard paywall("diagnose") == "1" else { throw XCTSkip("the refused-purchase diagnosis runs only with diagnose=1") }
         guard let apiKey, let hs = paywall("horizontal_scroll"), let grid = paywall("grid") else {
             throw XCTSkip("needs horizontal_scroll= and grid= in TestCredentials")
         }
