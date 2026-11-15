@@ -20,6 +20,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The `animated_loading` spinner takes the block's colour.** The spinner of a checklist or circular loader was drawn
+  in the system tint, so it could vanish on a light step in dark mode. It now uses `progress_color`, then
+  `accent_color`, then the app's brand accent — the same colour Android uses.
+
 - **A hand-off to your own billing provider shows no "Payment failed" banner.** Under a provider that owns purchases
   (Adapty, or RevenueCat when its SDK is not linked) a paywall tap reports `providerNotAvailable` so your app can buy
   with the provider. With no `post_purchase.on_failure` authored, the paywall now shows nothing for it, as for a

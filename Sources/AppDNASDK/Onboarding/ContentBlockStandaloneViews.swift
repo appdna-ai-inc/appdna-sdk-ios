@@ -631,9 +631,9 @@ struct AnimatedLoadingBlockView: View {
                                         .foregroundColor(checkCol)
                                         .transition(.scale.combined(with: .opacity))
                                 } else if index == completedCount {
-                                    // Authored progress or accent colour, else the ink of the surface behind it.
+                                    // Always tinted: progress, else accent, else brand colour (AnimatedLoadingVariant.spinnerHex).
                                     ProgressView()
-                                        .tint((block.progress_color ?? block.accent_color).map { Color(hex: $0) })
+                                        .tint(Color(hex: AnimatedLoadingVariant.spinnerHex(block)))
                                         .scaleEffect(0.8)
                                         .transition(.opacity)
                                 } else {
@@ -2696,5 +2696,12 @@ struct CarouselBlockView: View {
 enum AnimatedLoadingVariant {
     static func resolve(_ block: ContentBlock) -> String {
         block.loading_variant ?? block.variant ?? "checklist"
+    }
+
+    /// The checklist's active-item spinner: the authored progress colour, else the accent colour, else the brand accent,
+    /// else indigo. Always tinted, so it never takes the phone's appearance (an untinted spinner was white on a light
+    /// step in dark mode). Android `AnimatedLoadingVariant.spinnerHex`; fixture `dto_parsing/animated_loading_spinner_colour`.
+    static func spinnerHex(_ block: ContentBlock) -> String {
+        block.progress_color ?? block.accent_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
     }
 }

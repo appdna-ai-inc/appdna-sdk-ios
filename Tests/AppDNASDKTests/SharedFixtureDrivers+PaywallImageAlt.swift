@@ -346,9 +346,10 @@ extension SharedFixtureTests {
     }
 
     // resolve_loading_variant REAL: the lenient `[ContentBlock]` decode → `AnimatedLoadingVariant.resolve`.
-    func runLoadingVariant(_ f: Fixture, _ h: Harness) {
+    /// `spinner: true` is `resolve_loading_spinner_colour`: the same decode, then `AnimatedLoadingVariant.spinnerHex`.
+    func runLoadingVariant(_ f: Fixture, _ h: Harness, spinner: Bool = false) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
-            XCTFail("[\(f.id)] resolve_loading_variant needs action.cases")
+            XCTFail("[\(f.id)] \(f.action.kind) needs action.cases")
             return
         }
         struct Holder: Decodable {
@@ -367,7 +368,7 @@ extension SharedFixtureTests {
                 XCTFail("[\(f.id)] a case did not decode")
                 return NSNull()
             }
-            return AnimatedLoadingVariant.resolve(block)
+            return spinner ? AnimatedLoadingVariant.spinnerHex(block) : AnimatedLoadingVariant.resolve(block)
         }
     }
 }

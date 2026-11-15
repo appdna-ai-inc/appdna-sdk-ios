@@ -51,6 +51,7 @@ extension SharedFixtureTests {
         case "resolve_container_children": runContainerChildren(f, h)
         case "resolve_rating_answer": runRatingAnswer(f, h)
         case "resolve_loading_variant": runLoadingVariant(f, h)
+        case "resolve_loading_spinner_colour": runLoadingVariant(f, h, spinner: true)
         case "resolve_custom_view_fallback": runCustomViewFallback(f, h)
         case "resolve_warning_banner_ink": runWarningBannerInk(f, h)
         case "resolve_button_label_ink": runButtonLabelInk(f, h)
