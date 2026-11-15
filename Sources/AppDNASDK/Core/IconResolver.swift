@@ -94,12 +94,12 @@ public struct IconView: View {
                     .foregroundColor(iconColor)
 
             case "lucide":
-                // Map common Lucide names to SF Symbols
-                if let sfName = IconMapping.lucideToSFSymbol[iconName] {
+                // Map common Lucide names to SF Symbols (a component name such as `CheckCircle` reads as `check-circle`)
+                if let sfName = IconMapping.lucideToSFSymbol[IconMapping.lucideKey(iconName)] {
                     Image(systemName: sfName)
                         .font(.system(size: iconSize))
                         .foregroundColor(iconColor)
-                } else if let emoji = IconMapping.lucideToEmoji[iconName] {
+                } else if let emoji = IconMapping.lucideToEmoji[IconMapping.lucideKey(iconName)] {
                     Text(emoji)
                         .font(.system(size: iconSize))
                 } else {
@@ -194,6 +194,29 @@ public enum IconMapping {
     ]
 
     static var materialToSFSymbol: [String: String] { SFSymbolTables.material }
+
+    /// A Lucide name as the tables key it: `check-circle` stays; the component name `CheckCircle` becomes
+    /// `check-circle`. The Kotlin twin is `lucideKey`.
+    static func lucideKey(_ name: String) -> String {
+        guard name.contains(where: { $0.isUppercase }) else { return name }
+        var out = ""
+        for (i, ch) in name.enumerated() {
+            if ch.isUppercase && i > 0 { out.append("-") }
+            out.append(contentsOf: ch.lowercased())
+        }
+        return out
+    }
+
+    /// The SF Symbol `IconView` draws for a reference, or nil when it falls back to an emoji or the question mark.
+    /// Shared fixture `icon_name_resolution` holds every name the console offers or writes.
+    static func symbolName(library: String?, name: String) -> String? {
+        switch library ?? "emoji" {
+        case "sf-symbols": return name
+        case "lucide": return lucideToSFSymbol[lucideKey(name)]
+        case "material": return materialToSFSymbol[name]
+        default: return nil
+        }
+    }
 
     static let materialToEmoji: [String: String] = [
         "check_circle": "\u{2705}",

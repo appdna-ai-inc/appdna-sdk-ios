@@ -42,6 +42,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Every icon the console offers draws.** Material `shopping_cart`, `account_circle` and `done` had no SF Symbol and drew a
+  question mark. A Lucide component name (`CheckCircle`) is now read as `check-circle`, so a mapped icon saved in that
+  form draws too.
+
 - **Text inputs are named for VoiceOver and TalkBack.** A text, number, email, phone, URL, password, textarea or
   location input, as a content block or a form step's field, now carries its label (else its placeholder) as its
   accessibility name. The label was drawn as a separate text above the field, so a screen reader landed on an unnamed

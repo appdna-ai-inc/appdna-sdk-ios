@@ -68,6 +68,7 @@ extension SharedFixtureTests {
         case "resolve_compact_picker_height": runCompactPickerHeight(f, h)
         case "resolve_flow_background": runFlowBackground(f, h)
         case "resolve_guarantee_icon": runGuaranteeIcon(f, h)
+        case "resolve_icon_name": runIconName(f, h)
         case "resolve_warning_banner_chrome": runWarningBannerChrome(f, h)
         case "resolve_toggle_settings": runToggleSettings(f, h)
         case "resolve_in_step_visibility": runVisibilityInStepScope(f, h)
@@ -765,6 +766,25 @@ extension SharedFixtureTests {
                 answer: v?["answer"]?.foundation,
                 emojiScale: scale,
             ).analyticsName
+        }
+    }
+
+    // MARK: resolve_icon_name
+
+    /// Each `{library, name}` through the REAL `IconMapping.symbolName` that `IconView` draws with, then whether the
+    /// system has that SF Symbol (`UIImage(systemName:)`, what `Image(systemName:)` renders): `library:name|drawn`, else
+    /// `library:name|?`.
+    private func runIconName(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_icon_name needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let o = c.objectValue ?? [:]
+            let library = o["library"]?.stringValue ?? ""
+            let name = o["name"]?.stringValue ?? ""
+            let drawn = IconMapping.symbolName(library: library, name: name).map { UIImage(systemName: $0) != nil } ?? false
+            return "\(library):\(name)|\(drawn ? "drawn" : "?")"
         }
     }
 

@@ -135,5 +135,8 @@ import Foundation
         "credit_card": "creditcard.fill",
         "bar_chart": "chart.bar.fill",
         "trending_up": "chart.line.uptrend.xyaxis",
+        "shopping_cart": "cart.fill",
+        "account_circle": "person.crop.circle.fill",
+        "done": "checkmark",
     ]
 }
