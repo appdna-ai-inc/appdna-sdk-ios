@@ -196,6 +196,34 @@ extension SharedFixtureTests {
                 guard let read = DateWheelAnswer.date(from: o["saved"]?.stringValue ?? "", calendar: zoned) else { return NSNull() }
                 let p = zoned.dateComponents([.year, .month, .day], from: read)
                 return String(format: "%04d-%02d-%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0)
+            case "zone_unset_opening", "zone_today_bounds", "zone_default_seed", "form_step_answer":
+                // The phone in one zone and the app in another: the zone each date rule picks, through the REAL functions.
+                let savedDefault = NSTimeZone.default, savedApp = AppDNA.appTimeZone
+                NSTimeZone.default = TimeZone(identifier: o["device_zone"]?.stringValue ?? "UTC")!
+                AppDNA.appTimeZone = TimeZone(identifier: o["app_zone"]?.stringValue ?? "UTC")!
+                defer { NSTimeZone.default = savedDefault; AppDNA.appTimeZone = savedApp }
+                let now = ISO8601.date(from: o["now"]?.stringValue ?? "") ?? Date()
+                let mode = o["mode"]?.stringValue ?? "date"
+                let zone = DateWheelPickerBlockView.wheelZone(mode: mode)
+                func day(_ d: Date) -> String { DateRangeCalendarView.dayKey(d, in: zone) }
+                switch o["op"]?.stringValue {
+                case "zone_unset_opening":
+                    var zoned = Calendar(identifier: .gregorian); zoned.timeZone = zone
+                    let p = zoned.dateComponents([.year, .month, .day, .hour, .minute], from: DateWheelPickerBlockView.unsetOpening(now: now, zone: zone))
+                    return String(format: "%04d-%02d-%02d %02d:%02d", p.year ?? 0, p.month ?? 0, p.day ?? 0, p.hour ?? 0, p.minute ?? 0)
+                case "zone_today_bounds":
+                    let r = DateWheelPickerBlockView.dateRange(minDate: nil, maxDate: nil, allowPast: o["allow_past"]?.foundation as? Bool,
+                                                               allowFuture: o["allow_future"]?.foundation as? Bool, now: now, zone: zone)
+                    return [day(r.lowerBound), day(r.upperBound)]
+                case "zone_default_seed":
+                    return DateWheelPickerBlockView.parseDate(o["value"]?.stringValue, zone: zone, now: now).map(day).map { $0 as Any } ?? NSNull()
+                default:
+                    // The wall time the picker shows in the app zone, as the moment the form step's Date holds.
+                    let wall = (o["wall"]?.stringValue ?? "").split(whereSeparator: { $0 == " " || $0 == "-" || $0 == ":" }).compactMap { Int($0) }
+                    var app = Calendar(identifier: .gregorian); app.timeZone = AnswerTime.zone
+                    let picked = app.date(from: DateComponents(year: wall[0], month: wall[1], day: wall[2], hour: wall[3], minute: wall[4]))!
+                    return FormStepView.formStepAnswer(picked, type: FormFieldType(rawValue: o["type"]?.stringValue ?? ""), zone: AnswerTime.zone)
+                }
             default:
                 XCTFail("[\(f.id)] unknown op")
                 return NSNull()

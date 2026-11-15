@@ -8,6 +8,15 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Every date picker works in the app's time zone, a date-only one too.** A `date_wheel_picker` or `input_date` in
+  `date` mode, its calendar, and a form step's `date` field number their days in the time zone set for the app in the
+  console (UTC unless changed), as the time and date-and-time pickers already did. So the day a picker opens on,
+  `today` and offsets such as `-18y` in `default_date_value` / `min_date` / `max_date`, and the "today" that
+  `allow_past: false` / `allow_future: false` compare against are the app's, not the phone's; near midnight they named
+  different days. A form step's `time` and `datetime` fields now store the shapes every other time answer stores, the
+  wall time in the app's zone with its offset (`23:03:00+09:00`, `2026-11-15T23:03:00+09:00`); they stored `HH:mm` and
+  `yyyy-MM-ddTHH:mm:00` with no zone. A time picker with nothing picked yet opens on the current time in the app's zone.
+
 - **Buying a plan the user already owns completes the paywall, as on Android.** A re-buy of an owned subscription or
   non-consumable now calls `onPaywallPurchaseCompleted`, so a host that closes its paywall there closes it; before,
   the paywall stayed open and nothing happened. Revenue is unchanged: it still emits `purchase_restored` (reason

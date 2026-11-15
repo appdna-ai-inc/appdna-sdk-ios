@@ -176,7 +176,8 @@ extension SharedFixtureTests {
         }
         h.state["results"] = cases.map { c -> Any in
             let o = c.objectValue ?? [:]
-            guard let range = FormStepView.dateRange(minDate: o["min_date"]?.stringValue, maxDate: o["max_date"]?.stringValue) else {
+            // The zone the picker numbers its days in: the case's one zone (on iOS the app's, `AnswerTime.zone`).
+            guard let range = FormStepView.dateRange(minDate: o["min_date"]?.stringValue, maxDate: o["max_date"]?.stringValue, zone: NSTimeZone.default) else {
                 return [NSNull(), NSNull()]
             }
             return [ms(range.lowerBound), ms(range.upperBound)]

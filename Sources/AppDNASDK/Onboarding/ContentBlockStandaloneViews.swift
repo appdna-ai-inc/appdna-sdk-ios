@@ -1343,9 +1343,14 @@ struct DateWheelPickerBlockView: View {
         self._inputValues = inputValues
         // Nothing saved and nothing authored: the wheel opens on noon today, in the zone it draws in. Noon in the
         // phone's zone drawn in the app's (UTC by default) opened a date-and-time wheel on 20:00 in California.
-        let mode = Self.answerMode(of: block)
-        _selectedDate = State(initialValue: Self.unsetOpening(now: Date(), zone: mode == "time" || mode == "datetime" ? AnswerTime.zone : .current))
+        _selectedDate = State(initialValue: Self.unsetOpening(now: Date(), zone: Self.wheelZone(mode: Self.answerMode(of: block))))
     }
+
+    /// The zone a wheel draws, takes and stores in, whatever its mode: the app's (`AnswerTime.zone`, UTC unless set in
+    /// the console). A date-only wheel used the phone's, so near midnight it named another day than a date-and-time
+    /// wheel on the same screen, and its "today" (the default, `allow_past` / `allow_future`) was the phone's today.
+    /// Android `DateWheelModel.wheelZone`.
+    static func wheelZone(mode: String) -> TimeZone { AnswerTime.zone }
 
     /// Where a wheel with no saved answer and no `default_date_value` opens: today at 12:00 in `zone`. Android opens
     /// on the same wall time (`DateWheelModel.unsetOpening`); the console preview shows it. Nothing is stored until the
@@ -1368,22 +1373,23 @@ struct DateWheelPickerBlockView: View {
     /// Parse relative date strings like "today", "-18y", "-100y", "+1y", "-30d", or ISO date "2000-01-01"
     // Internal (was private) so FormInputDateBlock can reuse the identical min_date/max_date
     // parsing (relative "-18y"/"+30d", "today"/"now", absolute ISO) for its own bounds gate.
-    /// `zone`: where an absolute date's midnight falls. The phone's, except for a time or date-and-time wheel, which works
-    /// in the app's zone (as Android reads the same default's wall time there).
-    static func parseDate(_ str: String?, zone: TimeZone = .current) -> Date? {
+    /// `zone`: the calendar the date is read on, the app's (`AnswerTime.zone`) for every wheel: an absolute date is its
+    /// midnight there, and a relative one counts days, months or years on that calendar from `now`.
+    static func parseDate(_ str: String?, zone: TimeZone = AnswerTime.zone, now: Date = Date()) -> Date? {
         guard let str, !str.isEmpty else { return nil }
         let trimmed = str.trimmingCharacters(in: .whitespaces).lowercased()
-        if trimmed == "today" || trimmed == "now" { return Date() }
-        let cal = Calendar.current
+        if trimmed == "today" || trimmed == "now" { return now }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = zone
         // Relative: -18y, +1y, -30d, -6m
         let lastChar = trimmed.last
         if let lastChar, "dmy".contains(lastChar) {
             let numStr = String(trimmed.dropLast())
             if let amount = Int(numStr) {
                 switch lastChar {
-                case "d": return cal.date(byAdding: .day, value: amount, to: Date())
-                case "m": return cal.date(byAdding: .month, value: amount, to: Date())
-                case "y": return cal.date(byAdding: .year, value: amount, to: Date())
+                case "d": return cal.date(byAdding: .day, value: amount, to: now)
+                case "m": return cal.date(byAdding: .month, value: amount, to: now)
+                case "y": return cal.date(byAdding: .year, value: amount, to: now)
                 default: break
                 }
             }
@@ -1396,25 +1402,34 @@ struct DateWheelPickerBlockView: View {
     }
 
     private var dateRange: ClosedRange<Date> {
-        let cal = Calendar.current
+        Self.dateRange(minDate: block.min_date, maxDate: block.max_date,
+                       allowPast: block.allow_past, allowFuture: block.allow_future, now: Date(), zone: wheelZone)
+    }
+
+    /// What a wheel may be set to: the authored `min_date` / `max_date`, narrowed to today by `allow_past` /
+    /// `allow_future` == false. Today starts at midnight in `zone`, the app's, so it is the app's today on every wheel.
+    static func dateRange(minDate minText: String?, maxDate maxText: String?, allowPast: Bool?, allowFuture: Bool?,
+                          now: Date, zone: TimeZone) -> ClosedRange<Date> {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = zone
         var minDate: Date
         var maxDate: Date
 
         // Start with wide defaults
-        minDate = cal.date(byAdding: .year, value: -150, to: Date()) ?? Date.distantPast
-        maxDate = cal.date(byAdding: .year, value: 50, to: Date()) ?? Date.distantFuture
+        minDate = cal.date(byAdding: .year, value: -150, to: now) ?? Date.distantPast
+        maxDate = cal.date(byAdding: .year, value: 50, to: now) ?? Date.distantFuture
 
         // Apply explicit min/max
-        if let parsed = Self.parseDate(block.min_date) { minDate = parsed }
-        if let parsed = Self.parseDate(block.max_date) { maxDate = parsed }
+        if let parsed = parseDate(minText, zone: zone, now: now) { minDate = parsed }
+        if let parsed = parseDate(maxText, zone: zone, now: now) { maxDate = parsed }
 
         // Apply allow_future / allow_past toggles
-        if block.allow_future == false {
-            let today = cal.startOfDay(for: Date())
+        if allowFuture == false {
+            let today = cal.startOfDay(for: now)
             maxDate = min(maxDate, today)
         }
-        if block.allow_past == false {
-            let today = cal.startOfDay(for: Date())
+        if allowPast == false {
+            let today = cal.startOfDay(for: now)
             minDate = max(minDate, today)
         }
 
@@ -1654,11 +1669,9 @@ struct DateWheelPickerBlockView: View {
         }
     }
 
-    /// The zone the wheel draws in: the app's for a time or date-and-time (the user picks the wall time the app works
-    /// in, and that is the time a later step shows), the phone's for a date or a year.
-    private var wheelZone: TimeZone {
-        answerMode == "time" || answerMode == "datetime" ? AnswerTime.zone : environmentCalendar.timeZone
-    }
+    /// The zone the wheel draws in: the app's, for every mode (`wheelZone(mode:)`). The user picks the day and the wall
+    /// time the app works in, and that is what a later step shows.
+    private var wheelZone: TimeZone { Self.wheelZone(mode: answerMode) }
 
     /// The days the user sees: the Gregorian numbering every answer uses, in the time zone the wheel draws in.
     private var answerCalendar: Calendar {
@@ -1696,7 +1709,7 @@ struct DateWheelPickerBlockView: View {
             || block.picker_mode == nil  // legacy default for input_date / date_wheel_picker
             || block.type == .input_date
         if isDateOnly && block.picker_mode != "datetime" && block.picker_mode != "time" && block.picker_mode != "date_time" {
-            let years = Calendar.current.dateComponents([.year], from: selectedDate, to: Date()).year ?? 0
+            let years = answerCalendar.dateComponents([.year], from: selectedDate, to: Date()).year ?? 0
             inputValues["\(fieldId)_age"] = max(0, years)
         }
     }
@@ -1704,7 +1717,10 @@ struct DateWheelPickerBlockView: View {
     private func restoreDate() {
         let fieldId = block.field_id ?? block.id
         if isRangeMode { rangeSelection = DateRangeSelection.restore(inputValues, fieldId: fieldId) }
-        if let saved = inputValues[fieldId] as? String, let date = DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
+        let isDay = answerMode == "date" || answerMode == "year"
+        if let saved = inputValues[fieldId] as? String,
+           let date = isDay ? DateWheelAnswer.day(from: saved, calendar: answerCalendar, phone: environmentCalendar)
+                            : DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
             let range = dateRange
             selectedDate = min(max(date, range.lowerBound), range.upperBound)
             return
@@ -1768,7 +1784,7 @@ struct DateWheelPickerBlockView: View {
                 accent: highlightCol,
                 rangeFill: rangeHex.map { Color(hex: $0) } ?? highlightCol.opacity(0.2),
                 text: wheelTextColorHex.map { Color(hex: $0) } ?? (inkScheme == .dark ? .white : .primary),
-                initialMonth: Self.parseDate(rangeSelection.start) ?? selectedDate
+                initialMonth: Self.parseDate(rangeSelection.start, zone: wheelZone) ?? selectedDate
             )
             .padding(Swift.max(pickerPadding, 8))
             .background(

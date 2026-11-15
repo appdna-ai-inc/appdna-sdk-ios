@@ -450,10 +450,11 @@ struct FormInputDateBlock: View {
 
     /// What this field stores, the shapes the date wheel stores: `date` is a calendar date; a `time` or
     /// `datetime` is the wall time picked in the app's zone (`AnswerTime.zone`, UTC unless set), with its offset.
+    /// Every mode is drawn and picked in that zone, so a date's day and its "today" are the app's.
     private var answerMode: String {
         components == .date ? "date" : components == .hourAndMinute ? "time" : "datetime"
     }
-    private var answerZone: TimeZone { answerMode == "date" ? .current : AnswerTime.zone }
+    private var answerZone: TimeZone { DateWheelPickerBlockView.wheelZone(mode: answerMode) }
     private var answerCalendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = answerZone
@@ -575,10 +576,10 @@ struct FormInputDateBlock: View {
                     // A date and time adds the time under the grid, as the system calendar drew it: a compact time
                     // field that opens the time wheel.
                     let now = Date()
-                    let lo = DateWheelPickerBlockView.parseDate(block.min_date)
-                        ?? (block.allow_past == false ? now : Calendar.current.date(byAdding: .year, value: -150, to: now)!)
-                    let hi = DateWheelPickerBlockView.parseDate(block.max_date)
-                        ?? (block.allow_future == false ? now : Calendar.current.date(byAdding: .year, value: 50, to: now)!)
+                    let lo = DateWheelPickerBlockView.parseDate(block.min_date, zone: answerZone, now: now)
+                        ?? (block.allow_past == false ? now : answerCalendar.date(byAdding: .year, value: -150, to: now)!)
+                    let hi = DateWheelPickerBlockView.parseDate(block.max_date, zone: answerZone, now: now)
+                        ?? (block.allow_future == false ? now : answerCalendar.date(byAdding: .year, value: 50, to: now)!)
                     VStack(spacing: 0) {
                         DateRangeCalendarView(
                             selection: Binding(
@@ -589,7 +590,7 @@ struct FormInputDateBlock: View {
                             ),
                             bounds: lo...Swift.max(lo, hi), accent: accentColor, rangeFill: .clear,
                             text: wheelTextColorHex.map { Color(hex: $0) } ?? .primary,
-                            initialMonth: selectedDate, single: true
+                            initialMonth: selectedDate, single: true, zone: answerZone
                         )
                         .padding(8)
                         if components.contains(.hourAndMinute) {
@@ -698,7 +699,7 @@ struct FormInputDateBlock: View {
             // An unstyled picker takes its scheme from what is behind it: `.light` here drew a black value on a
             // dark step on a phone in Light.
             .environment(\.colorScheme, resolvedScheme ?? pickerSurfaceScheme(variant: variant, fieldBgHex: fieldBgHex, wheelBgHex: wheelBgHex, calendarBgHex: calendarBgHex))
-            // A time is picked in the app's zone, a date on the phone's calendar.
+            // Every mode is picked in the app's zone: a date's day too, so its today is the app's.
             .environment(\.timeZone, answerZone)
             .onChange(of: selectedDate) { newValue in
                 // Enforce allow_future / allow_past on the form-input date variant,
@@ -706,12 +707,21 @@ struct FormInputDateBlock: View {
                 // this, input_date silently accepted any date. An out-of-range pick is NOT committed
                 // (so the required gate still blocks the step) and surfaces the inline message.
                 let now = Date()
-                if block.allow_future == false && newValue > now {
+                // A date is compared as a day of the app's calendar: today is allowed either way, whatever the time
+                // of day the picker's Date carries. A time or date-and-time is compared as the moment it names.
+                let pastToday: Bool, beforeToday: Bool
+                if answerMode == "date" {
+                    let picked = DateRangeCalendarView.dayKey(newValue, in: answerZone), today = DateRangeCalendarView.dayKey(now, in: answerZone)
+                    pastToday = picked > today; beforeToday = picked < today
+                } else {
+                    pastToday = newValue > now; beforeToday = newValue < now
+                }
+                if block.allow_future == false && pastToday {
                     dateError = block.date_validation_message ?? "Future dates are not allowed"
                     inputValues[fieldId] = nil
                     return
                 }
-                if block.allow_past == false && newValue < now {
+                if block.allow_past == false && beforeToday {
                     dateError = block.date_validation_message ?? "Past dates are not allowed"
                     inputValues[fieldId] = nil
                     return
@@ -720,12 +730,12 @@ struct FormInputDateBlock: View {
                 // variant (the editor's Min/Max Date controls). Previously only the standalone
                 // date_wheel_picker honored these; input_date/time/datetime silently dropped them.
                 // Parsed with the same helper the standalone picker uses (relative + ISO forms).
-                if let minD = DateWheelPickerBlockView.parseDate(block.min_date), newValue < minD {
+                if let minD = DateWheelPickerBlockView.parseDate(block.min_date, zone: answerZone), newValue < minD {
                     dateError = block.date_validation_message ?? "Date is before the earliest allowed date"
                     inputValues[fieldId] = nil
                     return
                 }
-                if let maxD = DateWheelPickerBlockView.parseDate(block.max_date), newValue > maxD {
+                if let maxD = DateWheelPickerBlockView.parseDate(block.max_date, zone: answerZone), newValue > maxD {
                     dateError = block.date_validation_message ?? "Date is after the latest allowed date"
                     inputValues[fieldId] = nil
                     return
@@ -747,7 +757,8 @@ struct FormInputDateBlock: View {
             DatePickerPrewarmer.prewarmOnce()
             // The saved answer, shown again on return, in any shape this SDK has stored.
             if let saved = inputValues[block.field_id ?? block.id] as? String,
-               let date = DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
+               let date = answerMode == "date" ? DateWheelAnswer.day(from: saved, calendar: answerCalendar, phone: Calendar.current)
+                                               : DateWheelAnswer.date(from: saved, calendar: answerCalendar) {
                 selectedDate = date
             }
         }

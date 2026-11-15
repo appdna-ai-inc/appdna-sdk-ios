@@ -74,7 +74,7 @@ struct DateWheelModel {
 }
 
 /// What the date wheel stores for a pick, and the date a stored answer is read back as. `calendar` is Gregorian, in the
-/// time zone the wheel draws in: the phone's for a date, the app's (`AnswerTime.zone`) for a time or date-and-time.
+/// time zone the wheel draws in: the app's (`AnswerTime.zone`), for every mode.
 ///
 /// A date-only answer is the calendar date the user saw, `yyyy-MM-dd`, as Android stores it. It is not a moment: written as
 /// a UTC instant, local midnight east of UTC is the previous day, and every reader of the text got the wrong date.
@@ -114,6 +114,18 @@ enum DateWheelAnswer {
             return nil
         }
         return AnswerTime.date(from: text, in: calendar.timeZone) ?? ISO8601.date(from: text)
+    }
+
+    /// A date-only (or year) answer read back as the calendar day it names, placed on `calendar` (the app's). A
+    /// `yyyy-MM-dd` or a year is that day. An older instant, which an earlier iOS release stored as the picked day's
+    /// midnight on the phone, names the day it falls on in `phone`, the calendar it was written on: read in the app's
+    /// zone it could be the day before or after.
+    static func day(from saved: String, calendar: Calendar, phone: Calendar) -> Date? {
+        guard let read = date(from: saved, calendar: calendar) else { return nil }
+        let text = saved.trimmingCharacters(in: .whitespaces)
+        guard text.contains("T") else { return read }
+        let c = phone.dateComponents([.year, .month, .day], from: read)
+        return calendar.date(from: DateComponents(year: c.year, month: c.month, day: c.day, hour: 12))
     }
 }
 

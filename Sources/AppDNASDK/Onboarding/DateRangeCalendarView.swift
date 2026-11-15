@@ -16,13 +16,16 @@ struct DateRangeCalendarView: View {
     /// take a tap inside an onboarding step on iOS 26 (its collection-view selection lost to the step's tap gestures),
     /// while this grid's own taps did.
     var single: Bool = false
+    /// The calendar the grid numbers its days on: the app's zone (`AnswerTime.zone`), the zone every date answer and
+    /// every "today" uses. The phone's zone named another day near midnight in an app set to a different zone.
+    var zone: TimeZone = AnswerTime.zone
 
     @State private var month: Date?
     @State private var showingYears = false
 
     private var cal: Calendar {
         var c = Calendar(identifier: .gregorian)
-        c.timeZone = .current
+        c.timeZone = zone
         c.locale = .current
         c.firstWeekday = Calendar.current.firstWeekday
         return c
@@ -31,14 +34,14 @@ struct DateRangeCalendarView: View {
     private var dayFormatter: DateFormatter {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
-        f.timeZone = .current
+        f.timeZone = zone
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f
     }
 
-    /// `yyyy-MM-dd` of `date` in `zone` (the phone's by default; a date and time answers in the app's zone).
-    static func dayKey(_ date: Date, in zone: TimeZone = .current) -> String {
+    /// `yyyy-MM-dd` of `date` in `zone` (the app's by default, the zone every date answer uses).
+    static func dayKey(_ date: Date, in zone: TimeZone = AnswerTime.zone) -> String {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
         f.timeZone = zone
@@ -48,7 +51,7 @@ struct DateRangeCalendarView: View {
     }
 
     /// `date` moved to the day `key` names, keeping its time of day (a picked day changes only the day).
-    static func moving(_ date: Date, toDayKey key: String, in zone: TimeZone = .current) -> Date? {
+    static func moving(_ date: Date, toDayKey key: String, in zone: TimeZone = AnswerTime.zone) -> Date? {
         let p = key.split(separator: "-").compactMap { Int($0) }
         guard p.count == 3 else { return nil }
         var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
@@ -66,6 +69,7 @@ struct DateRangeCalendarView: View {
     private var title: String {
         let f = DateFormatter()
         f.locale = .current
+        f.timeZone = zone
         f.setLocalizedDateFormatFromTemplate("LLLLyyyy")
         return f.string(from: shown)
     }

@@ -345,22 +345,36 @@ struct FormStepView: View {
 
     // MARK: - Date/Time
 
+    /// What a form step stores for a picked date, time or date-and-time: the date wheel's shapes in `zone`
+    /// (`DateWheelAnswer` / `AnswerTime`). An unknown type stores a date-and-time. Android `formStepDateAnswer`.
+    static func formStepAnswer(_ date: Date, type: FormFieldType?, zone: TimeZone) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        switch type {
+        case .date: return DateWheelAnswer.string(for: date, mode: "date", calendar: calendar)
+        case .time: return AnswerTime.timeString(date, in: zone)
+        default: return AnswerTime.dateTimeString(date, in: zone)
+        }
+    }
+
     /// Parse min/max date config (ISO `yyyy-MM-dd`)
     /// into a `ClosedRange<Date>` and apply via SwiftUI's `in:` parameter.
     /// Mirrors Android `DatePickerDialog.datePicker.minDate/maxDate`.
     ///
-    /// Each bound is a `yyyy-MM-dd` date at midnight in the DEVICE time zone (the formatter sets no
-    /// time zone); a value that does not parse is no bound. A descending pair is no range at all.
-    /// Android's `formDateBounds` (IsoInstant.parseDateOnlyLocalMs) reproduces this; the shared fixture
-    /// `dto_parsing/form_date_bounds_parsing` pins both.
+    /// Each bound is a `yyyy-MM-dd` date at midnight in `zone`, the zone the picker draws its days in: the app's
+    /// (`AnswerTime.zone`), so the bound is that calendar day on the picker. A value that does not parse is no
+    /// bound. A descending pair is no range at all. Android's `formDateBounds` (IsoInstant.parseDateOnlyLocalMs)
+    /// reproduces this for its system dialog, which draws days in the phone's zone; the shared fixture
+    /// `dto_parsing/form_date_bounds_parsing` pins both in one zone.
     private func dateRange(for field: FormField) -> ClosedRange<Date>? {
-        Self.dateRange(minDate: field.config?.min_date, maxDate: field.config?.max_date)
+        Self.dateRange(minDate: field.config?.min_date, maxDate: field.config?.max_date, zone: AnswerTime.zone)
     }
 
     /// Internal for the shared fixture.
-    static func dateRange(minDate: String?, maxDate: String?) -> ClosedRange<Date>? {
+    static func dateRange(minDate: String?, maxDate: String?, zone: TimeZone) -> ClosedRange<Date>? {
         let fmt = DateFormatter()
         fmt.dateFormat = "yyyy-MM-dd"
+        fmt.timeZone = zone
         fmt.locale = Locale(identifier: "en_US_POSIX")
         guard let min = minDate.flatMap({ fmt.date(from: $0) })
                 ?? maxDate.flatMap({ fmt.date(from: $0) }) else { return nil }
@@ -377,12 +391,15 @@ struct FormStepView: View {
             get: { values[field.id] as? Date ?? Date() },
             set: { values[field.id] = $0; errors[field.id] = nil }
         )
+        // The day is picked on the app's calendar (`AnswerTime.zone`), so today and the bounds are the app's.
         if let range = dateRange(for: field) {
             DatePicker("", selection: binding, in: range, displayedComponents: .date)
                 .datePickerStyle(.compact).labelsHidden()
+                .environment(\.timeZone, AnswerTime.zone)
         } else {
             DatePicker("", selection: binding, displayedComponents: .date)
                 .datePickerStyle(.compact).labelsHidden()
+                .environment(\.timeZone, AnswerTime.zone)
         }
     }
 
@@ -398,6 +415,8 @@ struct FormStepView: View {
         )
         .datePickerStyle(.compact)
         .labelsHidden()
+        // The wall time is picked in the app's zone, the zone it is stored in.
+        .environment(\.timeZone, AnswerTime.zone)
     }
 
     @ViewBuilder
@@ -409,9 +428,11 @@ struct FormStepView: View {
         if let range = dateRange(for: field) {
             DatePicker("", selection: binding, in: range, displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.compact).labelsHidden()
+                .environment(\.timeZone, AnswerTime.zone)
         } else {
             DatePicker("", selection: binding, displayedComponents: [.date, .hourAndMinute])
                 .datePickerStyle(.compact).labelsHidden()
+                .environment(\.timeZone, AnswerTime.zone)
         }
     }
 
@@ -685,29 +706,17 @@ struct FormStepView: View {
         }
 
         if errors.isEmpty {
-            // Serialize each date/time field to a deterministic LOCAL-component format that
-            // BOTH platforms produce identically (no UTC conversion → no local-vs-UTC divergence):
+            // Each date/time field is stored in the shapes every date answer uses (the date wheel's and the
+            // input_date / input_time / input_datetime blocks'), in the app's zone (`AnswerTime.zone`):
             //   date     → "yyyy-MM-dd"
-            //   time     → "HH:mm"
-            //   datetime → "yyyy-MM-dd'T'HH:mm:ss"
-            // Was a uniform full ISO8601 (UTC) for EVERY date field, so a DATE carried an arbitrary
-            // time-of-day and a TIME carried today's date — neither matched Android's date-only / bare
-            // "HH:mm" strings. Formatters use no explicit timeZone → device-local components (what the
-            // user picked), matching Android's picker-derived Y/M/D + H:M.
+            //   time     → "HH:mm:00+09:00"            (the wall time picked, with the zone's offset; UTC as Z)
+            //   datetime → "yyyy-MM-dd'T'HH:mm:00+09:00"
+            // `formStepAnswer` is that rule, shared with Android's form step.
             let fieldTypeById = Dictionary(fields.map { ($0.id, $0.type) }, uniquingKeysWith: { first, _ in first })
-            let dateFmt = DateFormatter(); dateFmt.locale = Locale(identifier: "en_US_POSIX"); dateFmt.dateFormat = "yyyy-MM-dd"
-            let timeFmt = DateFormatter(); timeFmt.locale = Locale(identifier: "en_US_POSIX"); timeFmt.dateFormat = "HH:mm"
-            // Literal ':00' seconds: the pickers are minute-granularity, but the seeded Date carries
-            // wall-clock seconds — hardcoding :00 keeps it identical to Android's "...THH:mm:00".
-            let dtFmt = DateFormatter(); dtFmt.locale = Locale(identifier: "en_US_POSIX"); dtFmt.dateFormat = "yyyy-MM-dd'T'HH:mm':00'"
             var response: [String: Any] = [:]
             for (key, val) in values {
                 if let date = val as? Date {
-                    switch fieldTypeById[key] {
-                    case .date: response[key] = dateFmt.string(from: date)
-                    case .time: response[key] = timeFmt.string(from: date)
-                    default: response[key] = dtFmt.string(from: date) // datetime (or unknown Date)
-                    }
+                    response[key] = Self.formStepAnswer(date, type: fieldTypeById[key], zone: AnswerTime.zone)
                 } else {
                     response[key] = val
                 }
