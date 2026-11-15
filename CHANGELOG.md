@@ -34,6 +34,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A required field's asterisk trails its label when the label wraps.** The `*` was drawn beside the label, so a
+  label on two lines left it at the edge of the row next to the first line. It is now part of the label's text, on
+  content-block fields and on the legacy form step's fields, on both platforms.
+
 - **The selected segment of `input_segmented` draws its authored colour.** iOS drew the system grey pill whatever
   was authored, because a segmented `Picker` ignores `.tint`. The control is now drawn by the SDK, as on Android:
   the selected segment takes `field_style.fill_color`, else `active_color`, else the brand accent, and its label
