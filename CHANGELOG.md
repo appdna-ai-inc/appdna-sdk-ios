@@ -54,6 +54,11 @@ the project uses [Semantic Versioning](https://semver.org/).
   drawn, but its `horizontal_align` had no box to act in. Both forms are now 120 points, and an aligned block with a
   bare-number width is placed by its alignment, as one with `120px` is.
 
+- **A rule on a later step that reads an earlier step's consent now matches.** A multi-consent Agreement answers each
+  consent under `<field_id>.<consent_id>`, so a later step addresses it as `<step_id>.<field_id>.<consent_id>`. The
+  key was split at its last dot, which named no step, so the rule never matched and the flow fell through to the next
+  step in order. Every dot is now tried, last first; keys that matched before match the same way.
+
 - **A text input draws its focused and error border colours.** A single-line text input (`input_text`, `input_email`,
   `input_phone`, `input_number`, `input_url`) stroked `field_style.border_color` in every state, so the console's
   Focused Border and Error Border colours did nothing. It now strokes `error_border_color` while the field is in error,

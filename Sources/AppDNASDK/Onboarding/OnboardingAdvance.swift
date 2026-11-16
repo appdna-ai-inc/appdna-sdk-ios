@@ -468,18 +468,25 @@ enum OnboardingAdvance {
         // A key the current step actually answered always wins: a field_id may legitimately contain
         // a dot, and this keeps every pre-existing rule byte-identical.
         if stepResponses[rawField] != nil { return own }
-        guard let flow = flow, let dot = rawField.lastIndex(of: ".") else { return own }
-        let stepRef = String(rawField[rawField.startIndex..<dot])
-        let leaf = String(rawField[rawField.index(after: dot)...])
-        guard !stepRef.isEmpty, !leaf.isEmpty else { return own }
-        // Id first, then authored name — an id is unambiguous, a name is what the console writes.
-        guard let source = flow.steps.first(where: { $0.id == stepRef })
-            ?? flow.steps.first(where: { $0.name == stepRef }) else { return own }
-        return ConditionScope(
-            field: leaf,
-            responses: allResponses[source.id] as? [String: Any] ?? [:],
-            step: source
-        )
+        guard let flow = flow else { return own }
+        // Every dot is tried, LAST first, and the first head that names a step wins: the field key may itself
+        // hold a dot (an Agreement consent is answered under `<field_id>.<consent_id>`), and trying the last
+        // dot first keeps every key that resolved before resolving the same way. Mirrors Android.
+        let dots = rawField.indices.filter { rawField[$0] == "." }.reversed()
+        for dot in dots {
+            let stepRef = String(rawField[rawField.startIndex..<dot])
+            let leaf = String(rawField[rawField.index(after: dot)...])
+            guard !stepRef.isEmpty, !leaf.isEmpty else { continue }
+            // Id first, then authored name — an id is unambiguous, a name is what the console writes.
+            if let source = flow.steps.first(where: { $0.id == stepRef }) ?? flow.steps.first(where: { $0.name == stepRef }) {
+                return ConditionScope(
+                    field: leaf,
+                    responses: allResponses[source.id] as? [String: Any] ?? [:],
+                    step: source
+                )
+            }
+        }
+        return own
     }
 
     static func evaluateCondition(
