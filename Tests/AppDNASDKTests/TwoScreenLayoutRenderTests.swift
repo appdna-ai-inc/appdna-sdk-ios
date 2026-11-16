@@ -121,6 +121,24 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
             host.view.setNeedsLayout()
             host.view.layoutIfNeeded()
             spin(0.6)
+            settle()
+        }
+
+        /// Waits until two reads of the published tree, 50 ms apart, put every labelled element in the same place —
+        /// so a render read on a loaded machine, where the tree publishes late, is the settled layout and not one
+        /// caught on the way to it. Capped at 2 s; the assertions judge whatever the last read was.
+        func settle() {
+            func layout() -> [String] {
+                elements().compactMap { e in e.accessibilityLabel.map { "\($0)@\(frame(e).integral)" } }
+            }
+            var last = layout()
+            let end = Date().addingTimeInterval(2)
+            while Date() < end {
+                spin(0.05)
+                let now = layout()
+                if now == last && !now.isEmpty { return }
+                last = now
+            }
         }
 
         func close() { window.isHidden = true }
@@ -370,6 +388,39 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
                 XCTAssertLessThanOrEqual(hero.maxY, input.minY + 1, "[\(g.name)] the hero is ABOVE the input")
             }
         }
+    }
+
+    /// The column is drawn at its width from the first frame it is measured in: a CTA sampled every 20 ms from the
+    /// moment the window is shown is never anything but its column width. Before, the first measurement landed in an
+    /// animated transaction and the CTA shrank from the window's width (605) to the column's (470) over about half a
+    /// second, so a read that came early on a loaded machine measured something in between.
+    func testTheColumnIsItsWidthFromTheFirstMeasuredFrameNotAnimatedTo() throws {
+        let flow = try onboardingFlow(hero: true)
+        let g = Self.innerPortrait
+        _ = A11yAutomation.enabled
+        let host = UIHostingController(rootView: onboarding(flow))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: g.size))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        if #available(iOS 17.0, *) {
+            host.traitOverrides.horizontalSizeClass = g.horizontal
+            host.traitOverrides.verticalSizeClass = g.vertical
+        }
+        host.view.layoutIfNeeded()
+        let main = g.mainPane(splits: true)
+        let expected = main.width - 2 * main.stepInset
+        var widths: [CGFloat] = []
+        let end = Date().addingTimeInterval(1.5)
+        while Date() < end {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+            A11yAutomation.ensure()
+            let cta = A11yTree.raw([host.view]).first { $0.accessibilityLabel == "Continue" && $0.accessibilityTraits.contains(.button) }
+            if let cta { widths.append(window.convert(cta.accessibilityFrame, from: nil).width) }
+        }
+        XCTAssertFalse(widths.isEmpty, "control: the CTA was read at all\(A11yTree.diagnosis(A11yTree.raw([host.view]), roots: [host.view]))")
+        let off = widths.filter { abs($0 - expected) > 1 }
+        XCTAssertTrue(off.isEmpty, "the CTA is \(expected) wide in every frame once it is drawn; \(off.count) of \(widths.count) reads were not: \(off.prefix(8).map { String(format: "%.1f", $0) })")
     }
 
     /// A fold and an unfold, with an answer typed: the answer is still the step's when it is

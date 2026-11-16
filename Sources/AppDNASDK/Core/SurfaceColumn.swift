@@ -190,16 +190,34 @@ struct SurfaceColumnModifier: ViewModifier {
             .environment(\.appdnaSurfaceSize, CGSize(width: container, height: available.height))
             .environment(\.appdnaSurfaceMode, mode)
             .environment(\.appdnaSurfaceAvailable, available)
-            .onPreferenceChange(SurfaceSplitsKey.self) { contentSplits = $0 }
+            .onPreferenceChange(SurfaceSplitsKey.self) { splits in Self.unanimated { contentSplits = splits } }
             .frame(maxWidth: container > 0 ? container : .infinity)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(
                 GeometryReader { geo in
                     Color.clear
-                        .onAppear { available = geo.size }
-                        .onChange(of: geo.size) { available = $0 }
+                        .onAppear { Self.unanimated { available = geo.size } }
+                        .onChange(of: geo.size) { size in Self.unanimated { available = size } }
                 }
             )
+    }
+
+    /**
+     A measurement is not an event, so it never animates.
+
+     🔴 The first measurement used to land inside whatever animated transaction was open when the
+     surface appeared, and the content then SQUEEZED from the unmeasured width (the whole window) to
+     the column over about half a second: on a 669-point window the CTA drew 605 points wide and
+     shrank to 470. A person on a wide window saw every surface narrow itself as it opened, and a
+     render test that read the layout before the animation ended measured a width between the two.
+     The size is applied in a transaction with animations off, so the first measured frame is the
+     final one; a fold or a rotation still moves with the window, which UIKit animates itself.
+     */
+    private static func unanimated(_ change: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        transaction.animation = nil
+        withTransaction(transaction, change)
     }
 }
 

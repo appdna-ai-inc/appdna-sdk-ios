@@ -67,6 +67,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A surface no longer narrows itself as it opens on a wide window.** An onboarding step, a paywall, a survey or a
+  full-screen message on a window wider than the 560-point column could open at the window's width and shrink to the
+  column over about half a second, because the first measurement of the window landed in an animated transaction. The
+  column is now applied without animation, so the first frame drawn is the final one. Phones in portrait are unaffected.
+
 - **A link inside a step sheet opens in the in-app browser,** as a link on the step does; it opened Safari and left the app.
 
 - **A consent ticks from its words, not only its box.** A tap anywhere on an Agreement consent's text ticks or unticks it,
