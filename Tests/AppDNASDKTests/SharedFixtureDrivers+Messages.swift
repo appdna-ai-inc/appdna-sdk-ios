@@ -72,6 +72,8 @@ extension SharedFixtureTests {
         // Live validation through the host (SharedFixtureDrivers+RemoteValidation.swift).
         case "remote_validation_script": runRemoteValidationScript(f, h)
         case "decode_validation_result": runDecodeValidationResult(f, h)
+        // A segmented answer's line limit (SharedFixtureDrivers+SegmentedLabel.swift).
+        case "resolve_segmented_label": runSegmentedLabel(f, h)
         // The record-mode placement matrix (SharedFixtureDrivers+BlockPlacement.swift).
         case "measure_block_placement": await runBlockPlacement(f, h)
         // Every tracked event (SDK and host) → message / survey triggers (SharedFixtureDrivers+Triggers.swift).

@@ -2673,6 +2673,10 @@ struct FormInputStepperBlock: View {
 }
 
 /// Segmented picker input.
+/// A segmented answer's label wraps to at most this many lines, then is cut. Mirrors Android `SEGMENTED_LABEL_MAX_LINES`
+/// and the console's `SEGMENTED_LABEL_MAX_LINES`, which warns when a label will not fit.
+let segmentedLabelMaxLines = 2
+
 struct FormInputSegmentedBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
@@ -2718,6 +2722,9 @@ struct FormInputSegmentedBlock: View {
             // Drawn here rather than with a segmented `Picker`, whose selected segment ignores `.tint` and stays the
             // system grey. The selected segment fills with field_style.fill_color ?? active_color ?? brand, as on Android.
             let fillHex = block.field_style?.fill_color ?? block.active_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
+            // A long answer wraps to at most two lines, centred, then is cut, and every
+            // segment is as tall as the tallest: the cells take the row's full height, which `fixedSize` makes the
+            // tallest label's. It used to be one line shrunk to 80% and then cut, so the answer could not be read.
             HStack(spacing: 0) {
                 ForEach(options) { option in
                     let isSelected = selectedValue == option.resolvedValue
@@ -2725,9 +2732,11 @@ struct FormInputSegmentedBlock: View {
                         Text(option.label ?? "")
                             .font(.system(size: 14, weight: isSelected ? .semibold : .regular))
                             .foregroundColor(isSelected ? (UnstyledInk.onFill(fillHex) ?? .white) : Color.primary.opacity(0.7))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .frame(maxWidth: .infinity)
+                            .lineLimit(segmentedLabelMaxLines)
+                            .truncationMode(.tail)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 4)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .padding(.vertical, 10)
                             .background(isSelected ? Color(hex: fillHex) : Color.clear)
                             .contentShape(Rectangle())
@@ -2736,6 +2745,7 @@ struct FormInputSegmentedBlock: View {
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.3), lineWidth: 1))
             .onChange(of: selectedValue) { newValue in

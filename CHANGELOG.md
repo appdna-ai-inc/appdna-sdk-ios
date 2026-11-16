@@ -73,6 +73,11 @@ the project uses [Semantic Versioning](https://semver.org/).
   as the 22-point box does; a link inside the text still opens the link and does not tick. On a step and inside a step's
   sheet alike.
 
+- **A long segmented answer wraps to two lines instead of being cut to one.** An `input_segmented` drew every label on
+  one line, shrunk to 80% and then cut with an ellipsis, so on a phone the answers of a quiz could not be read. A label
+  now wraps to at most two lines, centred, every segment is as tall as the tallest, and a label longer than two lines is
+  cut there. The console warns when an answer will not fit in two lines.
+
 - **A bare-number `element_width` / `element_height` is points, as the console preview draws it.** A width written
   without a unit as a JSON number (`120`) was dropped by the decoder, so the block filled its row; a string `"120"` was
   drawn, but its `horizontal_align` had no box to act in. Both forms are now 120 points, and an aligned block with a
