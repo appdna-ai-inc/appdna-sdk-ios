@@ -191,16 +191,32 @@ struct FormInputTextBlock: View {
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
 
+    /// The step's live validation, when the step has one; read only for a block whose author turned it on.
+    @SwiftUI.Environment(\.appdnaRemoteValidation) private var remoteValidation
+    /// The step's localiser, for the field's validation texts.
+    var loc: ((String, String) -> String)? = nil
+
     @State private var text: String = ""
     // SPEC — focus tracking so focused_background_color can swap the field fill
     // while editing (parity with Android isFocused). UIKitTextField already
     // drives this binding from textFieldDidBegin/EndEditing.
     @State private var isFocused: Bool = false
 
+    private var validationConfig: RemoteValidationConfig? {
+        remoteValidation == nil ? nil : RemoteValidationConfig.of(block, loc: loc)
+    }
+
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let placeholder = block.field_placeholder ?? block.text ?? ""
-        let borderColor = Color(hex: textInputBorderHex(block.field_style, focused: isFocused, hasError: hasError))
+        let config = validationConfig
+        let vstate = config == nil ? nil : remoteValidation?.fields[fieldId]
+        // The state applies only to the value it was reached for (a stale state never paints a new value).
+        let live = (vstate?.value == text) ? vstate : nil
+        let drawsProgress = remoteValidation?.drawsProgress ?? false
+        let borderColor = Color(hex: live == nil
+            ? textInputBorderHex(block.field_style, focused: isFocused, hasError: hasError)
+            : remoteValidationBorderHex(block.field_style, focused: isFocused, phase: live?.phase, drawsProgress: drawsProgress))
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         // Always use UIKitTextField — SwiftUI TextField has focus/dark mode issues.
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String
@@ -239,12 +255,62 @@ struct FormInputTextBlock: View {
                 RoundedRectangle(cornerRadius: cornerRadius)
                     .strokeBorder(borderColor, lineWidth: fieldBorderWidth(block))
             )
+            .overlay(alignment: .trailing) {
+                if let live, config != nil {
+                    RemoteValidationIndicator(phase: live.phase, drawsProgress: drawsProgress,
+                                              tint: Color(hex: remoteValidationBorderHex(block.field_style, focused: isFocused, phase: live.phase, drawsProgress: drawsProgress)))
+                        .padding(.trailing, 12)
+                }
+            }
             .onChange(of: text) { newValue in
                 inputValues[fieldId] = newValue
+                if let config { remoteValidation?.coordinator.valueChanged(fieldId, newValue, config: config) }
+            }
+            .onChange(of: isFocused) { focused in
+                // Return or leaving the field checks at once (the `confirm` trigger's moment; skips the rest of a debounce).
+                if !focused, config != nil { remoteValidation?.coordinator.confirm(fieldId) }
+            }
+
+            if let live, let config, let message = live.message, !(live.showsProgress && !drawsProgress) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundColor(Color(hex: remoteValidationMessageHex(block.field_style, phase: live.phase, blocksWhenUnavailable: config.blocksWhenUnavailable)))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("appdna.validation.\(fieldId)")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { if text.isEmpty, let saved = inputValues[fieldId] as? String { text = saved } }
+        .onAppear {
+            if text.isEmpty, let saved = inputValues[fieldId] as? String { text = saved }
+            // A restored value is checked again (results are not kept across presentations).
+            if let config, !text.isEmpty { remoteValidation?.coordinator.valueChanged(fieldId, text, config: config, immediate: true) }
+        }
+        .onChange(of: live?.phase) { phase in
+            // VoiceOver hears each result once.
+            guard let phase, [.valid, .invalid, .unavailable].contains(phase) else { return }
+            let spoken = live?.message ?? (phase == .valid ? "Valid" : phase == .invalid ? RemoteValidationConfig.builtInInvalid : nil)
+            if let spoken { UIAccessibility.post(notification: .announcement, argument: spoken) }
+        }
+    }
+}
+
+/// The spinner or check mark at the trailing edge of a validated field.
+struct RemoteValidationIndicator: View {
+    let phase: RemoteValidationCoordinator.Phase
+    let drawsProgress: Bool
+    let tint: Color
+
+    var body: some View {
+        switch phase {
+        case .waiting, .checking:
+            if drawsProgress {
+                ProgressView().controlSize(.small).accessibilityLabel(Text("Checking"))
+            }
+        case .valid:
+            Image(systemName: "checkmark.circle.fill").foregroundColor(tint).accessibilityHidden(true)
+        default:
+            EmptyView()
+        }
     }
 }
 

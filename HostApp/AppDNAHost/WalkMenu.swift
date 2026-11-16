@@ -111,6 +111,11 @@ enum WalkMenu {
             let on = item.value == "true"
             AppDNA.setConsent(analytics: on)
             log.note("setConsent(analytics: \(on))")
+        // "on": the walk log validates text inputs (`onValidateInput`); "off": a delegate that does not implement it.
+        case "validator":
+            let on = item.value != "off"
+            AppDNA.onboarding.setDelegate(on ? TrackedEventLog.shared : PlainOnboardingDelegate.shared)
+            log.note("onboarding delegate → \(on ? "validating" : "plain (no onValidateInput)")")
         case "push":
             Task {
                 let granted = await AppDNA.registerForPush()

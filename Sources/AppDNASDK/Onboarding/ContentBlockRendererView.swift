@@ -375,6 +375,8 @@ struct ContentBlockRendererView: View {
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
     /// option sheets). Authoritative for `refresh_step` buttons when set.
     @SwiftUI.Environment(\.appdnaStepInteraction) private var stepInteraction: StepInteraction?
+    /// The step's live validation: a field it refuses draws the CTA disabled; a tap waiting on a check spins it.
+    @SwiftUI.Environment(\.appdnaRemoteValidation) private var remoteValidation: RemoteValidationEnv?
     /// The onboarding step's `add_widget` channel (nil on Screens / SDUI and inside every sheet). When
     /// set, an `add_widget` button hands it the decoded block; when nil, the button takes the ordinary
     /// action path, which advances and keeps the step's answers.
@@ -630,12 +632,12 @@ struct ContentBlockRendererView: View {
         case .row: return AnyView(rowBlock(block))
         case .multi_buttons: return AnyView(multiButtonsBlock(block))
         case .pricing_card: return AnyView(PricingCardBlockView(block: block, onAction: onAction, inputValues: $inputValues))
-        case .input_text: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .default))
+        case .input_text: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .default, loc: loc))
         case .input_textarea: return AnyView(FormInputTextAreaBlock(block: block, inputValues: $inputValues))
-        case .input_number: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .numberPad))
-        case .input_email: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .emailAddress))
-        case .input_phone: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .phonePad))
-        case .input_url: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .URL))
+        case .input_number: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .numberPad, loc: loc))
+        case .input_email: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .emailAddress, loc: loc))
+        case .input_phone: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .phonePad, loc: loc))
+        case .input_url: return AnyView(FormInputTextBlock(block: block, inputValues: $inputValues, keyboardType: .URL, loc: loc))
         case .input_password: return AnyView(FormInputPasswordBlock(block: block, inputValues: $inputValues))
         case .input_date: return AnyView(FormInputDateBlock(block: block, inputValues: $inputValues, components: .date))
         case .input_time: return AnyView(FormInputDateBlock(block: block, inputValues: $inputValues, components: .hourAndMinute))
@@ -1216,18 +1218,22 @@ struct ContentBlockRendererView: View {
         let hasDependencies = CtaDependencies.has(block)
         let dependenciesMet = !hasDependencies
             || CtaDependencies.met(button: block, blocks: gateBlocks ?? blocks, inputValues: inputValues)
+        // A field the host refused (or could not answer, under "block") draws the CTA disabled, like an empty required field.
+        let remoteRefuses = remoteValidation?.blocksCta(gateBlocks ?? blocks, inputValues: inputValues) ?? false
         let fillHex: String = {
             let enabledHex = block.field_config?["cta_enabled_bg_color"]?.value as? String
             let disabledHex = block.field_config?["cta_disabled_bg_color"]?.value as? String
             let fallback = block.bg_color ?? (AppDNA.brandAccentHex ?? "#6366F1")
             if hasDependencies {
                 let gateMet = (enabledHex == nil && disabledHex == nil)
-                    || RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
+                    || (RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
+                        && !remoteRefuses)
                 return dependenciesMet && gateMet ? (enabledHex ?? fallback) : (disabledHex ?? fallback)
             }
             guard enabledHex != nil || disabledHex != nil else { return fallback }
             // The step's ONE layered list (every zone), markers honoured.
             let satisfied = RequiredFieldGate.evaluate(blocks: gateBlocks ?? blocks, inputValues: inputValues, rawResolvedIds: rawResolvedIds).canAdvance
+                && !remoteRefuses
             return satisfied ? (enabledHex ?? fallback) : (disabledHex ?? enabledHex ?? fallback)
         }()
         let bgColor = Color(hex: fillHex)
@@ -1244,7 +1250,9 @@ struct ContentBlockRendererView: View {
         // tap override (a `sound_button` plays audio instead and never dispatches its action).
         let isRefresh = onTapOverride == nil && (block.action ?? "next") == "refresh_step"
         let channel: StepInteraction? = isRefresh ? stepInteraction : nil
-        let isLoading = channel?.loadingBlockId == block.id
+        // A Continue tapped while a field is being checked waits for the answer, drawn as this button's loading state.
+        let advancesStep = onTapOverride == nil && ["next", "continue"].contains(block.action ?? "next")
+        let isLoading = channel?.loadingBlockId == block.id || (advancesStep && remoteValidation?.ctaWaiting == true)
         // The colour the label draws in, and the spinner with it: `text_color ?? style.color ?? the
         // variant's default`, shared with Android through `ButtonLabelColour.label`. A Typography style
         // that sets no colour used to bake `.primary` here (`applyTextStyle`), so a styled button on a

@@ -448,6 +448,10 @@ public struct FormFieldBlockStyle: Codable {
     public let label_font_family: String?
     public let error_border_color: String?
     public let error_text_color: String?
+    // Live validation — live validation through the host: the valid border, the in-progress border, the valid message.
+    public let valid_border_color: String?
+    public let checking_border_color: String?
+    public let valid_text_color: String?
     public let track_color: String?
     public let fill_color: String?
     public let thumb_color: String?

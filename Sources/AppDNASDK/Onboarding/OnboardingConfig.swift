@@ -1373,6 +1373,18 @@ public protocol AppDNAOnboardingDelegate: AnyObject {
         inputValues: [String: Any]
     ) async -> ElementInteractionResult?
 
+    // Live validation of a text input whose author turned on "Check with your app" (`field_config.remote_validation`).
+    // Called on the main actor after the field's debounce (or on return / focus lost), at most once in flight per
+    // field: a newer value cancels the task of the older call and a late reply is discarded. Return `.valid` or
+    // `.invalid`, each with an optional message shown under the field; `nil` means "no answer". The SDK waits up to
+    // the field's timeout (5 s by default). With no answer the user can continue unless the author chose "block".
+    func onValidateInput(
+        flowId: String,
+        stepId: String,
+        fieldId: String,
+        value: String
+    ) async -> InputValidationResult?
+
     // Runtime permission hooks for onboarding permission steps.
     // Optional pre-hook — return `.handledByHost(granted:)` to short-circuit the OS prompt,
     // or `.proceed`/`nil` to let the SDK run the native flow.
@@ -1417,6 +1429,18 @@ public extension AppDNAOnboardingDelegate {
         value: String?,
         inputValues: [String: Any]
     ) async -> ElementInteractionResult? {
+        return nil
+    }
+
+    /// Default: the host does not validate. The step learns that from this body, so a field that asks to be
+    /// checked behaves like a plain text input (no spinner, no wait) and a warning is logged once per field.
+    func onValidateInput(
+        flowId: String,
+        stepId: String,
+        fieldId: String,
+        value: String
+    ) async -> InputValidationResult? {
+        RemoteValidationProbe.markNotImplemented()
         return nil
     }
 

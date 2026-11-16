@@ -1765,6 +1765,12 @@ struct OnboardingStepRouter: View {
     @State private var shownSheet: StepSheet?
     /// The CTA press the gate refused when it opened a sheet; the sheet's `next` re-runs it as that press.
     @State private var refusedPress: String?
+    /// The step's live validation of text inputs through the host.
+    @StateObject private var remoteValidation: RemoteValidationCoordinator
+    /// The connectivity observer that re-checks a field that ended offline.
+    @State private var regainedObserver: UUID?
+    /// The message the validation toast shows instead of the required-field one (a field the host refused).
+    @State private var validationToastMessage: String?
 
     init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
@@ -1797,6 +1803,8 @@ struct OnboardingStepRouter: View {
             sheets: step.config.sheets ?? [], flowId: flowId, stepId: step.id,
             effects: .init(track: { _, _ in }, present: { _ in }, rerun: { _, _ in }, skip: {})
         ))
+        _remoteValidation = StateObject(wrappedValue: Self.makeRemoteValidation(
+            delegate: delegate, flowId: flowId, stepId: step.id, tracker: eventTracker))
     }
 
     /// the controller with effects bound to THIS view value (its @State storage is shared).
@@ -1832,6 +1840,73 @@ struct OnboardingStepRouter: View {
         guard outcome == .openedSheet else { return false }
         refusedPress = refused
         return true
+    }
+
+    /// The step's live-validation coordinator, wired to the host's `onValidateInput`, the connectivity monitor and the
+    /// tracker. The host is held weakly, like the router holds it.
+    static func makeRemoteValidation(delegate: AppDNAOnboardingDelegate?, flowId: String, stepId: String, tracker: EventTracker?) -> RemoteValidationCoordinator {
+        weak var weakHost = delegate
+        return RemoteValidationCoordinator(
+            hasHost: {
+                guard let host = weakHost else { return false }
+                return RemoteValidationProbe.known(host) != false
+            },
+            startCall: { fieldId, value, timeout, complete in
+                guard let host = weakHost else { complete(.notImplemented); return {} }
+                let box = RemoteValidationProbe.Box()
+                let task = Task { @MainActor in
+                    let reply = await RemoteValidationProbe.$box.withValue(box) {
+                        await RemoteValidationProbe.$timeout.withValue(timeout) {
+                            await host.onValidateInput(flowId: flowId, stepId: stepId, fieldId: fieldId, value: value)
+                        }
+                    }
+                    RemoteValidationProbe.learn(host, implements: !box.notImplemented)
+                    complete(box.notImplemented ? .notImplemented : .answered(reply))
+                }
+                return { task.cancel() }
+            },
+            isOnline: { NetworkMonitor.shared.isConnected },
+            track: { props in
+                var p = props
+                p["flow_id"] = flowId
+                p["step_id"] = stepId
+                tracker?.track(event: "input_validation_result", properties: p)
+            }
+        ).configuredHostKnowledge {
+            guard let host = weakHost else { return false }
+            return RemoteValidationProbe.known(host) == true
+        }
+    }
+
+    /// The step's fields under live validation, with their current values, in step order.
+    private var remoteValidationEntries: [RemoteValidationCoordinator.Entry] {
+        withSheets(resolvedStep.blocks).compactMap { b in
+            guard let config = RemoteValidationConfig.of(b, loc: { loc($0, $1) }) else { return nil }
+            let id = b.field_id ?? b.id
+            return .init(id: id, value: inputValues[id] as? String ?? "", config: config)
+        }
+    }
+
+    private func showToast(_ message: String? = nil) {
+        validationToastMessage = message
+        withAnimation { showValidationToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation { showValidationToast = false }
+        }
+    }
+
+    /// The live-validation half of every advancing CTA, run after the required-field gate: an invalid value blocks
+    /// with its message; a check in progress makes the tap wait; no answer continues unless the field blocks.
+    private func afterRemoteValidation(_ proceed: @escaping () -> Void) {
+        guard !remoteValidationEntries.isEmpty else { proceed(); return }
+        remoteValidation.tap(fields: { remoteValidationEntries }) { decision in
+            if case .block(let message) = decision {
+                OnboardingPressedButton.shared.clear()
+                showToast(message)
+                return
+            }
+            proceed()
+        }
     }
 
     // MARK: - step pipeline
@@ -1946,6 +2021,10 @@ struct OnboardingStepRouter: View {
                         // The step's `add_widget` channel, for buttons at any depth. Nil
                         // everywhere else (Screens, every sheet), where the button simply advances.
                         .environment(\.appdnaWidgetAction, WidgetActionChannel { block in tapAddWidget(block) })
+                        .environment(\.appdnaRemoteValidation, RemoteValidationEnv(
+                            coordinator: remoteValidation, fields: remoteValidation.fields,
+                            ctaWaiting: remoteValidation.ctaWaiting, drawsProgress: remoteValidation.hostKnownToAnswer()
+                        ))
                 } else {
                     legacyStepView
                 }
@@ -2013,8 +2092,9 @@ struct OnboardingStepRouter: View {
                     let v = inputValues[fieldId]
                     return v == nil || (v as? String)?.isEmpty == true
                 })
-                // While host data is pending the answer is "Loading…", not "fill this in".
-                Text(verdict.blockedByPending ? "Loading…" : "Please fill in \(missingBlock?.field_label ?? "required fields")")
+                // While host data is pending the answer is "Loading…", not "fill this in". A field the host refused
+                // says why instead.
+                Text(validationToastMessage ?? (verdict.blockedByPending ? "Loading…" : "Please fill in \(missingBlock?.field_label ?? "required fields")"))
                     .font(.subheadline.weight(.medium))
                     .foregroundColor(.white)
                     .padding(.horizontal, 20)
@@ -2042,7 +2122,17 @@ struct OnboardingStepRouter: View {
             widgetAttempt.appDidBecomeActive()
         }
         // The step went away mid-attempt: no status, no event.
-        .onDisappear { widgetAttempt.discard() }
+        .onDisappear {
+            widgetAttempt.discard()
+            remoteValidation.presentationEnded()
+            if let id = regainedObserver { NetworkMonitor.shared.removeRegainedObserver(id); regainedObserver = nil }
+        }
+        .onAppear {
+            remoteValidation.presentationBegan()
+            // A field that ended offline checks again, once, when the connection returns.
+            guard regainedObserver == nil else { return }
+            regainedObserver = remoteValidation.watchConnectivity(NetworkMonitor.shared)
+        }
         .entryAnimation(effectiveConfig.animation?.entry_animation, durationMs: effectiveConfig.animation?.entry_duration_ms)
         // A scoped Select whose rendered options no longer contain the selection
         // drops it (inputValues, the view's state, SelectedOptionStore).
@@ -2286,9 +2376,16 @@ struct OnboardingStepRouter: View {
             flowId: flowId,
             stepId: step.id,
             // The SAME gate the advance runs, after the same prune — so a refused tap starts nothing.
+            // Live validation too: the attempt cannot wait, so a check in progress refuses the tap with
+            // "Checking…" (the check is started at once) and the user taps again on its answer.
             gate: {
                 clearVanishedSelections()
-                return canAdvance
+                guard canAdvance else { validationToastMessage = nil; return false }
+                switch remoteValidation.decideNow(remoteValidationEntries) {
+                case .allow: return true
+                case .wait: validationToastMessage = "Checking…"; return false
+                case .block(let message): validationToastMessage = message; return false
+                }
             },
             onGateRefused: {
                 OnboardingPressedButton.shared.clear()
@@ -2386,16 +2483,22 @@ struct OnboardingStepRouter: View {
             }
             // The press did not advance, so a later advance must not route on it.
             OnboardingPressedButton.shared.clear()
-            withAnimation { showValidationToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                withAnimation { showValidationToast = false }
-            }
+            showToast()
             return
         }
-        // The assembly itself lives in `StepAdvancePayload` so a unit test can reach the
-        // SAME code the device runs. The fixture runner used to keep its own copy, which is why the
-        // iOS suite passed 1542/0 with this merge deleted.
-        onNext(StepAdvancePayload.build(inputValues: inputValues, toggleValues: toggleValues, extra: extra))
+        afterRemoteValidation {
+            // A tap that waited for a check re-runs the required gate: the answers may have changed meanwhile.
+            clearVanishedSelections()
+            guard canAdvance else {
+                OnboardingPressedButton.shared.clear()
+                showToast()
+                return
+            }
+            // The assembly itself lives in `StepAdvancePayload` so a unit test can reach the
+            // SAME code the device runs. The fixture runner used to keep its own copy, which is why the
+            // iOS suite passed 1542/0 with this merge deleted.
+            onNext(StepAdvancePayload.build(inputValues: inputValues, toggleValues: toggleValues, extra: extra))
+        }
     }
 
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
@@ -2578,16 +2681,19 @@ struct OnboardingStepRouter: View {
     /// `channel` is omitted entirely when nil rather than wrapped as `Any`,
     /// since wrapping `Optional.none` breaks JSONSerialization downstream.
     private func emitAuthAction(_ action: String, actionValue: String?, includeChannel: Bool = false) {
-        // Required-field validation runs first — same gate as `next`.
+        // Required-field validation runs first — same gate as `next` — then live validation: a sign-up button
+        // cannot send a value the host refused.
         guard canAdvance else {
             // as for `next`: a missing answer in a sheet that opens on the gate opens it.
             if refusalOpensSheet(action, actionValue) { return }
-            withAnimation { showValidationToast = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                withAnimation { showValidationToast = false }
-            }
+            showToast()
             return
         }
+        afterRemoteValidation { emitAuthActionValidated(action, actionValue: actionValue, includeChannel: includeChannel) }
+    }
+
+    private func emitAuthActionValidated(_ action: String, actionValue: String?, includeChannel: Bool) {
+        guard canAdvance else { showToast(); return }
         var data: [String: Any] = [:]
         for (key, value) in inputValues {
             data[key] = value

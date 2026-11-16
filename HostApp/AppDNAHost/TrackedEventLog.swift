@@ -110,6 +110,23 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
         return nil
     }
 
+    /*
+     A test validator for live text-input validation (synthetic rules, for a walk): a value containing "taken" is
+     refused with "Already taken"; "slow" answers after 8 s (past the 5 s default timeout); "boom" gives no answer;
+     anything else is accepted after 0.4 s. The walk menu's `validator` item swaps in a delegate without this hook.
+     */
+    func onValidateInput(flowId: String, stepId: String, fieldId: String, value: String) async -> InputValidationResult? {
+        note("validate field=\(fieldId) value=\(value)")
+        if value.contains("slow") {
+            try? await Task.sleep(nanoseconds: 8_000_000_000)
+            return .valid(message: "Slow answer")
+        }
+        if value.contains("boom") { return nil }
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        if Task.isCancelled { note("validate cancelled value=\(value)"); return nil }
+        return value.contains("taken") ? .invalid(message: "Already taken") : .valid()
+    }
+
     func onEventTracked(name: String, properties: [String: Any]) {
         record(name)
         note(name + Self.summary(properties))
@@ -152,3 +169,10 @@ struct WalkDeepLink: Identifiable {
     let url: URL
 }
 
+/// An onboarding delegate WITHOUT `onValidateInput`: a host that has not shipped the hook (walk menu `validator` off).
+final class PlainOnboardingDelegate: AppDNAOnboardingDelegate {
+    static let shared = PlainOnboardingDelegate()
+    func onOnboardingStepChanged(flowId: String, stepId: String, stepIndex: Int, totalSteps: Int) {
+        TrackedEventLog.shared.note("step \(stepIndex + 1)/\(totalSteps) \(stepId) (plain delegate)")
+    }
+}

@@ -6,6 +6,20 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [1.0.86] — unreleased
 
+### Added
+
+- **A text input can be checked by your app while the user types (`onValidateInput`).** Turn on "Check with your app"
+  on a Text, Email, Phone, Number or URL input in the console, and the SDK calls
+  `AppDNAOnboardingDelegate.onValidateInput(flowId:stepId:fieldId:value:) async -> InputValidationResult?` after the
+  field's debounce (600 ms by default) or on return / leaving the field. Answer `.valid(message:)` or
+  `.invalid(message:)`; the field draws a green or red border with the message. A newer value cancels the check in
+  flight, a late reply is discarded, and no answer within the field's timeout (5 s by default) means "no answer". An
+  invalid value blocks Continue; a tap while a check runs waits for the answer; with no answer the user continues
+  unless the author chose "Block until it's checked". Offline, the field says so and checks again when the connection
+  returns. An app that does not implement the hook gets a plain text input and one warning per field. Each check tracks
+  `input_validation_result` (never the value). New `field_style` keys `valid_border_color`, `checking_border_color`,
+  `valid_text_color`. For wrapper bridges, `InputValidationResult.decodeBridgeReply(_:)` and `bridgeTimeout`.
+
 ### Changed
 
 - **A stack child's width is honoured.** A child of a `stack` with an `element_width` (a percentage of the stack, `px` or
