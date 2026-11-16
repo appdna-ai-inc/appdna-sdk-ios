@@ -8,6 +8,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A stack child's width is honoured.** A child of a `stack` with an `element_width` (a percentage of the stack, `px` or
+  a bare number) is drawn at that width and placed by the stack's alignment, as the console preview draws it; it was drawn
+  full width. Flows published with `settings.placement_rules: 2` only.
+
 - **A block with no horizontal alignment that is narrower than its row is centred everywhere, and Android and the
   console preview now draw it where iOS does.** iOS already centred such a block in its column. Two iOS cases change:
   a top or centre zone whose blocks all hug their content sat at the leading edge and is now centred, and an unaligned

@@ -368,6 +368,8 @@ struct ContentBlockRendererView: View {
     /// Set by a parent renderer on a raw-resolved block, so NESTED renderers (carousel
     /// pages, option sheets) never re-scan resolved strings either.
     @SwiftUI.Environment(\.appdnaRawResolved) private var envRawResolved: Bool
+    /// Placement rules of the flow being drawn: under rules 2 a stack child's authored width is honoured.
+    @SwiftUI.Environment(\.appdnaPlacementRules) private var placementRules: Int
     /// Where these blocks are drawn: `.onboarding` under a step router, `.other` on a Screen.
     @SwiftUI.Environment(\.appdnaTemplateSurface) private var templateSurface: TemplateSurface
     /// The onboarding step's interaction channel (nil on Screens / SDUI and inside
@@ -2962,9 +2964,14 @@ struct ContentBlockRendererView: View {
             }
         }()
 
+        // Placement rules 2: a stack child's `element_width` (a percentage of the stack, px, or a bare number) is honoured,
+        // as the console preview draws it (owner: "SDKs honour %"). Rules 1 (a flow published before the stamp) keeps the
+        // child as it always drew: its authored width ignored.
+        let sizesChildren = PlacementRules.centres(placementRules)
         ZStack(alignment: align) {
             ForEach(childBlocks) { child in
                 renderBlock(child).applyBlockContainerStyle(child)
+                    .if(sizesChildren && child.element_width != nil) { $0.applyRelativeSizing(width: child.element_width, height: nil) }
             }
         }
         // Apply authored `height` to the stack container
