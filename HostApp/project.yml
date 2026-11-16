@@ -203,6 +203,11 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.tests
+        # A cold build (empty DerivedData) failed this target with "Unable to find module dependency: 'AppDNASDK'":
+        # with explicit modules the dependency scan of these sources runs before the package's module exists, because
+        # the package is a `link: false` dependency (no build edge orders it first). Implicit modules resolve it from
+        # the search path once the host has built it, which the `target: AppDNAHost` dependency guarantees.
+        SWIFT_ENABLE_EXPLICIT_MODULES: NO
         # Run inside the host app's process — the point of the target.
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AppDNAHost.app/AppDNAHost"
         BUNDLE_LOADER: "$(TEST_HOST)"
