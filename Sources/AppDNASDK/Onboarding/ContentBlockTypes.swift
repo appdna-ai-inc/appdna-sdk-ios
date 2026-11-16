@@ -1336,6 +1336,8 @@ public struct ContentBlock: Codable, Identifiable {
     /// trimmed by `ShareAction.payload`; both blank means nothing is shared and the tap is a no-op.
     public let share_text: String?
     public let share_url: String?
+    /// `action: "open_sheet"`: the id of the sheet on the same step that the button opens.
+    public let sheet_id: String?
     public let bg_color: String?
     public let text_color: String?
     public let button_corner_radius: Double?
@@ -1709,6 +1711,7 @@ public struct ContentBlock: Codable, Identifiable {
         case image_url, alt, corner_radius, height, image_fit, image_frame
         case variant, action, action_value, bg_color, text_color, button_corner_radius
         case share_text, share_url
+        case sheet_id
         case audio_url
         case spacer_height, items, list_style
         case divider_color, divider_thickness, divider_margin_y
@@ -1798,6 +1801,7 @@ public struct ContentBlock: Codable, Identifiable {
         self.action_value = c.lenient(String.self, .action_value)
         self.share_text = c.lenient(String.self, .share_text)
         self.share_url = c.lenient(String.self, .share_url)
+        self.sheet_id = c.lenient(String.self, .sheet_id)
         self.bg_color = c.lenient(String.self, .bg_color)
         self.text_color = c.lenient(String.self, .text_color)
         self.button_corner_radius = c.lenient(Double.self, .button_corner_radius)

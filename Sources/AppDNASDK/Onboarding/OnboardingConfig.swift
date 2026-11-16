@@ -349,6 +349,10 @@ public struct OnboardingStep: Codable, Identifiable {
         case raw_content_blocks
     }
 
+    /// The step-root `sheets`, read only when the config source has none. Not a `CodingKeys` case: the
+    /// decoded sheets live on `config`, which is what the cache encodes.
+    private enum RootSheetsKey: String, CodingKey { case sheets }
+
     /// Only `content_blocks` of a `config` / `layout` object, as raw JSON.
     private struct RawBlocksOnly: Decodable {
         let content_blocks: [HostJSON]?
@@ -455,6 +459,12 @@ public struct OnboardingStep: Codable, Identifiable {
             }
         }
         self.rawContentBlocks = stampedRaw
+        // the sheets follow the `content_blocks` ladder: the config source, else the step root.
+        if (decoded.sheets ?? []).isEmpty,
+           let root = try? decoder.container(keyedBy: RootSheetsKey.self),
+           let rootSheets = StepSheets.normalized(try? root.decodeLenientArray(StepSheet.self, forKey: .sheets, in: "step[\(stepId)].sheets")) {
+            decoded.sheets = rootSheets
+        }
         self.config = decoded
         self.next_step_rules = stepRules
     }
@@ -613,6 +623,9 @@ public struct StepConfig: Codable {
     public var show_settings_fallback_on_denied: Bool?
     public var settings_fallback_label: String?
 
+    /// the step's sheets (`sheets`, beside `content_blocks`). See `StepSheets`.
+    public var sheets: [StepSheet]?
+
     private enum CodingKeys: String, CodingKey {
         case title, subtitle, image_url, cta_text, skip_enabled
         case options, selection_mode, items, layout, next_step_rules
@@ -623,6 +636,7 @@ public struct StepConfig: Codable {
         case localizations, default_locale
         case progress_color
         case permission_type, show_settings_fallback_on_denied, settings_fallback_label
+        case sheets
     }
 
     public init(from decoder: Decoder) throws {
@@ -655,6 +669,8 @@ public struct StepConfig: Codable {
         permission_type = c.lenient(String.self, .permission_type)
         show_settings_fallback_on_denied = c.lenient(Bool.self, .show_settings_fallback_on_denied)
         settings_fallback_label = c.lenient(String.self, .settings_fallback_label)
+        // Lenient: a malformed sheet drops that sheet, never the step.
+        sheets = StepSheets.normalized(try c.decodeLenientArray(StepSheet.self, forKey: .sheets, in: "stepConfig.sheets"))
     }
 
     // Public memberwise init used by applyOverrides and default construction
@@ -674,7 +690,8 @@ public struct StepConfig: Codable {
         progress_color: String? = nil,
         permission_type: String? = nil,
         show_settings_fallback_on_denied: Bool? = nil,
-        settings_fallback_label: String? = nil
+        settings_fallback_label: String? = nil,
+        sheets: [StepSheet]? = nil
     ) {
         self.title = title; self.subtitle = subtitle; self.image_url = image_url
         self.cta_text = cta_text; self.skip_enabled = skip_enabled
@@ -691,6 +708,7 @@ public struct StepConfig: Codable {
         self.permission_type = permission_type
         self.show_settings_fallback_on_denied = show_settings_fallback_on_denied
         self.settings_fallback_label = settings_fallback_label
+        self.sheets = sheets
     }
 }
 

@@ -1760,6 +1760,11 @@ struct OnboardingStepRouter: View {
     /// The step's `add_widget` attempts (`WidgetAddAttempt`): the how-to sheet, the detection reads and
     /// the one advance per attempt.
     @StateObject private var widgetAttempt = WidgetAddAttempt()
+    /// the step's sheets: which is open, and the action its Continue refused (`StepSheetController`).
+    @State private var sheetController: StepSheetController
+    @State private var shownSheet: StepSheet?
+    /// The CTA press the gate refused when it opened a sheet; the sheet's `next` re-runs it as that press.
+    @State private var refusedPress: String?
 
     init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
@@ -1782,8 +1787,51 @@ struct OnboardingStepRouter: View {
         // The get-or-create runs HERE, during the flow host's body; its dictionary write
         // is plain, so nothing is published during a view update.
         self._coordinator = ObservedObject(wrappedValue: store.coordinator(for: presentation, stepId: step.id))
-        // Pre-populate inputValues from saved responses so child views see data immediately
-        _inputValues = State(initialValue: savedResponses ?? [:])
+        // Pre-populate inputValues from saved responses so child views see data immediately.
+        // and seed the sheets' agreement defaults, as an on-step agreement seeds itself when drawn:
+        // a sheet's answers are the step's from the moment the step appears.
+        var seeded = savedResponses ?? [:]
+        StepSheets.seedDefaults(step.config.sheets, into: &seeded)
+        _inputValues = State(initialValue: seeded)
+        _sheetController = State(initialValue: StepSheetController(
+            sheets: step.config.sheets ?? [], flowId: flowId, stepId: step.id,
+            effects: .init(track: { _, _ in }, present: { _ in }, rerun: { _, _ in }, skip: {})
+        ))
+    }
+
+    /// the controller with effects bound to THIS view value (its @State storage is shared).
+    private var sheets: StepSheetController {
+        let tracker = eventTracker
+        sheetController.effects = .init(
+            track: { name, props in tracker?.track(event: name, properties: props) },
+            present: { sheet in withAnimation(.easeOut(duration: 0.26)) { shownSheet = sheet } },
+            rerun: { action, value in
+                // The re-run is the refused CTA's press, not the sheet button's that triggered it.
+                if let id = refusedPress { OnboardingPressedButton.shared.record(id, action: "next") }
+                refusedPress = nil
+                handleBlockAction(action, value)
+            },
+            skip: { onSkip() }
+        )
+        return sheetController
+    }
+
+    /// what the required-field gate reads: the step's blocks and every sheet's.
+    private func withSheets(_ blocks: [ContentBlock]) -> [ContentBlock] {
+        StepSheets.gateBlocks(blocks, step.config.sheets)
+    }
+
+    /// the gate refused `action`: open the sheet that holds what is missing (no toast) when it opens
+    /// on the gate; otherwise the toast. Returns true when a sheet opened.
+    private func refusalOpensSheet(_ action: String, _ value: String?) -> Bool {
+        let r = resolvedStep
+        let refused = OnboardingPressedButton.shared.peek()
+        let outcome = sheets.onGateRefused(action: action, value: value, stepBlocks: r.blocks) { list in
+            RequiredFieldGate.evaluate(blocks: list, inputValues: inputValues, rawResolvedIds: r.rawResolvedIds).canAdvance
+        }
+        guard outcome == .openedSheet else { return false }
+        refusedPress = refused
+        return true
     }
 
     // MARK: - step pipeline
@@ -1925,11 +1973,32 @@ struct OnboardingStepRouter: View {
             return .handled
         })
         // inputValues pre-populated from savedResponses in init()
+        // the open sheet, in the step's own hierarchy (the step stays drawn under its scrim).
+        .overlay {
+            if let sheet = shownSheet {
+                StepSheetOverlayView(
+                    sheet: sheet,
+                    stepBackgroundHex: effectiveConfig.background?.type == "color" ? effectiveConfig.background?.color : nil,
+                    gateBlocks: withSheets(resolvedStep.blocks),
+                    toggleValues: $toggleValues,
+                    inputValues: $inputValues,
+                    loc: { loc($0, $1) },
+                    responses: accumulatedResponses,
+                    hookData: hostDataContext,
+                    stepId: step.id,
+                    onAction: { action, value in
+                        if sheets.onSheetAction(action, value: value) == .passToStep { handleBlockAction(action, value) }
+                    },
+                    onDismiss: { via in sheets.onDismissGesture(via: via) }
+                )
+                .id(sheet.id)
+            }
+        }
         // Validation toast overlay
         .overlay(alignment: .bottom) {
             if showValidationToast {
                 let r = resolvedStep
-                let blocks = r.blocks
+                let blocks = withSheets(r.blocks)
                 let verdict = RequiredFieldGate.evaluate(blocks: blocks, inputValues: inputValues, rawResolvedIds: r.rawResolvedIds)
                 let missingBlock = blocks.first(where: { b in
                     guard b.field_required == true else { return false }
@@ -2123,7 +2192,7 @@ struct OnboardingStepRouter: View {
             // Interaction options / patches are already layered into the ONE list.
             mapPlacement: placement,
             rawResolvedIds: r.rawResolvedIds,
-            gateBlocks: r.blocks
+            gateBlocks: withSheets(r.blocks)
         )
     }
 
@@ -2153,7 +2222,7 @@ struct OnboardingStepRouter: View {
             // Interaction options / patches are already layered into the ONE list
             // (`resolvedStep`), so nothing is layered again at draw time.
             rawResolvedIds: r.rawResolvedIds,
-            gateBlocks: r.blocks
+            gateBlocks: withSheets(r.blocks)
         )
     }
 
@@ -2198,7 +2267,7 @@ struct OnboardingStepRouter: View {
     /// interaction-driven advance path can't bypass required-field validation.
     private var canAdvance: Bool {
         let r = resolvedStep
-        return RequiredFieldGate.evaluate(blocks: r.blocks, inputValues: inputValues, rawResolvedIds: r.rawResolvedIds).canAdvance
+        return RequiredFieldGate.evaluate(blocks: withSheets(r.blocks), inputValues: inputValues, rawResolvedIds: r.rawResolvedIds).canAdvance
     }
 
     // MARK: - Add widget
@@ -2297,11 +2366,18 @@ struct OnboardingStepRouter: View {
     /// Extracted so `next` and `flag` cannot drift. They did drift in an earlier draft of this: the
     /// flag path skipped `canAdvance`, which let a CTA advance past an unanswered required field
     /// purely because it also set a flag.
-    private func advanceCollectingStepData(extra: [String: Any] = [:]) {
+    private func advanceCollectingStepData(extra: [String: Any] = [:], gated: (action: String, value: String?)? = ("next", nil)) {
         // Every CTA gates on the pruned selection, not one the step no longer renders.
         // Idempotent, and never touches a pending / Option-Set / out-of-scope block.
         clearVanishedSelections()
         guard canAdvance else {
+            // what is missing is in a sheet that opens on the gate: open it instead of the toast, and
+            // its `next` re-runs this action. Never while host data is pending (the toast says "Loading…").
+            let pendingVerdict = RequiredFieldGate.evaluate(blocks: withSheets(resolvedStep.blocks), inputValues: inputValues, rawResolvedIds: resolvedStep.rawResolvedIds)
+            if let gated, !pendingVerdict.blockedByPending, refusalOpensSheet(gated.action, gated.value) {
+                OnboardingPressedButton.shared.clear()
+                return
+            }
             // The press did not advance, so a later advance must not route on it.
             OnboardingPressedButton.shared.clear()
             withAnimation { showValidationToast = true }
@@ -2318,6 +2394,11 @@ struct OnboardingStepRouter: View {
 
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
         switch action {
+        // a sheet inside the step: `open_sheet` opens one (no gate, no advance); `close_sheet` closes it.
+        case StepSheets.openAction:
+            sheets.open(actionValue, via: "button")
+        case StepSheets.closeAction:
+            _ = sheets.onSheetAction(action, value: actionValue)
         case "next":
             // A permission step whose ONLY CTA is authored as plain `action:"next"` still runs the
             // permission pipeline rather than silently advancing. When the step also offers an
@@ -2358,10 +2439,10 @@ struct OnboardingStepRouter: View {
                     "A CTA is configured to set a flag but has no flag key; " +
                     "it will advance without recording one."
                 )
-                advanceCollectingStepData()
+                advanceCollectingStepData(gated: (action, actionValue))
                 return
             }
-            advanceCollectingStepData(extra: [flag.key: flag.value])
+            advanceCollectingStepData(extra: [flag.key: flag.value], gated: (action, actionValue))
         case "skip":
             onSkip()
         case "link":
@@ -2410,7 +2491,7 @@ struct OnboardingStepRouter: View {
             } else {
                 PendingCompletionRoute.shared.record(actionValue)
             }
-            advanceCollectingStepData()
+            advanceCollectingStepData(gated: (action, actionValue))
         case "social_login":
             // Social login: pass provider info via onNext but mark as social_login.
             // The flow host's handleStepCompleted will fire onBeforeStepAdvance hook.
@@ -2493,6 +2574,8 @@ struct OnboardingStepRouter: View {
     private func emitAuthAction(_ action: String, actionValue: String?, includeChannel: Bool = false) {
         // Required-field validation runs first — same gate as `next`.
         guard canAdvance else {
+            // as for `next`: a missing answer in a sheet that opens on the gate opens it.
+            if refusalOpensSheet(action, actionValue) { return }
             withAnimation { showValidationToast = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
                 withAnimation { showValidationToast = false }

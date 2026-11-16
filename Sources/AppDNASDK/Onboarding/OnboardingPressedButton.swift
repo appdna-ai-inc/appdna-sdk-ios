@@ -39,6 +39,12 @@ final class OnboardingPressedButton: @unchecked Sendable {
         return out
     }
 
+    /// the press without consuming it: a refused CTA that opened a sheet is re-run as itself.
+    func peek() -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return buttonId
+    }
+
     /// A press the required-field gate refused, or a new flow presented.
     func clear() {
         lock.lock(); defer { lock.unlock() }

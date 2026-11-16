@@ -204,6 +204,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Sheets inside a step.** A step's `sheets` slide up over it, opened by an `open_sheet` button or by Continue when
+  a required answer it is missing is in a sheet (then no "Please fill in" message; the sheet's `next` re-runs Continue).
+  A sheet's inputs are the step's answers, live, and the step's gate counts them; a swipe or a scrim tap closes it
+  without declining anything. Drawn in the step's own hierarchy, not `.sheet`. Events `onboarding_sheet_opened` and
+  `onboarding_sheet_closed`. `close_sheet` closes it from inside.
+
 - **Social Login draws Meta's official Facebook mark.** The `facebook` provider drew a bold letter "f". It now draws the
   Facebook logo from Meta's brand asset pack, unmodified: the blue mark on a light, outlined or minimal button, and the
   white mark on a dark fill (the default Facebook fill is dark). `icon_style: monochrome_light` gives the white mark and

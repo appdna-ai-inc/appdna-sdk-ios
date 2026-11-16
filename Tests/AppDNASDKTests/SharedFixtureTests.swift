@@ -525,6 +525,7 @@ final class SharedFixtureTests: XCTestCase {
         // The core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         case "add_widget_attempt":             runAddWidgetAttempt(fixture, harness)
+        case "step_sheet_scenario":            runStepSheetScenario(fixture, harness)
         case "tap_sheet_button":               runTapSheetButton(fixture, harness)
         default:
             // The new kinds are driven from one file per area, each returning `true` for

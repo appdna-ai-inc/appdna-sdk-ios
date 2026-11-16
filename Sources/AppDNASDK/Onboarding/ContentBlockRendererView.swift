@@ -1288,6 +1288,9 @@ struct ContentBlockRendererView: View {
                 let rawShareText = ShareAction.authoredText(of: block) ?? ""
                 let shareText = loc?("block.\(block.id).share_text", rawShareText) ?? rawShareText
                 ShareAction.perform(text: shareText, url: block.share_url)
+            } else if block.action == StepSheets.openAction {
+                // a sheet inside the step: the value the step needs is the button's `sheet_id`.
+                onAction(StepSheets.openAction, block.sheet_id)
             } else {
                 OnboardingPressedButton.shared.record(block.id, action: block.action ?? "next")
                 onAction(block.action ?? "next", block.action_value)
