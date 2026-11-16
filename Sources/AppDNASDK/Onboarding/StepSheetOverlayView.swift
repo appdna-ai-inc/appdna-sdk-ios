@@ -76,7 +76,9 @@ struct StepSheetOverlayView: View {
                         .ignoresSafeArea(edges: .bottom)
                 )
                 .offset(y: max(0, dragOffset))
-                .gesture(
+                // Simultaneous, not exclusive: the sheet's content is a ScrollView, which would otherwise win every
+                // vertical drag that starts on it, so a swipe down could only begin on the drag indicator.
+                .simultaneousGesture(
                     DragGesture()
                         .onChanged { dragOffset = max(0, $0.translation.height) }
                         .onEnded { value in
