@@ -509,6 +509,12 @@ struct PaywallRenderer: View {
                     }
                 }
                 .padding(.bottom, config.layout?.footer_padding ?? 8)
+                // The page's colour behind the pinned group, edge to edge and under the home indicator. A
+                // `safeAreaInset` floats over the scroll body, so without it the body scrolled UNDER the pinned plans
+                // and showed through them: a generated paywall drew its feature rows through the gap between the plan
+                // tiles and inside the unselected one (walked on the P2 simulator, SPEC-535 P7). Android lays the body
+                // out above the pinned column and never had it. Nil (an image or a video page) keeps today's look.
+                .background { pinnedZoneBackdrop.ignoresSafeArea(edges: .bottom) }
             }
             // In a split the trailing pane's top is the paywall's top corner, where the dismiss
             // control is drawn: start below it.
@@ -1060,6 +1066,17 @@ struct PaywallRenderer: View {
      has used; a gradient or an image yields nil and the default falls back to light-on-dark, which
      is what this surface has always assumed for those.
      */
+    /// The colour the pinned bottom group sits on: the page colour, or a gradient's end stop (the colour at the
+    /// bottom of the page). Clear for an image or a video page, where no single colour is the page's.
+    private var pinnedZoneBackdrop: Color {
+        let bg = config.background ?? config.layout?.background
+        if bg?.type == "gradient", let last = bg?.gradient?.stops?.last?.color ?? bg?.colors?.last, !last.isEmpty {
+            return Color(hex: last)
+        }
+        if let hex = pageBackgroundHex { return Color(hex: hex) }
+        return .clear
+    }
+
     private var pageBackgroundHex: String? {
         let bg = config.background ?? config.layout?.background
         switch bg?.type {
