@@ -67,6 +67,8 @@ extension SharedFixtureTests {
         case "measure_badge_placement": await runBadgePlacement(f, h)
         // A single-line text input's border, error over focus over resting (SharedFixtureDrivers+TextInputBorder.swift).
         case "resolve_text_input_border": runTextInputBorder(f, h)
+        // A block's size, a bare number included (SharedFixtureDrivers+ElementSize.swift).
+        case "resolve_element_size": runElementSize(f, h)
         // The record-mode placement matrix (SharedFixtureDrivers+BlockPlacement.swift).
         case "measure_block_placement": await runBlockPlacement(f, h)
         // Every tracked event (SDK and host) → message / survey triggers (SharedFixtureDrivers+Triggers.swift).

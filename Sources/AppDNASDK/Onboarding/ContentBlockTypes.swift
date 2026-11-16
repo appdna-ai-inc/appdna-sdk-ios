@@ -1088,7 +1088,8 @@ func relativeWidth(_ fraction: CGFloat, container: CGFloat) -> CGFloat {
 func needsOuterAlignmentBox(elementWidth: String?, horizontalAlign: String?) -> Bool {
     guard let align = horizontalAlign, !align.isEmpty else { return false }
     guard let width = elementWidth, !width.isEmpty, width != "auto", width != "fill" else { return false }
-    return width.hasSuffix("%") || width.hasSuffix("px")
+    // A bare number is points (`SizeValue.parse`), so it constrains the width as `px` does.
+    return width.hasSuffix("%") || width.hasSuffix("px") || Double(width.trimmingCharacters(in: .whitespaces)) != nil
 }
 
 /// Applies relative sizing (element_width, element_height) to a content block.
@@ -2014,8 +2015,8 @@ public struct ContentBlock: Codable, Identifiable {
         self.entrance_animation = try c.decodeIfPresent(EntranceAnimation.self, forKey: .entrance_animation)
         self.pressed_style = try c.decodeIfPresent(PressedStyle.self, forKey: .pressed_style)
         self.bindings = try c.decodeIfPresent([String: String].self, forKey: .bindings)
-        self.element_width = c.lenient(String.self, .element_width)
-        self.element_height = c.lenient(String.self, .element_height)
+        self.element_width = c.lenientSize(.element_width)
+        self.element_height = c.lenientSize(.element_height)
         self.overflow = c.lenient(String.self, .overflow)
         self.collapse_on_scroll = c.lenient(Bool.self, .collapse_on_scroll)
         self.max_lines = c.lenient(Int.self, .max_lines)

@@ -222,6 +222,16 @@ extension KeyedDecodingContainer {
     func lenient<T: Decodable>(_ type: T.Type, _ key: Key) -> T? {
         (try? decodeIfPresent(T.self, forKey: key)) ?? nil
     }
+
+    /// A size (`element_width`, `element_height`) as its string spelling: a string as written, or a JSON number as
+    /// its digits (`120` → `"120"`, `12.5` → `"12.5"`). The size grammar (`SizeValue.parse`) reads a bare number as
+    /// points, and the console preview draws one; reading only strings dropped a number, so the block filled its row.
+    /// Android reads it the same way (`sizeStr`).
+    func lenientSize(_ key: Key) -> String? {
+        if let s = lenient(String.self, key) { return s }
+        guard let d = lenient(Double.self, key), d.isFinite else { return nil }
+        return d.rounded() == d && abs(d) < 1e15 ? String(Int64(d)) : String(d)
+    }
 }
 
 /// A single value that yields nil when the document holds the WRONG TYPE, for a struct whose

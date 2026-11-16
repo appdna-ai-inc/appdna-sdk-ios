@@ -42,6 +42,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A bare-number `element_width` / `element_height` is points, as the console preview draws it.** A width written
+  without a unit as a JSON number (`120`) was dropped by the decoder, so the block filled its row; a string `"120"` was
+  drawn, but its `horizontal_align` had no box to act in. Both forms are now 120 points, and an aligned block with a
+  bare-number width is placed by its alignment, as one with `120px` is.
+
 - **A text input draws its focused and error border colours.** A single-line text input (`input_text`, `input_email`,
   `input_phone`, `input_number`, `input_url`) stroked `field_style.border_color` in every state, so the console's
   Focused Border and Error Border colours did nothing. It now strokes `error_border_color` while the field is in error,
