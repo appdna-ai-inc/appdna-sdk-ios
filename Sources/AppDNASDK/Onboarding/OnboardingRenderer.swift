@@ -2317,13 +2317,16 @@ struct OnboardingStepRouter: View {
     private func handleBlockAction(_ action: String, _ actionValue: String?) {
         switch action {
         case "next":
-            // A permission step whose CTA is authored as plain `action:"next"`
-            // (instead of `action:"permission"`) must STILL honor the step's `permission_type`
-            // and run the permission pipeline rather than silently advancing. Reuse
-            // PermissionManager's own support check — do not invent a new list. Non-permission
-            // "next" steps (empty/unsupported type) fall through to the normal advance below.
-            let nextPermissionType = effectiveConfig.permission_type ?? (effectiveConfig.layout?["permission_type"]?.value as? String) ?? ""
-            if !nextPermissionType.isEmpty, PermissionManager.isSupported(nextPermissionType) {
+            // A permission step whose ONLY CTA is authored as plain `action:"next"` still runs the
+            // permission pipeline rather than silently advancing. When the step also offers an
+            // explicit `permission` CTA, `next` is its decline ("Maybe later") and advances without
+            // prompting. The rule is the pure `permissionTypeForNext` seam, which the shared
+            // fixtures drive; non-permission steps return nil and fall through unchanged.
+            if let nextPermissionType = permissionTypeForNext(
+                configType: effectiveConfig.permission_type,
+                layoutType: effectiveConfig.layout?["permission_type"]?.value as? String,
+                blocks: effectiveConfig.content_blocks
+            ) {
                 runPermissionPipeline(nextPermissionType)
                 return
             }

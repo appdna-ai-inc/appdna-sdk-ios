@@ -42,6 +42,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **"Maybe later" on a permission step no longer raises the OS permission prompt.** On a `permission` step that has a
+  button with the `permission` action, a second button authored as `next` (a "Maybe later" or "Not now") ran the
+  permission request too, so the user who declined saw the OS sheet anyway, and on iOS the app's one notification ask
+  was spent on them. A `next` button now asks only when the step has no `permission` button, which is the case of a
+  step whose one CTA was authored as `next`. When the step has a `permission` button, `next` advances without asking
+  and records no `permission_<type>` outcome. A `permission` button inside a Multi-buttons, row or stack counts too.
+
 - **A badge with no alignment sits at the leading edge, as on Android and in the console preview.** A top-level
   `badge` block with neither `horizontal_align` nor `vertical_align` was centred in the step's column, with or without
   an entrance animation, while Android and the console preview put it on the left. It now sits at the leading edge.

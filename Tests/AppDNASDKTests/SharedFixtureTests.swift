@@ -972,6 +972,20 @@ final class SharedFixtureTests: XCTestCase {
         // (d) natural advance / completion — the REAL OnboardingAdvance machine. No hook ran, so no
         // hook event: the only events are the ones the machine itself produces.
         case "next", "complete", "":
+            // REAL: permissionTypeForNext — the rule `handleBlockAction` "next" runs first. A type
+            // means the renderer hands off to the OS permission pipeline, which owns the advance, so
+            // the step does not move here.
+            if buttonAction == "next", let prompted = permissionTypeForNext(
+                configType: step.config.permission_type,
+                layoutType: step.config.layout?["permission_type"]?.value as? String,
+                blocks: step.config.content_blocks
+            ) {
+                h.state["permission_prompted"] = prompted
+                h.state["current_step_index"] = currentIndex
+                h.state["current_step_id"] = step.id
+                return
+            }
+            h.state["permission_prompted"] = NSNull()
             applyAdvance(f, h, flow: flow, currentIndex: currentIndex,
                          responses: sessionResponses(f), result: .proceed, hookRan: false)
 
