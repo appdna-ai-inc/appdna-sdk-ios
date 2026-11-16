@@ -49,6 +49,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A consent ticks from its words, not only its box.** A tap anywhere on an Agreement consent's text ticks or unticks it,
+  as the 22-point box does; a link inside the text still opens the link and does not tick. On a step and inside a step's
+  sheet alike.
+
 - **A bare-number `element_width` / `element_height` is points, as the console preview draws it.** A width written
   without a unit as a JSON number (`120`) was dropped by the decoder, so the block filled its row; a string `"120"` was
   drawn, but its `horizontal_align` had no box to act in. Both forms are now 120 points, and an aligned block with a

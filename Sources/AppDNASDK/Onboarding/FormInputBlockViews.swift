@@ -2473,6 +2473,7 @@ struct ConsentRow: View {
             Text(MarkdownText.attributed(consent.text, linkColor: linkColor, textColor: textColor, underlineMarkers: false))
                 .font(.footnote)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .modifier(ConsentLabelTap { isChecked.toggle() })
         }
         .onChange(of: isChecked) { inputValues[key] = $0 }
         .onAppear {
@@ -2539,6 +2540,7 @@ struct AgreementBlock: View {
             .accessibilityRepresentation { Toggle(agreementText, isOn: $isChecked) }
 
             agreementLabel(agreementText, linkColor: linkColor, textColor: textColor)
+                .modifier(ConsentLabelTap { isChecked.toggle() })
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         // Persist on any change (visual tap OR the a11y Toggle representation).
@@ -3904,5 +3906,32 @@ struct OptionTapTarget<Label: View>: View {
         } else {
             Button(action: action, label: label)
         }
+    }
+}
+
+/**
+ A consent's words toggle it as its box does (users tap the words first; the box alone is 22 pt), while a link
+ inside the words opens the link and does not toggle. A link tap reaches `openURL` before the tap gesture's
+ deferred decision, which then skips the toggle. Mirrors Android's label `onClick`.
+ */
+struct ConsentLabelTap: ViewModifier {
+    let toggle: () -> Void
+    @SwiftUI.Environment(\.openURL) private var outerOpenURL
+    @State private var linkTapped = false
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.openURL, OpenURLAction { url in
+                linkTapped = true
+                outerOpenURL(url)
+                return .handled
+            })
+            .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+                    if !linkTapped { toggle() }
+                    linkTapped = false
+                }
+            })
     }
 }
