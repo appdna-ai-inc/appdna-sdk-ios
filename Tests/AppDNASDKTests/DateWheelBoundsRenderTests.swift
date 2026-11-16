@@ -6,7 +6,14 @@ import XCTest
 /// authored bounds, and stores nothing until the user moves it. THE CONTROL: a today inside the bounds opens on today.
 final class DateWheelBoundsRenderTests: XCTestCase {
     private let host = DateWheelTestHost()
-    override func tearDown() { host.tearDown(); super.tearDown() }
+    private var savedZone: TimeZone?
+    override func setUp() {
+        super.setUp()
+        savedZone = AppDNA.appTimeZone
+        // The wheel's today is the app's: a zone whose day differs from the device's makes that visible.
+        AppDNA.appTimeZone = appZoneWhoseTodayDiffersFromTheDevice()
+    }
+    override func tearDown() { AppDNA.appTimeZone = savedZone; host.tearDown(); super.tearDown() }
 
     private func band(_ view: UIView) -> [String?] {
         ["Month", "Day", "Year"].map { DateWheelTestHost.wheel($0, in: view)?.accessibilityValue }
@@ -28,7 +35,9 @@ final class DateWheelBoundsRenderTests: XCTestCase {
 
     func testTheControlTodayInsideTheBoundsOpensOnToday() throws {
         let view = host.showWheel(try DateWheelTestHost.block([:]), store: .init()).view!
-        let today = Calendar(identifier: .gregorian).dateComponents([.year, .day], from: Date())
+        var appCalendar = Calendar(identifier: .gregorian)
+        appCalendar.timeZone = AnswerTime.zone
+        let today = appCalendar.dateComponents([.year, .day], from: Date())
         XCTAssertEqual(band(view)[1], String(today.day!))
         XCTAssertEqual(band(view)[2], String(today.year!))
     }

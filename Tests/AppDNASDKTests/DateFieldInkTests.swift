@@ -8,10 +8,20 @@ import XCTest
 
 @MainActor
 final class DateFieldInkTests: SurfaceInkTestCase {
+    private var savedZone: TimeZone?
+    override func setUp() {
+        super.setUp()
+        savedZone = AppDNA.appTimeZone
+        AppDNA.appTimeZone = appZoneWhoseTodayDiffersFromTheDevice()
+    }
+    override func tearDown() { AppDNA.appTimeZone = savedZone; super.tearDown() }
+
+    /// Today as the field draws it: in the APP's time zone, not the device's.
     private var today: String {
         let f = DateFormatter()
         f.dateStyle = .medium
         f.timeStyle = .none
+        f.timeZone = AnswerTime.zone
         return f.string(from: Date())
     }
 
@@ -37,4 +47,17 @@ final class DateFieldInkTests: SurfaceInkTestCase {
         let value = try XCTUnwrap(counts[today])
         XCTAssertGreaterThan(value.red, ink, "an authored colour still draws")
     }
+}
+
+/// A zone whose calendar day differs from the device's at this moment, so a test that reads "today" proves it reads
+/// the APP's today. These tests failed only in the hour around midnight when they read the device's, which is
+/// exactly the hour the two days differ. Nil only if no candidate differs (never, for a +14 / -11 pair).
+func appZoneWhoseTodayDiffersFromTheDevice(now: Date = Date()) -> TimeZone? {
+    let local = Calendar.current.dateComponents([.year, .month, .day], from: now)
+    for id in ["Pacific/Kiritimati", "Pacific/Pago_Pago"] {
+        guard let zone = TimeZone(identifier: id) else { continue }
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
+        if cal.dateComponents([.year, .month, .day], from: now) != local { return zone }
+    }
+    return nil
 }
