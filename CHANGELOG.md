@@ -42,6 +42,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A text input draws its focused and error border colours.** A single-line text input (`input_text`, `input_email`,
+  `input_phone`, `input_number`, `input_url`) stroked `field_style.border_color` in every state, so the console's
+  Focused Border and Error Border colours did nothing. It now strokes `error_border_color` while the field is in error,
+  else `focused_border_color` while it has the keyboard, else `border_color`, the same rule as Android. Nothing puts a
+  text input in error yet; the error colour applies once a setting does.
+
 - **A "link" button inside an option's bottom sheet opens its link.** It did nothing on iOS, while Android opened it.
   A `link` button in an option's `sheet_blocks` now opens its URL in the in-app browser and keeps the sheet open, as a
   `link` button on a step does. The URL is scheme-checked first. The "Add widget" how-to sheet still opens nothing.

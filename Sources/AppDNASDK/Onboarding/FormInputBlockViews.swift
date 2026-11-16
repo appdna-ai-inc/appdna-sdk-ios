@@ -166,11 +166,27 @@ func fieldBorderColor(_ block: ContentBlock, hasError: Bool = false) -> Color {
     return Color(hex: block.field_style?.border_color ?? "#D1D5DB")
 }
 
+/// The border a single-line text input strokes, as a hex: `error_border_color` while the field is in error, else
+/// `focused_border_color` while it has the keyboard, else `border_color`, else `#D1D5DB`. Each falls back to the next
+/// when unset. Shared with Android (`textInputBorderHex`) and pinned by the `resolve_text_input_border` fixture.
+///
+/// iOS stroked `border_color` in every state, so the console's Focused Border and Error Border colours did nothing
+/// on an `input_text` here while Android drew the focused one.
+func textInputBorderHex(_ style: FormFieldBlockStyle?, focused: Bool, hasError: Bool) -> String {
+    if hasError, let hex = style?.error_border_color, !hex.isEmpty { return hex }
+    if focused, let hex = style?.focused_border_color, !hex.isEmpty { return hex }
+    if let hex = style?.border_color, !hex.isEmpty { return hex }
+    return "#D1D5DB"
+}
+
 /// Generic text-based input (text, number, email, phone, url).
 struct FormInputTextBlock: View {
     let block: ContentBlock
     @Binding var inputValues: [String: Any]
     let keyboardType: UIKeyboardType
+    /// The field is in error. Nothing on a step sets it yet: remote validation, when it ships, is the first state that
+    /// will. The border already draws it, so the error colour has a state to apply to.
+    var hasError: Bool = false
     /// What the block draws on and the appearance: the ink of an unstyled field (`UnstyledInk`).
     @SwiftUI.Environment(\.googleAttributionBackdrop) private var inkBackdrop
     @SwiftUI.Environment(\.colorScheme) private var inkScheme
@@ -184,7 +200,7 @@ struct FormInputTextBlock: View {
     var body: some View {
         let fieldId = block.field_id ?? block.id
         let placeholder = block.field_placeholder ?? block.text ?? ""
-        let borderColor = Color(hex: block.field_style?.border_color ?? "#D1D5DB")
+        let borderColor = Color(hex: textInputBorderHex(block.field_style, focused: isFocused, hasError: hasError))
         let cornerRadius = CGFloat(block.field_style?.corner_radius ?? 8)
         // Always use UIKitTextField — SwiftUI TextField has focus/dark mode issues.
         let keyboardAppearanceRaw = block.field_config?["keyboard_appearance"]?.value as? String

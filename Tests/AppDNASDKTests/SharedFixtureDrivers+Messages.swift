@@ -65,6 +65,8 @@ extension SharedFixtureTests {
         case "resolve_block_container_style": runBlockContainerStyle(f, h)
         // Where a top-level badge lands across its column (SharedFixtureDrivers+BadgePlacement.swift).
         case "measure_badge_placement": await runBadgePlacement(f, h)
+        // A single-line text input's border, error over focus over resting (SharedFixtureDrivers+TextInputBorder.swift).
+        case "resolve_text_input_border": runTextInputBorder(f, h)
         // Every tracked event (SDK and host) → message / survey triggers (SharedFixtureDrivers+Triggers.swift).
         case "dispatch_triggers": runDispatchTriggers(f, h)
         default: return false
