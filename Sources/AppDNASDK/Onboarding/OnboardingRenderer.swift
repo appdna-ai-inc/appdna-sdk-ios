@@ -80,7 +80,9 @@ struct OnboardingFlowHost: View {
     // navigation, so a slow reply from a step the user had left blocked every interaction on the next.
 
     var body: some View {
-        celebratedContent.overlay(alignment: .bottom) {
+        celebratedContent
+            .environment(\.appdnaPlacementRules, PlacementRules.of(flow.settings.placement_rules))
+            .overlay(alignment: .bottom) {
             if let message = errorToastMessage {
                 Text(message)
                     .font(.subheadline.weight(.medium))

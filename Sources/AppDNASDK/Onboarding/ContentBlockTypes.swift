@@ -986,6 +986,25 @@ extension EnvironmentValues {
     }
 }
 
+/// the placement rules of the flow being drawn (`OnboardingSettings.placement_rules`). 1 outside a flow.
+enum PlacementRules {
+    static let legacy = 1
+    static let centred = 2
+    static func of(_ stamp: Int?) -> Int { stamp ?? legacy }
+    static func centres(_ rules: Int) -> Bool { rules >= centred }
+}
+
+private struct PlacementRulesKey: EnvironmentKey {
+    static let defaultValue: Int = PlacementRules.legacy
+}
+
+extension EnvironmentValues {
+    var appdnaPlacementRules: Int {
+        get { self[PlacementRulesKey.self] }
+        set { self[PlacementRulesKey.self] = newValue }
+    }
+}
+
 /// Where the blocks below are drawn. Only an onboarding step's container credits Google, so only the
 /// step router sets `.onboarding`; anywhere else (a Screen) the view-level pass resolves a Google
 /// answer — and a picked option's Google key — to the text the user typed.

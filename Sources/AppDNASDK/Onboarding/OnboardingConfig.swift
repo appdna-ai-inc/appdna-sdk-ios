@@ -189,6 +189,13 @@ public struct OnboardingSettings: Codable {
      the rest on white. Order: step `background` → this → `systemBackground`.
      */
     public let background: BackgroundStyleConfig?
+    /**
+     the placement rules this flow was published under, stamped by the publisher (never authored). Nil (a
+     flow published before the stamp existed) = 1, the placement every surface shipped; 2 = an unaligned block
+     narrower than its row is centred on every surface. iOS already centres such a block in its column under both;
+     the one iOS context the stamp changes is a top / centre zone whose blocks all hug (`ThreeZoneStepLayout`).
+     */
+    public var placement_rules: Int? = nil
 
     public init(show_progress: Bool = true, allow_back: Bool = true, skip_to_step: String? = nil,
                 progress_style: String? = nil, progress_color: String? = nil, progress_track_color: String? = nil,
@@ -240,12 +247,13 @@ public struct OnboardingSettings: Codable {
         // Lenient: a malformed flow background must not drop the whole flow — it falls back to the
         // per-step backgrounds and the platform default, which is what shipped before it existed.
         self.background = try? c.decodeIfPresent(BackgroundStyleConfig.self, forKey: .background)
+        self.placement_rules = c.lenient(Int.self, .placement_rules)
     }
 
     enum CodingKeys: String, CodingKey {
         case show_progress, allow_back, skip_to_step, progress_style
         case progress_color, progress_track_color, progress_height, progress_gradient_colors, progress_skip_label, progress_flash_color, back_button_style, dismiss_allowed, dismiss_button_style
-        case content_padding, block_spacing, haptic, particle_effect, background
+        case content_padding, block_spacing, haptic, particle_effect, background, placement_rules
     }
 }
 

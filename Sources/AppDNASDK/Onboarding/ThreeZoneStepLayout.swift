@@ -8,6 +8,9 @@ import SwiftUI
 struct ThreeZoneStepLayout: View {
     /// Whether the window allows a split (`SurfaceLayout`).
     @SwiftUI.Environment(\.appdnaSurfaceMode) private var surfaceMode
+    /// Placement rules: under rules 2 a zone whose blocks all hug is centred like every other narrow block; rules 1 keeps the
+    /// leading edge such a zone has always had.
+    @SwiftUI.Environment(\.appdnaPlacementRules) private var placementRules
     let blocks: [ContentBlock]
     let onAction: (_ action: String, _ actionValue: String?) -> Void
     @Binding var toggleValues: [String: Bool]
@@ -139,7 +142,7 @@ struct ThreeZoneStepLayout: View {
                                 .padding(.top, 20)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(maxWidth: .infinity, alignment: PlacementRules.centres(placementRules) ? .center : .leading)
                     .contentShape(Rectangle())
                     .onTapGesture {
                         UIApplication.shared.sendAction(

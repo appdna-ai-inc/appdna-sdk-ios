@@ -33,6 +33,8 @@ extension SharedFixtureTests {
             }
             let size = CGSize(width: width, height: 300)
             let view = ContentBlockRendererView(blocks: blocks, onAction: { _, _ in }, toggleValues: .constant([:]), inputValues: .constant([:]))
+                // Placement rules: the flow's placement rules, as `settings.placement_rules` sets them (absent = 1).
+                .environment(\.appdnaPlacementRules, Int(f.action.raw["placement_rules"]?.doubleValue ?? 1))
                 .frame(width: size.width, height: size.height, alignment: .top)
                 .background(Color.white)
                 // An entrance animation lands at once on its end state: a captured layer shows model values, and a

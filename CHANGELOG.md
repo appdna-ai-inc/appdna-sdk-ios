@@ -8,6 +8,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A block with no horizontal alignment that is narrower than its row is centred everywhere, and Android and the
+  console preview now draw it where iOS does.** iOS already centred such a block in its column. Two iOS cases change:
+  a top or centre zone whose blocks all hug their content sat at the leading edge and is now centred, and an unaligned
+  `badge` is centred again (an earlier change on this unreleased version had moved it to the leading edge). The zone
+  change applies only to flows the console has published with `settings.placement_rules: 2`; a flow published before
+  keeps its placement until it is published again.
+
 - **The first-launch deferred-link check no longer makes iOS ask "Allow Paste?" for text that is not a link.** It
   read the pasteboard on every first launch, so a user who had copied anything in another app saw a paste prompt, and
   the read blocked its thread until they answered. It now reads only when iOS reports, without asking, that the
