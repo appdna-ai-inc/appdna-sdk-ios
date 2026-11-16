@@ -3579,8 +3579,8 @@ struct OptionBottomSheetView: View {
     }
 
     /// The engine is `BlockSheetView`: Done (`next` / `continue`) and Close (`dismiss`) both close an
-    /// option sheet — the flow continues underneath, where the option is already selected — and every
-    /// other action inside it does nothing.
+    /// option sheet — the flow continues underneath, where the option is already selected — a `link`
+    /// opens its URL and keeps the sheet open (`opensLinks`), and every other action inside it does nothing.
     var body: some View {
         let context = creditContext
         let blockId = blockId
@@ -3600,7 +3600,9 @@ struct OptionBottomSheetView: View {
                     blockId: blockId, optionId: option.id,
                     presentedSheetBlocks: sheetBlocks, sheetInputs: sheetInputs
                 ) ?? false
-            }
+            },
+            // An option sheet's `link` opens, as on a step and as on Android.
+            opensLinks: true
         )
     }
 }

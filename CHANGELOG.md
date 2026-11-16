@@ -42,6 +42,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A "link" button inside an option's bottom sheet opens its link.** It did nothing on iOS, while Android opened it.
+  A `link` button in an option's `sheet_blocks` now opens its URL in the in-app browser and keeps the sheet open, as a
+  `link` button on a step does. The URL is scheme-checked first. The "Add widget" how-to sheet still opens nothing.
+
 - **"Maybe later" on a permission step no longer raises the OS permission prompt.** On a `permission` step that has a
   button with the `permission` action, a second button authored as `next` (a "Maybe later" or "Not now") ran the
   permission request too, so the user who declined saw the OS sheet anyway, and on iOS the app's one notification ask

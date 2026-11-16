@@ -4,23 +4,32 @@ import SwiftUI
 /// `sheet_blocks` (`OptionBottomSheetView` wraps it) and the `add_widget` how-to (`howto_blocks_ios`;
 /// `howto_blocks_android` is Android's, and iOS never draws it).
 ///
-/// A sheet's buttons do exactly two things:
+/// A sheet's buttons do exactly two things, plus one in an option sheet:
 /// - `next` (Done; `continue` is its synonym) → `onDone`;
-/// - `dismiss` (Close) → `onClose`.
+/// - `dismiss` (Close) → `onClose`;
+/// - `link`, in an OPTION sheet only (`opensLinks`) → opens its URL in the in-app browser and keeps the
+///   sheet open, exactly as a `link` button on a step does (and as Android always has: its option sheet
+///   leaves `link` to the button itself).
 ///
 /// EVERY button action inside the sheet is forwarded here — a `link`, a `refresh_step`, an
-/// `add_widget`, a typo — and anything but those two is logged and ignored, so a how-to cannot open a
+/// `add_widget`, a typo — and anything else is logged and ignored, so a how-to cannot open a
 /// browser, refresh the step underneath or start a second attempt. The step's channels
 /// (`appdnaWidgetAction`, `appdnaStepInteraction`) are cut off explicitly: SwiftUI's environment
 /// reaches `.sheet` content, so without that a button in the sheet would act on the step.
 struct BlockSheetView: View {
     /// What a button inside the sheet does.
-    enum Route: Equatable { case done, close, ignored }
+    enum Route: Equatable { case done, close, openLink(URL), ignored }
 
-    static func route(_ action: String) -> Route {
+    /// `opensLinks` is true for an option sheet and false for the `add_widget` how-to. A `link` with no
+    /// URL, or one `URLSafety` refuses, does nothing.
+    static func route(_ action: String, value: String? = nil, opensLinks: Bool = false) -> Route {
         switch action {
         case "next", "continue": return .done
         case "dismiss": return .close
+        case "link" where opensLinks:
+            // Scheme-checked before anything opens it, as Android's option sheet does (`URLSafety.sanitized`).
+            guard let url = value.flatMap({ URLSafety.sanitized($0) }) else { return .ignored }
+            return .openLink(url)
         default: return .ignored
         }
     }
@@ -31,6 +40,8 @@ struct BlockSheetView: View {
     let loc: ((String, String) -> String)?
     let onDone: () -> Void
     let onClose: () -> Void
+    /// An option sheet opens a `link` button's URL; the `add_widget` how-to does not.
+    var opensLinks: Bool = false
     /// The blocks came out of the raw host-data pass: they are already resolved, and the renderer must
     /// not re-scan them (only `sheet_step_paths` resolve here, against the sheet's own inputs).
     var rawResolved: Bool = false
@@ -49,8 +60,9 @@ struct BlockSheetView: View {
     /// `inputs`: the sheet's own inputs when it opens — empty in production; a render test seeds one.
     init(blocks: [ContentBlock], loc: ((String, String) -> String)?, onDone: @escaping () -> Void,
          onClose: @escaping () -> Void, rawResolved: Bool = false, inputs: [String: Any] = [:],
-         showsGoogleCredit: (([String: Any]) -> Bool)? = nil) {
+         showsGoogleCredit: (([String: Any]) -> Bool)? = nil, opensLinks: Bool = false) {
         self.blocks = blocks
+        self.opensLinks = opensLinks
         self.loc = loc
         self.onDone = onDone
         self.onClose = onClose
@@ -60,13 +72,16 @@ struct BlockSheetView: View {
     }
 
     /// A button inside the sheet was tapped.
-    func handle(_ action: String) {
-        switch Self.route(action) {
+    func handle(_ action: String, _ value: String? = nil) {
+        switch Self.route(action, value: value, opensLinks: opensLinks) {
         case .done: onDone()
         case .close: onClose()
+        case .openLink(let url):
+            // The step's own `link` path: the in-app browser over whatever is on top (here, the sheet).
+            DispatchQueue.main.async { InAppBrowser.present(url: url) }
         case .ignored:
             Log.debug("[Onboarding] a sheet button with action \"\(action)\" does nothing inside a sheet — "
-                + "only next / continue (Done) and dismiss (Close) act there")
+                + "only next / continue (Done), dismiss (Close) and, in an option sheet, link act there")
         }
     }
 
@@ -82,7 +97,7 @@ struct BlockSheetView: View {
             ScrollView {
                 ContentBlockRendererView(
                     blocks: blocks,
-                    onAction: { action, _ in handle(action) },
+                    onAction: { action, value in handle(action, value) },
                     toggleValues: $sheetToggles,
                     loc: loc,
                     inputValues: $sheetInputs,

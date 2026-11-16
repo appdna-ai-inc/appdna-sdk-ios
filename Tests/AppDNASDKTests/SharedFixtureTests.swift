@@ -525,6 +525,7 @@ final class SharedFixtureTests: XCTestCase {
         // The core decoder every wrapper bridge forwards `dataContext` through.
         case "decode_interaction_result":      runDecodeInteractionResult(fixture, harness)
         case "add_widget_attempt":             runAddWidgetAttempt(fixture, harness)
+        case "tap_sheet_button":               runTapSheetButton(fixture, harness)
         default:
             // The new kinds are driven from one file per area, each returning `true` for
             // the kinds it owns: SharedFixtureDrivers+Billing.swift, +Push.swift, +Maps.swift,
@@ -1061,6 +1062,29 @@ final class SharedFixtureTests: XCTestCase {
 
         default:
             XCTFail("[\(f.id)] no iOS driver for button action='\(buttonAction)'.")
+        }
+    }
+
+    // MARK: - Driver: tap_sheet_button
+    //
+    // REAL: BlockSheetView.route(_:value:opensLinks:) — the rule `BlockSheetView.handle` runs for every
+    // button tapped inside a sheet. An option sheet (`OptionBottomSheetView`) opens links; the
+    // `add_widget` how-to does not.
+
+    private func runTapSheetButton(_ f: Fixture, _ h: Harness) {
+        let config = f.setup.config?.objectValue ?? [:]
+        let button = config["button"]?.objectValue ?? [:]
+        let opensLinks = (f.action.raw["sheet"]?.stringValue ?? config["sheet"]?.stringValue) == "option"
+        let route = BlockSheetView.route(
+            button["action"]?.stringValue ?? "",
+            value: button["action_value"]?.stringValue,
+            opensLinks: opensLinks
+        )
+        switch route {
+        case .done: h.state["sheet_route"] = "done"; h.state["opened_url"] = NSNull()
+        case .close: h.state["sheet_route"] = "close"; h.state["opened_url"] = NSNull()
+        case .openLink(let url): h.state["sheet_route"] = "open_link"; h.state["opened_url"] = url.absoluteString
+        case .ignored: h.state["sheet_route"] = "ignored"; h.state["opened_url"] = NSNull()
         }
     }
 
