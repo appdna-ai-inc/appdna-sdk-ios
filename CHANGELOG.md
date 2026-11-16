@@ -49,6 +49,8 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A link inside a step sheet opens in the in-app browser,** as a link on the step does; it opened Safari and left the app.
+
 - **A consent ticks from its words, not only its box.** A tap anywhere on an Agreement consent's text ticks or unticks it,
   as the 22-point box does; a link inside the text still opens the link and does not tick. On a step and inside a step's
   sheet alike.

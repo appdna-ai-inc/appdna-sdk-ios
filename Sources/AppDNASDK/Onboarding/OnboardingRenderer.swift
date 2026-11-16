@@ -1992,6 +1992,12 @@ struct OnboardingStepRouter: View {
                     onDismiss: { via in sheets.onDismissGesture(via: via) }
                 )
                 .id(sheet.id)
+                // The sheet sits outside the step's own `openURL` (this overlay wraps it), so a link in the sheet
+                // opens in-app as one on the step does, not in Safari.
+                .environment(\.openURL, OpenURLAction { url in
+                    InAppBrowser.present(url: url)
+                    return .handled
+                })
             }
         }
         // Validation toast overlay
