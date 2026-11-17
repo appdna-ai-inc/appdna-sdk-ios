@@ -94,6 +94,11 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         for _ in 0..<250 where (spy.failed.isEmpty || failureRoutes.isEmpty) && spy.completed.isEmpty && purchaseEnded == 0 {
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
+        // The manager hands the failure routing to a `[weak self]` main-queue block. Nothing else holds this
+        // local manager, and Swift may release it after its last use, so with a busy main queue (the full suite)
+        // the block found `self == nil`: the delegate heard the failure, the routing never ran, and
+        // `failureRoutes` stayed empty. Keep it alive until the wait is over.
+        withExtendedLifetime(manager) {}
         return spy
     }
 
