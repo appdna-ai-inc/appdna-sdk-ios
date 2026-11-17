@@ -67,6 +67,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A block with a percentage width is drawn when it is the only block in its zone.** A 60%-wide button alone in
+  the pinned zone (or any block with an `element_width` under 100% with no full-width sibling) was a fraction of its
+  own width rather than of the zone, so it shrank on each layout pass until it was not drawn at all. It is now that
+  fraction of the zone, as on Android and in the console preview.
+
 - **A surface no longer narrows itself as it opens on a wide window.** An onboarding step, a paywall, a survey or a
   full-screen message on a window wider than the 560-point column could open at the window's width and shrink to the
   column over about half a second, because the first measurement of the window landed in an animated transaction. The

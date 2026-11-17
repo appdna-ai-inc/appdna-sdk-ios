@@ -487,6 +487,13 @@ struct ContentBlockRendererView: View {
                     }
             }
         }
+        // A percentage is a fraction of the width OFFERED to the blocks, so a stack holding one fills
+        // what it is offered and the measurement below reads that. 🔴 It used to read the stack's own
+        // width, and a stack is as wide as its widest block: with every block a percentage (a 60%
+        // button alone in the pinned zone) the block was 60% of itself, each pass measured it
+        // narrower, and it shrank to nothing: the button was not drawn at all. A stack with no
+        // percentage block keeps its own width, so nothing else moves.
+        .if(Self.holdsAPercentageWidth(visibleBlocks)) { $0.frame(maxWidth: .infinity) }
         // Publish the width blocks are actually being laid out in, so a percentage
         // `element_width` is a fraction of THIS, not of the device screen. Android has always used
         // the real container (`fillMaxWidth(fraction)`) and so has the console preview; measuring
@@ -498,6 +505,14 @@ struct ContentBlockRendererView: View {
         )
         .onPreferenceChange(ContainerWidthPrefKey.self) { measuredContainerWidth = $0 }
         .environment(\.appdnaContainerWidth, measuredContainerWidth)
+    }
+
+    /// Whether any of these blocks is a fraction of its container (`element_width` under 100%).
+    static func holdsAPercentageWidth(_ blocks: [ContentBlock]) -> Bool {
+        blocks.contains { block in
+            if case .percent(let fraction)? = SizeValue.parse(block.element_width) { return fraction < 1 }
+            return false
+        }
     }
 
     @ViewBuilder
