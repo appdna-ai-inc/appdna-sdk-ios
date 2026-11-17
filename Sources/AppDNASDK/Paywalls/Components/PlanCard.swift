@@ -140,7 +140,6 @@ struct PlanCard: View {
         return unselectedTextColor
     }
     private var selectedScaleValue: CGFloat { cardStyle.selectedScale ?? 1.0 }
-    private var badgeBg: Color { Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")) }
     private var badgeFg: Color { Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF") }
 
     /// Everything the card gives a plan, deliberately absent: no border, no background, no
@@ -630,7 +629,7 @@ struct PlanCard: View {
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
-            .background(badgeBg)
+            .background(PaywallBadgeFill.view(cardStyle))
             .clipShape(badgeShape(shape))
             .overlay(
                 badgeShape(shape)
@@ -692,6 +691,7 @@ struct PlanCardStyle {
     var badgePosition: String? = nil
     var badgeStyle: String? = nil
     var badgeBgColor: String? = nil
+    var badgeGradient: PaywallGradient? = nil
     var badgeTextColor: String? = nil
     var selectedBorderColor: String? = nil
     var selectedBgColor: String? = nil
@@ -740,6 +740,7 @@ struct PlanCardStyle {
         self.badgePosition = data?.badgePosition
         self.badgeStyle = data?.badgeStyle
         self.badgeBgColor = data?.badgeBgColor
+        self.badgeGradient = data?.badgeGradient
         self.badgeTextColor = data?.badgeTextColor
         self.selectedBorderColor = data?.selectedBorderColor
         self.selectedBgColor = data?.selectedBgColor

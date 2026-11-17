@@ -2504,7 +2504,7 @@ struct PaywallRenderer: View {
                                     .foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF"))
                                     .padding(.horizontal, 6)
                                     .padding(.vertical, 2)
-                                    .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
+                                    .background(PaywallBadgeFill.view(cardStyle))
                                     .clipShape(Capsule())
                             }
                         }
@@ -2709,7 +2709,7 @@ struct PaywallRenderer: View {
                                         .foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF"))
                                         .padding(.horizontal, 10)
                                         .padding(.vertical, 4)
-                                        .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1")))
+                                        .background(PaywallBadgeFill.view(cardStyle))
                                         .clipShape(Capsule())
                                 }
                                 // Description
@@ -2785,7 +2785,7 @@ struct PaywallRenderer: View {
                         if let badge = plan.badge, !badge.isEmpty {
                             Text(badge).font(.caption2.bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                 .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
+                                .background(PaywallBadgeFill.view(cardStyle)).clipShape(Capsule())
                                 .frame(maxWidth: .infinity)
                         } else {
                             Text("").frame(maxWidth: .infinity)
@@ -2822,7 +2822,7 @@ struct PaywallRenderer: View {
                         if let badge = plan.badge, !badge.isEmpty {
                             Text(badge).font(.caption.bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                 .padding(.horizontal, 14).padding(.vertical, 6)
-                                .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
+                                .background(PaywallBadgeFill.view(cardStyle)).clipShape(Capsule())
                         }
                         if let desc = plan.description, !desc.isEmpty {
                             Text(desc).font(.subheadline).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7)).multilineTextAlignment(.center)
@@ -2893,7 +2893,7 @@ struct PaywallRenderer: View {
                                 if let badge = plan.badge, !badge.isEmpty {
                                     Text(badge).font(.caption2.bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                         .padding(.horizontal, 10).padding(.vertical, 4)
-                                        .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
+                                        .background(PaywallBadgeFill.view(cardStyle)).clipShape(Capsule())
                                 }
                                 if let desc = plan.description, !desc.isEmpty {
                                     Text(desc).font(.caption).foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
@@ -2936,7 +2936,7 @@ struct PaywallRenderer: View {
                                 if let badge = plan.badge, !badge.isEmpty {
                                     Text(badge).font(.system(size: 9).bold()).foregroundColor(Color(hex: cardStyle.badgeTextColor ?? "#FFF"))
                                         .padding(.horizontal, 6).padding(.vertical, 2)
-                                        .background(Color(hex: cardStyle.badgeBgColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))).clipShape(Capsule())
+                                        .background(PaywallBadgeFill.view(cardStyle)).clipShape(Capsule())
                                 }
                             }
                             .padding(12)

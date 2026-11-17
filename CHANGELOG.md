@@ -8,6 +8,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A plan badge can be a gradient.** `badge_gradient` on the `plans` section (`{ type, angle, stops: [{ color,
+  position }] }`, the `cta_gradient` shape) fills every plan badge with a linear gradient when it has two or more
+  coloured stops; otherwise the badge keeps the solid `badge_bg_color`, then the brand accent. `angle` is CSS degrees
+  (default 90, left to right). Shared fixture `dto_parsing/paywall_badge_fill`.
+
 - **A text input can be checked by your app while the user types (`onValidateInput`).** Turn on "Check with your app"
   on a Text, Email, Phone, Number or URL input in the console, and the SDK calls
   `AppDNAOnboardingDelegate.onValidateInput(flowId:stepId:fieldId:value:) async -> InputValidationResult?` after the

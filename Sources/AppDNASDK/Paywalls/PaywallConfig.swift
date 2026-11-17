@@ -570,6 +570,8 @@ struct PaywallSectionData: Codable {
     let badgePosition: String?       // top_left, top_right, inline, inside (default)
     let badgeStyle: String?          // capsule, rectangle, rounded
     let badgeBgColor: String?
+    /// A two-or-more-stop fill for every plan badge; wins over `badgeBgColor` (`PaywallBadgeFill`).
+    let badgeGradient: PaywallGradient?
     let badgeTextColor: String?
     let badgeBorderColor: String?    // Border color for badge
     let badgeBorderWidth: CGFloat?   // Border width for badge
@@ -736,6 +738,7 @@ struct PaywallSectionData: Codable {
         case badgePosition = "badge_position"
         case badgeStyle = "badge_style"
         case badgeBgColor = "badge_bg_color"
+        case badgeGradient = "badge_gradient"
         case badgeTextColor = "badge_text_color"
         case badgeBorderColor = "badge_border_color"
         case badgeBorderWidth = "badge_border_width"
