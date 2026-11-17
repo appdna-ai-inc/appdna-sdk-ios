@@ -20,6 +20,13 @@ the project uses [Semantic Versioning](https://semver.org/).
   `input_validation_result` (never the value). New `field_style` keys `valid_border_color`, `checking_border_color`,
   `valid_text_color`. For wrapper bridges, `InputValidationResult.decodeBridgeReply(_:)` and `bridgeTimeout`.
 
+- **A Select or segmented question can start with an answer chosen by the author.** `field_config.default_value` on
+  an `input_select` (single or multi, every display style) or an `input_segmented` names the option(s) drawn selected
+  when the question shows. The default is written as the answer at that moment, as a tap writes it, so a required
+  question with a default lets the user continue at once and a summary tile draws the option's label. A restored or
+  host-set answer wins over it, a value that names no option is ignored, a number is read as its string, and a
+  multi-select keeps the default's order and `max_selections`. Without a default nothing changes.
+
 ### Changed
 
 - **A stack child's width is honoured.** A child of a `stack` with an `element_width` (a percentage of the stack, `px` or
@@ -64,6 +71,17 @@ the project uses [Semantic Versioning](https://semver.org/).
   paywall image section or a screen image section whose Alt text is blank or unset is now hidden from VoiceOver
   (it was announced as "Image", or with no description); one with Alt text is read as that text, as an image. An
   in-app message's image and a survey question's image have no description field, so they are always skipped.
+
+- **On a wide window, a surface is a centred column, and a landscape iPad splits it in two.** Onboarding steps,
+  paywalls, full-screen messages and surveys lay out in a centred column at most 560 points wide, with the background
+  still filling the window; a phone in portrait is unchanged. On a regular-width window that is wider than tall and at
+  least 720 points wide, an onboarding step shows its visual beside the content and pinned button, a paywall shows its
+  pitch beside its plans and pinned zone, and a full-screen message shows its hero beside its copy. Resizing the window
+  (Split View, Stage Manager, rotation) keeps the step, the answers and the selected plan.
+
+- **A required segmented question starts with nothing selected.** An `input_segmented` with `field_required: true`
+  no longer preselects its first option, so Continue waits until the user picks one. An optional one still starts on
+  its first option, and an author-set `default_value` is drawn selected either way.
 
 ### Fixed
 
@@ -255,6 +273,62 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 - **In-app messages and surveys trigger on the SDK's own events.** A message or survey whose trigger is an event the SDK tracks itself (`app_open`, which is the console's default message trigger, `session_start`, `onboarding_flow_completed`, the purchase events, and the others on the auto-tracked events page) never appeared: only events passed to `track()` were checked against triggers. Every tracked event is now checked once, message first. Events tracked before the SDK has its config, such as `app_open` on a cold launch, are held (up to 32) and checked once the config is ready; a config cached from an earlier launch, or bundled in the app, is used at once. A message never triggers on the `in_app_message_*` events and a survey never triggers on the `survey_*` events, so showing one cannot show another of the same kind.
 
+- **A paywall's pinned plans and button sit on the paywall's own colour.** The pinned zone at the bottom of a paywall
+  had no background, so the scrolling body showed through it: feature rows could be seen between the plan tiles and
+  inside an unselected one. The pinned zone now paints the page's colour, or a gradient's end stop; a paywall with an
+  image or video background is unchanged. Android already laid the body out above the pinned zone.
+
+- **A select answer drawn in text shows the option's label, not its stored value.** A `{{responses.…}}`,
+  `{{onboarding.<step>.<field>}}`, step or input token that names a Select, Segmented or chips answer now draws the
+  picked option's label (a multi-select: the picked labels, comma-joined), where it drew the option id or the
+  token's fallback. This holds for an answer with no tap behind it (a resumed flow, a default, a host-set answer), on a
+  later launch's paywall, message or screen, and when two steps share a field id (each answer draws its own step's
+  option). A stored value, a URL and a hook's headers keep the option id.
+
+- **A list on its own card draws the card across the row.** A `list` with an `element_width` and a `block_style` card
+  hugged its longest row, so its card was narrower than the copy above it while the console preview drew it full width.
+  A list with an authored width now fills that width before its card is drawn; an unsized list still hugs.
+
+- **One tap on a button moves a tap-anywhere step once.** On a step with `tap_anywhere_advances: true`, a tap on a
+  button ran the button's action and the tap-anywhere advance, so the user skipped the next step. A tap a control
+  handles now acts only as that control, as on Android.
+
+- **A date or time field is readable in any appearance.** The sheet a compact date or time field opens drew its wheel
+  in Light while the sheet followed the phone, so in Dark the date being chosen was black on a dark sheet; the sheet,
+  its wheel and its Done button now take one appearance (the authored `color_scheme`, or a light `text_color`, else the
+  phone's). An unstyled date or time value on the step takes its ink from its own fill, else from what is behind it; it
+  could be black on a dark step. An authored text colour still wins.
+
+- **A summary tile keeps its words whole, and a row of tiles shares one height.** A word wider than its tile broke
+  mid-word. A tile's value now shrinks until its longest word fits (down to half size) and wraps between words, and
+  every tile in a row is as tall as the tallest.
+
+- **A paywall with no background draws a readable header.** With no authored background the paywall is drawn on the
+  system background, but its header text was judged against white, so it could be white on a light page. The header now
+  reads the page the paywall really paints.
+
+- **Unstyled controls follow the step's background, not the phone's appearance.** Option labels, segmented controls,
+  chips and other unstyled parts of a step took the phone's appearance while the step's background was authored, so a
+  light step on a phone in Dark drew white labels on white. Each block now takes its appearance from what is drawn
+  behind it; an option or dropdown with its own fill is judged by that fill, a sheet keeps the phone's appearance, and
+  authored colours still win. Steps built without content blocks (the older step types) follow the same rule.
+
+- **The close control and Skip read on a light step in Dark.** An unstyled close (X) and Skip followed the phone's
+  appearance and drew pale grey on a white step when the phone was in Dark. They now use a fixed colour for a light
+  step; an authored `icon_color` still wins.
+
+- **A rule on a number answer matches however the number was written.** A rating answer is stored as a number, a
+  published rule value of `4` is read as a whole number, and the console can write `"4"`; they were compared by type, so
+  a 4-star answer fell to the fallback rule. Next-step rules, block visibility, form dependencies, a survey's `show_if`
+  and event conditions on surveys and messages now compare numbers by value. Two pieces of text still compare exactly.
+
+- **An in-app message draws its authored font and sizes.** `font_family`, `title_font_size` and `body_font_size` were
+  dropped before the message was drawn, so every message used the default type. They are now applied, as on Android.
+
+- **A step the user has scrolled stays where they put it.** On a step that scrolls to keep a location field's provider
+  logo in view, a scroll the SDK asked for just before the user's drag could land after it on a slow device and take
+  the step back. A move that lands within a second of the user's drag, away from where they left the step, is undone.
+
 ### Added
 
 - **Sheets inside a step.** A step's `sheets` slide up over it, opened by an `open_sheet` button or by Continue when
@@ -296,7 +370,7 @@ the project uses [Semantic Versioning](https://semver.org/).
   is counted as sent, not delivered.
 
 
-- **A step that advances by itself can show a countdown.** `auto_advance_indicator` on the step (beside `auto_advance_seconds`): `show` (default false), `style` (`text`, `bar`, `both`), `text` (`{seconds}` = whole seconds left), `text_color`, `font_size`, `bar_color`, `track_color`, `bar_height`, `position` (`top`, `bottom`). Off by default, so published flows are unchanged.
+- **A step that advances by itself can show a countdown.** `auto_advance_indicator` on the step (beside `auto_advance_seconds`): `show` (default false), `style` (`text`, `bar`, `both`), `text` (`{seconds}` = whole seconds left), `text_color`, `font_size`, `bar_color`, `track_color`, `bar_height`, `position` (`top`, `bottom`). The countdown takes its own space above or below the step, so it never covers the heading or a pinned button. Off by default, so published flows are unchanged.
 
 - **An "Add widget" button action.** An onboarding button (top level, or a Multi-buttons or Row child) with `action: "add_widget"` helps the user put the app's own widget on the Home Screen. iOS lets no app add a widget, so the button opens the how-to the author wrote (`howto_blocks_ios`, ordinary content blocks) in a bottom sheet over the step. The step advances when the how-to's Done button is tapped, or by itself when the user comes back from the Home Screen with a new widget placed; closing the sheet any other way returns to the step. The outcome is written into the step's answers as `widget_status`, so `next_step_rules` can branch on it: `added` when a widget of a new kind and size appeared; `not_added` when the user had none of the app's widgets before and none appeared; `unknown` when they already had one and nothing new appeared (WidgetKit reports one entry per widget kind and size, so a second widget of a size already placed cannot be seen), or when the widgets could not be read; `unavailable` when the app ships no WidgetKit extension. New events: `widget_add_tapped`, `widget_howto_shown`, `widget_howto_dismissed`, `widget_added`, `widget_not_added`, `widget_add_unknown`, `widget_add_unavailable`. The SDK now links WidgetKit. Inside a how-to, and inside an option's bottom sheet, a button acts only as Done (`next` / `continue`) or Close (`dismiss`); any other action there does nothing.
 
@@ -332,7 +406,7 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 - **Onboarding flows and surveys can be asked for by name.** `presentOnboarding(placement:)` and `surveys.present(placement:)` show the item whose placement matches, set in the console. Several flows can share a name: higher audience priority first, then a targeted flow before a catch-all, then lowest id. `false` when nothing answers the name.
 
-- **The date wheel is drawn by the SDK.** A `date_wheel_picker` wheel's selection band is `highlight_color` at 10% opacity, its columns follow the locale's date order, and `picker_mode: year` answers a single year as four digits. Calendars the wheel cannot number (for example Japanese eras) keep the system wheel.
+- **The date wheel is drawn by the SDK.** A `date_wheel_picker` wheel's selection band is `highlight_color` at 10% opacity, its columns follow the locale's date order, and `picker_mode: year` answers a single year as four digits. Its rows stay inside the wheel and fade at its top and bottom edges while it scrolls. Calendars the wheel cannot number (for example Japanese eras) keep the system wheel.
 
 - **A stacked option's title can carry links and coloured words.** `label_markdown` on an option draws inline markdown: `[Terms](https://example.com)` is a link in the block's `option_link_color`, `[word](color:EE6885)` colours a word, and `label` stays the stored answer.
 
