@@ -512,7 +512,7 @@ struct PaywallRenderer: View {
                 // The page's colour behind the pinned group, edge to edge and under the home indicator. A
                 // `safeAreaInset` floats over the scroll body, so without it the body scrolled UNDER the pinned plans
                 // and showed through them: a generated paywall drew its feature rows through the gap between the plan
-                // tiles and inside the unselected one (walked on the P2 simulator, SPEC-535 P7). Android lays the body
+                // tiles and inside the unselected one (walked on a simulator). Android lays the body
                 // out above the pinned column and never had it. Nil (an image or a video page) keeps today's look.
                 .background { pinnedZoneBackdrop.ignoresSafeArea(edges: .bottom) }
             }
