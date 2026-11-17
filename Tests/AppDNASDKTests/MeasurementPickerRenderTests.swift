@@ -46,17 +46,24 @@ final class MeasurementPickerRenderTests: XCTestCase {
 
     /// Pixels within a small distance of (r, g, b).
     private func count(_ px: [UInt8], _ r: Int, _ g: Int, _ b: Int, tol: Int = 14) -> Int {
+        // Typed locals, not one chained `where`: CI's Xcode 16.4 gave up type-checking that expression.
         var n = 0
-        for i in stride(from: 0, to: px.count, by: 4)
-        where abs(Int(px[i]) - r) < tol && abs(Int(px[i + 1]) - g) < tol && abs(Int(px[i + 2]) - b) < tol { n += 1 }
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let dr: Int = abs(Int(px[i]) - r)
+            let dg: Int = abs(Int(px[i + 1]) - g)
+            let db: Int = abs(Int(px[i + 2]) - b)
+            if dr < tol, dg < tol, db < tol { n += 1 }
+        }
         return n
     }
 
     /// Strongly green-dominant pixels: the faded rows arrive blended over white.
     private func greenish(_ px: [UInt8]) -> Int {
         var n = 0
-        for i in stride(from: 0, to: px.count, by: 4)
-        where Int(px[i + 1]) > 200 && Int(px[i + 1]) - Int(px[i]) > 80 && Int(px[i + 1]) - Int(px[i + 2]) > 80 { n += 1 }
+        for i in stride(from: 0, to: px.count, by: 4) {
+            let r: Int = Int(px[i]), g: Int = Int(px[i + 1]), b: Int = Int(px[i + 2])
+            if g > 200, g - r > 80, g - b > 80 { n += 1 }
+        }
         return n
     }
 

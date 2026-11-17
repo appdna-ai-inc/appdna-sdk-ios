@@ -530,7 +530,10 @@ extension SharedFixtureTests {
         guard let id else { return nil }
         for b in blocks {
             if b.id == id { return b }
-            let nested = (b.children ?? []) + (b.stack_children ?? []) + (b.field_options ?? []).flatMap { $0.sheet_blocks ?? [] }
+            let sheets: [ContentBlock] = (b.field_options ?? []).flatMap { $0.sheet_blocks ?? [] }
+            var nested: [ContentBlock] = b.children ?? []
+            nested += b.stack_children ?? []
+            nested += sheets
             if let hit = findBlock(id, in: nested) { return hit }
         }
         return nil

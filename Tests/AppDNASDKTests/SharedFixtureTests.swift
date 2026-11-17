@@ -755,16 +755,17 @@ final class SharedFixtureTests: XCTestCase {
         // nodes (paywall_trigger / analytics_event / end) are NOT steps; the SDK's own routing
         // predicates in OnboardingAdvance decide which is which, so the runner does not guess.
         let existing = Set(flow.steps.map(\.id))
-        let referenced = flow.steps
-            .flatMap { ($0.next_step_rules ?? []) + ($0.config.next_step_rules ?? []) }
-            .map(\.target_step_id)
-            .filter { target in
-                guard !existing.contains(target) else { return false }
-                guard OnboardingAdvance.graphNodeType(for: target, flow: flow) == nil else { return false }
-                return !target.hasPrefix("paywall_trigger_")
-                    && !target.hasPrefix("analytics_event_")
-                    && !target.hasPrefix("end_")
-            }
+        let targets: [String] = flow.steps.flatMap { step -> [String] in
+            let rules = (step.next_step_rules ?? []) + (step.config.next_step_rules ?? [])
+            return rules.map(\.target_step_id)
+        }
+        let referenced = targets.filter { (target: String) -> Bool in
+            guard !existing.contains(target) else { return false }
+            guard OnboardingAdvance.graphNodeType(for: target, flow: flow) == nil else { return false }
+            if target.hasPrefix("paywall_trigger_") { return false }
+            if target.hasPrefix("analytics_event_") { return false }
+            return !target.hasPrefix("end_")
+        }
         guard !referenced.isEmpty else { return flow }
 
         var seen = Set<String>()
