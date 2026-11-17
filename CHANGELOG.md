@@ -67,6 +67,15 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A paywall comparison table draws the styling the console sets, and reads on a dark paywall.** The header row was a
+  fixed `#F9FAFB` while its text followed the page, so on a dark paywall the column headers were white on near-white.
+  The header row is now the page's text colour at 6% unless `header_bg_color` is set, and the section reads
+  `header_text_color`, `header_font_size`, `header_font_weight`, `cell_text_color`, `cell_font_size`,
+  `cell_font_weight`, `border_radius` (`corner_radius` wins), `row_alt_bg_color` (striped rows), `feature_header`
+  (the top-left header, empty unless named) and a column's own `table_columns[].color` (its header and ticks). A row
+  with fewer values than columns keeps its cells under their headers. Shared fixture
+  `dto_parsing/paywall_comparison_table_style`.
+
 - **A block with a percentage width is drawn when it is the only block in its zone.** A 60%-wide button alone in
   the pinned zone (or any block with an `element_width` under 100% with no full-width sibling) was a fraction of its
   own width rather than of the zone, so it shrank on each layout pass until it was not drawn at all. It is now that

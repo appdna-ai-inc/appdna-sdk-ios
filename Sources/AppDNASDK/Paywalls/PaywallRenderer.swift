@@ -2118,93 +2118,99 @@ struct PaywallRenderer: View {
 
     // MARK: - Comparison table section
 
-    private func comparisonTableSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> some View {
-        let resolved = PaywallTableColumns.resolve(
-            structured: data?.tableColumns,
-            fallback: data?.columns?.value,
-        )
-        let columnLabels = resolved.labels
-        let columnHighlights = resolved.highlights
+    private func comparisonTableSectionView(data: PaywallSectionData?, style: SectionStyleConfig?) -> AnyView {
+        // every colour, size and label comes from the one resolver; nothing here is a constant. The header row
+        // was a fixed `#F9FAFB` under page-coloured text, so a dark paywall drew its headers white on near-white.
+        let t = PaywallComparisonTableStyle.resolve(data, pageBackground: pageBackgroundHex)
+        // The cells are positional: with no columns there is nothing to line them up against (docs, both platforms).
+        if t.columns.isEmpty { return AnyView(EmptyView()) }
         let rows = data?.tableRows ?? []
-        let checkClr = Color(hex: data?.checkColor ?? "#22C55E")
-        let crossClr = Color(hex: data?.crossColor ?? "#D1D5DB")
-        let highlightClr = Color(hex: data?.highlightColor ?? (AppDNA.brandAccentHex ?? "#6366F1"))
-        let borderClr = Color(hex: data?.borderColor ?? "#E5E7EB")
-        let radius = data?.cornerRadius ?? 12
+        let ink = Color(hex: t.headerTextHex)
+        let highlightClr = Color(hex: t.highlightHex ?? (AppDNA.brandAccentHex ?? "#6366F1"))
+        let borderClr = Color(hex: t.borderHex)
+        let headerBg = t.headerBgHex.map { Color(hex: $0) }
+            ?? PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(PaywallComparisonTableStyle.defaultHeaderAlpha)
+        let weight: (Int) -> Font.Weight = { $0 >= 700 ? .bold : $0 >= 600 ? .semibold : $0 >= 500 ? .medium : .regular }
+        let headerWeight = weight(t.headerFontWeight)
+        let cellWeight = weight(t.cellFontWeight)
+        let columnCount = t.columns.count
 
-        return VStack(spacing: 0) {
+        return AnyView(VStack(spacing: 0) {
             // Header row
             HStack(spacing: 0) {
-                // Feature column header
-                Text("Feature")
-                    .font(.caption.weight(.bold))
-                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
+                Text(t.featureHeader)
+                    .font(.system(size: t.headerFontSize, weight: headerWeight))
+                    .foregroundColor(ink.opacity(0.7))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 8)
 
-                ForEach(Array(columnLabels.enumerated()), id: \.offset) { colIdx, label in
-                    Text(label)
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
+                ForEach(Array(t.columns.enumerated()), id: \.offset) { _, col in
+                    Text(col.label)
+                        .font(.system(size: t.headerFontSize, weight: headerWeight))
+                        .foregroundColor(Color(hex: col.headerTextHex))
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 10)
-                        .background(colIdx < columnHighlights.count && columnHighlights[colIdx] ? highlightClr.opacity(0.15) : Color.clear)
+                        .background(col.highlighted ? highlightClr.opacity(0.15) : Color.clear)
                 }
             }
-            .background(Color(hex: "#F9FAFB"))
+            .background(headerBg)
 
-            Divider().background(borderClr)
+            Rectangle().fill(borderClr).frame(height: 1)
 
             // Data rows
             ForEach(Array(rows.enumerated()), id: \.offset) { rowIdx, row in
                 HStack(spacing: 0) {
                     Text(row.feature ?? "")
-                        .font(.caption)
-                        .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex).opacity(0.7))
+                        .font(.system(size: t.cellFontSize, weight: cellWeight))
+                        .foregroundColor(Color(hex: t.cellTextHex).opacity(t.featureTextAlpha))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 8)
 
-                    ForEach(Array((row.values ?? []).enumerated()), id: \.offset) { valIdx, value in
+                    // Every column gets a cell, so a row with fewer values keeps its cells under their headers.
+                    ForEach(0..<columnCount, id: \.self) { valIdx in
+                        let values = row.values ?? []
+                        let value = valIdx < values.count ? values[valIdx] : ""
+                        let col = t.columns[valIdx]
                         Group {
-                            switch value.lowercased() {
-                            case "check", "true", "yes", "y", "✓":
+                            switch PaywallComparisonTableStyle.cellKind(value) {
+                            case "check":
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(checkClr)
-                                    .font(.caption.weight(.bold))
-                            case "cross", "false", "no", "n", "-", "✗":
+                                    .foregroundColor(Color(hex: col.checkHex))
+                                    .font(.system(size: t.cellFontSize, weight: .bold))
+                            case "cross":
                                 Image(systemName: "xmark")
-                                    .foregroundColor(crossClr)
-                                    .font(.caption.weight(.bold))
-                            case "partial", "~":
+                                    .foregroundColor(Color(hex: t.crossHex))
+                                    .font(.system(size: t.cellFontSize, weight: .bold))
+                            case "partial":
                                 Image(systemName: "minus")
-                                    .foregroundColor(Color(hex: "#FBBF24"))
-                                    .font(.caption.weight(.bold))
+                                    .foregroundColor(Color(hex: t.partialHex))
+                                    .font(.system(size: t.cellFontSize, weight: .bold))
                             default:
                                 Text(value)
-                                    .font(.caption)
-                                    .foregroundColor(PaywallTextDefaults.readable(on: pageBackgroundHex))
+                                    .font(.system(size: t.cellFontSize, weight: cellWeight))
+                                    .foregroundColor(Color(hex: t.cellTextHex))
+                                    .multilineTextAlignment(.center)
                             }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
-                        .background(
-                            valIdx < columnHighlights.count && columnHighlights[valIdx]
-                                ? highlightClr.opacity(0.08)
-                                : Color.clear
-                        )
+                        .background(col.highlighted ? highlightClr.opacity(0.08) : Color.clear)
                     }
                 }
+                .background(rowIdx % 2 == 1 ? (t.rowAltBgHex.map { Color(hex: $0) } ?? Color.clear) : Color.clear)
 
                 if rowIdx < rows.count - 1 {
-                    Divider().background(borderClr.opacity(0.3))
+                    Rectangle().fill(borderClr.opacity(0.3)).frame(height: 0.5)
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: radius))
+        .clipShape(RoundedRectangle(cornerRadius: t.cornerRadius))
         .overlay(
-            RoundedRectangle(cornerRadius: radius)
+            RoundedRectangle(cornerRadius: t.cornerRadius)
                 .stroke(borderClr, lineWidth: 1)
         )
+        .accessibilityIdentifier("paywall-comparison-table"))
     }
 
     // MARK: - Promo input section

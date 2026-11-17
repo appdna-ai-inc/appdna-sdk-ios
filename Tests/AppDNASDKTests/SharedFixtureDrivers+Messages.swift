@@ -39,6 +39,7 @@ extension SharedFixtureTests {
         case "resolve_paywall_image_alt": runPaywallImageAlt(f, h)
         // The trial badge and plan accent colours (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_paywall_trial_badge_color": runPaywallTrialBadgeColor(f, h)
+        case "resolve_paywall_comparison_table_style": runPaywallComparisonTableStyle(f, h)
         // What a failed paywall purchase shows, by error type (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_post_purchase_failure": runPostPurchaseFailure(f, h)
         // A paywall media section's playback and a message's animation / video hero (SharedFixtureDrivers+MediaHero.swift).

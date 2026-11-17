@@ -85,6 +85,47 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_paywall_comparison_table_style REAL: `PaywallConfig` decoding of a paywall with one comparison_table
+    // section → `PaywallComparisonTableStyle.resolve(section, page)`, and `cellKind` per `cell_values` entry.
+    func runPaywallComparisonTableStyle(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_paywall_comparison_table_style needs action.cases")
+            return
+        }
+        let orNull: (String?) -> Any = { $0.map { $0 as Any } ?? NSNull() }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let section = obj["section"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: [
+                      "id": "pw_table_\(name)",
+                      "layout": ["type": "stack", "sections": [["id": "s1", "type": "comparison_table", "config": section]]],
+                  ] as [String: Any]) else {
+                XCTFail("[\(f.id)] case \(name): needs section")
+                return NSNull()
+            }
+            let decoded: PaywallConfig
+            do {
+                decoded = try JSONDecoder().decode(PaywallConfig.self, from: data)
+            } catch {
+                XCTFail("[\(f.id)] case \(name): the paywall did not decode: \(error)")
+                return NSNull()
+            }
+            let table = decoded.sections.first(where: { $0.type == "comparison_table" })
+            let t = PaywallComparisonTableStyle.resolve(table?.data, pageBackground: obj["page_background"]?.stringValue)
+            return [
+                "feature_header": t.featureHeader, "header_bg": orNull(t.headerBgHex), "header_text": t.headerTextHex,
+                "header_font_size": t.headerFontSize, "header_font_weight": t.headerFontWeight,
+                "cell_text": t.cellTextHex, "feature_text_alpha": t.featureTextAlpha,
+                "cell_font_size": t.cellFontSize, "cell_font_weight": t.cellFontWeight,
+                "row_alt_bg": orNull(t.rowAltBgHex), "cross": t.crossHex, "partial": t.partialHex, "border": t.borderHex,
+                "highlight": orNull(t.highlightHex), "corner_radius": t.cornerRadius,
+                "columns": t.columns.map { ["label": $0.label, "highlighted": $0.highlighted, "header_text": $0.headerTextHex, "check": $0.checkHex] as [String: Any] },
+            ] as [String: Any]
+        }
+        h.state["cell_kinds"] = (f.action.raw["cell_values"]?.arrayValue ?? []).map { PaywallComparisonTableStyle.cellKind($0.stringValue ?? "") }
+    }
+
     // resolve_post_purchase_failure REAL: `PostPurchaseFailureConfig.effective`, the config `PaywallManager` routes a
     // failed purchase with. Each case: an `error_type` and an optional authored `on_failure`; the result is its action.
     func runPostPurchaseFailure(_ f: Fixture, _ h: Harness) {

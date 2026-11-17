@@ -64,7 +64,7 @@ final class PaywallTableColumnsTests: XCTestCase {
 
     func testStructuredWinsOverFallback() {
         let r = PaywallTableColumns.resolve(
-            structured: [PaywallTableColumn(label: "Starter", highlighted: true)],
+            structured: [PaywallTableColumn(label: "Starter", highlighted: true, color: nil)],
             fallback: ["Free", "Premium"],
         )
         XCTAssertEqual(r.labels, ["Starter"], "table_columns is canonical and must win")

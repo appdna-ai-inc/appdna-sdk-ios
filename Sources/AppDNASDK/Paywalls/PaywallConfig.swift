@@ -490,6 +490,20 @@ struct PaywallSectionData: Codable {
     let crossColor: String?
     let highlightColor: String?
     let borderColor: String?
+    /// the table's own styling, which the console authored and no renderer read. Resolved by
+    /// `PaywallComparisonTableStyle`, the only reader.
+    let featureHeader: String?
+    let headerBgColor: String?
+    let headerTextColor: String?
+    let headerFontSize: CGFloat?
+    let headerFontWeight: String?
+    let cellTextColor: String?
+    let cellFontSize: CGFloat?
+    let cellFontWeight: String?
+    let rowAltBgColor: String?
+    let partialColor: String?
+    /// The console's corner key for this section; `corner_radius` wins when both are present.
+    let borderRadius: CGFloat?
 
     // Promo input section
     let placeholder: String?
@@ -689,6 +703,17 @@ struct PaywallSectionData: Codable {
         case crossColor = "cross_color"
         case highlightColor = "highlight_color"
         case borderColor = "border_color"
+        case featureHeader = "feature_header"
+        case headerBgColor = "header_bg_color"
+        case headerTextColor = "header_text_color"
+        case headerFontSize = "header_font_size"
+        case headerFontWeight = "header_font_weight"
+        case cellTextColor = "cell_text_color"
+        case cellFontSize = "cell_font_size"
+        case cellFontWeight = "cell_font_weight"
+        case rowAltBgColor = "row_alt_bg_color"
+        case partialColor = "partial_color"
+        case borderRadius = "border_radius"
         case placeholder
         case buttonText = "button_text"
         case successText = "success_text"
@@ -1280,6 +1305,8 @@ struct PaywallGenericItem: Codable {
 struct PaywallTableColumn: Codable {
     let label: String?
     let highlighted: Bool?
+    /// this column's header text and check marks (a "Premium" column in the brand colour).
+    let color: String?
 }
 
 struct PaywallTableRow: Codable {
