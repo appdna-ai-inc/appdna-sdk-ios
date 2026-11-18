@@ -5,7 +5,7 @@ import SwiftUI
 struct ChatStepView: View {
     let step: OnboardingStep
     let flowId: String
-    /// The served flow's content keys (SPEC-536 `ContentStamp`), applied to every chat event.
+    /// The served flow's content keys (`ContentStamp`), applied to every chat event.
     var contentStamp: [String: Any] = [:]
     let onNext: ([String: Any]) -> Void
     let onSkip: () -> Void

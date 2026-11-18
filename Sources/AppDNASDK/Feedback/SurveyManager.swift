@@ -126,7 +126,7 @@ final class SurveyManager {
         // MUST run AFTER every synchronous suppression gate (isPresenting above + runtimeLock here): a
         // survey that is never shown must never count as exposed. Was above the runtimeLock guard, so a
         // runtime-locked (suspended/cancelled) org recorded exposures for surveys it never displayed.
-        // The content on screen (SPEC-536), from the SERVED survey: an experiment treatment is told
+        // The content on screen, from the SERVED survey: an experiment treatment is told
         // apart by `context.experiment_exposures`, not by these keys (D6).
         let contentStamp = ContentStamp.props(for: activeConfig)
         var config = activeConfig

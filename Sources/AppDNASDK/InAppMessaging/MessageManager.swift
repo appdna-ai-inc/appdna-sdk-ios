@@ -258,7 +258,7 @@ final class MessageManager {
         // candidate/present path (not a host present() call). A running in-app-
         // message experiment targeting this message + a treatment bucket renders
         // the treatment payload; control / non-bucketed / old-doc → active.
-        // The content on screen (SPEC-536), from the SERVED message: an experiment treatment is told
+        // The content on screen, from the SERVED message: an experiment treatment is told
         // apart by `context.experiment_exposures`, not by these keys (D6).
         let contentStamp = ContentStamp.props(for: activeConfig)
         var config = activeConfig

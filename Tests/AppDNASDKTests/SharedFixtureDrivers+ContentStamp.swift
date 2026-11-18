@@ -1,6 +1,6 @@
 // SharedFixtureDrivers+ContentStamp.swift
 //
-// iOS driver for `emit_surface_events` (SPEC-536 content keys). Dispatched from
+// iOS driver for `emit_surface_events` (content keys). Dispatched from
 // `SharedFixtureTests.drive`'s default branch. Every event asserted is emitted by the REAL SDK:
 //
 //   onboarding_flow   each item parsed by `RemoteConfigManager`'s per-item onboarding parser, presented by

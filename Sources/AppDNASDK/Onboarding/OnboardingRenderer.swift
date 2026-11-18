@@ -5,7 +5,7 @@ struct OnboardingFlowHost: View {
     let flow: OnboardingFlowConfig
     weak var delegate: AppDNAOnboardingDelegate?
     let eventTracker: EventTracker?
-    /// The SERVED flow's content keys (SPEC-536 `ContentStamp`), applied to every flow event this host emits.
+    /// The SERVED flow's content keys (`ContentStamp`), applied to every flow event this host emits.
     var contentStamp: [String: Any] = [:]
     let onStepViewed: (_ stepId: String, _ stepIndex: Int) -> Void
     let onStepCompleted: (_ stepId: String, _ stepIndex: Int, _ data: [String: Any]?) -> Void
@@ -1714,7 +1714,7 @@ struct OnboardingStepRouter: View {
     /// (pre-hook, `onPermissionResult`, and the five `permission_*` analytics literals).
     weak var delegate: AppDNAOnboardingDelegate?
     var eventTracker: EventTracker?
-    /// The served flow's content keys (SPEC-536 `ContentStamp`), applied to every event this step emits.
+    /// The served flow's content keys (`ContentStamp`), applied to every event this step emits.
     var contentStamp: [String: Any] = [:]
     /// This router's presentation serial (the flow host's `presentationSerial`).
     let presentation: Int

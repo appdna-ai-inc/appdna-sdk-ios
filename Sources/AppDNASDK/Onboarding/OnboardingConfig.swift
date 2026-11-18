@@ -23,7 +23,7 @@ public struct OnboardingFlowConfig: Codable {
     public let audience_rules: AnyCodable?
     /// A name an app can ask for this flow by, instead of its id. Several flows may share one.
     public let placement: String?
-    /// The item whose content this flow is serving while Serve instead has swapped it (SPEC-536).
+    /// The item whose content this flow is serving while Serve instead has swapped it.
     /// Absent otherwise. Read only to stamp events (`ContentStamp`).
     public let served_from: ServedFrom?
 

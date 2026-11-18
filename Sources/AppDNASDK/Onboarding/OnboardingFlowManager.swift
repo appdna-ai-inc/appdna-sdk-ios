@@ -67,7 +67,7 @@ final class OnboardingFlowManager {
         PendingCompletionRoute.shared.clear()
         OnboardingPressedButton.shared.clear()
 
-        // The content on screen (SPEC-536), from the SERVED flow: an experiment treatment is told
+        // The content on screen, from the SERVED flow: an experiment treatment is told
         // apart by `context.experiment_exposures`, not by these keys (D6).
         let contentStamp = ContentStamp.props(for: activeFlow)
 

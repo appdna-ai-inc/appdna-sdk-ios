@@ -145,7 +145,7 @@ final class PaywallManager {
         // treatment, render the treatment `payload` config instead of the
         // active one. Control / non-bucketed / old-doc → render the active
         // entity (cohort isolation — treatment lives only in the doc).
-        // The content on screen (SPEC-536), from the SERVED paywall: an experiment treatment is told
+        // The content on screen, from the SERVED paywall: an experiment treatment is told
         // apart by `context.experiment_exposures`, not by these keys (D6). Purchases started here
         // carry the same keys, so a conversion is credited to the content that sold it (D4).
         let contentStamp = ContentStamp.props(for: activeConfig)

@@ -1,6 +1,6 @@
 import Foundation
 
-/// The item whose content a served item is showing while Serve instead has swapped it (SPEC-536 D2).
+/// The item whose content a served item is showing while Serve instead has swapped it.
 ///
 /// The server writes `served_from: { id, version }` on a served flow, paywall, message or survey
 /// while a swap is open, and removes it on Undo. The SDK decides nothing from it: it copies `id`
@@ -33,7 +33,7 @@ protocol ContentStampSource {
 }
 
 /**
- THE ONE PLACE THE CONTENT KEYS ARE WRITTEN (SPEC-536 D1).
+ THE ONE PLACE THE CONTENT KEYS ARE WRITTEN.
 
  Every onboarding, paywall, purchase, in-app message and survey event names the content that was on
  screen, so analytics can split an item's numbers by content instead of blending a swapped item's

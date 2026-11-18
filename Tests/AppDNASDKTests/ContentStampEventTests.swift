@@ -1,6 +1,6 @@
 // ContentStampEventTests.swift
 //
-// SPEC-536 — every onboarding, paywall, purchase, in-app message and survey event names the content
+// every onboarding, paywall, purchase, in-app message and survey event names the content
 // that was on screen: `content_version` (the served item's `version`) and, only while Serve instead
 // has swapped the item, `content_source_id` (`served_from.id`).
 //
