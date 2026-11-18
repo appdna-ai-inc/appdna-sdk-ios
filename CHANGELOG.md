@@ -6,6 +6,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Every onboarding flow, paywall, in-app message and survey event now carries `content_version`, the version of the
+  content on screen, and `content_source_id` while the item shows another item's content (Serve instead). Purchases
+  started from a paywall carry the paywall's two properties. Both keys are reserved: values supplied through
+  `PaywallContext.customData` or other app properties under either name are dropped. See
+  [Content properties](https://docs.appdna.ai/api-reference/auto-tracked-events#content-properties-which-content-was-on-screen).
+
 ## [1.0.86] — 2026-11-17
 
 ### Added
