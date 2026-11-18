@@ -5,6 +5,8 @@ struct OnboardingFlowHost: View {
     let flow: OnboardingFlowConfig
     weak var delegate: AppDNAOnboardingDelegate?
     let eventTracker: EventTracker?
+    /// The SERVED flow's content keys (SPEC-536 `ContentStamp`), applied to every flow event this host emits.
+    var contentStamp: [String: Any] = [:]
     let onStepViewed: (_ stepId: String, _ stepIndex: Int) -> Void
     let onStepCompleted: (_ stepId: String, _ stepIndex: Int, _ data: [String: Any]?) -> Void
     let onStepSkipped: (_ stepId: String, _ stepIndex: Int) -> Void
@@ -181,6 +183,7 @@ struct OnboardingFlowHost: View {
                         accumulatedResponses: responses,
                         delegate: delegate,
                         eventTracker: eventTracker,
+                        contentStamp: contentStamp,
                         // The router's presentation (its coordinator is looked up by
                         // this serial) and the flow-level interaction store.
                         presentation: presentationSerial,
@@ -1144,7 +1147,7 @@ struct OnboardingFlowHost: View {
             SessionDataStore.shared.mergeComputedData(computed)
         }
         for event in outcome.events {
-            eventTracker?.track(event: event.name, properties: event.props)
+            eventTracker?.track(event: event.name, properties: ContentStamp.stamped(event.props, contentStamp))
         }
         if let banner = outcome.banner {
             switch banner {
@@ -1177,7 +1180,7 @@ struct OnboardingFlowHost: View {
             "step_id": step.id,
         ]
         props.merge(extra) { _, new in new }
-        eventTracker?.track(event: event, properties: props)
+        eventTracker?.track(event: event, properties: ContentStamp.stamped(props, contentStamp))
     }
 
     private func resultName(_ result: StepAdvanceResult) -> String {
@@ -1500,27 +1503,28 @@ struct OnboardingFlowHost: View {
         let currentResponses = responses
         let tracker = eventTracker
         let flowId = flow.id
+        let stamp = contentStamp
         let renderer = self
 
         let routeOutcome: (String?, String, String) -> Void = { configured, defaultBehavior, reason in
             let chosen = configured ?? defaultBehavior
             switch chosen {
             case "stay":
-                tracker?.track(event: "onboarding_paywall_stay", properties: [
+                tracker?.track(event: "onboarding_paywall_stay", properties: ContentStamp.stamped([
                     "flow_id": flowId, "paywall_id": paywallId, "reason": reason,
-                ])
+                ], stamp))
             case "complete_flow", "":
-                tracker?.track(event: "onboarding_completed", properties: [
+                tracker?.track(event: "onboarding_completed", properties: ContentStamp.stamped([
                     "flow_id": flowId, "paywall_id": paywallId, "completed_via": reason,
-                ])
+                ], stamp))
                 flowCompleted(currentResponses)
             case "continue":
                 if let edge = edgeTarget, !edge.isEmpty {
                     renderer.navigateToTarget(edge)
                 } else {
-                    tracker?.track(event: "onboarding_completed", properties: [
+                    tracker?.track(event: "onboarding_completed", properties: ContentStamp.stamped([
                         "flow_id": flowId, "paywall_id": paywallId, "completed_via": reason,
-                    ])
+                    ], stamp))
                     flowCompleted(currentResponses)
                 }
             default:
@@ -1538,11 +1542,11 @@ struct OnboardingFlowHost: View {
         // keep working. Tracker fires with reason='sdk_runtime_locked' so
         // analytics can distinguish this from organic subscribed-skips.
         if AppDNA.runtimeLock != nil {
-            tracker?.track(event: "onboarding_paywall_skip", properties: [
+            tracker?.track(event: "onboarding_paywall_skip", properties: ContentStamp.stamped([
                 "flow_id": flowId,
                 "paywall_id": paywallId,
                 "reason": "sdk_runtime_locked",
-            ])
+            ], stamp))
             routeOutcome(subscribedSkip.skipTarget, "continue", "sdk_runtime_locked")
             return
         }
@@ -1566,11 +1570,11 @@ struct OnboardingFlowHost: View {
                 : false
             if skipIfSubscribed && isSubscribed {
                 let reason = subscribedSkip.reason ?? "user_already_subscribed"
-                tracker?.track(event: "onboarding_paywall_skip", properties: [
+                tracker?.track(event: "onboarding_paywall_skip", properties: ContentStamp.stamped([
                     "flow_id": flowId,
                     "paywall_id": paywallId,
                     "reason": reason,
-                ])
+                ], stamp))
                 // Resolver chain: on_subscribed_skip_target wins,
                 // falls back to on_success_target (back-compat with
                 // the 1.0.61 workaround flows), then to "continue" (legacy edge).
@@ -1710,6 +1714,8 @@ struct OnboardingStepRouter: View {
     /// (pre-hook, `onPermissionResult`, and the five `permission_*` analytics literals).
     weak var delegate: AppDNAOnboardingDelegate?
     var eventTracker: EventTracker?
+    /// The served flow's content keys (SPEC-536 `ContentStamp`), applied to every event this step emits.
+    var contentStamp: [String: Any] = [:]
     /// This router's presentation serial (the flow host's `presentationSerial`).
     let presentation: Int
     /// The flow-level owner of the interaction layer, stamps and `callSeq`.
@@ -1772,7 +1778,7 @@ struct OnboardingStepRouter: View {
     /// The message the validation toast shows instead of the required-field one (a field the host refused).
     @State private var validationToastMessage: String?
 
-    init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
+    init(step: OnboardingStep, configOverride: StepConfigOverride? = nil, hostDataPending: Bool = false, pendingProvider: (() -> Bool)? = nil, onNext: @escaping ([String: Any]?) -> Void, onSkip: @escaping () -> Void, onContentTap: @escaping () -> Void = {}, flowId: String = "", currentStepIndex: Int = 0, totalSteps: Int = 1, savedResponses: [String: Any]? = nil, accumulatedResponses: [String: Any] = [:], delegate: AppDNAOnboardingDelegate? = nil, eventTracker: EventTracker? = nil, contentStamp: [String: Any] = [:], presentation: Int = 0, interactionStore: HostDataInteractionStore? = nil) {
         self.step = step
         self.configOverride = configOverride
         self.hostDataPending = hostDataPending
@@ -1787,6 +1793,7 @@ struct OnboardingStepRouter: View {
         self.accumulatedResponses = accumulatedResponses
         self.delegate = delegate
         self.eventTracker = eventTracker
+        self.contentStamp = contentStamp
         self.presentation = presentation
         let store = interactionStore ?? HostDataInteractionStore()
         self._interactionStore = ObservedObject(wrappedValue: store)
@@ -1804,14 +1811,15 @@ struct OnboardingStepRouter: View {
             effects: .init(track: { _, _ in }, present: { _ in }, rerun: { _, _ in }, skip: {})
         ))
         _remoteValidation = StateObject(wrappedValue: Self.makeRemoteValidation(
-            delegate: delegate, flowId: flowId, stepId: step.id, tracker: eventTracker))
+            delegate: delegate, flowId: flowId, stepId: step.id, tracker: eventTracker, contentStamp: contentStamp))
     }
 
     /// the controller with effects bound to THIS view value (its @State storage is shared).
     private var sheets: StepSheetController {
         let tracker = eventTracker
+        let stamp = contentStamp
         sheetController.effects = .init(
-            track: { name, props in tracker?.track(event: name, properties: props) },
+            track: { name, props in tracker?.track(event: name, properties: ContentStamp.stamped(props, stamp)) },
             present: { sheet in withAnimation(.easeOut(duration: 0.26)) { shownSheet = sheet } },
             rerun: { action, value in
                 // The re-run is the refused CTA's press, not the sheet button's that triggered it.
@@ -1844,7 +1852,7 @@ struct OnboardingStepRouter: View {
 
     /// The step's live-validation coordinator, wired to the host's `onValidateInput`, the connectivity monitor and the
     /// tracker. The host is held weakly, like the router holds it.
-    static func makeRemoteValidation(delegate: AppDNAOnboardingDelegate?, flowId: String, stepId: String, tracker: EventTracker?) -> RemoteValidationCoordinator {
+    static func makeRemoteValidation(delegate: AppDNAOnboardingDelegate?, flowId: String, stepId: String, tracker: EventTracker?, contentStamp: [String: Any] = [:]) -> RemoteValidationCoordinator {
         weak var weakHost = delegate
         return RemoteValidationCoordinator(
             hasHost: {
@@ -1870,7 +1878,7 @@ struct OnboardingStepRouter: View {
                 var p = props
                 p["flow_id"] = flowId
                 p["step_id"] = stepId
-                tracker?.track(event: "input_validation_result", properties: p)
+                tracker?.track(event: "input_validation_result", properties: ContentStamp.stamped(p, contentStamp))
             }
         ).configuredHostKnowledge {
             guard let host = weakHost else { return false }
@@ -2343,7 +2351,7 @@ struct OnboardingStepRouter: View {
             case .form:
                 FormStepView(config: effectiveConfig, onNext: onNext, apiClient: AppDNA.geocodeClient, savedValues: savedResponses)
             case .interactive_chat:
-                ChatStepView(step: step, flowId: flowId, onNext: { data in onNext(data) }, onSkip: onSkip, savedTranscript: savedResponses)
+                ChatStepView(step: step, flowId: flowId, contentStamp: contentStamp, onNext: { data in onNext(data) }, onSkip: onSkip, savedTranscript: savedResponses)
             }
 
             if step.config.skip_enabled == true {
@@ -2372,6 +2380,7 @@ struct OnboardingStepRouter: View {
     /// the step's own gate, toast, tracker and advance, then decides (`WidgetAddAttempt`).
     private func tapAddWidget(_ block: ContentBlock) {
         let tracker = eventTracker
+        let stamp = contentStamp
         widgetAttempt.configure(presentation: presentation, hooks: WidgetAddAttempt.StepHooks(
             flowId: flowId,
             stepId: step.id,
@@ -2394,7 +2403,7 @@ struct OnboardingStepRouter: View {
                     withAnimation { showValidationToast = false }
                 }
             },
-            track: { name, props in tracker?.track(event: name, properties: props) },
+            track: { name, props in tracker?.track(event: name, properties: ContentStamp.stamped(props, stamp)) },
             // One advance per attempt, through the ordinary advance: `widget_status` is merged last,
             // so `next_step_rules` branch on it like any other answer.
             advance: { status in advanceCollectingStepData(extra: [WidgetStatus.answerKey: status.rawValue]) }
@@ -2726,7 +2735,7 @@ struct OnboardingStepRouter: View {
 
     /// Analytics props attached to every `permission_*` literal.
     private func permissionProps(_ type: String) -> [String: Any] {
-        ["permission_type": type, "flow_id": flowId, "step_id": step.id]
+        ContentStamp.stamped(["permission_type": type, "flow_id": flowId, "step_id": step.id], contentStamp)
     }
 
     /// Store the resolved value under `permission_{type}` (routable by `next_step_rules`) and

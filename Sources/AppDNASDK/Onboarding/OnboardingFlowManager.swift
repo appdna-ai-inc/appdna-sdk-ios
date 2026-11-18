@@ -67,11 +67,15 @@ final class OnboardingFlowManager {
         PendingCompletionRoute.shared.clear()
         OnboardingPressedButton.shared.clear()
 
+        // The content on screen (SPEC-536), from the SERVED flow: an experiment treatment is told
+        // apart by `context.experiment_exposures`, not by these keys (D6).
+        let contentStamp = ContentStamp.props(for: activeFlow)
+
         // Track flow started
-        eventTracker.track(event: "onboarding_flow_started", properties: [
+        eventTracker.track(event: "onboarding_flow_started", properties: ContentStamp.stamped([
             "flow_id": flow.id,
-            "flow_version": flow.version,
-        ])
+            "flow_version": flow.version as Any,
+        ], contentStamp))
         // Notify the host app — the protocol declared this hook but no
         // call site existed. Customers implementing the delegate would
         // never see `onOnboardingStarted` fire even though the other
@@ -99,30 +103,31 @@ final class OnboardingFlowManager {
             flow: flow,
             delegate: delegate,
             eventTracker: eventTracker,
+            contentStamp: contentStamp,
             onStepViewed: { [weak self] stepId, stepIndex in
-                self?.eventTracker.track(event: "onboarding_step_viewed", properties: [
+                self?.eventTracker.track(event: "onboarding_step_viewed", properties: ContentStamp.stamped([
                     "flow_id": flow.id,
                     "step_id": stepId,
                     "step_index": stepIndex,
                     "step_type": flow.steps[stepIndex].type.rawValue,
-                ])
+                ], contentStamp))
                 delegate?.onOnboardingStepChanged(flowId: flow.id, stepId: stepId, stepIndex: stepIndex, totalSteps: flow.steps.count)
             },
             onStepCompleted: { [weak self] stepId, stepIndex, data in
-                self?.eventTracker.track(event: "onboarding_step_completed", properties: [
+                self?.eventTracker.track(event: "onboarding_step_completed", properties: ContentStamp.stamped([
                     "flow_id": flow.id,
                     "step_id": stepId,
                     "step_index": stepIndex,
                     "selection_data": data ?? [:],
-                ])
+                ], contentStamp))
                 // Step completion tracked via event above
             },
             onStepSkipped: { [weak self] stepId, stepIndex in
-                self?.eventTracker.track(event: "onboarding_step_skipped", properties: [
+                self?.eventTracker.track(event: "onboarding_step_skipped", properties: ContentStamp.stamped([
                     "flow_id": flow.id,
                     "step_id": stepId,
                     "step_index": stepIndex,
-                ])
+                ], contentStamp))
                 // Step skip tracked via event above
             },
             onFlowCompleted: { [weak self] responses in
@@ -137,16 +142,17 @@ final class OnboardingFlowManager {
                     durationMs: durationMs,
                     responses: responses,
                     track: { name, props in self?.eventTracker.track(event: name, properties: props) },
-                    delegate: delegate
+                    delegate: delegate,
+                    contentStamp: contentStamp
                 )
                 viewController.dismiss(animated: true)
             },
             onFlowDismissed: { [weak self] lastStepId, lastStepIndex in
-                self?.eventTracker.track(event: "onboarding_flow_dismissed", properties: [
+                self?.eventTracker.track(event: "onboarding_flow_dismissed", properties: ContentStamp.stamped([
                     "flow_id": flow.id,
                     "last_step_id": lastStepId,
                     "last_step_index": lastStepIndex,
-                ])
+                ], contentStamp))
                 delegate?.onOnboardingDismissed(flowId: flow.id, atStep: lastStepIndex)
                 viewController.dismiss(animated: true)
             }

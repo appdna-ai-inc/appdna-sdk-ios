@@ -11,6 +11,10 @@ final class SurveyManager {
     private let experimentManager: ExperimentManager?
     private let frequencyTracker = SurveyFrequencyTracker()
     private let renderer = SurveyRenderer()
+    /// Test seam: stands in for `SurveyRenderer.present` (UIKit, needs a foreground scene) so a test can
+    /// answer and finish a survey through the manager's own callbacks. Nil in production.
+    internal typealias SurveyPresenter = (SurveyConfig, ((String, SurveyQuestion, SurveyAnswer) -> Void)?, @escaping (SurveyResult) -> Void) -> Void
+    internal var presentForTesting: SurveyPresenter?
     private var isPresenting = false
 
     private var surveyConfigs: [String: SurveyConfig] = [:]
@@ -122,6 +126,9 @@ final class SurveyManager {
         // MUST run AFTER every synchronous suppression gate (isPresenting above + runtimeLock here): a
         // survey that is never shown must never count as exposed. Was above the runtimeLock guard, so a
         // runtime-locked (suspended/cancelled) org recorded exposures for surveys it never displayed.
+        // The content on screen (SPEC-536), from the SERVED survey: an experiment treatment is told
+        // apart by `context.experiment_exposures`, not by these keys (D6).
+        let contentStamp = ContentStamp.props(for: activeConfig)
         var config = activeConfig
         if let experimentManager,
            case let .renderTreatment(_, _, payload) = experimentManager.resolveSurfacePresentation(surfaceType: "survey", entityId: surveyId),
@@ -133,11 +140,11 @@ final class SurveyManager {
         isPresenting = true
 
         // Track survey shown
-        eventTracker.track(event: "survey_shown", properties: [
+        eventTracker.track(event: "survey_shown", properties: ContentStamp.stamped([
             "survey_id": surveyId,
             "survey_type": config.survey_type ?? "",
             "trigger_event": triggerEvent,
-        ])
+        ], contentStamp))
 
         // Fire onSurveyPresented to the host's registered
         // survey delegate. Read fresh on every callback; no init-time
@@ -147,13 +154,16 @@ final class SurveyManager {
             AppDNA.surveys.delegate?.onSurveyPresented(surveyId: surveyId)
         }
 
-        renderer.present(config: config, onQuestionAnswered: { [weak self] surveyName, question, answer in
-            self?.eventTracker.track(event: "survey_question_answered", properties: [
+        let show: SurveyPresenter = presentForTesting ?? { [renderer] config, onAnswered, completion in
+            renderer.present(config: config, onQuestionAnswered: onAnswered, completion: completion)
+        }
+        show(config, { [weak self] surveyName, question, answer in
+            self?.eventTracker.track(event: "survey_question_answered", properties: ContentStamp.stamped([
                 "survey_id": surveyId,
                 "question_id": question.id ?? "",
                 "question_type": question.type ?? "",
                 "answer": answer.answer,
-            ])
+            ], contentStamp))
         }) { [weak self] result in
             guard let self else { return }
             self.isPresenting = false
@@ -161,9 +171,9 @@ final class SurveyManager {
             switch result {
             case .completed(let answers):
                 self.frequencyTracker.recordDisplay(surveyId: surveyId)
-                self.trackSurveyCompleted(surveyId: surveyId, config: config, answers: answers)
+                self.trackSurveyCompleted(surveyId: surveyId, config: config, answers: answers, contentStamp: contentStamp)
                 self.submitResponse(surveyId: surveyId, config: config, answers: answers)
-                self.executeFollowUpAction(surveyId: surveyId, config: config, answers: answers)
+                self.executeFollowUpAction(surveyId: surveyId, config: config, answers: answers, contentStamp: contentStamp)
                 // Fire onSurveyCompleted with the responses
                 // mapped to the public `[SurveyResponse]` shape.
                 let responses = answers.map { SurveyResponse(questionId: $0.question_id, answer: $0.answer) }
@@ -173,10 +183,10 @@ final class SurveyManager {
 
             case .dismissed(let answeredCount):
                 self.frequencyTracker.recordDisplay(surveyId: surveyId)
-                self.eventTracker.track(event: "survey_dismissed", properties: [
+                self.eventTracker.track(event: "survey_dismissed", properties: ContentStamp.stamped([
                     "survey_id": surveyId,
                     "questions_answered": answeredCount,
-                ])
+                ], contentStamp))
                 // Fire onSurveyDismissed.
                 DispatchQueue.main.async {
                     AppDNA.surveys.delegate?.onSurveyDismissed(surveyId: surveyId)
@@ -187,13 +197,13 @@ final class SurveyManager {
 
     // MARK: - Event tracking
 
-    private func trackSurveyCompleted(surveyId: String, config: SurveyConfig, answers: [SurveyAnswer]) {
+    private func trackSurveyCompleted(surveyId: String, config: SurveyConfig, answers: [SurveyAnswer], contentStamp: [String: Any] = [:]) {
         let answersArray = answers.map { $0.asDictionary }
-        eventTracker.track(event: "survey_completed", properties: [
+        eventTracker.track(event: "survey_completed", properties: ContentStamp.stamped([
             "survey_id": surveyId,
             "survey_type": config.survey_type ?? "",
             "answers": answersArray,
-        ])
+        ], contentStamp))
     }
 
     // MARK: - Response submission
@@ -241,7 +251,9 @@ final class SurveyManager {
     /// `internal`, not `private`: the follow-up dispatch had NO test seam at all, which is how half
     /// of it (neutral, trigger_winback, every follow-up event) stayed unimplemented on iOS while
     /// Android shipped it.
-    internal func executeFollowUpAction(surveyId: String, config: SurveyConfig, answers: [SurveyAnswer]) {
+    /// `contentStamp` is the SERVED survey's (`presentSurvey` passes it); nil derives it from `config`.
+    internal func executeFollowUpAction(surveyId: String, config: SurveyConfig, answers: [SurveyAnswer], contentStamp: [String: Any]? = nil) {
+        let contentStamp = contentStamp ?? ContentStamp.props(for: config)
         let sentiment = determineSentiment(config: config, answers: answers)
         guard let actions = config.follow_up_actions else { return }
 
@@ -279,10 +291,10 @@ final class SurveyManager {
             .contains { $0?.action == "prompt_review" }
         if anyBranchAsksForReview && followUp.action != "prompt_review" {
             ReviewPromptManager.shared.triggerReview()
-            eventTracker.track(event: surveyFollowUpReviewEvent, properties: [
+            eventTracker.track(event: surveyFollowUpReviewEvent, properties: ContentStamp.stamped([
                 "survey_id": surveyId,
                 "sentiment": sentimentName,
-            ])
+            ], contentStamp))
         }
 
         switch followUp.action ?? "" {
@@ -290,25 +302,25 @@ final class SurveyManager {
             // Native review prompt first; the event lets the host handle the case where the OS
             // suppressed it (Android SurveyManager.kt:311-318).
             ReviewPromptManager.shared.triggerReview()
-            eventTracker.track(event: surveyFollowUpReviewEvent, properties: [
+            eventTracker.track(event: surveyFollowUpReviewEvent, properties: ContentStamp.stamped([
                 "survey_id": surveyId,
                 "sentiment": sentimentName,
-            ])
+            ], contentStamp))
 
         case "show_feedback_form":
             presentFeedbackForm(message: followUp.message)
-            eventTracker.track(event: surveyFollowUpFeedbackFormEvent, properties: [
+            eventTracker.track(event: surveyFollowUpFeedbackFormEvent, properties: ContentStamp.stamped([
                 "survey_id": surveyId,
                 "sentiment": sentimentName,
-            ])
+            ], contentStamp))
 
         case "trigger_winback":
             // The SDK signals; the host launches the winback campaign (Android SurveyManager.kt:329-336).
-            eventTracker.track(event: surveyFollowUpWinbackEvent, properties: [
+            eventTracker.track(event: surveyFollowUpWinbackEvent, properties: ContentStamp.stamped([
                 "survey_id": surveyId,
                 "sentiment": sentimentName,
                 "message": followUp.message ?? "",
-            ])
+            ], contentStamp))
 
         case "dismiss":
             break

@@ -258,6 +258,9 @@ final class MessageManager {
         // candidate/present path (not a host present() call). A running in-app-
         // message experiment targeting this message + a treatment bucket renders
         // the treatment payload; control / non-bucketed / old-doc → active.
+        // The content on screen (SPEC-536), from the SERVED message: an experiment treatment is told
+        // apart by `context.experiment_exposures`, not by these keys (D6).
+        let contentStamp = ContentStamp.props(for: activeConfig)
         var config = activeConfig
         if let experimentManager,
            case let .renderTreatment(_, _, payload) = experimentManager.resolveSurfacePresentation(surfaceType: "in_app_message", entityId: messageId),
@@ -279,18 +282,18 @@ final class MessageManager {
                     Log.debug("In-app message \(messageId) suppressed by host asyncShouldShowMessage veto")
                     return
                 }
-                self?.presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold)
+                self?.presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold, contentStamp: contentStamp)
             }
             return
         }
 
-        presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold)
+        presentBody(messageId: messageId, config: config, triggerEvent: triggerEvent, fromHold: fromHold, contentStamp: contentStamp)
     }
 
     /// The presentation remainder, extracted so the D10 async wrapper-veto can
     /// gate it behind an awaited decision. `config` is the experiment-resolved
     /// config computed by `present(...)`. Runs on the main queue.
-    private func presentBody(messageId: String, config: MessageConfig, triggerEvent: String, fromHold: Bool = false) {
+    private func presentBody(messageId: String, config: MessageConfig, triggerEvent: String, fromHold: Bool = false, contentStamp: [String: Any] = [:]) {
         guard !isPresenting else {
             // A held message that lost the race to another (an async veto answered late): back on the hold, first.
             if fromHold { hold(messageId, triggerEvent: triggerEvent, atFront: true) }
@@ -311,11 +314,11 @@ final class MessageManager {
         frequencyTracker.recordShown(messageId: messageId, frequency: config.trigger_rules?.frequency ?? .once)
 
         // Track shown
-        eventTracker.track(event: "in_app_message_shown", properties: [
+        eventTracker.track(event: "in_app_message_shown", properties: ContentStamp.stamped([
             "message_id": messageId,
             "message_type": config.message_type?.rawValue ?? "modal",
             "trigger_event": triggerEvent,
-        ])
+        ], contentStamp))
 
         // Fire onMessageShown to the host's registered
         // delegate alongside the existing analytics track.
@@ -327,10 +330,10 @@ final class MessageManager {
             messageId: messageId,
             config: config,
             onCTATap: { [weak self] in
-                self?.eventTracker.track(event: "in_app_message_clicked", properties: [
+                self?.eventTracker.track(event: "in_app_message_clicked", properties: ContentStamp.stamped([
                     "message_id": messageId,
                     "cta_action": config.content?.cta_action?.type?.rawValue ?? "dismiss",
-                ])
+                ], contentStamp))
                 // Fire onMessageAction with action type + cta_action data.
                 let ctaActionType = config.content?.cta_action?.type?.rawValue ?? "dismiss"
                 let ctaData: [String: Any]? = {
@@ -346,9 +349,9 @@ final class MessageManager {
                 self?.closeOnScreen(topVC, messageId: messageId, share: MessageCTAShare.payload(config.content?.cta_action))
             },
             onDismiss: { [weak self] in
-                self?.eventTracker.track(event: "in_app_message_dismissed", properties: [
+                self?.eventTracker.track(event: "in_app_message_dismissed", properties: ContentStamp.stamped([
                     "message_id": messageId,
-                ])
+                ], contentStamp))
                 self?.closeOnScreen(topVC, messageId: messageId)
             }
         )

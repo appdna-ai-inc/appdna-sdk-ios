@@ -5,6 +5,8 @@ import SwiftUI
 struct ChatStepView: View {
     let step: OnboardingStep
     let flowId: String
+    /// The served flow's content keys (SPEC-536 `ContentStamp`), applied to every chat event.
+    var contentStamp: [String: Any] = [:]
     let onNext: ([String: Any]) -> Void
     let onSkip: () -> Void
     /// Previously saved transcript for restoring chat on back navigation
@@ -243,9 +245,9 @@ struct ChatStepView: View {
             HStack(spacing: 8) {
                 ForEach(dynamicQuickReplies) { qr in
                     Button {
-                        AppDNA.track(event: "chat_quick_reply_tapped", properties: [
+                        AppDNA.track(event: "chat_quick_reply_tapped", properties: ContentStamp.stamped([
                             "flow_id": flowId, "step_id": step.id, "quick_reply_id": qr.id, "turn": userTurnCount,
-                        ])
+                        ], contentStamp))
                         sendMessage(qr.text)
                     } label: {
                         Text(qr.text)
@@ -424,9 +426,9 @@ struct ChatStepView: View {
         dynamicQuickReplies = []
 
         // Track message sent
-        AppDNA.track(event: "chat_message_sent", properties: [
+        AppDNA.track(event: "chat_message_sent", properties: ContentStamp.stamped([
             "flow_id": flowId, "step_id": step.id, "turn": userTurnCount, "message_length": trimmed.count,
-        ])
+        ], contentStamp))
 
         // Check soft limit warning
         if !(chatConfig?.isHardLimit ?? true) && turnsRemaining == 1 {
@@ -508,10 +510,10 @@ struct ChatStepView: View {
                     isTyping = false
                     let errorMsg = chatConfig?.webhook?.error_text ?? "Sorry, something went wrong. Please try again."
                     messages.append(ChatMessage(id: "err_\(userTurnCount)", role: .system, content: errorMsg, media: nil, timestamp: Date()))
-                    AppDNA.track(event: "chat_webhook_error", properties: [
+                    AppDNA.track(event: "chat_webhook_error", properties: ContentStamp.stamped([
                         "flow_id": flowId, "step_id": step.id, "turn": userTurnCount,
                         "http_status": http.statusCode, "response_body": bodyPreview,
-                    ])
+                    ], contentStamp))
                 }
                 return
             }
@@ -526,9 +528,9 @@ struct ChatStepView: View {
                 isTyping = false
                 let errorMsg = chatConfig?.webhook?.error_text ?? "Sorry, something went wrong. Please try again."
                 messages.append(ChatMessage(id: "err_\(userTurnCount)", role: .system, content: errorMsg, media: nil, timestamp: Date()))
-                AppDNA.track(event: "chat_webhook_error", properties: [
+                AppDNA.track(event: "chat_webhook_error", properties: ContentStamp.stamped([
                     "flow_id": flowId, "step_id": step.id, "turn": userTurnCount, "error": error.localizedDescription,
-                ])
+                ], contentStamp))
             }
         }
     }
@@ -536,10 +538,10 @@ struct ChatStepView: View {
     private func handleWebhookResponse(_ response: ChatWebhookResponse) {
         isTyping = false
 
-        AppDNA.track(event: "chat_message_received", properties: [
+        AppDNA.track(event: "chat_message_received", properties: ContentStamp.stamped([
             "flow_id": flowId, "step_id": step.id, "turn": userTurnCount,
             "message_count": response.messages?.count ?? 0,
-        ])
+        ], contentStamp))
 
         // Add AI messages
         if let msgs = response.messages {
@@ -594,14 +596,14 @@ struct ChatStepView: View {
         dynamicQuickReplies = []
 
         // Track event
-        AppDNA.track(event: "chat_completed", properties: [
+        AppDNA.track(event: "chat_completed", properties: ContentStamp.stamped([
             "flow_id": flowId,
             "step_id": step.id,
             "user_turn_count": userTurnCount,
             "total_messages": messages.count,
             "duration_ms": Int(Date().timeIntervalSince(startTime) * 1000),
             "completion_reason": reason,
-        ])
+        ], contentStamp))
     }
 
     private func buildTranscript(reason: String) -> [String: Any] {
@@ -668,11 +670,11 @@ struct ChatStepView: View {
     }
 
     private func sendRatingEvent(_ rating: Int) {
-        AppDNA.track(event: "chat_rating_submitted", properties: [
+        AppDNA.track(event: "chat_rating_submitted", properties: ContentStamp.stamped([
             "flow_id": flowId,
             "step_id": step.id,
             "rating": rating,
             "turn": userTurnCount,
-        ])
+        ], contentStamp))
     }
 }

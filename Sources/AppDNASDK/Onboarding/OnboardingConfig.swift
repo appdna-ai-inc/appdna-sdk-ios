@@ -23,6 +23,9 @@ public struct OnboardingFlowConfig: Codable {
     public let audience_rules: AnyCodable?
     /// A name an app can ask for this flow by, instead of its id. Several flows may share one.
     public let placement: String?
+    /// The item whose content this flow is serving while Serve instead has swapped it (SPEC-536).
+    /// Absent otherwise. Read only to stamp events (`ContentStamp`).
+    public let served_from: ServedFrom?
 
     /// Non-optional steps for renderer compatibility
     public var steps: [OnboardingStep] { _steps ?? [] }
@@ -31,7 +34,7 @@ public struct OnboardingFlowConfig: Codable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, version, _steps = "steps", _settings = "settings"
-        case status, graph_layout, graph_nodes, audience_rules, placement
+        case status, graph_layout, graph_nodes, audience_rules, placement, served_from
     }
 
     public init(from decoder: Decoder) throws {
@@ -48,6 +51,7 @@ public struct OnboardingFlowConfig: Codable {
         self.graph_nodes = try c.decodeIfPresent(AnyCodable.self, forKey: .graph_nodes)
         self.audience_rules = try c.decodeIfPresent(AnyCodable.self, forKey: .audience_rules)
         self.placement = c.lenient(String.self, .placement)
+        self.served_from = c.lenient(ServedFrom.self, .served_from)
     }
 
     /**
@@ -66,7 +70,7 @@ public struct OnboardingFlowConfig: Codable {
     }
 
     /// Convenience memberwise init for tests and manual construction.
-    public init(id: String = "", name: String? = nil, version: Int? = nil, steps: [OnboardingStep] = [], settings: OnboardingSettings = OnboardingSettings()) {
+    public init(id: String = "", name: String? = nil, version: Int? = nil, steps: [OnboardingStep] = [], settings: OnboardingSettings = OnboardingSettings(), served_from: ServedFrom? = nil) {
         self.id = id
         self.name = name
         self.version = version
@@ -77,6 +81,7 @@ public struct OnboardingFlowConfig: Codable {
         self.graph_nodes = nil
         self.audience_rules = nil
         self.placement = nil
+        self.served_from = served_from
     }
 }
 

@@ -31,16 +31,17 @@ enum OnboardingCompletion {
         flowId: String,
         totalSteps: Int,
         durationMs: Int,
-        responses: [String: Any]
+        responses: [String: Any],
+        contentStamp: [String: Any] = [:]
     ) -> OnboardingAdvance.TrackedEvent {
         OnboardingAdvance.TrackedEvent(
             name: onboardingFlowCompletedEvent,
-            props: [
+            props: ContentStamp.stamped([
                 "flow_id": flowId,
                 "total_steps": totalSteps,
                 "total_duration_ms": durationMs,
                 "responses": responses,
-            ]
+            ], contentStamp)
         )
     }
 
@@ -57,13 +58,15 @@ enum OnboardingCompletion {
         durationMs: Int,
         responses: [String: Any],
         track: (String, [String: Any]) -> Void,
-        delegate: AppDNAOnboardingDelegate?
+        delegate: AppDNAOnboardingDelegate?,
+        contentStamp: [String: Any] = [:]
     ) {
         let event = completionEvent(
             flowId: flowId,
             totalSteps: totalSteps,
             durationMs: durationMs,
-            responses: responses
+            responses: responses,
+            contentStamp: contentStamp
         )
         track(event.name, event.props)
         // Persist onboarding responses for cross-module access.

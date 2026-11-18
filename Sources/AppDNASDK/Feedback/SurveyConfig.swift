@@ -19,6 +19,10 @@ public struct SurveyConfig: Codable {
     public let follow_up_actions: SurveyFollowUpActions?
     /// A name an app can ask for this survey by, instead of its id. Several surveys may share one.
     public let placement: String?
+    /// The served survey's version counter (SPEC-536). Stamped on its events as `content_version`.
+    public var version: Int? = nil
+    /// The item whose content this survey is serving while Serve instead has swapped it. Absent otherwise.
+    public var served_from: ServedFrom? = nil
 }
 
 /// A single survey question.

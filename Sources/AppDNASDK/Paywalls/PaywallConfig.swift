@@ -24,10 +24,13 @@ struct PaywallConfig: Codable {
     let post_purchase: PostPurchaseConfig?
     // Audience-based targeting
     let audience_rules: AnyCodable?
+    /// The item whose content this paywall is serving while Serve instead has swapped it (SPEC-536).
+    /// Absent otherwise. Read only to stamp events (`ContentStamp`).
+    var served_from: ServedFrom? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, name, layout, _sections = "sections", plans, cta, dismiss, background
-        case placement, placement_label, version
+        case placement, placement_label, version, served_from
         case animation = "animation_config"
         case localizations, default_locale
         case haptic, particle_effect, post_purchase
@@ -1351,7 +1354,11 @@ public struct PaywallContext {
     public let customData: [String: Any]?
 
     /// Reserved `paywall_view` property names. `customData` may not shadow them.
-    internal static let reservedEventKeys: Set<String> = ["paywall_id", "placement"]
+    /// The two content keys (SPEC-536 `ContentStamp`) are the SDK's: a host may not relabel which
+    /// content a view counts for.
+    internal static let reservedEventKeys: Set<String> = [
+        "paywall_id", "placement", ContentStamp.versionKey, ContentStamp.sourceIdKey,
+    ]
 
     public init(
         placement: String,

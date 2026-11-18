@@ -18,6 +18,10 @@ public struct MessageConfig: Codable {
     public let priority: Int?
     public let start_date: String?
     public let end_date: String?
+    /// The served message's version counter (SPEC-536). Stamped on its events as `content_version`.
+    public var version: Int? = nil
+    /// The item whose content this message is serving while Serve instead has swapped it. Absent otherwise.
+    public var served_from: ServedFrom? = nil
 }
 
 public enum MessageType: String, Codable {

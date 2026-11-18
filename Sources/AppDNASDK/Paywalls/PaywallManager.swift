@@ -145,6 +145,10 @@ final class PaywallManager {
         // treatment, render the treatment `payload` config instead of the
         // active one. Control / non-bucketed / old-doc → render the active
         // entity (cohort isolation — treatment lives only in the doc).
+        // The content on screen (SPEC-536), from the SERVED paywall: an experiment treatment is told
+        // apart by `context.experiment_exposures`, not by these keys (D6). Purchases started here
+        // carry the same keys, so a conversion is credited to the content that sold it (D4).
+        let contentStamp = ContentStamp.props(for: activeConfig)
         var config = activeConfig
         if let experimentManager,
            case let .renderTreatment(_, _, payload) = experimentManager.resolveSurfacePresentation(surfaceType: "paywall", entityId: id),
@@ -198,16 +202,16 @@ final class PaywallManager {
             let paywallView = PaywallRenderer(
                 config: config,
                 onPlanSelected: { [weak self] plan, metadata in
-                    self?.handlePurchase(paywallId: id, plan: plan, config: config, metadata: metadata, delegate: delegate, viewController: viewController)
+                    self?.handlePurchase(paywallId: id, plan: plan, config: config, metadata: metadata, delegate: delegate, viewController: viewController, contentStamp: contentStamp)
                 },
                 onRestore: { [weak self] in
-                    self?.handleRestore(paywallId: id, delegate: delegate, viewController: viewController, dismissGuard: dismissGuard)
+                    self?.handleRestore(paywallId: id, delegate: delegate, viewController: viewController, dismissGuard: dismissGuard, contentStamp: contentStamp)
                 },
                 onDismiss: { [weak self] reason in
-                    self?.eventTracker.track(event: "paywall_close", properties: [
+                    self?.eventTracker.track(event: "paywall_close", properties: ContentStamp.stamped([
                         "paywall_id": id,
                         "dismiss_reason": reason.rawValue,
-                    ])
+                    ], contentStamp))
                     guard !dismissGuard.dispatched else { return }
                     dismissGuard.dispatched = true
                     viewController.dismiss(animated: true) {
@@ -318,7 +322,8 @@ final class PaywallManager {
                 props["price_source"] = sources.joined(separator: ",")
                 props["store_prices_resolved"] = sources.filter { $0 == "store" }.count
             }
-            self.eventTracker.track(event: "paywall_view", properties: props)
+            // Last, so neither `customData` nor anything above can overwrite the content keys.
+            self.eventTracker.track(event: "paywall_view", properties: ContentStamp.stamped(props, contentStamp))
             buildAndPresent()
         }
     }
@@ -402,7 +407,7 @@ final class PaywallManager {
         return AppDNA.topViewController() ?? vc
     }
 
-    func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController) {
+    func handlePurchase(paywallId: String, plan: PaywallPlan, config: PaywallConfig, metadata: [String: Any] = [:], delegate: AppDNAPaywallDelegate?, viewController: UIViewController, contentStamp: [String: Any] = [:]) {
         // Evaluated BEFORE anything else in the handler. This used to be a bare
         // `Log.error("No billing bridge configured"); return`: a tap on a paywall plan did NOTHING — no
         // delegate call, no event. Now: exactly one `purchase_failed`, one `onPaywallPurchaseFailed`
@@ -418,13 +423,13 @@ final class PaywallManager {
                 : AppDNA.BillingModule.notConfiguredError()
             let errorType = billingErrorType(error)
             Log.warning("Paywall \(paywallId): the SDK cannot buy under billingProvider '\(billingPolicy.provider)' — \(error.localizedDescription)")
-            eventTracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
+            eventTracker.track(event: "purchase_failed", properties: ContentStamp.stamped(PurchaseFailedProps.build(
                 paywallId: paywallId,
                 productId: plan.productId,
                 error: error,
                 errorType: errorType,
                 reason: configured ? nil : "not_configured"
-            ))
+            ), contentStamp))
             DispatchQueue.main.async { [weak self] in
                 delegate?.onPaywallPurchaseFailed(
                     paywallId: paywallId,
@@ -450,7 +455,7 @@ final class PaywallManager {
         for (key, value) in metadata {
             purchaseProps[key] = value
         }
-        eventTracker.track(event: "purchase_started", properties: BillingEventProps.marked(purchaseProps))
+        eventTracker.track(event: "purchase_started", properties: BillingEventProps.marked(ContentStamp.stamped(purchaseProps, contentStamp)))
 
         Task {
             do {
@@ -472,7 +477,7 @@ final class PaywallManager {
                 // `onPurchaseCompleted` — but the paywall's own completion still fires (below), as on Android.
                 let converted = !result.alreadyOwned
                 if converted {
-                    PurchaseSuccessEvents.emit(tracker: eventTracker, paywallId: paywallId, result: result)
+                    PurchaseSuccessEvents.emit(tracker: eventTracker, paywallId: paywallId, result: result, extra: contentStamp)
                 } else {
                     PurchaseSuccessEvents.emitAlreadyOwned(tracker: eventTracker, paywallId: paywallId, result: result)
                 }
@@ -507,22 +512,22 @@ final class PaywallManager {
                 // entirely. (`delegate_contracts/purchase_cancel_is_not_a_failure` pins this.)
                 switch errorType {
                 case "userCancelled":
-                    eventTracker.track(event: "purchase_canceled", properties: BillingEventProps.marked([
+                    eventTracker.track(event: "purchase_canceled", properties: BillingEventProps.marked(ContentStamp.stamped([
                         "paywall_id": paywallId,
                         "product_id": plan.productId ?? "",
-                    ]))
+                    ], contentStamp)))
                 case "pending":
-                    eventTracker.track(event: "purchase_pending", properties: BillingEventProps.marked([
+                    eventTracker.track(event: "purchase_pending", properties: BillingEventProps.marked(ContentStamp.stamped([
                         "paywall_id": paywallId,
                         "product_id": plan.productId ?? "",
-                    ]))
+                    ], contentStamp)))
                 default:
-                    eventTracker.track(event: "purchase_failed", properties: PurchaseFailedProps.build(
+                    eventTracker.track(event: "purchase_failed", properties: ContentStamp.stamped(PurchaseFailedProps.build(
                         paywallId: paywallId,
                         productId: plan.productId,
                         error: error,
                         errorType: errorType
-                    ))
+                    ), contentStamp))
                 }
                 DispatchQueue.main.async { [weak self] in
                     delegate?.onPaywallPurchaseFailed(
@@ -635,6 +640,7 @@ final class PaywallManager {
         delegate: AppDNAPaywallDelegate?,
         viewController: UIViewController,
         dismissGuard: PaywallDismissGuard,
+        contentStamp: [String: Any] = [:]
     ) {
         let configured = billingConfigured()
         guard configured, let bridge = billingBridge, billingPolicy.sdkCanRestore else {
@@ -730,10 +736,10 @@ final class PaywallManager {
                     if hostRequestedSkip { return }
                     guard !dismissGuard.skipSDKAutoDismiss else { return }
                     dismissGuard.dispatched = true
-                    self.eventTracker.track(event: "paywall_close", properties: [
+                    self.eventTracker.track(event: "paywall_close", properties: ContentStamp.stamped([
                         "paywall_id": paywallId,
                         "dismiss_reason": "restore_success",
-                    ])
+                    ], contentStamp))
                     viewController.dismiss(animated: true) {
                         delegate?.onPaywallDismissed(paywallId: paywallId)
                     }
