@@ -441,6 +441,17 @@ final class BillingResultNetworkIndependenceTests: XCTestCase {
                      tracker: billing.eventTracker, sources: billing.entitlementSources, delegate: billing.currentDelegate,
                      delivers: billing.currentDelegateDelivers, fingerprint: billing.lastKnownFingerprintForTesting,
                      deadline: billing.serverReadDeadline)
+        // `AppDNA.billing` is the process-wide singleton, and `shutdown()` clears its in-flight server read
+        // but not its serial refresh chain. A pass an earlier test queued (the suite runs a real `configure` +
+        // `identify` just before this class, against a server that answers 500 and retries) can still be ahead
+        // of the predecessor below, and if it reaches its server read after this test sets
+        // `serverReadDeadline = 60` it holds the chain far longer than `waitUntil` allows. The precondition
+        // failed that way once in a full-suite run and never when the class ran alone. Drain the chain first,
+        // with the singleton's own state and deadline, so the predecessor is the first pass queued after the
+        // earlier ones.
+        let drainStart = Date()
+        await billing.refreshEntitlementCache()
+        NSLog("[billing-test-isolation] drained AppDNA.billing's refresh chain in %.2f s", Date().timeIntervalSince(drainStart))
         let bridge = FakeBridge(); let world = World(); let gate = AwaitGate(); let spy = Spy()
         gates.append(gate)
         bridge.ids = ["pro_monthly"]
