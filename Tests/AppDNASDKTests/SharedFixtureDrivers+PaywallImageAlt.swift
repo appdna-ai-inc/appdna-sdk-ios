@@ -250,7 +250,9 @@ extension SharedFixtureTests {
                 }
                 if o["op"]?.stringValue == "display" {
                     let now = ISO8601.date(from: o["now"]?.stringValue ?? "") ?? Date()
-                    return AnswerTime.display(o["text"]?.stringValue ?? "", in: zoned.timeZone, now: now).map { $0 as Any } ?? NSNull()
+                    // A date is drawn in the case's locale (the device's in the app), en_US when the case names none.
+                    let locale = Locale(identifier: o["locale"]?.stringValue ?? "en_US")
+                    return AnswerTime.display(o["text"]?.stringValue ?? "", in: zoned.timeZone, now: now, locale: locale).map { $0 as Any } ?? NSNull()
                 }
                 if o["op"]?.stringValue == "form_read" {
                     // What `FormInputDateBlock` seeds and shows on return, through the same reader.

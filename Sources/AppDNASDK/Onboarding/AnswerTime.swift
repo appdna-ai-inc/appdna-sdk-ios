@@ -12,6 +12,9 @@ import Foundation
 enum AnswerTime {
     static var zone: TimeZone { AppDNA.appTimeZone ?? TimeZone(identifier: "UTC")! }
 
+    /// The locale a drawn date answer is formatted in: the device's. Settable so a test can pin it.
+    static var displayLocale: Locale = .current
+
     private static func formatter(_ pattern: String, _ zone: TimeZone) -> DateFormatter {
         let f = DateFormatter()
         f.calendar = Calendar(identifier: .gregorian)
@@ -34,6 +37,7 @@ enum AnswerTime {
     private static let timePattern = try! NSRegularExpression(pattern: "^(\\d{2}):(\\d{2})(?::(\\d{2}))?\(offset)$")
     private static let localDateTimePattern = try! NSRegularExpression(pattern: "^(\\d{4})-(\\d{2})-(\\d{2})[ T](\\d{2}):(\\d{2})$")
     private static let localTimePattern = try! NSRegularExpression(pattern: "^(\\d{2}):(\\d{2})$")
+    private static let datePattern = try! NSRegularExpression(pattern: "^(\\d{4})-(\\d{2})-(\\d{2})$")
 
     private static func groups(_ re: NSRegularExpression, _ s: String) -> [String?]? {
         let ns = s as NSString
@@ -86,8 +90,10 @@ enum AnswerTime {
     }
 
     /// The text a template draws for a stored answer: a date-and-time as `yyyy-MM-dd HH:mm` and a time as `HH:mm`, in
-    /// `zone`. Nil for anything else (a date, a phone-local older answer, any other text), which is drawn as stored.
-    static func display(_ text: String, in zone: TimeZone, now: Date = Date()) -> String? {
+    /// `zone`; a date (`yyyy-MM-dd`, a calendar day with no zone) in `locale`'s medium style on the Gregorian calendar
+    /// ("Mar 15, 1990", "15.03.1990"). Nil for anything else (a phone-local older answer, any other text), which is
+    /// drawn as stored. The stored and sent value stays ISO.
+    static func display(_ text: String, in zone: TimeZone, now: Date = Date(), locale: Locale = displayLocale) -> String? {
         let s = text.trimmingCharacters(in: .whitespaces)
         if groups(dateTimePattern, s) != nil, let d = date(from: s, in: zone, now: now) {
             return formatter("yyyy-MM-dd HH:mm", zone).string(from: d)
@@ -95,6 +101,23 @@ enum AnswerTime {
         if groups(timePattern, s) != nil, let d = date(from: s, in: zone, now: now) {
             return formatter("HH:mm", zone).string(from: d)
         }
+        if let g = groups(datePattern, s), let y = g[0].flatMap(Int.init), let mo = g[1].flatMap(Int.init), let dd = g[2].flatMap(Int.init) {
+            return dateText(y, mo, dd, locale: locale)
+        }
         return nil
+    }
+
+    /// A calendar day in `locale`'s medium date style, or nil for a day that does not exist (`2026-02-30`). The day is
+    /// placed and formatted in UTC, so no zone can move it.
+    static func dateText(_ y: Int, _ mo: Int, _ d: Int, locale: Locale) -> String? {
+        let utc = TimeZone(identifier: "UTC")!
+        guard let day = moment(y, mo, d, 12, 0, 0, in: utc) else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = locale
+        f.timeZone = utc
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        return f.string(from: day)
     }
 }

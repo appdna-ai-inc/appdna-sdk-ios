@@ -133,7 +133,10 @@ extension SharedFixtureTests {
         // The app's time zone (the console's app setting, published in the brand doc), restored after.
         let savedZone = AppDNA.appTimeZone
         AppDNA.appTimeZone = sd["app_time_zone"]?.stringValue.flatMap(TimeZone.init(identifier:))
-        defer { AppDNA.appTimeZone = savedZone }
+        // The device locale a drawn date answer is formatted in (en_US when the fixture names none), restored after.
+        let savedLocale = AnswerTime.displayLocale
+        AnswerTime.displayLocale = Locale(identifier: sd["device_locale"]?.stringValue ?? "en_US")
+        defer { AppDNA.appTimeZone = savedZone; AnswerTime.displayLocale = savedLocale }
         let result = HostDataResolver.resolveRawBlock(config.host, ctx)
 
         let state = f.expect.state_after?.objectValue ?? [:]

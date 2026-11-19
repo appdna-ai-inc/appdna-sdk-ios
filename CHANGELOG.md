@@ -6,6 +6,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A date answer drawn through `{{responses.<step>.<field>}}` (a `date_wheel_picker` or `input_date` in `date` mode, or
+  a form step's `date` field) now shows in the phone's locale, medium date style (`Mar 15, 1990`, `15.03.1990`), the
+  same day in every time zone. It used to show as stored (`1990-03-15`). The stored value, and what reaches your app,
+  hooks and webhooks, stays `yyyy-MM-dd`. Shared fixture `template_engine/date_answer_draws_in_device_locale`.
+
 ## [1.0.87] — 2026-11-19
 
 ### Added
