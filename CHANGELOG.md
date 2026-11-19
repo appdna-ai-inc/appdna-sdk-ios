@@ -4,7 +4,7 @@ All notable changes to the AppDNA iOS SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.87] — 2026-11-19
 
 ### Added
 - Every onboarding flow, paywall, in-app message and survey event now carries `content_version`, the version of the
