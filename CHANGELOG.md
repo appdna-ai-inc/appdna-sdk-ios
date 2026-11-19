@@ -7,6 +7,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- **A long survey question scrolls inside a bottom sheet.** At the sheet's first (half) height, a choice question with
+  five or more options had its text cut to one line and its progress bar pushed above the sheet, and nothing scrolled.
+  The question now scrolls inside the survey; its text wraps in full, and the progress bar, Back, Next and "Not now"
+  stay on screen. A short question stays centred.
+
+### Fixed
 - A date answer drawn through `{{responses.<step>.<field>}}` (a `date_wheel_picker` or `input_date` in `date` mode, or
   a form step's `date` field) now shows in the phone's locale, medium date style (`Mar 15, 1990`, `15.03.1990`), the
   same day in every time zone. It used to show as stored (`1990-03-15`). The stored value, and what reaches your app,

@@ -170,6 +170,49 @@ struct SurveyContainerView: View {
         }
     }
 
+    /// The current question and its image: laid out once, inside the centred column when it fits and inside a
+    /// ScrollView when it does not (#1972).
+    @ViewBuilder
+    private var questionArea: some View {
+        VStack(spacing: 16) {
+            // Question-level image
+            if currentQuestionIndex < visibleQuestions.count,
+               let imageUrl = visibleQuestions[currentQuestionIndex].image_url {
+                MediaImageView(url: imageUrl, maxHeight: 140, cornerRadius: 8)
+                    .padding(.horizontal)
+                    // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
+                    .authoredImageAccessibility(nil)
+            }
+
+            // Current question: apply style engine + theme font
+            // Honor theme.text_align.
+            if currentQuestionIndex < visibleQuestions.count {
+                // The theme's text colour reaches the question unless the style authors
+                // its own: chained after the style, it lost to the `.primary` a colourless
+                // style applies closest to the text.
+                styledQuestion(questionView(for: visibleQuestions[currentQuestionIndex]))
+                    .font(themeFont)
+                    .foregroundColor(textColor)
+                    .multilineTextAlignment(themeTextAlignment)
+            }
+        }
+    }
+
+    /// The question centred between two Spacers: the layout of every question that fits.
+    private var centredQuestion: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            questionArea
+            Spacer()
+        }
+    }
+
+    /// The question on screen is answered by typing (its editor sizes and scrolls itself).
+    private var isTypedQuestion: Bool {
+        guard currentQuestionIndex < visibleQuestions.count else { return false }
+        return SurveyAnswerEvents.typed.contains(visibleQuestions[currentQuestionIndex].type ?? "")
+    }
+
     var body: some View {
         // A survey's default colours follow its own background, which an author may set against the phone's appearance.
         surveyBody.resolvesAppearance(onFill: theme?.background_color, darkAppearance: colorScheme == .dark)
@@ -220,30 +263,24 @@ struct SurveyContainerView: View {
                             .tint(accentColor)
                     }
 
-                    Spacer()
-
-                    // Question-level image
-                    if currentQuestionIndex < visibleQuestions.count,
-                       let imageUrl = visibleQuestions[currentQuestionIndex].image_url {
-                        MediaImageView(url: imageUrl, maxHeight: 140, cornerRadius: 8)
-                            .padding(.horizontal)
-                            // No description can be authored for this image, so it is decorative: VoiceOver skips it (AuthoredImageAccessibility).
-                            .authoredImageAccessibility(nil)
+                    // #1972: a question taller than the room scrolls, and the navigation below stays pinned. In a plain
+                    // VStack between two Spacers, a 5–6 option choice at the bottom sheet's medium detent cut its text
+                    // to one line and drew its Submit half off the sheet, with nothing to scroll. A question that fits
+                    // is laid out exactly as before, centred between two Spacers; only one that does not fit is put in
+                    // a ScrollView. A typed answer keeps the plain layout: its editor has a bounded height and scrolls
+                    // itself, and switching layouts while the keyboard shrinks the room would rebuild the editor and
+                    // drop its focus.
+                    if isTypedQuestion {
+                        centredQuestion
+                    } else {
+                        ViewThatFits(in: .vertical) {
+                            centredQuestion
+                            ScrollView(.vertical, showsIndicators: true) {
+                                questionArea
+                                    .padding(.vertical, 8)
+                            }
+                        }
                     }
-
-                    // Current question: apply style engine + theme font
-                    // Honor theme.text_align.
-                    if currentQuestionIndex < visibleQuestions.count {
-                        // The theme's text colour reaches the question unless the style authors
-                        // its own: chained after the style, it lost to the `.primary` a colourless
-                        // style applies closest to the text.
-                        styledQuestion(questionView(for: visibleQuestions[currentQuestionIndex]))
-                            .font(themeFont)
-                            .foregroundColor(textColor)
-                            .multilineTextAlignment(themeTextAlignment)
-                    }
-
-                    Spacer()
 
                     // Navigation buttons
                     HStack {
