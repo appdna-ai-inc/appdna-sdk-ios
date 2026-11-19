@@ -171,7 +171,7 @@ struct SurveyContainerView: View {
     }
 
     /// The current question and its image: laid out once, inside the centred column when it fits and inside a
-    /// ScrollView when it does not (#1972).
+    /// ScrollView when it does not.
     @ViewBuilder
     private var questionArea: some View {
         VStack(spacing: 16) {
@@ -263,7 +263,7 @@ struct SurveyContainerView: View {
                             .tint(accentColor)
                     }
 
-                    // #1972: a question taller than the room scrolls, and the navigation below stays pinned. In a plain
+                    // A question taller than the room scrolls, and the navigation below stays pinned. In a plain
                     // VStack between two Spacers, a 5–6 option choice at the bottom sheet's medium detent cut its text
                     // to one line and drew its Submit half off the sheet, with nothing to scroll. A question that fits
                     // is laid out exactly as before, centred between two Spacers; only one that does not fit is put in

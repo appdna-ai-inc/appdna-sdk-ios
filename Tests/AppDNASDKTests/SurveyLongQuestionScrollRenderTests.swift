@@ -4,7 +4,7 @@ import UIKit
 @testable import AppDNASDK
 
 /*
- #1972 — a survey question taller than the room it is given, RENDERED through the real `SurveyContainerView`.
+ A survey question taller than the room it is given, RENDERED through the real `SurveyContainerView`.
 
  A bottom-sheet survey opens at the `.medium()` detent, about 420 points tall on a phone. A choice question with a long
  title and six options does not fit. Before the fix the question sat between two `Spacer()`s in a plain VStack: SwiftUI
@@ -90,7 +90,7 @@ final class SurveyLongQuestionScrollRenderTests: XCTestCase {
         _ = try ink(title: longTitle, optionCount: 6, height: 1400) // warm-up render
         let roomy = try ink(title: longTitle, optionCount: 6, height: 1400)
         let compact = try ink(title: longTitle, optionCount: 6, height: 420)
-        NSLog("[1972] roomy r=\(roomy.red) g=\(roomy.green) b=\(roomy.blue) compact r=\(compact.red) g=\(compact.green) b=\(compact.blue)")
+        NSLog("[long-question-scroll] roomy r=\(roomy.red) g=\(roomy.green) b=\(roomy.blue) compact r=\(compact.red) g=\(compact.green) b=\(compact.blue)")
 
         // Harness controls: every part is drawn and counted when there is room.
         XCTAssertGreaterThan(roomy.red, 300, "harness control: the red title is drawn")
