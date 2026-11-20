@@ -6,6 +6,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `AppDNA.anonymousId`: the anonymous ID AppDNA keys this install's events by. Pass it to your mobile measurement
+  partner (AppsFlyer, Adjust, Singular) as its customer user ID before the MMP starts, so AppDNA can join each install
+  and its campaign to the person. Stable for the life of the install (it survives restarts, `identify` and `reset()`)
+  and readable before `configure` finishes. See
+  [Mobile measurement partners](https://docs.appdna.ai/sdks/ios/api-reference#mobile-measurement-partners). Shared
+  fixtures `identity/anonymous_id_*`.
+
 ### Fixed
 - **A long survey question scrolls inside a bottom sheet.** At the sheet's first (half) height, a choice question with
   five or more options had its text cut to one line and its progress bar pushed above the sheet, and nothing scrolled.

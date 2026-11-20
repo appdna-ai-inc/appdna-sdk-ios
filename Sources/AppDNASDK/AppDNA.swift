@@ -796,6 +796,26 @@ public final class AppDNA: @unchecked Sendable {
 
     // MARK: - Public API: Identity
 
+    /// The anonymous id AppDNA keys this install's events by before (and after) `identify`.
+    ///
+    /// Give it to your mobile measurement partner as its customer user id **before the MMP's own start call**, so
+    /// the MMP's install postback carries it and AppDNA can join the install to this person (AppsFlyer
+    /// `customerUserID`, Adjust global callback parameter `appdna_user_id`, Singular `setCustomUserId`).
+    ///
+    /// Stable for the life of the install: it survives app restarts, `identify(userId:)` and `reset()`, and changes
+    /// only when the app is deleted and installed again. Readable at any time, including before `configure()`
+    /// finishes: it is read from (or minted into) the same Keychain item the SDK uses.
+    public static var anonymousId: String {
+        resolveAnonymousId(manager: shared.identityManager) { keychainStoreFactoryForTesting?() ?? KeychainStore() }
+    }
+
+    /// `anonymousId`'s rule, with its two inputs passed in (the shared fixture drives it): the configured identity
+    /// when there is one, else the same Keychain item `IdentityManager` reads, minted on first use under its lock.
+    static func resolveAnonymousId(manager: IdentityManager?, keychain: () -> KeychainStoring) -> String {
+        if let id = manager?.currentIdentity.anonId { return id }
+        return IdentityManager.loadOrCreateAnonId(keychain())
+    }
+
     /// Link the anonymous device to a known user.
     /// The `identify` event's properties: `user_id`, the pre-identify `anon_id`, `previous_user_id` only
     /// when a different user was identified, and the traits made JSON-safe (`IdentifyTraits`).

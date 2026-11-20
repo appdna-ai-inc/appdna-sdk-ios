@@ -38,16 +38,8 @@ final class IdentityManager {
     init(keychainStore: KeychainStoring) {
         self.keychainStore = keychainStore
 
-        // Load or generate anonymous ID
-        if let existing = keychainStore.getAnonId() {
-            self._anonId = existing
-            Log.debug("Loaded existing anon_id: \(existing)")
-        } else {
-            let newId = UUID().uuidString.lowercased()
-            keychainStore.setAnonId(newId)
-            self._anonId = newId
-            Log.info("Generated new anon_id: \(newId)")
-        }
+        // Load or generate anonymous ID (one path with `AppDNA.anonymousId`, so the two never mint different ids).
+        self._anonId = IdentityManager.loadOrCreateAnonId(keychainStore)
 
         // Load persisted user ID and traits
         self._userId = keychainStore.getUserId()
@@ -119,6 +111,23 @@ final class IdentityManager {
             _traits = merged
             keychainStore.setUserTraits(merged)
         }
+    }
+
+    /// The device's anonymous id from `store`, minted (a lowercase UUID) and persisted on first use. One lock for the
+    /// process: `AppDNA.anonymousId` may run on the host's thread while `configure()` builds this manager on the SDK's
+    /// queue, and on a first launch both would otherwise mint a DIFFERENT id.
+    private static let anonIdLock = NSLock()
+    static func loadOrCreateAnonId(_ store: KeychainStoring) -> String {
+        anonIdLock.lock()
+        defer { anonIdLock.unlock() }
+        if let existing = store.getAnonId(), !existing.isEmpty {
+            Log.debug("Loaded existing anon_id: \(existing)")
+            return existing
+        }
+        let newId = UUID().uuidString.lowercased()
+        store.setAnonId(newId)
+        Log.info("Generated new anon_id: \(newId)")
+        return newId
     }
 
     /// Clear user identity. Keeps anonymous ID.
