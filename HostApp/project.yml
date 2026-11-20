@@ -27,6 +27,10 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: AppDNA Host
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleIconName: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # 🔴 WRITTEN EXPLICITLY, not left to Xcode's implicit injection. A target with its own
         # INFOPLIST_FILE and `GENERATE_INFOPLIST_FILE: NO` gets `CFBundleIdentifier` only if the
         # key is in the file; when it is absent the build still SUCCEEDS and the install fails at
@@ -73,7 +77,10 @@ targets:
         # file carries the project's client API key and is written into the built .app at RUN time
         # by `scripts/sdk-host-ios.ts`, never committed — this directory is a public mirror.
         PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
         # A StoreKit configuration makes the SIMULATOR serve real-shaped products with no App Store
         # Connect account — the only way to ask "does the paywall show the STORE's price, or the
@@ -111,6 +118,8 @@ targets:
       path: AppDNAHostNotificationService/Info.plist
       properties:
         CFBundleDisplayName: NotificationService
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         AppDNAAppGroup: "$(APPDNA_APP_GROUP)"
         NSExtension:
@@ -169,6 +178,10 @@ targets:
       properties:
         UILaunchScreen: {}
         CFBundleDisplayName: AppDNA Host (no widget)
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleIconName: AppIcon
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
         AppDNABaseURLOverride: "$(APPDNA_BASE_URL_OVERRIDE)"
         AppDNAHostApiKey: "$(APPDNA_HOST_API_KEY)"
@@ -179,7 +192,10 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.appdna.appdnaSdkExample.nowidget
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
         TARGETED_DEVICE_FAMILY: "1"
     dependencies:
       - package: AppDNASDK
