@@ -44,6 +44,8 @@ internal class NavigationInterceptor {
 
         // Evaluate "after" timing interceptions
         ScreenManager.shared.evaluateInterceptions(screenName: className, timing: "after")
+        // `on_screen` screen triggers, evaluated where the "after" interceptions are.
+        ScreenManager.shared.onScreenAppeared(className)
     }
 }
 

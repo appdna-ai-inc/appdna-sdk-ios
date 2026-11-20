@@ -1,11 +1,51 @@
 import Foundation
 
+/// Where a screen trigger's impression counts and last-shown times are kept between launches. They were in
+/// memory only, so `max_impressions` and `cooldown_hours` started again on every cold launch: a screen capped at one
+/// impression showed once per launch. `once_per_session` stays in memory, since a new process is a new session.
+/// Mirrors Android `ScreenFrequencyStore`.
+internal protocol ScreenFrequencyStore {
+    func load() -> (counts: [String: Int], lastShown: [String: Date])
+    func save(screenId: String, count: Int, lastShown: Date)
+}
+
+/// The production store: `UserDefaults`, one key per screen and field.
+internal struct DefaultsScreenFrequencyStore: ScreenFrequencyStore {
+    var defaults: UserDefaults = .standard
+    static let prefix = "ai.appdna.sdk.screen_freq."
+
+    func load() -> (counts: [String: Int], lastShown: [String: Date]) {
+        var counts: [String: Int] = [:]
+        var last: [String: Date] = [:]
+        for (k, v) in defaults.dictionaryRepresentation() where k.hasPrefix(Self.prefix) {
+            let rest = String(k.dropFirst(Self.prefix.count))
+            if rest.hasPrefix("count:"), let n = v as? Int { counts[String(rest.dropFirst(6))] = n }
+            if rest.hasPrefix("last:"), let t = v as? Double { last[String(rest.dropFirst(5))] = Date(timeIntervalSince1970: t) }
+        }
+        return (counts, last)
+    }
+
+    func save(screenId: String, count: Int, lastShown: Date) {
+        defaults.set(count, forKey: Self.prefix + "count:" + screenId)
+        defaults.set(lastShown.timeIntervalSince1970, forKey: Self.prefix + "last:" + screenId)
+    }
+}
+
 /// Evaluates trigger rules from ScreenIndex entries on each event, session start, and screen transition.
 internal class AutoTriggerEngine {
 
     private var impressionCounts: [String: Int] = [:]  // screenId -> count
     private var lastShownTimes: [String: Date] = [:]   // screenId -> last shown timestamp
     private var shownThisSession: Set<String> = []
+    private let store: ScreenFrequencyStore?
+
+    init(store: ScreenFrequencyStore? = nil) {
+        self.store = store
+        if let persisted = store?.load() {
+            impressionCounts = persisted.counts
+            lastShownTimes = persisted.lastShown
+        }
+    }
 
     func resetSession() {
         shownThisSession.removeAll()
@@ -37,6 +77,7 @@ internal class AutoTriggerEngine {
             impressionCounts[bestId, default: 0] += 1
             lastShownTimes[bestId] = now
             shownThisSession.insert(bestId)
+            store?.save(screenId: bestId, count: impressionCounts[bestId] ?? 1, lastShown: now)
             return bestId
         }
 

@@ -20,6 +20,12 @@ the project uses [Semantic Versioning](https://semver.org/).
   first: the SDK read the screen index but never the screens in it. The config load now loads every screen and flow
   the index lists (including slot and interception screens), and a cache miss fetches that one screen, or the flow
   and its screens, before giving up. Shared fixture `dto_parsing/screen_served_document`.
+- **Screen triggers run on both platforms, and their caps survive a restart.** No tracked event ever reached the
+  screen triggers, so a screen authored with a trigger never presented itself. Every tracked event (yours and the
+  SDK's own) now runs them after in-app messages and surveys, and a host screen appearing runs the `on_screen` ones.
+  iOS now evaluates session count, days since install, on-screen and user-trait triggers as Android does. Max
+  impressions and cooldowns are kept on the device. Shared fixtures
+  `event_emission/sdk_events_reach_message_and_survey_triggers` and `trigger_hold_is_bounded`.
 - **A long survey question scrolls inside a bottom sheet.** At the sheet's first (half) height, a choice question with
   five or more options had its text cut to one line and its progress bar pushed above the sheet, and nothing scrolled.
   The question now scrolls inside the survey; its text wraps in full, and the progress bar, Back, Next and "Not now"

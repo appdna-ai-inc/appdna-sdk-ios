@@ -36,20 +36,38 @@ final class ScreenTriggerWiringTests: XCTestCase {
                                              inputs: ScreenTriggerInputs(sessionCount: 1, daysSinceInstall: 0), traits: [:])
     }
 
+    /// The dispatcher wired the way `AppDNA.configure` wires it (its `.screen` branch is
+    /// `ScreenManager.shared.evaluateTriggers`), fed by the real tracker.
+    private func wire() -> TriggerDispatcher {
+        let d = TriggerDispatcher(executor: { $0() })
+        tracker.triggerSink = { e, p in d.record(event: e, properties: p) }
+        d.attach { surface, e, p in
+            if surface == .screen { ScreenManager.shared.evaluateTriggers(event: e, properties: p) }
+        }
+        d.markConfigReady()
+        return d
+    }
+
     func testTrackRunsTheScreenTriggers() throws {
-        try XCTSkipIf(true, "the track → screen-trigger hook is not wired yet")
+        XCTAssertTrue(TriggerDispatcher.surfaces(for: "walk_event").contains(.screen))
         let id = "wired_\(UUID().uuidString.prefix(8))"
         ScreenManager.shared.updateIndex(try index(id, event: "walk_event"))
-        AppDNA.track(event: "walk_event", properties: nil)
-        AppDNA.drainSDKQueueForTesting()
+        XCTAssertEqual(pickedAgain("walk_event"), id, "the harness cannot see an unspent trigger")
+        ScreenManager.shared.reset()
+        ScreenManager.shared.updateIndex(try index(id + "b", event: "walk_event"))
+        let d = wire()
+        tracker.track(event: "walk_event", properties: nil)
+        _ = d
         XCTAssertNil(pickedAgain("walk_event"), "track did not run the trigger: its one impression is still unspent")
     }
 
     func testTheScreensModulesOwnEventsRunNoTrigger() throws {
+        XCTAssertFalse(TriggerDispatcher.surfaces(for: "screen_dismissed").contains(.screen))
         let id = "own_\(UUID().uuidString.prefix(8))"
         ScreenManager.shared.updateIndex(try index(id, event: "screen_dismissed"))
-        AppDNA.track(event: "screen_dismissed", properties: nil)
-        AppDNA.drainSDKQueueForTesting()
+        let d = wire()
+        tracker.track(event: "screen_dismissed", properties: nil)
+        _ = d
         XCTAssertEqual(pickedAgain("screen_dismissed"), id, "screen_dismissed ran the trigger and spent its impression")
     }
 }

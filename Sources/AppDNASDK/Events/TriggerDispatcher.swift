@@ -30,6 +30,8 @@ final class TriggerDispatcher {
     enum Surface: String {
         case message
         case survey
+        /// Server-driven screen triggers (`ScreenManager.evaluateTriggers`), after messages and surveys.
+        case screen
     }
 
     /// The events an in-app message presentation tracks. A message never triggers on these.
@@ -62,6 +64,7 @@ final class TriggerDispatcher {
         var out: [Surface] = []
         if !messageOwnEvents.contains(event) { out.append(.message) }
         if !surveyOwnEvents.contains(event) { out.append(.survey) }
+        if !ScreenManager.ownEvents.contains(event) { out.append(.screen) }
         return out
     }
 

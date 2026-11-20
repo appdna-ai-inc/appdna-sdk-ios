@@ -4,7 +4,8 @@ import UIKit
 /// Central manager for server-driven screens. Handles config loading, caching,
 /// trigger evaluation, slot resolution, navigation interception, and screen presentation.
 internal class ScreenManager {
-    static let shared = ScreenManager()
+    /// Only the live manager persists trigger impressions; a test's `ScreenManager()` starts clean.
+    static let shared = ScreenManager(frequencyStore: DefaultsScreenFrequencyStore())
 
     private var screenIndex: ScreenIndex?
     private var screenCache: [String: ScreenConfig] = [:]
@@ -13,7 +14,12 @@ internal class ScreenManager {
     private let maxNestingDepth = 5
     private let lock = NSLock()
     /// The screen-trigger engine: every trigger kind and the frequency caps it records. One per manager.
-    private let autoTriggerEngine = AutoTriggerEngine()
+    /// Impression counts and cooldowns survive a cold launch (for `shared`).
+    private let autoTriggerEngine: AutoTriggerEngine
+
+    init(frequencyStore: ScreenFrequencyStore? = nil) {
+        autoTriggerEngine = AutoTriggerEngine(store: frequencyStore)
+    }
 
     /// The only way a screen action reaches the OS. Injectable so a test can assert that a vetoed
     /// action opens nothing; production keeps calling `UIApplication.shared.open`.

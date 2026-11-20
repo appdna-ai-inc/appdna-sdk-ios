@@ -369,6 +369,8 @@ public final class AppDNA: @unchecked Sendable {
     public static func notifyScreenAppeared(_ screenName: String) {
         lastScreenName = screenName
         ScreenManager.shared.evaluateInterceptions(screenName: screenName, timing: "after")
+        // `on_screen` screen triggers, evaluated where the "after" interceptions are.
+        ScreenManager.shared.onScreenAppeared(screenName)
     }
 
     // MARK: - Degraded init
@@ -2464,6 +2466,8 @@ public final class AppDNA: @unchecked Sendable {
                 switch surface {
                 case .message: self?.messageManager?.onEvent(eventName: event, properties: properties)
                 case .survey: self?.surveyManager?.onEvent(eventName: event, properties: properties)
+                // Screen triggers. Nothing called them before, so no screen ever auto-presented.
+                case .screen: ScreenManager.shared.evaluateTriggers(event: event, properties: properties)
                 }
             }
             remoteCfg.onFetchSucceeded = { [weak triggers] in triggers?.markConfigReady() }
