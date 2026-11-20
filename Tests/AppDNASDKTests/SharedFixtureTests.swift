@@ -624,7 +624,13 @@ final class SharedFixtureTests: XCTestCase {
             h.state["days_since_install"] = days
         }
 
-        let rules = AnyCodable(AnyJSON.array(rulesJSON).foundation)
+        // `match_mode` is honoured as Android's runner honours it: the rules go in as a rule set
+        // (`{conditions, match_mode}`), the object shape the console publishes.
+        let mode = config["match_mode"]?.stringValue ?? "all"
+        let rules = AnyCodable(["conditions": AnyJSON.array(rulesJSON).foundation, "match_mode": mode] as [String: Any])
+        // SPEC-542 P6b — `setup.attribution` is the payload the app handed `setAttribution`; reset after.
+        AttributionTargeting.payload = f.setup.raw["attribution"]?.objectValue?.mapValues { $0.foundation }
+        defer { AttributionTargeting.payload = nil }
         h.state["audience_match"] = AudienceRuleEvaluator.evaluate(rules: rules, traits: traits)
     }
 

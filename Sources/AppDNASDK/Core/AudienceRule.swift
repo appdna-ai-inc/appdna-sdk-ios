@@ -130,35 +130,44 @@ internal enum AudienceRuleEvaluator {
         guard let traitKey = rule.trait else { return true }
         // A trait identify stored as null (`NSNull`) is NOT SET, for every operator: it does not `exists`,
         // as the server's segment SQL and the journey evaluators read it.
-        let traitValue = userTraits[traitKey].flatMap { $0 is NSNull ? nil : $0 }
+        // SPEC-542 P6b — an `attribution.` key reads the stored attribution, folded for a case-insensitive compare.
+        let attribution = AttributionTargeting.isAttributionKey(traitKey)
+        let traitValue: Any? = attribution
+            ? AttributionTargeting.fold(AttributionTargeting.resolve(traitKey))
+            : userTraits[traitKey].flatMap { $0 is NSNull ? nil : $0 }
+        let ruleValue: Any? = attribution ? AttributionTargeting.fold(rule.value?.value) : rule.value?.value
 
         switch rule.operator ?? "equals" {
         case "equals", "eq":
-            return ConditionEvaluator.valuesEqual(traitValue, rule.value?.value)
+            return ConditionEvaluator.valuesEqual(traitValue, ruleValue)
         case "not_equals", "neq":
-            return !ConditionEvaluator.valuesEqual(traitValue, rule.value?.value)
+            return !ConditionEvaluator.valuesEqual(traitValue, ruleValue)
         case "gt":
-            return ConditionEvaluator.compareNumeric(traitValue, rule.value?.value) == .orderedDescending
+            return ConditionEvaluator.compareNumeric(traitValue, ruleValue) == .orderedDescending
         case "gte":
             // #2045 — `compareNumeric` answers `.orderedSame` when a side is not a number, so a missing or non-numeric
             // trait used to MATCH `gte` / `lte`. Both sides must be numbers, as the server's segment SQL reads them.
-            guard bothNumeric(traitValue, rule.value?.value) else { return false }
-            let cmp = ConditionEvaluator.compareNumeric(traitValue, rule.value?.value)
+            guard bothNumeric(traitValue, ruleValue) else { return false }
+            let cmp = ConditionEvaluator.compareNumeric(traitValue, ruleValue)
             return cmp == .orderedDescending || cmp == .orderedSame
         case "lt":
-            return ConditionEvaluator.compareNumeric(traitValue, rule.value?.value) == .orderedAscending
+            return ConditionEvaluator.compareNumeric(traitValue, ruleValue) == .orderedAscending
         case "lte":
-            guard bothNumeric(traitValue, rule.value?.value) else { return false }
-            let cmp = ConditionEvaluator.compareNumeric(traitValue, rule.value?.value)
+            guard bothNumeric(traitValue, ruleValue) else { return false }
+            let cmp = ConditionEvaluator.compareNumeric(traitValue, ruleValue)
             return cmp == .orderedAscending || cmp == .orderedSame
         case "contains":
-            if let str = traitValue as? String, let search = rule.value?.value as? String {
+            if let str = traitValue as? String, let search = ruleValue as? String {
                 return str.lowercased().contains(search.lowercased())
             }
-            if let arr = traitValue as? [String], let search = rule.value?.value as? String {
+            if let arr = traitValue as? [String], let search = ruleValue as? String {
                 return arr.contains(search)
             }
             return false
+        case "starts_with":
+            // SPEC-542 P6b — a literal prefix (never a pattern), case-insensitive like `contains`.
+            guard let str = traitValue as? String, let prefix = ruleValue as? String else { return false }
+            return str.lowercased().hasPrefix(prefix.lowercased())
         case "exists":
             return traitValue != nil
         case "not_exists":
@@ -173,7 +182,7 @@ internal enum AudienceRuleEvaluator {
             // Bounds may also arrive as a 2-element `value` list (matches Android
             // `betweenBounds`). Without this iOS ignored `{between, value:[18,65]}` entirely and
             // returned false where Android matched. min/max keys win when present.
-            if lower == nil && upper == nil, let list = rule.value?.value as? [Any], list.count >= 2 {
+            if lower == nil && upper == nil, let list = ruleValue as? [Any], list.count >= 2 {
                 lower = asDouble(list[0])
                 upper = asDouble(list[1])
             }
@@ -184,11 +193,11 @@ internal enum AudienceRuleEvaluator {
         case "in":
             // Membership is compared with the shared coercing equality: a console rule
             // `tier IN ["1","2"]` must match an Int trait `tier = 1`.
-            let list = candidates(rule)
+            let list = candidates(rule, fold: attribution)
             guard !list.isEmpty else { return false }
             return list.contains { ConditionEvaluator.valuesEqual(traitValue, $0) }
         case "not_in":
-            let list = candidates(rule)
+            let list = candidates(rule, fold: attribution)
             guard !list.isEmpty else { return true }
             return !list.contains { ConditionEvaluator.valuesEqual(traitValue, $0) }
         default:
@@ -207,14 +216,17 @@ internal enum AudienceRuleEvaluator {
 
     /// The membership list for `in` / `not_in`, from either `values` (plural, console) or a `value`
     /// that happens to hold an array (legacy payloads).
-    private static func candidates(_ rule: AudienceRule) -> [Any] {
+    private static func candidates(_ rule: AudienceRule, fold: Bool = false) -> [Any] {
+        let list: [Any]
         if let values = rule.values, !values.isEmpty {
-            return values.map(\.value)
+            list = values.map(\.value)
+        } else if let arr = rule.value?.value as? [Any] {
+            list = arr
+        } else {
+            list = []
         }
-        if let arr = rule.value?.value as? [Any] {
-            return arr
-        }
-        return []
+        // SPEC-542 P6b — an attribution rule's list compares case-insensitively, like its single value.
+        return fold ? (AttributionTargeting.fold(list) as? [Any] ?? list) : list
     }
 
     private static func asDouble(_ value: Any?) -> Double? {
