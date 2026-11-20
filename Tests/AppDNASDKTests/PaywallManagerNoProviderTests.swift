@@ -98,6 +98,11 @@ final class PaywallManagerNoProviderTests: XCTestCase {
         // local manager, and Swift may release it after its last use, so with a busy main queue (the full suite)
         // the block found `self == nil`: the delegate heard the failure, the routing never ran, and
         // `failureRoutes` stayed empty. Keep it alive until the wait is over.
+        // `handlePostPurchaseFailure` posts `.paywallPurchaseEnded` and THEN `.paywallPurchaseFailure`, in one main-queue
+        // block. This loop polls off the main actor, so it could see `purchaseEnded == 1` between the two posts and stop
+        // with the route still to come (seen once in a full-suite run). A hop to the main actor runs after that block,
+        // so both posts have landed before anything is asserted.
+        await MainActor.run {}
         withExtendedLifetime(manager) {}
         return spy
     }
