@@ -238,6 +238,11 @@ internal class FlowManager: ObservableObject {
         )
     }
 
+    /// A value entered in a content block on the current screen; `nil` clears it.
+    func setEnteredValue(_ key: String, _ value: Any?) {
+        if let value { responses[key] = value } else { responses.removeValue(forKey: key) }
+    }
+
     func mergeResponses(_ newResponses: [String: Any]) {
         for (key, value) in newResponses {
             responses[key] = value

@@ -26,6 +26,9 @@ the project uses [Semantic Versioning](https://semver.org/).
   iOS now evaluates session count, days since install, on-screen and user-trait triggers as Android does. Max
   impressions and cooldowns are kept on the device. Shared fixtures
   `event_emission/sdk_events_reach_message_and_survey_triggers` and `trigger_hold_is_bounded`.
+- **What a user enters on a screen reaches your app.** Values typed or picked in a screen's content blocks stayed in
+  the view, so `onScreenDismissed` and `onFlowCompleted` got empty `responses`. They are now keyed by the block's
+  field ID, and a flow's navigation rules can branch on them.
 - **A long survey question scrolls inside a bottom sheet.** At the sheet's first (half) height, a choice question with
   five or more options had its text cut to one line and its progress bar pushed above the sheet, and nothing scrolled.
   The question now scrolls inside the survey; its text wraps in full, and the progress bar, Back, Next and "Not now"

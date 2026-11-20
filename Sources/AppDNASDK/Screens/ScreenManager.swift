@@ -284,12 +284,15 @@ internal class ScreenManager {
             }
         }
 
-        // Build context
+        // Build context. What the user enters on this screen's content blocks is collected here and handed
+        // to the host in `ScreenResult.responses`; it used to stay in the section's view state.
+        let entered = EnteredValues()
         let context = SectionContext(
             screenId: screenId,
             onAction: { [weak self] action in
                 self?.handleAction(action, screenId: screenId, startTime: startTime, completion: completion)
-            }
+            },
+            onResponse: { key, value in entered.set(key, value) }
         )
 
         // Track event (include experiment_id and variant_key)
@@ -317,7 +320,7 @@ internal class ScreenManager {
                     "duration_ms": duration,
                 ])
                 self?.nestingDepth -= 1
-                let screenResult = ScreenResult(screenId: screenId, dismissed: true, duration_ms: duration)
+                let screenResult = ScreenResult(screenId: screenId, dismissed: true, responses: entered.values, duration_ms: duration)
                 // Fire onScreenDismissed alongside the
                 // existing analytics track + completion handler.
                 DispatchQueue.main.async {
@@ -531,6 +534,17 @@ internal class ScreenManager {
             "screen_id": screenId,
             "action_type": String(describing: action),
         ])
+    }
+
+    /// The values entered on one presented screen, written from the view and read on dismiss.
+    final class EnteredValues {
+        private let lock = NSLock()
+        private var store: [String: Any] = [:]
+        func set(_ key: String, _ value: Any?) {
+            lock.lock(); defer { lock.unlock() }
+            if let value { store[key] = value } else { store.removeValue(forKey: key) }
+        }
+        var values: [String: Any] { lock.lock(); defer { lock.unlock() }; return store }
     }
 
     // MARK: - Slot Resolution (Mechanism 2)

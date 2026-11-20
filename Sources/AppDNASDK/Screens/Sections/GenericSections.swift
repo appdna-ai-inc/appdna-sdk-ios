@@ -46,12 +46,27 @@ private struct ContentBlocksSectionView: View {
             onAction: { action, actionValue in
                 handleBlockAction(action, value: actionValue)
             },
-            toggleValues: $toggleValues,
+            toggleValues: reported($toggleValues),
             responses: context.responses,
             hookData: context.hookData,
-            inputValues: $inputValues,
+            inputValues: reported($inputValues),
             currentStepIndex: context.currentScreenIndex,
             totalSteps: context.totalScreens
+        )
+    }
+
+    /// The block's own state, plus every change reported to the screen (`context.onResponse`). The values
+    /// used to stay in this view's `@State`, so the host's `onScreenDismissed` / `onFlowCompleted` got `{}`.
+    private func reported<V>(_ state: Binding<[String: V]>) -> Binding<[String: V]> {
+        let report = context.onResponse
+        return Binding(
+            get: { state.wrappedValue },
+            set: { new in
+                let old = state.wrappedValue
+                state.wrappedValue = new
+                for (key, value) in new where old[key].map({ "\($0)" != "\(value)" }) ?? true { report(key, value) }
+                for key in old.keys where new[key] == nil { report(key, nil) }
+            }
         )
     }
 

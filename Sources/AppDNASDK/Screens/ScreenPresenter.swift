@@ -155,6 +155,10 @@ private struct FlowHostView: View {
                         onAction: { [weak flowManager] action in
                             flowManager?.handleAction(action)
                         },
+                        // Entered values join the flow's responses (FlowResult.responses, navigation rules).
+                        onResponse: { [weak flowManager] key, value in
+                            flowManager?.setEnteredValue(key, value)
+                        },
                         currentScreenIndex: flowManager.currentScreenIndex,
                         totalScreens: flowManager.flowConfig.screens?.count ?? 0
                     )

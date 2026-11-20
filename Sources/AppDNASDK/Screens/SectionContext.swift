@@ -10,6 +10,10 @@ public struct SectionContext {
     public var userTraits: [String: Any]?
     public let onAction: (SectionAction) -> Void
     public let onNavigate: (String) -> Void
+    /// A value the user entered in a content block (text, choice, toggle, location), keyed by the block's
+    /// `field_id` (else its id). `nil` clears it. The screen collects these into `ScreenResult.responses`, and a
+    /// flow into `FlowResult.responses`. Not an action: it runs no veto and tracks nothing.
+    public let onResponse: (String, Any?) -> Void
     public let currentScreenIndex: Int
     public let totalScreens: Int
     public let locale: String
@@ -23,6 +27,7 @@ public struct SectionContext {
         userTraits: [String: Any]? = nil,
         onAction: @escaping (SectionAction) -> Void,
         onNavigate: @escaping (String) -> Void = { _ in },
+        onResponse: @escaping (String, Any?) -> Void = { _, _ in },
         currentScreenIndex: Int = 0,
         totalScreens: Int = 1,
         locale: String = "en",
@@ -35,6 +40,7 @@ public struct SectionContext {
         self.userTraits = userTraits
         self.onAction = onAction
         self.onNavigate = onNavigate
+        self.onResponse = onResponse
         self.currentScreenIndex = currentScreenIndex
         self.totalScreens = totalScreens
         self.locale = locale
