@@ -25,6 +25,88 @@ internal class ScreenManager {
         lock.lock()
         self.screenIndex = index
         lock.unlock()
+        prefetch(index)
+    }
+
+    // MARK: - Loading served screens and flows
+    //
+    // The console publishes each screen to `config/screen_index/screens/{id}` and each flow to
+    // `config/screen_index/flows/{id}`. Nothing read them: the cache was only ever written by `previewScreen`, so
+    // `showScreen`, slots, interceptions and triggers all ended in `screenNotFound`. Now the index load prefetches
+    // every screen and flow it names, and a cache miss fetches on demand before giving up.
+
+    /// Reads one served document: `kind` is `"screens"` or `"flows"`. Answers the document as JSON-safe values
+    /// (Firestore types already sanitised), or nil when it is missing or unreadable. Set by `RemoteConfigManager`
+    /// once Firestore is available; a test sets its own.
+    var documentLoader: ((_ kind: String, _ id: String, _ done: @escaping ([String: Any]?) -> Void) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _documentLoader }
+        set { lock.lock(); _documentLoader = newValue; lock.unlock() }
+    }
+    private var _documentLoader: ((String, String, @escaping ([String: Any]?) -> Void) -> Void)?
+
+    /// A screen's config: from the cache, else fetched, decoded and cached. Nil when neither has it.
+    func loadScreen(_ id: String, refresh: Bool = false, done: @escaping (ScreenConfig?) -> Void) {
+        if !refresh, let cached = getCachedScreen(id) { done(cached); return }
+        guard let loader = documentLoader else { done(getCachedScreen(id)); return }
+        loader("screens", id) { [weak self] doc in
+            guard let self else { done(nil); return }
+            let config = doc.flatMap { ScreenDocument.decodeScreen($0, id: id) }
+            if let config { self.cacheScreen(id, config: config) }
+            done(config ?? self.getCachedScreen(id))
+        }
+    }
+
+    /// A flow's config and every screen it references: cached or fetched. Nil when the flow itself is not found.
+    func loadFlow(_ id: String, refresh: Bool = false, done: @escaping (FlowConfig?) -> Void) {
+        if !refresh, let cached = getCachedFlow(id) {
+            loadFlowScreens(cached, refresh: refresh) { done(cached) }
+            return
+        }
+        guard let loader = documentLoader else { done(getCachedFlow(id)); return }
+        loader("flows", id) { [weak self] doc in
+            guard let self else { done(nil); return }
+            guard let config = doc.flatMap({ ScreenDocument.decodeFlow($0, id: id) }) ?? self.getCachedFlow(id) else {
+                done(nil)
+                return
+            }
+            self.cacheFlow(id, config: config)
+            self.loadFlowScreens(config, refresh: refresh) { done(config) }
+        }
+    }
+
+    private func loadFlowScreens(_ config: FlowConfig, refresh: Bool, done: @escaping () -> Void) {
+        var seen = Set<String>()
+        let ids = (config.screens ?? []).compactMap { $0.screen_id }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
+            .filter { refresh || getCachedScreen($0) == nil }
+        guard !ids.isEmpty else { done(); return }
+        // A counter rather than a DispatchGroup, so a reader that answers synchronously answers synchronously here
+        // too (as on Android), and `done` runs on the thread of the last answer.
+        let counter = NSLock()
+        var remaining = ids.count
+        for sid in ids {
+            loadScreen(sid, refresh: refresh) { _ in
+                counter.lock()
+                remaining -= 1
+                let last = remaining == 0
+                counter.unlock()
+                if last { done() }
+            }
+        }
+    }
+
+    /// Every screen and flow the index names: its screens, its flows, its slot assignments and its interceptions.
+    /// Fetched again on each index load, so a republished screen replaces the cached copy. Slots resolve
+    /// synchronously from the cache, so this prefetch is what lets a slot render at all.
+    func prefetch(_ index: ScreenIndex) {
+        guard documentLoader != nil else { return }
+        var screenIds: [String] = []
+        func add(_ id: String?) { if let id, !id.isEmpty, !screenIds.contains(id) { screenIds.append(id) } }
+        index.screens?.forEach { add($0.id) }
+        index.slots?.forEach { add($0.screen_id) }
+        index.interceptions?.forEach { add($0.screen_id) }
+        for sid in screenIds { loadScreen(sid, refresh: true) { _ in } }
+        index.flows?.forEach { f in if let fid = f.id, !fid.isEmpty { loadFlow(fid, refresh: true) { _ in } } }
     }
 
     func getCachedScreen(_ screenId: String) -> ScreenConfig? {
@@ -54,6 +136,15 @@ internal class ScreenManager {
     // MARK: - Show Screen (Manual API)
 
     func showScreen(_ screenId: String, completion: ((ScreenResult) -> Void)? = nil) {
+        // A screen the prefetch has not cached yet is fetched before it is declared not found.
+        if getCachedScreen(screenId) == nil, documentLoader != nil {
+            loadScreen(screenId) { [weak self] _ in self?.presentCachedScreen(screenId, completion: completion) }
+            return
+        }
+        presentCachedScreen(screenId, completion: completion)
+    }
+
+    private func presentCachedScreen(_ screenId: String, completion: ((ScreenResult) -> Void)?) {
         // Thread-safe nesting depth check
         lock.lock()
         guard nestingDepth < maxNestingDepth else {
@@ -72,14 +163,26 @@ internal class ScreenManager {
             return
         }
 
-        // Fetch from Firestore on-demand
-        // In production, this would call RemoteConfigManager.fetchScreenConfig()
-        // For now, fire callback with error if not cached
+        // Neither the cache nor the served document has it (showScreen already fetched on a miss).
         completion?(ScreenResult(screenId: screenId, dismissed: true, error: .screenNotFound))
-        nestingDepth -= 1
+        lock.lock(); nestingDepth -= 1; lock.unlock()
     }
 
     func showFlow(_ flowId: String, completion: ((FlowResult) -> Void)? = nil) {
+        // A flow (or a screen it references) the prefetch has not cached yet is fetched first.
+        let cached = getCachedFlow(flowId)
+        let missing = cached == nil || (cached?.screens ?? []).contains { ref in
+            guard let sid = ref.screen_id, !sid.isEmpty else { return false }
+            return getCachedScreen(sid) == nil
+        }
+        if missing, documentLoader != nil {
+            loadFlow(flowId) { [weak self] _ in self?.presentCachedFlow(flowId, completion: completion) }
+            return
+        }
+        presentCachedFlow(flowId, completion: completion)
+    }
+
+    private func presentCachedFlow(_ flowId: String, completion: ((FlowResult) -> Void)?) {
         if let cached = getCachedFlow(flowId) {
             presentFlow(cached, flowId: flowId, completion: completion)
             return

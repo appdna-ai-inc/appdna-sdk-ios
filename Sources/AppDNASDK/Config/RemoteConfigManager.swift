@@ -471,6 +471,19 @@ final class RemoteConfigManager {
         group.enter()
         self.fetchViaIndex(db: db, basePath: basePath, section: indexedSection("message_index"), onComplete: { group.leave() })
 
+        // Each screen and flow the index names lives in its own document under it. Set before the index
+        // parse, which prefetches them through this loader.
+        ScreenManager.shared.documentLoader = { kind, id, done in
+            db.document("\(basePath)/screen_index/\(kind)/\(id)").getDocument { snapshot, error in
+                guard let data = snapshot?.data() else {
+                    if let error { Log.debug("No screen_index/\(kind)/\(id): \(error.localizedDescription)") }
+                    done(nil)
+                    return
+                }
+                done(Self.sanitize(data) as? [String: Any])
+            }
+        }
+
         // Screen index for server-driven UI
         group.enter()
         db.document("\(basePath)/screen_index").getDocument { [weak self] snapshot, error in
@@ -1149,45 +1162,6 @@ final class RemoteConfigManager {
         }
     }
 
-    /// Fetch a single screen config on-demand by ID.
-    func fetchScreenConfig(screenId: String, completion: @escaping (ScreenConfig?) -> Void) {
-        guard let firestorePath else {
-            completion(nil)
-            return
-        }
-        guard let db = AppDNA.firestoreDB else { completion(nil); return }
-        let basePath = "\(firestorePath)/config"
-        // screens/{screenId} is a subcollection document under the screen_index doc
-        db.document("\(basePath)/screen_index/screens/\(screenId)").getDocument { snapshot, error in
-            guard let data = snapshot?.data() else {
-                completion(nil)
-                return
-            }
-            do {
-                let jsonData = try Self.sanitizedJSONData(data)
-                let wrapper = try Self.snakeCaseDecoder.decode(ScreenFirestoreWrapper.self, from: jsonData)
-                let config = wrapper.config
-                ScreenManager.shared.cacheScreen(screenId, config: config)
-                completion(config)
-            } catch {
-                // Try parsing the data directly as a ScreenConfig
-                do {
-                    let jsonData = try Self.sanitizedJSONData(data)
-                    let config = try Self.snakeCaseDecoder.decode(ScreenConfig.self, from: jsonData)
-                    ScreenManager.shared.cacheScreen(screenId, config: config)
-                    completion(config)
-                } catch {
-                    Log.error("Failed to parse screen config \(screenId): \(error)")
-                    completion(nil)
-                }
-            }
-        }
-    }
-}
-
-/// Wrapper for Firestore screen document (has `config` field inside).
-private struct ScreenFirestoreWrapper: Codable {
-    let config: ScreenConfig
 }
 
 // MARK: - Experiment config model

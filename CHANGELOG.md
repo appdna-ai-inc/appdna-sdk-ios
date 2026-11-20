@@ -15,6 +15,11 @@ the project uses [Semantic Versioning](https://semver.org/).
   fixtures `identity/anonymous_id_*`.
 
 ### Fixed
+- **Published screens and flows reach the device.** `showScreen`, `showFlow`, screen slots, navigation
+  interceptions and screen triggers used to end in `screen_not_found` unless the host had called `previewScreen`
+  first: the SDK read the screen index but never the screens in it. The config load now loads every screen and flow
+  the index lists (including slot and interception screens), and a cache miss fetches that one screen, or the flow
+  and its screens, before giving up. Shared fixture `dto_parsing/screen_served_document`.
 - **A long survey question scrolls inside a bottom sheet.** At the sheet's first (half) height, a choice question with
   five or more options had its text cut to one line and its progress bar pushed above the sheet, and nothing scrolled.
   The question now scrolls inside the survey; its text wraps in full, and the progress bar, Back, Next and "Not now"

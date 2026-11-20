@@ -51,6 +51,8 @@ extension SharedFixtureTests {
         case "resolve_screen_image_alt": runScreenImageAlt(f, h)
         // A screen's default ink (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_screen_surface_ink": runScreenSurfaceInk(f, h)
+        // A served screen / flow document through the REAL ScreenManager loader (SharedFixtureDrivers+ServedScreens.swift).
+        case "load_served_screen": runLoadServedScreen(f, h)
         case "resolve_option_label_markdown": runOptionLabelMarkdown(f, h)
         case "resolve_date_wheel": runDateWheel(f, h)
         case "resolve_container_children": runContainerChildren(f, h)
