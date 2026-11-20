@@ -140,11 +140,15 @@ internal enum AudienceRuleEvaluator {
         case "gt":
             return ConditionEvaluator.compareNumeric(traitValue, rule.value?.value) == .orderedDescending
         case "gte":
+            // #2045 — `compareNumeric` answers `.orderedSame` when a side is not a number, so a missing or non-numeric
+            // trait used to MATCH `gte` / `lte`. Both sides must be numbers, as the server's segment SQL reads them.
+            guard bothNumeric(traitValue, rule.value?.value) else { return false }
             let cmp = ConditionEvaluator.compareNumeric(traitValue, rule.value?.value)
             return cmp == .orderedDescending || cmp == .orderedSame
         case "lt":
             return ConditionEvaluator.compareNumeric(traitValue, rule.value?.value) == .orderedAscending
         case "lte":
+            guard bothNumeric(traitValue, rule.value?.value) else { return false }
             let cmp = ConditionEvaluator.compareNumeric(traitValue, rule.value?.value)
             return cmp == .orderedAscending || cmp == .orderedSame
         case "contains":
@@ -194,6 +198,11 @@ internal enum AudienceRuleEvaluator {
             Log.debug("audience rule on '\(traitKey)': unknown operator '\(rule.operator ?? "")' does not match")
             return false
         }
+    }
+
+    /// #2045 — an ordered comparison needs a number on both sides; anything else does not match.
+    private static func bothNumeric(_ lhs: Any?, _ rhs: Any?) -> Bool {
+        ConditionEvaluator.toDouble(lhs) != nil && ConditionEvaluator.toDouble(rhs) != nil
     }
 
     /// The membership list for `in` / `not_in`, from either `values` (plural, console) or a `value`

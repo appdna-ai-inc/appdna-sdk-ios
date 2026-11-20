@@ -15,6 +15,7 @@ the project uses [Semantic Versioning](https://semver.org/).
   fixtures `identity/anonymous_id_*`.
 
 ### Fixed
+- Audience rules: `gte` and `lte` no longer match a user who has no value for the trait, or a value that is not a number. A paywall or onboarding flow targeted at `seat_count gte 10` was shown to every user who never sent `seat_count`. `gt`, `gte`, `lt` and `lte` now match only when both the trait and the rule value are numbers (a numeric string such as `"10"` still counts). Shared fixtures `audience_eval/gte_fails_closed_for_absent_trait`, `lte_fails_closed_for_non_numeric_trait`, `gte_lte_match_at_the_boundary`.
 - **Published screens and flows reach the device.** `showScreen`, `showFlow`, screen slots, navigation
   interceptions and screen triggers used to end in `screen_not_found` unless the host had called `previewScreen`
   first: the SDK read the screen index but never the screens in it. The config load now loads every screen and flow
