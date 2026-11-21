@@ -486,6 +486,7 @@ final class SharedFixtureTests: XCTestCase {
         switch fixture.action.kind {
         case "evaluate_audience":              runEvaluateAudience(fixture, harness)
         case "evaluate_screen_trigger":        runEvaluateScreenTrigger(fixture, harness)
+        case "evaluate_content_audience":      await runEvaluateContentAudience(fixture, harness)
         case "interpolate_template":           runInterpolateTemplate(fixture, harness)
         case "tap_button":                     runTapButton(fixture, harness)
         case "submit_form":                    runSubmitForm(fixture, harness)

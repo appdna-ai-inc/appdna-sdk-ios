@@ -19,16 +19,28 @@ final class SurveyManager {
 
     private var surveyConfigs: [String: SurveyConfig] = [:]
 
+    /// The traits audience rules are evaluated against: the identified user's, as paywall and flow selection read them.
+    private let userTraits: () -> [String: Any]
+
+    /// The audience step of trigger and placement selection: do `config`'s `audience_rules` admit a user with
+    /// `traits`? No rules (or no conditions) admits everyone; `attribution.` keys read the stored install attribution;
+    /// an operator the evaluator does not know fails closed. Android `SurveyManager.audienceAllows`, same rule.
+    static func audienceAllows(_ config: SurveyConfig, traits: [String: Any]) -> Bool {
+        AudienceRuleEvaluator.evaluate(rules: config.audience_rules, traits: traits)
+    }
+
     init(
         remoteConfigManager: RemoteConfigManager,
         eventTracker: EventTracker,
         apiClient: APIClient? = nil,
-        experimentManager: ExperimentManager? = nil
+        experimentManager: ExperimentManager? = nil,
+        userTraits: @escaping () -> [String: Any] = { AppDNA.getUserTraits() }
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.eventTracker = eventTracker
         self.apiClient = apiClient
         self.experimentManager = experimentManager
+        self.userTraits = userTraits
     }
 
     /// Present a specific survey by ID.
@@ -42,7 +54,7 @@ final class SurveyManager {
 
     /// Present the survey answering a placement name. False when no survey has that name.
     func present(placement: String) -> Bool {
-        guard let surveyId = ItemPlacementResolver.pickSurveyId(from: surveyConfigs, placement: placement) else {
+        guard let surveyId = ItemPlacementResolver.pickSurveyId(from: surveyConfigs, placement: placement, traits: userTraits()) else {
             Log.warning("No survey found for placement: \(placement)")
             return false
         }
@@ -64,12 +76,18 @@ final class SurveyManager {
         // plain `for-in ... break` picked a hash-order survey that varied run-to-run AND diverged
         // from Android. SurveyConfig has no priority field, so id-asc is the tie-break — the same
         // rule MessageManager uses (priority desc, then id asc). Both platforms now agree.
+        // Read once per event, and only when a survey reaches the audience step.
+        var traits: [String: Any]?
         for (surveyId, config) in surveyConfigs.sorted(by: { $0.key < $1.key }) {
             // 1. Event name match
             guard config.trigger_rules?.event == eventName else { continue }
 
             // 2. Conditions evaluation
             guard evaluateConditions(config.trigger_rules?.conditions, properties: properties ?? [:]) else { continue }
+
+            // 2b. Audience rules (user traits + stored install attribution)
+            if traits == nil { traits = userTraits() }
+            guard Self.audienceAllows(config, traits: traits ?? [:]) else { continue }
 
             // 3. Frequency check
             guard frequencyTracker.canShow(

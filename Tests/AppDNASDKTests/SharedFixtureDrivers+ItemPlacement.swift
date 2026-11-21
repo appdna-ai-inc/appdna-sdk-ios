@@ -23,7 +23,7 @@ extension SharedFixtureTests {
                     let data = try! JSONSerialization.data(withJSONObject: item)
                     surveys[id] = try! JSONDecoder().decode(SurveyConfig.self, from: data)
                 }
-                return ItemPlacementResolver.pickSurveyId(from: surveys, placement: placement) ?? "none"
+                return ItemPlacementResolver.pickSurveyId(from: surveys, placement: placement, traits: traits) ?? "none"
             }
             let flows = items.map { item -> OnboardingFlowConfig in
                 let data = try! JSONSerialization.data(withJSONObject: item)

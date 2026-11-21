@@ -7,6 +7,15 @@ the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- In-app messages and surveys honour audience rules. A message's or survey's `audience_rules` (the same shape as an
+  onboarding flow's or a paywall's: user traits, and `attribution.<field>` / `attribution.param.<key>` keys over the
+  stored install attribution) decide whether it triggers for this user; a message or survey with no rules is shown to
+  everyone, as before. With no attribution stored, an attribution rule does not match (except `not_exists`).
+  `surveys.present(placement:)` now orders the surveys on a name like onboarding flows (higher audience priority, then a
+  targeted survey before a catch-all, then lowest id) and skips one whose rules do not match. See
+  [Target content by acquisition source](https://docs.appdna.ai/sdks/ios/api-reference#target-content-by-acquisition-source).
+  Shared fixtures `audience_eval/message_audience_attribution_network`, `audience_eval/survey_audience_attribution_param`,
+  `audience_eval/content_audience_trait_or_attribution`.
 - `AppDNA.setAttribution(_:)` and `AppDNA.waitForAttribution(timeoutMs:_:)`: hand AppDNA the attribution your MMP's
   on-device callback delivers, and audience rules on onboarding flows, paywalls and experiments can target any
   acquisition field (`attribution.<field>`, `attribution.param.<key>`, with `starts_with`) on the first launch. Stored on

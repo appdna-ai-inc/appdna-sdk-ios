@@ -86,16 +86,28 @@ final class MessageManager {
         ISO8601.date(from: s) ?? dateOnlyFormatter.date(from: s)
     }
 
+    /// The traits audience rules are evaluated against: the identified user's, as paywall and flow selection read them.
+    private let userTraits: () -> [String: Any]
+
+    /// The audience step of trigger evaluation: do `config`'s `audience_rules` admit a user with `traits`? No rules (or
+    /// no conditions) admits everyone; `attribution.` keys read the stored install attribution; an operator the
+    /// evaluator does not know fails closed. Android `MessageManager.audienceAllows`, same rule.
+    static func audienceAllows(_ config: MessageConfig, traits: [String: Any]) -> Bool {
+        AudienceRuleEvaluator.evaluate(rules: config.audience_rules, traits: traits)
+    }
+
     init(
         remoteConfigManager: RemoteConfigManager,
         eventTracker: EventTracker,
         experimentManager: ExperimentManager? = nil,
-        surface: MessageSurface = .live
+        surface: MessageSurface = .live,
+        userTraits: @escaping () -> [String: Any] = { AppDNA.getUserTraits() }
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.eventTracker = eventTracker
         self.experimentManager = experimentManager
         self.surface = surface
+        self.userTraits = userTraits
         self.stopActivation = surface.observeActivation({ [weak self] in self?.releaseHeld() })
     }
 
@@ -113,7 +125,10 @@ final class MessageManager {
         var candidates: [(id: String, config: MessageConfig)] = []
         var filteredByEvent = 0
         var filteredByConditions = 0
+        var filteredByAudience = 0
         var filteredByFrequency = 0
+        // Read once per event, and only when a message reaches the audience step.
+        var traits: [String: Any]?
         var filteredByDateRange = 0
 
         for (id, config) in messages {
@@ -126,6 +141,13 @@ final class MessageManager {
             // 2. Conditions evaluation
             guard evaluateConditions(config.trigger_rules?.conditions, properties: properties ?? [:]) else {
                 filteredByConditions += 1
+                continue
+            }
+
+            // 2b. Audience rules (user traits + stored install attribution)
+            if traits == nil { traits = userTraits() }
+            guard Self.audienceAllows(config, traits: traits ?? [:]) else {
+                filteredByAudience += 1
                 continue
             }
 
@@ -149,7 +171,7 @@ final class MessageManager {
         }
 
         if candidates.isEmpty {
-            Log.debug("[Messages] No candidates for '\(eventName)' — filtered: event=\(filteredByEvent), conditions=\(filteredByConditions), frequency=\(filteredByFrequency), dateRange=\(filteredByDateRange)")
+            Log.debug("[Messages] No candidates for '\(eventName)' — filtered: event=\(filteredByEvent), conditions=\(filteredByConditions), audience=\(filteredByAudience), frequency=\(filteredByFrequency), dateRange=\(filteredByDateRange)")
         } else {
             Log.debug("[Messages] \(candidates.count) candidate(s) passed all filters for '\(eventName)'")
         }

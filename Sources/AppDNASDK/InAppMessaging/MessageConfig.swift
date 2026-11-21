@@ -22,6 +22,9 @@ public struct MessageConfig: Codable {
     public var version: Int? = nil
     /// The item whose content this message is serving while Serve instead has swapped it. Absent otherwise.
     public var served_from: ServedFrom? = nil
+    /// Who may see this message: `{priority, match_mode, conditions}` or a bare rule list, evaluated against the
+    /// user's traits and the stored install attribution (`attribution.<field>`, `attribution.param.<key>`). Nil: everyone.
+    public var audience_rules: AnyCodable? = nil
 }
 
 public enum MessageType: String, Codable {

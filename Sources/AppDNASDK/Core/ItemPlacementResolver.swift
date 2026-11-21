@@ -25,8 +25,19 @@ enum ItemPlacementResolver {
             }
     }
 
-    /// Surveys carry no audience rules, so the lowest `id` on the name wins.
-    static func pickSurveyId(from surveys: [String: SurveyConfig], placement: String) -> String? {
-        surveys.filter { $0.value.placement == placement }.keys.min()
+    /// The same order as `pickFlow`: higher audience priority, then a survey with audience conditions before a
+    /// catch-all, then lowest `id`. The first whose `audience_rules` admit the user wins (the survey trigger's own
+    /// audience gate, `SurveyManager.audienceAllows`); a survey with no rules matches everyone.
+    static func pickSurveyId(from surveys: [String: SurveyConfig], placement: String, traits: [String: Any]) -> String? {
+        surveys
+            .filter { $0.value.placement == placement }
+            .sorted { a, b in
+                let (pa, pb) = (AudienceRuleEvaluator.priority(rules: a.value.audience_rules), AudienceRuleEvaluator.priority(rules: b.value.audience_rules))
+                if pa != pb { return pa > pb }
+                let (ca, cb) = (AudienceRuleEvaluator.hasConditions(rules: a.value.audience_rules), AudienceRuleEvaluator.hasConditions(rules: b.value.audience_rules))
+                if ca != cb { return ca }
+                return a.key < b.key
+            }
+            .first { SurveyManager.audienceAllows($0.value, traits: traits) }?.key
     }
 }
