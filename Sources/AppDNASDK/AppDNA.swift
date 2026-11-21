@@ -818,6 +818,40 @@ public final class AppDNA: @unchecked Sendable {
         return IdentityManager.loadOrCreateAnonId(keychain())
     }
 
+    // MARK: - Public API: Attribution
+
+    /// Hand AppDNA the install's attribution from your mobile measurement partner's on-device callback (AppsFlyer
+    /// `onConversionDataSuccess`, Adjust's attribution callback, Singular's attribution / deferred deep link handler),
+    /// so onboarding flows, paywalls, experiments and messages can target it at once, before any server postback.
+    ///
+    /// Standard fields (snake_case or camelCase): `network` (or `source` / `media_source`), `channel`, `campaign`,
+    /// `campaign_id`, `adset`, `adset_id`, `ad`, `ad_id`, `creative`, `keyword`, `placement`, `site_id`, `is_organic`,
+    /// `attribution_type`, `install_country`, `mmp`. Put the MMP's own parameters (`af_sub1`, `deep_link_value`, …)
+    /// under `raw`; any other top-level key is kept under `raw` too. Audience rules read them as
+    /// `attribution.<field>` and `attribution.param.<key>`.
+    ///
+    /// Stored on the device (it survives restarts and `reset()`: it describes the install, not the user) and sent as
+    /// the `attribution_set` event. A server postback from the MMP takes precedence over it in analytics. Calling it
+    /// again replaces the stored attribution. Safe to call before `configure()`.
+    public static func setAttribution(_ attribution: [String: Any]) {
+        let stored = AttributionTargeting.store(attribution)
+        AppDNA.track(event: "attribution_set", properties: stored)
+    }
+
+    /// Calls back `true` once attribution is stored (at once if `setAttribution` was already called, on this or an
+    /// earlier launch), or `false` after `timeoutMs` (default 1500) when none arrived, so the first onboarding or
+    /// paywall can wait briefly for the MMP before falling back to the default. Present inside the callback.
+    /// A wait that runs out is remembered: a later launch with still no attribution answers `false` at once.
+    /// The callback runs on the main thread.
+    public static func waitForAttribution(timeoutMs: Int = 1500, _ completion: @escaping (Bool) -> Void) {
+        AttributionTargeting.whenReady(
+            timeoutMs: timeoutMs,
+            schedule: { ms, fire in DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms), execute: fire) }
+        ) { arrived in
+            if Thread.isMainThread { completion(arrived) } else { DispatchQueue.main.async { completion(arrived) } }
+        }
+    }
+
     /// Link the anonymous device to a known user.
     /// The `identify` event's properties: `user_id`, the pre-identify `anon_id`, `previous_user_id` only
     /// when a different user was identified, and the traits made JSON-safe (`IdentifyTraits`).

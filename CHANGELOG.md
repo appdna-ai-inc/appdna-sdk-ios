@@ -7,6 +7,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `AppDNA.setAttribution(_:)` and `AppDNA.waitForAttribution(timeoutMs:_:)`: hand AppDNA the attribution your MMP's
+  on-device callback delivers, and audience rules on onboarding flows, paywalls and experiments can target any
+  acquisition field (`attribution.<field>`, `attribution.param.<key>`, with `starts_with`) on the first launch. Stored on
+  the device and sent as the `attribution_set` event. Onboarding selection now evaluates audience rules for a user with
+  no traits when attribution is stored. See
+  [Target content by acquisition source](https://docs.appdna.ai/sdks/ios/api-reference#target-content-by-acquisition-source).
 - `AppDNA.anonymousId`: the anonymous ID AppDNA keys this install's events by. Pass it to your mobile measurement
   partner (AppsFlyer, Adjust, Singular) as its customer user ID before the MMP starts, so AppDNA can join each install
   and its campaign to the person. Stable for the life of the install (it survives restarts, `identify` and `reset()`)

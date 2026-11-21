@@ -182,8 +182,9 @@ final class OnboardingFlowManager {
         }
 
         // Try audience-based selection: evaluate all flows, pick highest priority match
+        // an app with no traits but a stored attribution still targets (attribution.* rules).
         let userTraits = AppDNA.getUserTraits()
-        if !userTraits.isEmpty {
+        if !userTraits.isEmpty || AttributionTargeting.payload != nil {
             let allFlows = remoteConfigManager.getAllOnboardingFlows()
             let matching = allFlows.values
                 .filter { flow in
