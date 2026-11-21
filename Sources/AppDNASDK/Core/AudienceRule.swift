@@ -130,7 +130,7 @@ internal enum AudienceRuleEvaluator {
         guard let traitKey = rule.trait else { return true }
         // A trait identify stored as null (`NSNull`) is NOT SET, for every operator: it does not `exists`,
         // as the server's segment SQL and the journey evaluators read it.
-        // SPEC-542 P6b — an `attribution.` key reads the stored attribution, folded for a case-insensitive compare.
+        // an `attribution.` key reads the stored attribution, folded for a case-insensitive compare.
         let attribution = AttributionTargeting.isAttributionKey(traitKey)
         let traitValue: Any? = attribution
             ? AttributionTargeting.fold(AttributionTargeting.resolve(traitKey))
@@ -145,7 +145,7 @@ internal enum AudienceRuleEvaluator {
         case "gt":
             return ConditionEvaluator.compareNumeric(traitValue, ruleValue) == .orderedDescending
         case "gte":
-            // #2045 — `compareNumeric` answers `.orderedSame` when a side is not a number, so a missing or non-numeric
+            // `compareNumeric` answers `.orderedSame` when a side is not a number, so a missing or non-numeric
             // trait used to MATCH `gte` / `lte`. Both sides must be numbers, as the server's segment SQL reads them.
             guard bothNumeric(traitValue, ruleValue) else { return false }
             let cmp = ConditionEvaluator.compareNumeric(traitValue, ruleValue)
@@ -165,7 +165,7 @@ internal enum AudienceRuleEvaluator {
             }
             return false
         case "starts_with":
-            // SPEC-542 P6b — a literal prefix (never a pattern), case-insensitive like `contains`.
+            // a literal prefix (never a pattern), case-insensitive like `contains`.
             guard let str = traitValue as? String, let prefix = ruleValue as? String else { return false }
             return str.lowercased().hasPrefix(prefix.lowercased())
         case "exists":
@@ -209,7 +209,7 @@ internal enum AudienceRuleEvaluator {
         }
     }
 
-    /// #2045 — an ordered comparison needs a number on both sides; anything else does not match.
+    /// an ordered comparison needs a number on both sides; anything else does not match.
     private static func bothNumeric(_ lhs: Any?, _ rhs: Any?) -> Bool {
         ConditionEvaluator.toDouble(lhs) != nil && ConditionEvaluator.toDouble(rhs) != nil
     }
@@ -225,7 +225,7 @@ internal enum AudienceRuleEvaluator {
         } else {
             list = []
         }
-        // SPEC-542 P6b — an attribution rule's list compares case-insensitively, like its single value.
+        // an attribution rule's list compares case-insensitively, like its single value.
         return fold ? (AttributionTargeting.fold(list) as? [Any] ?? list) : list
     }
 

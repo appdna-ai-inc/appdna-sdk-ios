@@ -628,7 +628,7 @@ final class SharedFixtureTests: XCTestCase {
         // (`{conditions, match_mode}`), the object shape the console publishes.
         let mode = config["match_mode"]?.stringValue ?? "all"
         let rules = AnyCodable(["conditions": AnyJSON.array(rulesJSON).foundation, "match_mode": mode] as [String: Any])
-        // SPEC-542 P6b — `setup.attribution` is the payload the app handed `setAttribution`; reset after.
+        // `setup.attribution` is the payload the app handed `setAttribution`; reset after.
         AttributionTargeting.payload = f.setup.raw["attribution"]?.objectValue?.mapValues { $0.foundation }
         defer { AttributionTargeting.payload = nil }
         h.state["audience_match"] = AudienceRuleEvaluator.evaluate(rules: rules, traits: traits)
