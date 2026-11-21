@@ -903,6 +903,8 @@ public final class AppDNA: @unchecked Sendable {
             Log.info("Identified user: \(userId)")
             // a user change while analytics is declined re-signals with the new user.
             if previousUserId != userId { shared.notifyConsentUserChanged() }
+            // Segment membership is per user: the new user's is asked for (the old answer no longer applies to them).
+            if previousUserId != userId { requestSegmentMembership(shared.segmentIdsOfActiveMessages()) }
             // The push token's server row now names this user.
             shared.pushTokenManager?.reregister()
 
@@ -974,6 +976,9 @@ public final class AppDNA: @unchecked Sendable {
         runWhenBuilt("reset") {
             let userBeforeReset = shared.identityManager?.currentIdentity.userId
             shared.identityManager?.reset()
+            // The signed-out user's segment membership must never gate the next person's messages.
+            SegmentMembership.clear()
+            requestSegmentMembership(shared.segmentIdsOfActiveMessages())
             // the user became nil; while analytics is declined that is re-signalled.
             if userBeforeReset != nil { shared.notifyConsentUserChanged() }
             // The push token's server row no longer names the signed-out user.
@@ -1422,6 +1427,32 @@ public final class AppDNA: @unchecked Sendable {
     /// Get current user traits for audience rule evaluation.
     public static func getUserTraits() -> [String: Any] {
         shared.identityManager?.currentIdentity.traits ?? [:]
+    }
+
+    /// The key the segment membership answer is kept under for the current user (identified user, else anon id).
+    static func segmentUserKey() -> String? {
+        guard let identity = shared.identityManager?.currentIdentity else { return nil }
+        return SegmentMembership.userKey(anonId: identity.anonId, userId: identity.userId)
+    }
+
+    /// Ask AppDNA which of `ids` the current user is in, unless a fresh answer for this user already covers them (one
+    /// request at a time, off the main thread). Segment-targeted in-app messages are gated on the answer.
+    static func requestSegmentMembership(_ ids: Set<String>) {
+        guard !ids.isEmpty, let client = shared.apiClient, let identity = shared.identityManager?.currentIdentity else { return }
+        let ttl = shared.remoteConfigManager?.currentConfigTTL ?? 300
+        let anonId = identity.anonId, userId = identity.userId
+        Task.detached {
+            await SegmentMembership.refresh(ids: ids, anonId: anonId, userId: userId, ttl: ttl) { path, body in
+                await client.postForData(path: path, body: body)
+            }
+        }
+    }
+
+    /// The segment ids the published in-app messages target.
+    func segmentIdsOfActiveMessages() -> Set<String> {
+        (remoteConfigManager?.getActiveMessages() ?? [:]).values.reduce(into: Set<String>()) { ids, m in
+            if let a = m.audience { ids.formUnion(a.ids) }
+        }
     }
 
     /// Shorthand to show a paywall by ID (used by screen action routing).
@@ -1977,6 +2008,8 @@ public final class AppDNA: @unchecked Sendable {
         self.runtimeSettings = initialRuntime
         let configCache = ConfigCache(ttl: initialRuntime.configTTL)
         self.runtimeConfigCache = configCache
+        // The previous launch's segment membership answer, for segment-targeted messages before the network answers.
+        SegmentMembership.attach()
         let eventStore = EventStore()
 
         // 2. Initialize event system
@@ -2504,7 +2537,11 @@ public final class AppDNA: @unchecked Sendable {
                 case .screen: ScreenManager.shared.evaluateTriggers(event: event, properties: properties)
                 }
             }
-            remoteCfg.onFetchSucceeded = { [weak triggers] in triggers?.markConfigReady() }
+            remoteCfg.onFetchSucceeded = { [weak triggers, weak self] in
+                triggers?.markConfigReady()
+                // Segment-targeted messages need the user's membership; asked once the published messages are known.
+                if let ids = self?.segmentIdsOfActiveMessages() { AppDNA.requestSegmentMembership(ids) }
+            }
             if configCache.loadFetchedAt() != nil { triggers.markConfigReady() }
         }
 

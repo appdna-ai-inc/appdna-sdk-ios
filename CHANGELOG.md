@@ -6,6 +6,15 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- In-app messages honour segment targeting. A message's `audience` (`segments`: shown only to people in at least one;
+  `exclude_segments`: never shown to people in any) is checked against the current user's membership, which the SDK asks
+  AppDNA for (`POST /api/v1/sdk/segments`, only when a message uses segments) when the configuration loads, when
+  `identify` changes the user and after `reset`. The answer is kept for that user only and stored for the next launch.
+  Until it has arrived, a message with segments is not shown; a message with no segments is shown as before. See
+  [In-app messages](https://docs.appdna.ai/sdks/ios/in-app-messages). Shared fixture
+  `audience_eval/message_audience_segments`.
+
 ### Fixed
 - A `{{savings_percent}}` badge on a plan whose authored price is a per-month figure (`"$5.00/mo, billed yearly"` on
   an annual plan) states the real saving. The amount is read over the unit written right after it (`/mo`, `a week`,

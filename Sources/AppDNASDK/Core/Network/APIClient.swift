@@ -215,6 +215,18 @@ final class APIClient {
         }
     }
 
+    /// One POST with a JSON body, answering the HTTP status (nil on a network error) and the body. No retry: the
+    /// caller decides (the segment membership answer is asked for again on the next trigger).
+    func postForData(path: String, body: [String: Any]) async -> (status: Int?, data: Data?) {
+        do {
+            let request = try postRequest(path: path, body: body)
+            let (data, response) = try await session.data(for: request)
+            return ((response as? HTTPURLResponse)?.statusCode, data)
+        } catch {
+            return (nil, nil)
+        }
+    }
+
     /// The request `post` sends: the resolved base URL (the test-only override applies
     /// here exactly as it does to `request` and event ingest), the auth and SDK headers, the JSON body.
     func postRequest(path: String, body: [String: Any]) throws -> URLRequest {

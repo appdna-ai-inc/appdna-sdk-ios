@@ -36,9 +36,12 @@ extension SharedFixtureTests {
                 let cache = ConfigCache(ttl: 3600, suiteName: "ai.appdna.sdk.fixture.audience.\(UUID().uuidString)")
                 let remoteConfig = RemoteConfigManager(firestorePath: nil, configCache: cache, configTTL: 3600)
                 remoteConfig._parseMessageDocForTesting(id: id, data: item)
-                guard let event = remoteConfig._getMessagesForTesting()[id]?.trigger_rules?.event else {
+                guard let parsed = remoteConfig._getMessagesForTesting()[id], let event = parsed.trigger_rules?.event else {
                     return XCTFail("[\(f.id)] case \(i) message did not parse")
                 }
+                // `segment_membership`: the server's answer, for this user unless `for_current_user` is
+                // false; `asked` defaults to the message's ids. Absent: no answer.
+                let answer = Self.segmentAnswer(o["segment_membership"]?.foundation as? [String: Any], config: parsed)
                 let manager = MessageManager(
                     remoteConfigManager: remoteConfig,
                     eventTracker: h.tracker,
@@ -48,7 +51,10 @@ extension SharedFixtureTests {
                         close: { _, done in done() },
                         observeActivation: { _ in {} }
                     ),
-                    userTraits: { traits }
+                    userTraits: { traits },
+                    segmentUserKey: { "u:fixture-user" },
+                    segmentAnswer: { answer },
+                    requestSegments: { _ in }
                 )
                 manager.onEvent(eventName: event, properties: nil)
                 await Self.drainMainQueue()
@@ -78,5 +84,18 @@ extension SharedFixtureTests {
             }
         }
         h.state["results"] = results
+    }
+
+    /// A fixture case's `segment_membership` as the membership answer the message gate reads.
+    static func segmentAnswer(_ o: [String: Any]?, config: MessageConfig) -> SegmentMembership.Answer? {
+        guard let o = o else { return nil }
+        let set: (String) -> Set<String>? = { k in (o[k] as? [Any]).map { Set($0.compactMap { $0 as? String }) } }
+        return SegmentMembership.Answer(
+            userKey: (o["for_current_user"] as? Bool ?? true) ? "u:fixture-user" : "u:someone-else",
+            asked: set("asked") ?? (config.audience?.ids ?? []),
+            memberOf: set("member_of") ?? [],
+            unresolved: set("unresolved") ?? [],
+            fetchedAt: Date()
+        )
     }
 }

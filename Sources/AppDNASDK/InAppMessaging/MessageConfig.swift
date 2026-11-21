@@ -25,6 +25,10 @@ public struct MessageConfig: Codable {
     /// Who may see this message: `{priority, match_mode, conditions}` or a bare rule list, evaluated against the
     /// user's traits and the stored install attribution (`attribution.<field>`, `attribution.param.<key>`). Nil: everyone.
     public var audience_rules: AnyCodable? = nil
+    /// Who may see this message by segment: shown only to people in at least one of `segments` (empty: everyone) and
+    /// in none of `exclude_segments`. Membership is resolved by AppDNA for the current user; until it is known, a
+    /// message with segments is not shown. Nil: no segment targeting.
+    public var audience: SegmentAudience? = nil
 }
 
 public enum MessageType: String, Codable {

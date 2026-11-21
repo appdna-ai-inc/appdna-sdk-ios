@@ -96,18 +96,38 @@ final class MessageManager {
         AudienceRuleEvaluator.evaluate(rules: config.audience_rules, traits: traits)
     }
 
+    /// The current user's key for segment membership (`u:<userId>` / `a:<anonId>`).
+    private let segmentUserKey: () -> String?
+    /// The current segment membership answer.
+    private let segmentAnswer: () -> SegmentMembership.Answer?
+    /// Asks AppDNA for the membership of these ids when the answer does not cover them yet (async; never blocks).
+    private let requestSegments: (Set<String>) -> Void
+
+    /// The segment step: does `config`'s `audience` admit the user? No segments admits everyone; otherwise the
+    /// server-resolved membership for THIS user must cover every id (fail closed until it does). Android
+    /// `MessageManager.segmentsAllow`, same rule.
+    static func segmentsAllow(_ config: MessageConfig, userKey: String?, answer: SegmentMembership.Answer?) -> Bool {
+        SegmentMembership.allows(config.audience, userKey: userKey, answer: answer)
+    }
+
     init(
         remoteConfigManager: RemoteConfigManager,
         eventTracker: EventTracker,
         experimentManager: ExperimentManager? = nil,
         surface: MessageSurface = .live,
-        userTraits: @escaping () -> [String: Any] = { AppDNA.getUserTraits() }
+        userTraits: @escaping () -> [String: Any] = { AppDNA.getUserTraits() },
+        segmentUserKey: @escaping () -> String? = { AppDNA.segmentUserKey() },
+        segmentAnswer: @escaping () -> SegmentMembership.Answer? = { SegmentMembership.answer },
+        requestSegments: @escaping (Set<String>) -> Void = { AppDNA.requestSegmentMembership($0) }
     ) {
         self.remoteConfigManager = remoteConfigManager
         self.eventTracker = eventTracker
         self.experimentManager = experimentManager
         self.surface = surface
         self.userTraits = userTraits
+        self.segmentUserKey = segmentUserKey
+        self.segmentAnswer = segmentAnswer
+        self.requestSegments = requestSegments
         self.stopActivation = surface.observeActivation({ [weak self] in self?.releaseHeld() })
     }
 
@@ -126,9 +146,13 @@ final class MessageManager {
         var filteredByEvent = 0
         var filteredByConditions = 0
         var filteredByAudience = 0
+        var filteredBySegments = 0
         var filteredByFrequency = 0
         // Read once per event, and only when a message reaches the audience step.
         var traits: [String: Any]?
+        // Read once per event, and only when a message carries segments.
+        var segmentState: (key: String?, answer: SegmentMembership.Answer?)?
+        var segmentIdsMissing = Set<String>()
         var filteredByDateRange = 0
 
         for (id, config) in messages {
@@ -151,6 +175,16 @@ final class MessageManager {
                 continue
             }
 
+            // 2c. Segments (membership resolved by AppDNA for this user). Unknown → not shown, and asked for.
+            if let audience = config.audience, !audience.isEmpty {
+                if segmentState == nil { segmentState = (segmentUserKey(), segmentAnswer()) }
+                guard Self.segmentsAllow(config, userKey: segmentState?.key, answer: segmentState?.answer) else {
+                    filteredBySegments += 1
+                    segmentIdsMissing.formUnion(audience.ids)
+                    continue
+                }
+            }
+
             // 3. Frequency check
             guard frequencyTracker.canShow(
                 messageId: id,
@@ -170,8 +204,11 @@ final class MessageManager {
             candidates.append((id: id, config: config))
         }
 
+        // A message held back only because the membership answer is missing or stale asks for it, for the next trigger.
+        if !segmentIdsMissing.isEmpty { requestSegments(segmentIdsMissing) }
+
         if candidates.isEmpty {
-            Log.debug("[Messages] No candidates for '\(eventName)' — filtered: event=\(filteredByEvent), conditions=\(filteredByConditions), audience=\(filteredByAudience), frequency=\(filteredByFrequency), dateRange=\(filteredByDateRange)")
+            Log.debug("[Messages] No candidates for '\(eventName)' — filtered: event=\(filteredByEvent), conditions=\(filteredByConditions), audience=\(filteredByAudience), segments=\(filteredBySegments), frequency=\(filteredByFrequency), dateRange=\(filteredByDateRange)")
         } else {
             Log.debug("[Messages] \(candidates.count) candidate(s) passed all filters for '\(eventName)'")
         }
