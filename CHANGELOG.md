@@ -6,6 +6,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A `{{savings_percent}}` badge on a plan whose authored price is a per-month figure (`"$5.00/mo, billed yearly"` on
+  an annual plan) states the real saving. The amount is read over the unit written right after it (`/mo`, `a week`,
+  `per year`) before the plan's other words, so a $5.00/mo annual plan against a $19.99/mo monthly one reads "save 74%",
+  not "save 97%". Shared fixture `billing/plan_savings_percent`.
+
 ## [1.0.88] — 2026-11-21
 
 ### Added

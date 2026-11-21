@@ -10,7 +10,7 @@ import Foundation
 /// So a plan's `badge` or `savings_text` may carry the token `{{savings_percent}}`, filled here:
 ///
 /// 1. Each plan's price PER MONTH — a store price over the store's ISO period, an authored price
-///    over the period its own words name (`period`, label, price text, product id); each falls
+///    over the unit written right after its amount ("$5.00/mo"), else the period its own words name (`period`, label, price text, product id); each falls
 ///    back to the other.
 /// 2. The anchor is the most expensive per-month plan in the same list; a plan's saving is
 ///    `1 − perMonth / anchor`, FLOORED to a whole percent, so the claim never rounds up.
@@ -85,6 +85,33 @@ enum PlanSavings {
         }
     }
 
+    private static let priceUnitRegex = try? NSRegularExpression(
+        pattern: #"^\s*(?:\p{Sc}\s*)?(?:/|per\b|a\b|an\b|each\b|every\b)\s*(?:1\s*)?([A-Za-z]+)"#,
+        options: [.caseInsensitive]
+    )
+
+    /// Months in the unit written RIGHT AFTER a price's amount: "$5.00/mo", "$4.99 a week",
+    /// "$59.99 per year". An authored annual plan's price is often a MONTHLY figure ("$5.00/mo, billed
+    /// yearly"); read over the plan's twelve months it claimed "save 97%" against $19.99/mo instead of
+    /// 74%. The unit beside the amount describes the amount. nil when no unit follows it.
+    static func months(priceUnit text: String?) -> Double? {
+        guard let text,
+              let amountRe = try? NSRegularExpression(pattern: "\\d(?:[\\d.,'\u{00A0}\u{202F} ]*\\d)?"),
+              let m = amountRe.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let r = Range(m.range, in: text), let unitRe = priceUnitRegex else { return nil }
+        let rest = String(text[r.upperBound...])
+        guard let u = unitRe.firstMatch(in: rest, range: NSRange(rest.startIndex..., in: rest)),
+              let ur = Range(u.range(at: 1), in: rest) else { return nil }
+        switch rest[ur].lowercased() {
+        case "mo", "mos", "mon", "mth", "month", "months": return 1
+        case "yr", "yrs", "year", "years", "annum": return 12
+        case "wk", "wks", "week", "weeks": return 12.0 / 52.0
+        case "quarter", "qtr": return 3
+        case "day", "days": return 12.0 / 365.0
+        default: return nil
+        }
+    }
+
     /// Months a plan's own WORDS name.
     static func months(words parts: [String?]) -> Double? {
         var words = " " + parts.compactMap { $0 }.joined(separator: " ").lowercased() + " "
@@ -106,7 +133,7 @@ enum PlanSavings {
             let authored = p.price_display ?? p.price
             let words = months(words: [p.period, p.label ?? p.name, authored, p.productId])
             let amount = store ? p.resolvedStoreAmount : parseAmount(authored)
-            let m = store ? (months(iso: p.resolvedStorePeriod) ?? words) : (words ?? months(iso: p.resolvedStorePeriod))
+            let m = store ? (months(iso: p.resolvedStorePeriod) ?? words) : (months(priceUnit: authored) ?? words ?? months(iso: p.resolvedStorePeriod))
             guard let amount, amount > 0, let m, m > 0 else { return (nil, store) }
             return (amount / m, store)
         }
