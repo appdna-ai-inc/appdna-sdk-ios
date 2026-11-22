@@ -4,7 +4,7 @@ All notable changes to the AppDNA iOS SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.89] — 2026-11-22
 
 ### Added
 - In-app messages honour segment targeting. A message's `audience` (`segments`: shown only to people in at least one;
