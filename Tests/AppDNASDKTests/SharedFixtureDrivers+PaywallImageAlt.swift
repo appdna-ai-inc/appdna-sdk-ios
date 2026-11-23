@@ -158,6 +158,40 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_paywall_plan_badge REAL: `PaywallConfig` decoding of a paywall with one plans section (its plans
+    // in the section config) → `PaywallPlanBadge.placement(layout:badgePosition:)` and `PaywallPlanBadge.text(_:)` per plan,
+    // the two calls `PaywallRenderer` makes for pill_selector, segmented_toggle and product_as_cta.
+    func runPaywallPlanBadge(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_paywall_plan_badge needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let obj = c.objectValue ?? [:]
+            let name = obj["name"]?.stringValue ?? "?"
+            guard let section = obj["section"]?.foundation as? [String: Any],
+                  let data = try? JSONSerialization.data(withJSONObject: [
+                      "id": "pw_plan_badge_\(name)",
+                      "layout": ["type": "stack", "sections": [["id": "s1", "type": "plans", "config": section]]],
+                  ] as [String: Any]) else {
+                XCTFail("[\(f.id)] case \(name): needs section")
+                return NSNull()
+            }
+            let decoded: PaywallConfig
+            do {
+                decoded = try JSONDecoder().decode(PaywallConfig.self, from: data)
+            } catch {
+                XCTFail("[\(f.id)] case \(name): the paywall did not decode: \(error)")
+                return NSNull()
+            }
+            let plansSection = decoded.sections.first(where: { $0.type == "plans" })
+            let style = PlanCardStyle(from: plansSection?.data)
+            let placement = PaywallPlanBadge.placement(layout: plansSection?.data?.planDisplayStyle, badgePosition: style.badgePosition)
+            let drawn = (plansSection?.data?.plans ?? []).map { PaywallPlanBadge.text($0.badge) != nil }
+            return ["placement": placement, "drawn": drawn] as [String: Any]
+        }
+    }
+
      // resolve_post_purchase_failure REAL: `PostPurchaseFailureConfig.effective`, the config `PaywallManager` routes a
     // resolve_post_purchase_failure REAL: `PostPurchaseFailureConfig.effective`, the config `PaywallManager` routes a
     // failed purchase with. Each case: an `error_type` and an optional authored `on_failure`; the result is its action.

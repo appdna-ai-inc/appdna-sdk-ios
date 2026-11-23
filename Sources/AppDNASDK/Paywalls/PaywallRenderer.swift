@@ -2534,6 +2534,12 @@ struct PaywallRenderer: View {
                                     .font(.system(size: 13, weight: .semibold))
                                 Text(loc("plan.\(index).price", plan.displayPrice))
                                     .font(.caption)
+                                // the plan's badge, inside the pill under its price, as Android
+                                // and the console preview draw it (`PaywallPlanBadge` "below_price").
+                                if let badge = PaywallPlanBadge.text(plan.badge) {
+                                    PlanBadgeView(text: loc("plan.\(index).badge", badge), cardStyle: cardStyle, sectionStyle: style)
+                                        .padding(.top, 2)
+                                }
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
@@ -2553,6 +2559,24 @@ struct PaywallRenderer: View {
         // Segmented toggle: iOS native Picker segmented style
         case "segmented_toggle", "segmented":
             return AnyView(VStack(spacing: 8) {
+                /*
+                 each plan's badge, centred over its own segment in a row above the control
+                 (`PaywallPlanBadge` "above_segment"). `Picker(.segmented)` draws only a title or an
+                 image inside a segment, so the badge cannot go in it; the row's slots are equal
+                 width, as the control's segments are. A paywall whose plans carry no badge has no row.
+                 */
+                if plans.contains(where: { PaywallPlanBadge.text($0.badge) != nil }) {
+                    HStack(spacing: 0) {
+                        ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
+                            ZStack {
+                                if let badge = PaywallPlanBadge.text(plan.badge) {
+                                    PlanBadgeView(text: loc("plan.\(index).badge", badge), cardStyle: cardStyle, sectionStyle: style)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                }
                 Picker("Plan", selection: Binding(
                     get: { selectedPlanId ?? plans.first?.id ?? "" },
                     set: { selectPlan($0) }
@@ -2854,14 +2878,22 @@ struct PaywallRenderer: View {
 
         // Product as CTA: each plan IS a buy button
         case "product_as_cta":
+            // the plan's badge straddles the button's top edge at the authored
+            // `badge_position`, as it does on a card; `inline` puts it under the plan name instead.
+            let ctaBadgePlacement = PaywallPlanBadge.placement(layout: "product_as_cta", badgePosition: cardStyle.badgePosition)
             return AnyView(VStack(spacing: cardStyle.cardGap ?? 10) {
                 ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
+                    let badge = PaywallPlanBadge.text(plan.badge)
                     Button { selectPlan(plan.id); handleCTATap() } label: {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(plan.displayName).font(.subheadline.weight(.semibold)).foregroundColor(.white)
                                 if let trial = plan.trialLabel {
                                     Text(trial).font(.caption).foregroundColor(.white.opacity(0.8))
+                                }
+                                if ctaBadgePlacement == "inline", let badge {
+                                    PlanBadgeView(text: loc("plan.\(index).badge", badge), cardStyle: cardStyle, sectionStyle: style)
+                                        .padding(.top, 4)
                                 }
                             }
                             Spacer()
@@ -2874,6 +2906,16 @@ struct PaywallRenderer: View {
                     }
                     .contentShape(Rectangle())
                     .buttonStyle(.plain)
+                    .overlay(alignment: PaywallPlanBadge.alignment(ctaBadgePlacement)) {
+                        if ctaBadgePlacement != "inline", let badge {
+                            PlanBadgeView(text: loc("plan.\(index).badge", badge), cardStyle: cardStyle, sectionStyle: style)
+                                .fixedSize()
+                                .padding(.horizontal, 8)
+                                .offset(y: -PaywallPlanBadge.overhang(cardStyle))
+                                .allowsHitTesting(false)
+                        }
+                    }
+                    .padding(.top, ctaBadgePlacement != "inline" && badge != nil ? PaywallPlanBadge.reservedTop(cardStyle) : 0)
                 }
             })
 

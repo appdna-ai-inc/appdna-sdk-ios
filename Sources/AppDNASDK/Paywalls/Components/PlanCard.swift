@@ -45,9 +45,6 @@ struct PlanCard: View {
     private var periodTextStyle: TextStyleConfig? {
         sectionStyle?.elements?["period"]?.textStyle
     }
-    private var badgeTextStyle: TextStyleConfig? {
-        sectionStyle?.elements?["badge"]?.textStyle
-    }
     private var featureTextStyle: TextStyleConfig? {
         sectionStyle?.elements?["feature"]?.textStyle
     }
@@ -140,7 +137,6 @@ struct PlanCard: View {
         return unselectedTextColor
     }
     private var selectedScaleValue: CGFloat { cardStyle.selectedScale ?? 1.0 }
-    private var badgeFg: Color { Color(hex: cardStyle.badgeTextColor ?? "#FFFFFF") }
 
     /// Everything the card gives a plan, deliberately absent: no border, no background, no
     /// badge, no subtitle, no selection control. Just the name and price on one centred line.
@@ -590,94 +586,10 @@ struct PlanCard: View {
         }
     }
 
-    @ViewBuilder
+    /// The card's badge: the one shared `PlanBadgeView`, which the plan layouts that are not cards
+    /// (`pill_selector`, `segmented_toggle`, `product_as_cta`) draw too.
     private func badgeView(_ badge: String) -> some View {
-        let text = loc?("plan.\(planIndex).badge", badge) ?? badge
-        let shape = cardStyle.badgeStyle ?? "capsule"
-        let borderW = cardStyle.badgeBorderWidth ?? 0
-        let borderCol = cardStyle.badgeBorderColor.map { Color(hex: $0) } ?? .clear
-
-        if !text.isEmpty {
-            HStack(spacing: 4) {
-                // Badge icon (SF Symbol or emoji)
-                if let icon = cardStyle.badgeIcon, !icon.isEmpty {
-                    if UIImage(systemName: icon) != nil {
-                        Image(systemName: icon)
-                            .font(.system(size: 10, weight: .bold))
-                    } else {
-                        Text(icon).font(.system(size: 10))
-                    }
-                }
-                if let ts = badgeTextStyle {
-                    // Merged over whichever unstyled badge font applies below.
-                    Text(text).applyTextStyle(ts, defaults: TextStyleDefaults(
-                        font: cardStyle.badgeFontSize.map { Font.system(size: $0, weight: .bold) } ?? .caption2.bold(),
-                        size: Double(cardStyle.badgeFontSize ?? 11), weight: 700, color: badgeFg))
-                } else if let size = cardStyle.badgeFontSize {
-                    // Flat badge_font_size authored in the console. Falls back
-                    // to .caption2 (11pt) when unset.
-                    Text(text)
-                        .font(.system(size: size, weight: .bold))
-                        .foregroundColor(badgeFg)
-                } else {
-                    Text(text)
-                        .font(.caption2.bold())
-                        .foregroundColor(badgeFg)
-                }
-            }
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(PaywallBadgeFill.view(cardStyle))
-            .clipShape(badgeShape(shape))
-            .overlay(
-                badgeShape(shape)
-                    .stroke(borderCol, lineWidth: borderW)
-            )
-            // The badge's authored container style, applied OUTSIDE its own chrome so an
-            // authored border or padding surrounds the badge rather than replacing it.
-            .applyElementStyle(elementStyle("badge"))
-        }
-    }
-
-    private func badgeShape(_ style: String) -> some Shape {
-        switch style {
-        /*
-         * `square` is accepted as an alias for `rectangle`, which Android has done since it
-         * shipped. Without it the value fell through to `default:` and drew a **capsule** — the
-         * opposite of what the word means, so one hand-written document was a box on Android and a
-         * pill here. The Console never writes it (its picker offers capsule/rectangle/rounded), so
-         * nothing an author authored changes; what changes is an imported or hand-edited document
-         * finally getting the shape it asked for.
-         */
-        case "rectangle", "square":
-            return AnyShape(RoundedRectangle(cornerRadius: 2))
-        case "rounded":
-            return AnyShape(RoundedRectangle(cornerRadius: 6))
-        case "ribbon":
-            // Notched-ribbon: rectangle with a triangular notch cut into the trailing
-            // edge, matching the console preview polygon (0,0 → 100,0 → 92,50 → 100,100 → 0,100).
-            return AnyShape(RibbonBadgeShape())
-        default: // capsule
-            return AnyShape(Capsule())
-        }
-    }
-}
-
-/// Notched-ribbon badge shape — a rectangle whose trailing edge caves inward to a
-/// point at mid-height, producing top/bottom pennant tails. Kept visually equivalent
-/// to the console PaywallPreview clipPath and the Android GenericShape counterpart.
-private struct RibbonBadgeShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path()
-        p.move(to: CGPoint(x: rect.minX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
-        p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.92, y: rect.midY))
-        p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
-        p.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
-        p.closeSubpath()
-        return p
+        PlanBadgeView(text: loc?("plan.\(planIndex).badge", badge) ?? badge, cardStyle: cardStyle, sectionStyle: sectionStyle)
     }
 }
 

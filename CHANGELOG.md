@@ -6,6 +6,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A plan's badge is drawn in the `pill_selector`, `segmented_toggle` and `product_as_cta` plan layouts, with the same
+  badge styling as a plan card. `pill_selector` draws it inside the pill under the price. `segmented_toggle` draws it
+  centred above its segment. `product_as_cta` draws it on the button's top edge at `badge_position` (`inline`: under the
+  plan name). A blank badge draws nothing. Before this, iOS drew no badge in any of the three layouts. See
+  [Paywalls](https://docs.appdna.ai/sdks/ios/paywall). Shared fixtures `dto_parsing/paywall_plan_badge_*`.
+
 ## [1.0.89] — 2026-11-22
 
 ### Added
