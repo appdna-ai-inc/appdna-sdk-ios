@@ -47,8 +47,10 @@ dependencies: [
 
 ### CocoaPods
 
+Version 1.0.90 is not on CocoaPods Trunk (the newest Trunk version is 1.0.89), so install it from its git tag:
+
 ```ruby
-pod 'AppDNASDK', '~> 1.0.90'
+pod 'AppDNASDK', :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => 'v1.0.90'
 ```
 
 ## Quick start
