@@ -47,7 +47,7 @@ dependencies: [
 
 ### CocoaPods
 
-Version 1.0.90 is not on CocoaPods Trunk (the newest Trunk version is 1.0.89), so install it from its git tag:
+From 1.0.90 the SDK is distributed through Swift Package Manager only; CocoaPods Trunk is read-only from 2 December 2026, and 1.0.89 is the last version there. If you must stay on CocoaPods, install the release from its git tag:
 
 ```ruby
 pod 'AppDNASDK', :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => 'v1.0.90'

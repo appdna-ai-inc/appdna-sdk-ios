@@ -6,6 +6,14 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Distribution: Swift Package Manager only. Nothing is published to CocoaPods Trunk any more (it is read-only from
+  2 December 2026; 1.0.89 is the last version there, and 1.0.90 was never uploaded). CocoaPods apps install the
+  release from its git tag:
+  `pod 'AppDNASDK', :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => 'vX.Y.Z'`
+  (and the same for `AppDNANotificationExtension`). See
+  [Installation](https://docs.appdna.ai/sdks/ios/installation#cocoapods).
+
 ## [1.0.90] — 2026-11-23
 
 ### Fixed
