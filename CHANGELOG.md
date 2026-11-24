@@ -6,6 +6,12 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A plan's `{{savings_percent}}` no longer overstates the saving when an authored price writes its currency in letters
+  between the amount and its unit (`"25,00 zł per month"` on an annual plan against `"29,99 zł per month"` now reads 16%,
+  not 93%). The unit after the amount skips a 1–3 letter currency the way it already skipped a currency symbol. See
+  [Paywalls](https://docs.appdna.ai/sdks/ios/paywall). Shared fixture `billing/plan_savings_percent`.
+
 ### Changed
 - Distribution: Swift Package Manager only. Nothing is published to CocoaPods Trunk any more (it is read-only from
   2 December 2026; 1.0.89 is the last version there, and 1.0.90 was never uploaded). CocoaPods apps install the

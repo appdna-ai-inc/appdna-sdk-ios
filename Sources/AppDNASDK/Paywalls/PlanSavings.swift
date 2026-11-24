@@ -86,7 +86,7 @@ enum PlanSavings {
     }
 
     private static let priceUnitRegex = try? NSRegularExpression(
-        pattern: #"^\s*(?:\p{Sc}\s*)?(?:/|per\b|a\b|an\b|each\b|every\b)\s*(?:1\s*)?([A-Za-z]+)"#,
+        pattern: #"^\s*(?:(?:\p{Sc}|\p{L}{1,3}\.?)\s*)?(?:/|per\b|a\b|an\b|each\b|every\b)\s*(?:1\s*)?([A-Za-z]+)"#,
         options: [.caseInsensitive]
     )
 
