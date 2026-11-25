@@ -6,6 +6,13 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A next-step rule whose target is a step of the same flow now goes to that step when the step's id begins with
+  `screen_`, which is how the Console names the steps it creates. Such a rule used to be read as a Screens target,
+  so the flow ended instead of moving on and the button looked as if it did nothing. A target that names no step of
+  the flow still routes to its flow-graph node. See [Onboarding](https://docs.appdna.ai/sdks/ios/onboarding).
+  Shared fixtures `step_advance/rule_target_step_id_with_screen_prefix` and `…_object_condition`.
+
 ## [1.0.91] — 2026-11-25
 
 ### Fixed

@@ -281,6 +281,13 @@ enum OnboardingAdvance {
                 let target = rule.target_step_id
                 // A blank target routes nowhere — try the next rule (Android `RuleTarget.Empty`).
                 if target.isEmpty { continue }
+                // A target that names one of THIS flow's steps is that step, whatever its prefix.
+                // The console names custom steps `screen_<timestamp>`, and the prefix routes below ran
+                // first, so a rule to such a step completed the flow with a Screens marker instead of
+                // advancing: the Continue button looked dead. A graph node is never also a step.
+                if let targetIndex = flow.steps.firstIndex(where: { $0.id == target }) {
+                    return outcome(.goToIndex(targetIndex))
+                }
                 // Route by graph-node TYPE (short ids like `paywall1` carry no prefix) and by the
                 // legacy ID prefix, so both forms route.
                 let nodeType = graphNodeType(for: target, flow: flow)
