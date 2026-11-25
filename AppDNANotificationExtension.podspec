@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'AppDNANotificationExtension'
-  s.version          = '1.0.91'
+  s.version          = '1.0.92'
   s.summary          = 'AppDNA Notification Service Extension helper — push images and action buttons.'
   s.description      = <<-DESC
 The extension-safe part of the AppDNA iOS SDK for a Notification Service Extension target: downloads a
