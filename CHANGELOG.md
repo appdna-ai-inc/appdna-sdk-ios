@@ -11,7 +11,10 @@ the project uses [Semantic Versioning](https://semver.org/).
   `screen_`, which is how the Console names the steps it creates. Such a rule used to be read as a Screens target,
   so the flow ended instead of moving on and the button looked as if it did nothing. A target that names no step of
   the flow still routes to its flow-graph node. See [Onboarding](https://docs.appdna.ai/sdks/ios/onboarding).
-  Shared fixtures `step_advance/rule_target_step_id_with_screen_prefix` and `…_object_condition`.
+  Affected: 1.0.70 to 1.0.91. Flows published from the Console after its matching update also route correctly on
+  those versions (the Console reshapes such rules in the copy it sends to devices; one `onboarding_rule_route`
+  event marks each move it reshaped). Shared fixtures `step_advance/rule_target_step_id_with_screen_prefix`,
+  `…_object_condition`, `rule_target_screen_step_via_route_alias` and `rule_target_screen_step_next_rule_dropped`.
 
 ## [1.0.91] — 2026-11-25
 
