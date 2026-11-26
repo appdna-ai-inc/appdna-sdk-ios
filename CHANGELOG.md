@@ -4,7 +4,7 @@ All notable changes to the AppDNA iOS SDK are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 the project uses [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.92] — 2026-11-26
 
 ### Fixed
 - A next-step rule whose target is a step of the same flow now goes to that step when the step's id begins with

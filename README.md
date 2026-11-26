@@ -35,13 +35,13 @@ In Xcode: **File → Add Package Dependencies…** and enter:
 https://github.com/appdna-ai-inc/appdna-sdk-ios.git
 ```
 
-Set the dependency rule to **Up to Next Major Version** starting from `1.0.91`.
+Set the dependency rule to **Up to Next Major Version** starting from `1.0.92`.
 
 Or add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.91")
+    .package(url: "https://github.com/appdna-ai-inc/appdna-sdk-ios.git", from: "1.0.92")
 ]
 ```
 
@@ -50,7 +50,7 @@ dependencies: [
 From 1.0.90 the SDK is distributed through Swift Package Manager only; CocoaPods Trunk is read-only from 2 December 2026, and 1.0.89 is the last version there. If you must stay on CocoaPods, install the release from its git tag:
 
 ```ruby
-pod 'AppDNASDK', :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => 'v1.0.91'
+pod 'AppDNASDK', :git => 'https://github.com/appdna-ai-inc/appdna-sdk-ios.git', :tag => 'v1.0.92'
 ```
 
 ## Quick start
