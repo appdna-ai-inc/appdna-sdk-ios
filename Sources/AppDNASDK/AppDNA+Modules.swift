@@ -209,7 +209,7 @@ extension AppDNA {
                 guard let self,
                       let entitlements = notification.userInfo?["entitlements"] as? [ServerEntitlement],
                       let delegate = self.currentDelegate else { return }
-                delegate.onEntitlementsChanged(entitlements: Self.publicEntitlements(entitlements))
+                delegate.onEntitlementsChanged(entitlements: Self.publicEntitlements(entitlements, now: Self.passTime(notification)))
             }
         }
 
@@ -881,7 +881,7 @@ extension AppDNA {
             guard commit == .changed else { return }
             EntitlementFingerprint.save(fingerprint, sources.defaults)
             NotificationCenter.default.post(name: .entitlementsChanged, object: nil,
-                                            userInfo: ["entitlements": entitlements])
+                                            userInfo: ["entitlements": entitlements, "now": now])
         }
 
         /// Re-check once the earliest future expiry has passed (plus `expiryRecheckLeeway`), so an expiry
@@ -912,6 +912,16 @@ extension AppDNA {
             expiryTask?.cancel()
             expiryTask = nil
             refreshLock.unlock()
+        }
+
+        /// The clock a refresh pass decided its rows with (`userInfo["now"]`), or the current time for a post
+        /// that carries none (`EntitlementCache.update`). The listeners convert at delivery, on the main queue,
+        /// and used to read `Date()` there: an `active` row whose expiry fell between the pass and the delivery
+        /// was reported inactive, while the pass had committed it as active — so the expiry re-check, finding
+        /// the store still holding it (`grace_period`, same fingerprint), reported no change and the subscriber
+        /// stayed "inactive" until the next refresh. One clock per pass makes the report match the commit.
+        static func passTime(_ notification: Notification) -> Date {
+            notification.userInfo?["now"] as? Date ?? Date()
         }
 
         /// The public `Entitlement` of each posted `ServerEntitlement` — ONE conversion for the closure
@@ -976,7 +986,7 @@ extension AppDNA {
             ) { [weak self] notification in
                 guard let self = self else { return }
                 if let entitlements = notification.userInfo?["entitlements"] as? [ServerEntitlement] {
-                    let infos = Self.publicEntitlements(entitlements)
+                    let infos = Self.publicEntitlements(entitlements, now: Self.passTime(notification))
                     self.entitlementHandlerLock.lock()
                     let handlers = Array(self.entitlementChangeHandlers.values)
                     self.entitlementHandlerLock.unlock()

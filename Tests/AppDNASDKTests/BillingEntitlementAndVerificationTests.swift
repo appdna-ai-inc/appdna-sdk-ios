@@ -239,6 +239,33 @@ final class BillingEntitlementAndVerificationTests: XCTestCase {
         module.teardown()
     }
 
+    /// The listeners convert a pass's rows with the pass's own clock, not the clock at delivery.
+    /// NEGATIVE CONTROL: they read `Date()` on the main queue, so an `active` row whose expiry fell between the
+    /// pass and the delivery was reported inactive (a loaded runner showed it in
+    /// `testScheduledRecheckDoesNotFlipAGracePeriodProduct`), and the re-check then reported no change.
+    /// Deterministic here: the pass's clock is before the expiry, the wall clock is long after it.
+    func testDeliveryUsesThePassClockNotTheWallClock() async {
+        let bridge = FakeBridge(); let world = World(); let spy = Spy()
+        world.now = Date(timeIntervalSince1970: 1_700_000_000)          // 2023: before the expiry below
+        let module = makeModule(bridge, world, spy: spy)
+        final class Box: @unchecked Sendable {
+            private let lock = NSLock(); private var _v: [[Entitlement]] = []
+            var v: [[Entitlement]] { lock.lock(); defer { lock.unlock() }; return _v }
+            func add(_ e: [Entitlement]) { lock.lock(); _v.append(e); lock.unlock() }
+        }
+        let closure = Box()
+        let token = module.onEntitlementsChanged { closure.add($0) }
+        defer { module.removeEntitlementsChangedHandler(token) }
+        bridge.ids = ["monthly"]
+        world.expirations = ["monthly": world.now.addingTimeInterval(3_600)]  // in the past for the wall clock
+        await module.refreshEntitlementCache()
+        let ok = await waitUntil { spy.changes.count == 1 && closure.v.count == 1 }
+        XCTAssertTrue(ok)
+        XCTAssertEqual(spy.changes.first?.map(\.isActive), [true], "delegate: active at the pass's clock")
+        XCTAssertEqual(closure.v.first?.map(\.isActive), [true], "closure: active at the pass's clock")
+        module.teardown()
+    }
+
     /// Server rows: `grace_period` / `billing_retry` have a past `current_period_end` by definition.
     /// NEGATIVE CONTROL: `publicEntitlements` applied the expiry check to every status, so both read
     /// inactive. An `active` row past its expiry (a canceled-but-paid row cached offline) still ends.

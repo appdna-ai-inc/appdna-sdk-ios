@@ -7,6 +7,10 @@ the project uses [Semantic Versioning](https://semver.org/).
 ## [1.0.92] — 2026-11-26
 
 ### Fixed
+- `onEntitlementsChanged` (the delegate and the closure) no longer reports a subscription the store still holds as
+  inactive when its expiry falls between the entitlement refresh and the delivery of the change. The report now uses
+  the same clock the refresh decided with, so it matches what the SDK committed. Before, the follow-up expiry check
+  found nothing new and the host kept "inactive" until the next change.
 - A next-step rule whose target is a step of the same flow now goes to that step when the step's id begins with
   `screen_`, which is how the Console names the steps it creates. Such a rule used to be read as a Screens target,
   so the flow ended instead of moving on and the button looked as if it did nothing. A target that names no step of
