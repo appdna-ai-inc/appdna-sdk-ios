@@ -78,6 +78,8 @@ extension SharedFixtureTests {
         case "resolve_text_input_border": runTextInputBorder(f, h)
         // A block's size, a bare number included (SharedFixtureDrivers+ElementSize.swift).
         case "resolve_element_size": runElementSize(f, h)
+        // Keys whose type depends on the element they sit on (SharedFixtureDrivers+SharedTypeKeys.swift).
+        case "decode_shared_type_keys": runSharedTypeKeys(f, h)
         // Live validation through the host (SharedFixtureDrivers+RemoteValidation.swift).
         case "remote_validation_script": runRemoteValidationScript(f, h)
         case "decode_validation_result": runDecodeValidationResult(f, h)

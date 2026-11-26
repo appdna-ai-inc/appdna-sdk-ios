@@ -7,6 +7,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- A Lottie block saved before its playback rate moved to `lottie_speed` plays at the rate it carries as a number
+  under `speed`. It used to play at 1×. An explicit `lottie_speed` still wins. See
+  [Rich media](https://docs.appdna.ai/sdks/ios/rich-media).
+- A social-proof paywall section whose `review_count` is not a number (display text such as `"12,400+"`) now loses
+  only that count. The whole section used to be dropped. See [Paywalls](https://docs.appdna.ai/sdks/ios/paywall).
 - A paywall page gradient (`layout.background` of type `gradient`) now follows CSS angles, as the Console
   preview draws it: `180` (the default) runs from top to bottom and `90` from left to right. It used to be turned
   90°, so a top-to-bottom gradient ran from right to left. See [Paywalls](https://docs.appdna.ai/sdks/ios/paywall).

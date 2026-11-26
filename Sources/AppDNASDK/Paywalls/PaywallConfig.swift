@@ -315,7 +315,9 @@ struct PaywallSectionData: Codable {
 
     // Social proof
     let rating: Double?
-    let reviewCount: Int?
+    /// Lenient: a generated or hand-edited document can carry display text here (`"12,400+"`), and a
+    /// strict `Int` threw away the whole social-proof section. Android drops only this field, and now so does iOS.
+    @LenientScalar var reviewCount: Int?
     let testimonial: String?
     let subType: String?       // "app_rating", "countdown", "trial_badge"
     let countdownSeconds: Int?

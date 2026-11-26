@@ -1843,7 +1843,9 @@ public struct ContentBlock: Codable, Identifiable {
         self.video_muted = c.lenient(Bool.self, .video_muted)
         self.video_controls = c.lenient(Bool.self, .video_controls)
         self.lottie_url = c.lenient(String.self, .lottie_url)
+        // A Lottie block written before the rate moved to `lottie_speed` carries it as a number under `speed`.
         self.lottie_speed = c.lenient(Double.self, .lottie_speed)
+            ?? (self.type == .lottie ? c.lenient(Double.self, .speed) : nil)
         self.lottie_width = c.lenient(Double.self, .lottie_width)
         self.lottie_height = c.lenient(Double.self, .lottie_height)
         self.play_on_scroll = c.lenient(Bool.self, .play_on_scroll)
