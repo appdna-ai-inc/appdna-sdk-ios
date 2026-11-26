@@ -13,7 +13,7 @@
 //
 // `kind` is one of: flow (an onboarding flow id), placement (a paywall placement), paywall (a paywall
 // id), survey (a survey id), screen (a screen id), track (an event name), push (ask for notification
-// permission). Both are EMPTY in the committed project, so a stock build and every UI test behave
+// permission), identify_traits / attribution / wait_attribution / traits (audience-targeting walks). Both are EMPTY in the committed project, so a stock build and every UI test behave
 // exactly as before. 🔴 This directory is mirrored to the PUBLIC SDK repo: no key, id or URL is ever
 // committed here — the values are supplied by whoever builds the walk.
 import SwiftUI
@@ -104,6 +104,29 @@ enum WalkMenu {
         case "identify":
             AppDNA.identify(userId: item.value)
             log.note("identify(\(item.value))")
+        // A host's identify-with-traits and setAttribution, for audience-targeting walks. `value` is JSON:
+        // identify_traits {"user_id": "…", "traits": {…}}; attribution {"network": "…", …}.
+        case "identify_traits":
+            let obj = (try? JSONSerialization.jsonObject(with: Data(item.value.utf8))) as? [String: Any] ?? [:]
+            let uid = obj["user_id"] as? String ?? "walk-user"
+            AppDNA.identify(userId: uid, traits: obj["traits"] as? [String: Any])
+            log.note("identify(\(uid), traits: \(obj["traits"] ?? "nil"))")
+        case "attribution":
+            let obj = (try? JSONSerialization.jsonObject(with: Data(item.value.utf8))) as? [String: Any] ?? [:]
+            AppDNA.setAttribution(obj)
+            log.note("setAttribution(\(obj))")
+        // waitForAttribution(timeoutMs: value), then whatever the next tap does; the answer is logged.
+        case "wait_attribution":
+            let ms = Int(item.value) ?? 1500
+            let started = Date()
+            log.note("waitForAttribution(timeoutMs: \(ms)) …")
+            AppDNA.waitForAttribution(timeoutMs: ms) { got in
+                let took = Int(Date().timeIntervalSince(started) * 1000)
+                DispatchQueue.main.async { log.note("waitForAttribution → \(got ? "attribution arrived" : "timed out") after \(took)ms") }
+            }
+        case "traits":
+            let t = AppDNA.getUserTraits().map { "\($0.key)=\($0.value)" }.sorted().joined(separator: ",")
+            log.note("traits now: [\(t)]")
         case "reset":
             AppDNA.reset()
             log.note("reset()")

@@ -9,6 +9,7 @@
 // `onEventTracked` for their own pipeline. It lives here because the gap it closes is ours: before
 // it, an event that renders nothing could be proven on Android (logcat) and only inferred here.
 import Foundation
+import Network
 import UIKit
 import AppDNASDK
 
@@ -18,6 +19,22 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
     /// Newest first, capped — a test asserts on an event from several steps ago without racing
     /// the next one, and an app that runs for a while does not grow this without bound.
     private static let capacity = 8
+
+    /// The device's network path, read by the test validator: a real backend check cannot answer offline.
+    final class PathWatch: @unchecked Sendable {
+        private let monitor = NWPathMonitor()
+        private let lock = NSLock()
+        private var satisfied = true
+        init() {
+            monitor.pathUpdateHandler = { [weak self] p in
+                guard let self else { return }
+                self.lock.lock(); self.satisfied = (p.status == .satisfied); self.lock.unlock()
+            }
+            monitor.start(queue: DispatchQueue(label: "ai.appdna.host.path"))
+        }
+        var isOnline: Bool { lock.lock(); defer { lock.unlock() }; return satisfied }
+    }
+    static let path = PathWatch()
 
     @Published private(set) var names: [String] = []
 
@@ -33,6 +50,8 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
 
     func note(_ line: String) {
         let stamp = Self.clock.string(from: Date())
+        // Also to the unified log, so a walk can read a row the menu's list has scrolled out of view.
+        NSLog("AppDNA-WALK %@", line)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.detail = Array(([stamp + " " + line] + self.detail).prefix(40))
@@ -113,7 +132,9 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
     /*
      A test validator for live text-input validation (synthetic rules, for a walk): a value containing "taken" is
      refused with "Already taken"; "slow" answers after 8 s (past the 5 s default timeout); "boom" gives no answer;
-     anything else is accepted after 0.4 s. The walk menu's `validator` item swaps in a delegate without this hook.
+     anything else is accepted after 0.4 s. Offline, like a real backend call, it gives no answer (the same as the
+     Android walk sample) — so the SDK's offline policy is what decides, which is what an airplane-mode walk tests.
+     The walk menu's `validator` item swaps in a delegate without this hook.
      */
     func onValidateInput(flowId: String, stepId: String, fieldId: String, value: String) async -> InputValidationResult? {
         note("validate field=\(fieldId) value=\(value)")
@@ -122,6 +143,11 @@ final class TrackedEventLog: ObservableObject, AppDNALifecycleDelegate, AppDNAPa
             return .valid(message: "Slow answer")
         }
         if value.contains("boom") { return nil }
+        if !Self.path.isOnline {
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            note("validate offline value=\(value)")
+            return nil
+        }
         try? await Task.sleep(nanoseconds: 400_000_000)
         if Task.isCancelled { note("validate cancelled value=\(value)"); return nil }
         return value.contains("taken") ? .invalid(message: "Already taken") : .valid()

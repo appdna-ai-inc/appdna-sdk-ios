@@ -99,6 +99,7 @@ enum Launch {
 
     static func configureSDK() {
         redirectStdoutIfAsked()
+        _ = TrackedEventLog.path  // start watching the network path now, so the test validator's first read is real
         // An absent key still configures: the SDK then fails its bootstrap loudly, which is a
         // better state to debug than an app that quietly did nothing at launch.
         let key = arg("appdnaApiKey") ?? WalkMenu.bundledApiKey ?? "appdna_sandbox_demo_key"
