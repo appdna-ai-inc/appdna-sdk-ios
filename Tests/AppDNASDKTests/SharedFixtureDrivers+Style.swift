@@ -34,6 +34,7 @@ extension SharedFixtureTests {
         case "normalise_markdown": runUnfoldBlockquotes(f, h)
         case "resolve_shadow": runResolveShadow(f, h)
         case "resolve_header_inset": runHeaderCloseInset(f, h)
+        case "resolve_page_gradient": runPageGradient(f, h)
         case "resolve_surface_column": runSurfaceColumn(f, h)
         case "resolve_surface_layout": runSurfaceLayout(f, h)
         case "resolve_default_text_colour": runDefaultTextColour(f, h)
@@ -1547,6 +1548,19 @@ extension SharedFixtureTests {
      A `null` case means no `dismiss` object at all, which is the common authored shape and the one
      that must still reserve: absent means dismissable.
      */
+    /// the page gradient's ends, through the REAL `PaywallRenderer.pageGradientPoints`.
+    private func runPageGradient(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_page_gradient needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let angle = (c.objectValue?["angle"]?.foundation as? NSNumber)?.doubleValue ?? 180
+            let p = PaywallRenderer.pageGradientPoints(angle: angle)
+            return [p.start.x, p.start.y, p.end.x, p.end.y].map { (Double($0) * 1000).rounded() / 1000 + 0 }
+        }
+    }
+
     private func runHeaderCloseInset(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_header_inset needs action.cases")

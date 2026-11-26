@@ -6,6 +6,11 @@ the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- A paywall page gradient (`layout.background` of type `gradient`) now follows CSS angles, as the Console
+  preview draws it: `180` (the default) runs from top to bottom and `90` from left to right. It used to be turned
+  90°, so a top-to-bottom gradient ran from right to left. See [Paywalls](https://docs.appdna.ai/sdks/ios/paywall).
+
 ## [1.0.92] — 2026-11-26
 
 ### Fixed

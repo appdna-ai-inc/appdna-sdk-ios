@@ -798,6 +798,15 @@ struct PaywallRenderer: View {
 
     // MARK: - Background
 
+    /// the page gradient's ends for a CSS angle, the convention the console draws (`linear-gradient(<angle>deg, …)`)
+    /// and `StyleEngine` uses: 0° runs bottom → top, 90° left → right, 180° top → bottom. This used the maths convention
+    /// (`cos`, `sin`), which turned every page gradient 90°: the default 180° ran right → left.
+    static func pageGradientPoints(angle degrees: Double) -> (start: UnitPoint, end: UnitPoint) {
+        let rads = degrees * .pi / 180
+        let dx = sin(rads), dy = -cos(rads)
+        return (UnitPoint(x: 0.5 - dx / 2, y: 0.5 - dy / 2), UnitPoint(x: 0.5 + dx / 2, y: 0.5 + dy / 2))
+    }
+
     /// Background view — rendered via .background() modifier, NOT as ZStack sibling.
     /// .ignoresSafeArea() is applied here so it extends edge-to-edge behind content.
     @ViewBuilder
@@ -813,9 +822,8 @@ struct PaywallRenderer: View {
                         location: (stop.position ?? 0) / 100.0
                     )
                 }
-                let start = UnitPoint(x: 0.5 - cos(angle.radians) * 0.5, y: 0.5 - sin(angle.radians) * 0.5)
-                let end = UnitPoint(x: 0.5 + cos(angle.radians) * 0.5, y: 0.5 + sin(angle.radians) * 0.5)
-                LinearGradient(stops: swiftStops, startPoint: start, endPoint: end)
+                let points = Self.pageGradientPoints(angle: angle.degrees)
+                LinearGradient(stops: swiftStops, startPoint: points.start, endPoint: points.end)
                     .ignoresSafeArea()
             } else if let colors = bg?.colors, colors.count >= 2 {
                 LinearGradient(colors: colors.map { Color(hex: $0) }, startPoint: .top, endPoint: .bottom)
