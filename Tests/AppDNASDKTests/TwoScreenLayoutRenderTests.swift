@@ -152,12 +152,27 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
 
         func labels() -> [String] { elements().compactMap(\.accessibilityLabel) }
 
+        /// re-reads until `find` answers, bounded by `timeout`. `settle()` waits for the tree to STOP MOVING, which
+        /// is not the same as being complete: on a loaded simulator SwiftUI publishes a step's tree in parts, a part can
+        /// hold still for 50 ms, and a lookup made then misses an element that is drawn a moment later (a full run read
+        /// `pinned CTA: not found; labels: ["Close", "Name"]`). Every lookup here expects its element, so it waits for it.
+        func eventually<T>(_ timeout: TimeInterval = Host.lookupTimeout, _ find: () -> T?) -> T? {
+            let end = Date().addingTimeInterval(timeout)
+            while true {
+                if let v = find() { return v }
+                if Date() >= end { return nil }
+                spin(0.05)
+            }
+        }
+
+        static let lookupTimeout: TimeInterval = 8
+
         func button(_ label: String) -> NSObject? {
-            elements().first { $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button) }
+            eventually { elements().first { $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button) } }
         }
 
         func element(containing text: String) -> NSObject? {
-            elements().first { ($0.accessibilityLabel ?? "").contains(text) }
+            eventually { elements().first { ($0.accessibilityLabel ?? "").contains(text) } }
         }
 
         /// The frame of `e` in this window's points.
@@ -201,7 +216,13 @@ final class TwoScreenLayoutRenderTests: XCTestCase {
         /// The bounding box, in window points, of the pixels within `tolerance` of `hex` in a render
         /// of the hosted view (`layer.render`, the path `SurfaceSnapshotTests` found draws scroll
         /// content), optionally only below `minY`.
+        /// The bounding box of the pixels within `tolerance` of `hex` (at or below `minY`), waiting for them to be drawn.
         func colourBox(_ hex: String, minY: CGFloat = 0, tolerance: Int = 10) -> CGRect? {
+            eventually { paintedBox(hex, minY: minY, tolerance: tolerance) }
+        }
+
+        /// One render of the window, read for `hex` — no wait.
+        func paintedBox(_ hex: String, minY: CGFloat = 0, tolerance: Int = 10) -> CGRect? {
             let size = window.bounds.size
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1

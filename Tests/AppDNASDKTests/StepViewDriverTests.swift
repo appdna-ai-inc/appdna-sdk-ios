@@ -92,7 +92,7 @@ enum A11yTree {
     /// alone. That has not been reproduced: not by turning the accessibility automation switch off in-process (the
     /// tree still published its labels), not with another XCUITest runner snapshotting the same simulator, not under
     /// heavy CPU load. So each read that is not ready prints `A11Y-NOT-READY` with the state that could explain it.
-    static func read(_ roots: [NSObject], maxDepth: Int = 60, timeout: TimeInterval = 2,
+    static func read(_ roots: [NSObject], maxDepth: Int = 60, timeout: TimeInterval = 6,
                      until ready: ([NSObject]) -> Bool = A11yTree.hasALabel) -> [NSObject] {
         if A11yAutomation.isOn == false {
             A11yAutomation.timesFoundOff += 1
@@ -158,6 +158,9 @@ final class HostedStep {
 
     func close() { window.isHidden = true }
 
+    /// How long a lookup waits for the element it expects.
+    static let lookupTimeout: TimeInterval = 8
+
     func spin(_ seconds: TimeInterval) {
         RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
@@ -190,10 +193,19 @@ final class HostedStep {
     /// Taps the first element whose label satisfies `match` and that is a button.
     @discardableResult
     func tap(_ what: String, where match: (String) -> Bool) -> Bool {
-        guard let e = elements().first(where: { e in
-            guard let l = e.accessibilityLabel, match(l) else { return false }
-            return e.accessibilityTraits.contains(.button)
-        }) else {
+        // wait for the button, not only for SOME label: on a loaded simulator the tree is published in parts, and
+        // a tree with a heading but not yet its button is not the one this tap means to read.
+        var hit: NSObject?
+        let end = Date().addingTimeInterval(Self.lookupTimeout)
+        while true {
+            hit = elements().first(where: { e in
+                guard let l = e.accessibilityLabel, match(l) else { return false }
+                return e.accessibilityTraits.contains(.button)
+            })
+            if hit != nil || Date() >= end { break }
+            spin(0.05)
+        }
+        guard let e = hit else {
             XCTFail("no button for \(what); labels: \(labels())\(treeDiagnosis())")
             return false
         }
