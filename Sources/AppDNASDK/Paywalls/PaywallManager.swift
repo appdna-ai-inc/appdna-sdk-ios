@@ -39,6 +39,74 @@ final class PaywallDismissGuard {
     var skipSDKAutoDismiss: Bool = false
 }
 
+/// #2226 — the presented paywall, held weakly so the SDK can dismiss IT rather than its presenter.
+final class PresentedPaywallRef {
+    weak var controller: UIViewController?
+}
+
+enum PaywallDismissal {
+    /**
+     #2226 — DISMISS THE PAYWALL, NEVER THE PRESENTER.
+
+     Every SDK dismiss used to be `presenter.dismiss(animated:)`. UIKit reads that call on a controller that
+     presents NOTHING as "dismiss this controller itself". So when a host had already closed the paywall from
+     `onPaywallPurchaseCompleted` (what the docs told hosts to do), the post-purchase dismiss `delay_ms` later
+     closed the host's OWN screen if that screen was presented modally. Measured on iOS 1.0.91 in the simulator:
+     the host's modal was gone 6 s after a purchase with `next_step`, and still there with no `on_success`.
+
+     Now: the paywall's own presenter dismisses the paywall, and only while it is still presented. If it is
+     already gone, nothing is dismissed and `completion` still runs, so `onPaywallDismissed` (and an
+     onboarding flow's route) still fires once.
+     */
+    /// Still on screen: presented, and not already on its way out (a host's own dismiss in flight).
+    static func isStillPresented(_ paywall: UIViewController) -> Bool {
+        paywall.presentingViewController != nil && !paywall.isBeingDismissed
+    }
+
+    static func dismiss(paywall: UIViewController?, presenter: UIViewController, animated: Bool = true, completion: (() -> Void)? = nil) {
+        if let paywall {
+            if isStillPresented(paywall), let presenting = paywall.presentingViewController {
+                presenting.dismiss(animated: animated, completion: completion)
+            } else {
+                completion?()
+            }
+            return
+        }
+        // No paywall reference (a path that did not go through `present`): dismiss only what the presenter presented.
+        if presenter.presentedViewController != nil {
+            presenter.dismiss(animated: animated, completion: completion)
+        } else {
+            completion?()
+        }
+    }
+}
+
+/**
+ #2223 — WHAT A SUCCESSFUL PURCHASE DOES TO THE PAYWALL WHEN NO `on_success` IS AUTHORED (owner, 2026-11-26: "SDK 1.0.93
+ closes it safely").
+
+ Before 1.0.93 a paywall with no `on_success` stayed open after a purchase, so a host that did not close it from
+ `onPaywallPurchaseCompleted` left a paying user on the paywall. Now the SDK closes it after `defaultCloseDelayMs` —
+ but only while it is still presented, and through its own presenter (`PaywallDismissal`). A host that closed it
+ itself keeps its screen and gets no extra callback; otherwise `onPaywallDismissed` fires, which is also what moves an
+ onboarding flow on to its `on_success_target`. An AUTHORED action keeps its own branch. Shared fixture
+ `billing/paywall_success_absent_closes_if_presented`.
+ */
+struct PostPurchaseSuccessPlan: Equatable {
+    let closes: Bool
+    let delayMs: Int
+    let reportsDismissed: Bool
+
+    static let defaultCloseDelayMs = 2000
+
+    /// The plan for a paywall with NO authored `on_success`, decided when the delay has run.
+    static func absentOnSuccess(paywallStillPresented: Bool) -> PostPurchaseSuccessPlan {
+        paywallStillPresented
+            ? PostPurchaseSuccessPlan(closes: true, delayMs: defaultCloseDelayMs, reportsDismissed: true)
+            : PostPurchaseSuccessPlan(closes: false, delayMs: defaultCloseDelayMs, reportsDismissed: false)
+    }
+}
+
 /// Manages paywall presentation, purchase flow, and event tracking.
 final class PaywallManager {
     private let remoteConfigManager: RemoteConfigManager
@@ -52,6 +120,9 @@ final class PaywallManager {
     /// `providerNotAvailable`, and never through a bridge captured from the torn-down configure.
     private let billingConfigured: () -> Bool
     private let eventTracker: EventTracker
+    /// #2226 — each presented paywall, by id, so a later dismiss targets it and not its presenter.
+    private var presentedPaywalls: [String: PresentedPaywallRef] = [:]
+    private func paywallController(_ id: String) -> UIViewController? { presentedPaywalls[id]?.controller }
     /// Consulted at present-time for a running paywall
     /// experiment targeting the entity being shown.
     private let experimentManager: ExperimentManager?
@@ -214,7 +285,7 @@ final class PaywallManager {
                     ], contentStamp))
                     guard !dismissGuard.dispatched else { return }
                     dismissGuard.dispatched = true
-                    viewController.dismiss(animated: true) {
+                    PaywallDismissal.dismiss(paywall: self?.paywallController(id), presenter: viewController) {
                         delegate?.onPaywallDismissed(paywallId: id)
                     }
                 },
@@ -229,6 +300,8 @@ final class PaywallManager {
             )
             let hostingController = UIHostingController(rootView: paywallView)
             hostingController.modalPresentationStyle = UIModalPresentationStyle.fullScreen
+            let ref = PresentedPaywallRef(); ref.controller = hostingController
+            self.presentedPaywalls[id] = ref
 
             /*
              * 🔴 THE HOST IS CHOSEN HERE, AT PRESENT TIME, NOT WHERE THE CALL CAME FROM.
@@ -554,10 +627,25 @@ final class PaywallManager {
         // before any branch. Every branch reaches this line; only one of them posts
         // `.paywallPurchaseSuccess`, which is why this is a signal of its own.
         NotificationCenter.default.post(name: .paywallPurchaseCelebrate, object: nil)
+        // #2226 — the paywall itself, weakly: by the time the delay runs the host may have closed it.
+        weak var paywall = paywallController(paywallId)
         guard let config = config else {
-            // No config = legacy behavior (delegate-only): the paywall stays up for the host to close,
-            // so its CTA stops spinning (as Android).
+            // The CTA stops spinning now (as Android), whatever happens next.
             NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
+            // #2223 — no `on_success`: close it after the default delay, only if the app has not closed it itself.
+            let delayMs = PostPurchaseSuccessPlan.defaultCloseDelayMs
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0) {
+                let plan = PostPurchaseSuccessPlan.absentOnSuccess(
+                    paywallStillPresented: paywall.map(PaywallDismissal.isStillPresented) ?? false
+                )
+                guard plan.closes else {
+                    Log.info("Paywall \(paywallId): no on_success and the app already closed it — nothing to close")
+                    return
+                }
+                PaywallDismissal.dismiss(paywall: paywall, presenter: viewController) {
+                    if plan.reportsDismissed { delegate?.onPaywallDismissed(paywallId: paywallId) }
+                }
+            }
             return
         }
         let delay = Double(config.delay_ms ?? 2000) / 1000.0
@@ -565,7 +653,7 @@ final class PaywallManager {
         switch config.action {
         case "dismiss":
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                viewController.dismiss(animated: true)
+                PaywallDismissal.dismiss(paywall: paywall, presenter: viewController)
             }
 
         case "show_message":
@@ -578,14 +666,14 @@ final class PaywallManager {
             ])
             // Auto-dismiss after delay
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                viewController.dismiss(animated: true) {
+                PaywallDismissal.dismiss(paywall: paywall, presenter: viewController) {
                     delegate?.onPaywallDismissed(paywallId: paywallId)
                 }
             }
 
         case "deep_link":
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                viewController.dismiss(animated: true) {
+                PaywallDismissal.dismiss(paywall: paywall, presenter: viewController) {
                     delegate?.onPaywallDismissed(paywallId: paywallId)
                     if let url = config.deep_link_url {
                         delegate?.onPostPurchaseDeepLink(paywallId: paywallId, url: url)
@@ -595,7 +683,7 @@ final class PaywallManager {
 
         case "next_step":
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                viewController.dismiss(animated: true) {
+                PaywallDismissal.dismiss(paywall: paywall, presenter: viewController) {
                     delegate?.onPaywallDismissed(paywallId: paywallId)
                     delegate?.onPostPurchaseNextStep(paywallId: paywallId)
                 }
@@ -616,7 +704,7 @@ final class PaywallManager {
 
         switch config.action {
         case "dismiss":
-            viewController.dismiss(animated: true)
+            PaywallDismissal.dismiss(paywall: paywallController(paywallId), presenter: viewController)
 
         case "show_error", "retry":
             // Show error inline via notification (PaywallRenderer listens)
@@ -740,7 +828,7 @@ final class PaywallManager {
                         "paywall_id": paywallId,
                         "dismiss_reason": "restore_success",
                     ], contentStamp))
-                    viewController.dismiss(animated: true) {
+                    PaywallDismissal.dismiss(paywall: self.paywallController(paywallId), presenter: viewController) {
                         delegate?.onPaywallDismissed(paywallId: paywallId)
                     }
                 }

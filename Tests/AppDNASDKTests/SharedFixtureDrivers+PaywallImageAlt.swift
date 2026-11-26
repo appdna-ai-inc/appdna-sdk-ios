@@ -211,6 +211,20 @@ extension SharedFixtureTests {
         }
     }
 
+    // resolve_post_purchase_success_absent REAL: `PostPurchaseSuccessPlan.absentOnSuccess`, the plan `PaywallManager`
+    // acts on when a purchase succeeds with no authored `on_success` (#2223). Each case: is the paywall still presented.
+    func runPostPurchaseSuccessAbsent(_ f: Fixture, _ h: Harness) {
+        guard let cases = f.action.raw["cases"]?.arrayValue else {
+            XCTFail("[\(f.id)] resolve_post_purchase_success_absent needs action.cases")
+            return
+        }
+        h.state["results"] = cases.map { c -> Any in
+            let presented = c.objectValue?["still_presented"]?.boolValue ?? false
+            let plan = PostPurchaseSuccessPlan.absentOnSuccess(paywallStillPresented: presented)
+            return plan.closes ? "close@\(plan.delayMs)\(plan.reportsDismissed ? "+dismissed" : "")" : "none"
+        }
+    }
+
     // resolve_screen_surface_ink REAL: `ScreenConfig` decoding → `GoogleMapsAttribution.backdrop(ofScreen:)` /
     // `backdrop(ofSection:behind:)` → `surfaceScheme`, the scheme `ScreenRenderer` and `ScreenSectionSurface` set.
     func runScreenSurfaceInk(_ f: Fixture, _ h: Harness) {

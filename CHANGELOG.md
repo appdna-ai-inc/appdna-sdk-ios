@@ -10,6 +10,17 @@ the project uses [Semantic Versioning](https://semver.org/).
 - A paywall page gradient (`layout.background` of type `gradient`) now follows CSS angles, as the Console
   preview draws it: `180` (the default) runs from top to bottom and `90` from left to right. It used to be turned
   90°, so a top-to-bottom gradient ran from right to left. See [Paywalls](https://docs.appdna.ai/sdks/ios/paywall).
+- After a purchase, the paywall's own close closes only the paywall. This covers any `post_purchase.on_success`
+  action, a restore, and the failure action `dismiss`. If your app had already closed the paywall from
+  `onPaywallPurchaseCompleted` and had presented it from a screen that is itself presented modally, the SDK's close used
+  to close that screen as well. `onPaywallDismissed` still fires once.
+
+### Changed
+- A paywall with no `post_purchase.on_success` now closes itself 2 s after a successful purchase. Before, it stayed
+  open until your app closed it. The SDK closes it only while it is still showing, and only the paywall. If your app
+  already closed it in `onPaywallPurchaseCompleted`, nothing more happens. `onPaywallDismissed` fires when the SDK
+  closes it, so an onboarding flow that presented the paywall moves on to its `on_success_target`. See
+  [Paywalls](https://docs.appdna.ai/sdks/ios/paywall).
 
 ## [1.0.92] — 2026-11-26
 
