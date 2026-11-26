@@ -46,7 +46,7 @@ extension SharedFixtureTests {
         case "resolve_paywall_comparison_table_style": runPaywallComparisonTableStyle(f, h)
         // What a failed paywall purchase shows, by error type (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_post_purchase_failure": runPostPurchaseFailure(f, h)
-        // #2223 — no on_success: close only while still presented (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
+        // no on_success: close only while still presented (driver in SharedFixtureDrivers+PaywallImageAlt.swift).
         case "resolve_post_purchase_success_absent": runPostPurchaseSuccessAbsent(f, h)
         // A paywall media section's playback and a message's animation / video hero (SharedFixtureDrivers+MediaHero.swift).
         case "resolve_paywall_media_section": runPaywallMediaSection(f, h)

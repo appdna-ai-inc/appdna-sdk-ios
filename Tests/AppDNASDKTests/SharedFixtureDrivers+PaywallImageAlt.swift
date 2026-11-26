@@ -212,7 +212,7 @@ extension SharedFixtureTests {
     }
 
     // resolve_post_purchase_success_absent REAL: `PostPurchaseSuccessPlan.absentOnSuccess`, the plan `PaywallManager`
-    // acts on when a purchase succeeds with no authored `on_success` (#2223). Each case: is the paywall still presented.
+    // acts on when a purchase succeeds with no authored `on_success`. Each case: is the paywall still presented.
     func runPostPurchaseSuccessAbsent(_ f: Fixture, _ h: Harness) {
         guard let cases = f.action.raw["cases"]?.arrayValue else {
             XCTFail("[\(f.id)] resolve_post_purchase_success_absent needs action.cases")

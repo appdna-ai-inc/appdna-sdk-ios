@@ -1,6 +1,6 @@
 // PaywallDismissTargetsThePaywallTests.swift
 //
-// #2226: the SDK's post-purchase dismiss closes THE PAYWALL, never the screen it was presented from.
+// the SDK's post-purchase dismiss closes THE PAYWALL, never the screen it was presented from.
 //
 // The setup, in a real key window: a root screen presents a MODAL host screen, and that screen presents the paywall. The
 // host then closes the paywall itself, which is what a host following the old docs does in onPaywallPurchaseCompleted.
@@ -42,7 +42,7 @@ final class PaywallDismissTargetsThePaywallTests: XCTestCase {
         var completed = 0
         PaywallDismissal.dismiss(paywall: paywall, presenter: modal ) { completed += 1 }
         spin(0.8)
-        XCTAssertTrue(root.presentedViewController === modal, "#2226: the SDK dismissed the host's own modal screen")
+        XCTAssertTrue(root.presentedViewController === modal, "the SDK dismissed the host's own modal screen")
         XCTAssertEqual(completed, 1, "the completion (onPaywallDismissed / onboarding route) must still run once")
     }
 
@@ -66,7 +66,7 @@ final class PaywallDismissTargetsThePaywallTests: XCTestCase {
         XCTAssertEqual(completed, 1)
     }
 
-    /// RED CONTROL: what every branch did before #2226.
+    /// RED CONTROL: what every branch did before this fix.
     func testRedControl_theOldPresenterDismissClosesTheHostModal() throws {
         let (window, root, modal, _) = try stack(); defer { window.isHidden = true }
         modal.dismiss(animated: true); spin(0.6)

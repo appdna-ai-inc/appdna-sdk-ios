@@ -39,14 +39,14 @@ final class PaywallDismissGuard {
     var skipSDKAutoDismiss: Bool = false
 }
 
-/// #2226 — the presented paywall, held weakly so the SDK can dismiss IT rather than its presenter.
+/// the presented paywall, held weakly so the SDK can dismiss IT rather than its presenter.
 final class PresentedPaywallRef {
     weak var controller: UIViewController?
 }
 
 enum PaywallDismissal {
     /**
-     #2226 — DISMISS THE PAYWALL, NEVER THE PRESENTER.
+     DISMISS THE PAYWALL, NEVER THE PRESENTER.
 
      Every SDK dismiss used to be `presenter.dismiss(animated:)`. UIKit reads that call on a controller that
      presents NOTHING as "dismiss this controller itself". So when a host had already closed the paywall from
@@ -82,8 +82,7 @@ enum PaywallDismissal {
 }
 
 /**
- #2223 — WHAT A SUCCESSFUL PURCHASE DOES TO THE PAYWALL WHEN NO `on_success` IS AUTHORED (owner, 2026-11-26: "SDK 1.0.93
- closes it safely").
+ WHAT A SUCCESSFUL PURCHASE DOES TO THE PAYWALL WHEN NO `on_success` IS AUTHORED (since SDK 1.0.93).
 
  Before 1.0.93 a paywall with no `on_success` stayed open after a purchase, so a host that did not close it from
  `onPaywallPurchaseCompleted` left a paying user on the paywall. Now the SDK closes it after `defaultCloseDelayMs` —
@@ -120,7 +119,7 @@ final class PaywallManager {
     /// `providerNotAvailable`, and never through a bridge captured from the torn-down configure.
     private let billingConfigured: () -> Bool
     private let eventTracker: EventTracker
-    /// #2226 — each presented paywall, by id, so a later dismiss targets it and not its presenter.
+    /// each presented paywall, by id, so a later dismiss targets it and not its presenter.
     private var presentedPaywalls: [String: PresentedPaywallRef] = [:]
     private func paywallController(_ id: String) -> UIViewController? { presentedPaywalls[id]?.controller }
     /// Consulted at present-time for a running paywall
@@ -627,12 +626,12 @@ final class PaywallManager {
         // before any branch. Every branch reaches this line; only one of them posts
         // `.paywallPurchaseSuccess`, which is why this is a signal of its own.
         NotificationCenter.default.post(name: .paywallPurchaseCelebrate, object: nil)
-        // #2226 — the paywall itself, weakly: by the time the delay runs the host may have closed it.
+        // the paywall itself, weakly: by the time the delay runs the host may have closed it.
         weak var paywall = paywallController(paywallId)
         guard let config = config else {
             // The CTA stops spinning now (as Android), whatever happens next.
             NotificationCenter.default.post(name: .paywallPurchaseEnded, object: nil)
-            // #2223 — no `on_success`: close it after the default delay, only if the app has not closed it itself.
+            // no `on_success`: close it after the default delay, only if the app has not closed it itself.
             let delayMs = PostPurchaseSuccessPlan.defaultCloseDelayMs
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(delayMs) / 1000.0) {
                 let plan = PostPurchaseSuccessPlan.absentOnSuccess(
